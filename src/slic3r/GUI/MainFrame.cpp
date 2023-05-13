@@ -2651,6 +2651,16 @@ void MainFrame::init_menubar_as_editor()
         },
         "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
+        
+    append_menu_item(
+        advance_menu, wxID_ANY, _L("Input Shaping"), _L("Input Shaping"),
+        [this](wxCommandEvent&) {
+            if (!m_IS_calib_dlg)
+                m_IS_calib_dlg = new Input_Shaping_Test_Dlg((wxWindow*)this, wxID_ANY, m_plater);
+            m_IS_calib_dlg->ShowModal();
+        },
+        "", nullptr,
+        [this]() {return m_plater->is_view3D_shown();; }, this);
     m_topbar->GetCalibMenu()->AppendSubMenu(advance_menu, _L("More..."));
 
     // help 
@@ -2726,6 +2736,16 @@ void MainFrame::init_menubar_as_editor()
             m_vfa_test_dlg->ShowModal();
         }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
+        
+    append_menu_item(
+        advance_menu, wxID_ANY, _L("Input Shaping"), _L("Input Shaping"),
+        [this](wxCommandEvent&) {
+            if (!m_IS_calib_dlg)
+                m_IS_calib_dlg = new Input_Shaping_Test_Dlg((wxWindow*)this, wxID_ANY, m_plater);
+            m_IS_calib_dlg->ShowModal();
+        }, "", nullptr,
+        [this]() {return m_plater->is_view3D_shown();; }, this);
+
     append_submenu(calib_menu, advance_menu, wxID_ANY, _L("More..."), _L("More calibrations"), "",
         [this]() {return m_plater->is_view3D_shown();; });
     // help
