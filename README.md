@@ -1,9 +1,10 @@
 
+[![Build Win64](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_win.yml/badge.svg)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_win.yml)
+[![Build Mac AppleSilicon](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_arm64.yml/badge.svg)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_arm64.yml)
+[![Build Mac Intel](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_x64.yml/badge.svg)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_x64.yml)
+[![Build Linux](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_linux.yml/badge.svg)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_linux.yml)
+
 # Orca Slicer  
-[![Build Win64](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_win.yml/badge.svg?branch=SoftFever)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_win.yml)
-[![Build Mac AppleSilicon](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_arm64.yml/badge.svg?branch=SoftFever)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_arm64.yml)
-[![Build Mac Intel](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_x64.yml/badge.svg?branch=SoftFever)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_mac_x64.yml)
-[![Build Linux](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_linux.yml/badge.svg?branch=SoftFever)](https://github.com/SoftFever/OrcaSlicer/actions/workflows/build_linux.yml)  
 Orca Slicer is a fork of Bambu Studio. It was previously known as BambuStudio-SoftFever.  
 Bambu Studio is based on [PrusaSlicer](https://github.com/prusa3d/PrusaSlicer) by Prusa Research, which is from [Slic3r](https://github.com/Slic3r/Slic3r) by Alessandro Ranellucci and the RepRap community. 
 Orca Slicer incorporates a lot of features from SuperSlicer by @supermerill
@@ -32,12 +33,16 @@ Prebuilt binaries are available through the [github releases page](https://githu
 2. Double click to unzip the package, move OrcaSlicer.app to Application folder.  
 3. The app is signed but not notarized at the moment due to the proptiery network plugin.  
     We have two options to make it run on our machines  
-  - Option 1:  
+  - Option 1 (You only need to do this once. After that the app can be oppened normally.):
+    - Step 1: Hold _cmd_ and right click the app, from the context menu choose **Open**.
+    - Step 2: A warning window will pop up, click _Open_  
+    
+  - Option 2:  
     Execute this command in terminal: `xattr -dr com.apple.quarantine /Applications/OrcaSlicer.app`
      ```console
         softfever@mac:~$ xattr -dr com.apple.quarantine /Applications/OrcaSlicer.app
     ```
-  - Option 2:  
+  - Option 3:  
       - Step 1: open the app, a warning window will pop up  
           ![image](./SoftFever_doc/mac_cant_open.png)  
       - Step 2: in `System Settings` -> `Privacy & Security`, click `Open Anyway`:  

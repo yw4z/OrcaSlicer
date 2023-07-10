@@ -1435,6 +1435,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // modifies m_silent_time_estimator_enabled
     DoExport::init_gcode_processor(print.config(), m_processor, m_silent_time_estimator_enabled);
     const bool is_bbl_printers = print.is_BBL_printer();
+    m_calib_config.clear();
     // resets analyzer's tracking data
     m_last_height  = 0.f;
     m_last_layer_z = 0.f;
@@ -1728,7 +1729,11 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     //m_placeholder_parser.set("has_single_extruder_multi_material_priming", has_wipe_tower && print.config().single_extruder_multi_material_priming);
     m_placeholder_parser.set("total_toolchanges", std::max(0, print.wipe_tower_data().number_of_toolchanges)); // Check for negative toolchanges (single extruder mode) and set to 0 (no tool change).
 
-    std::vector<unsigned char> is_extruder_used(print.config().filament_diameter.size(), 0);
+    // PlaceholderParser currently substitues non-existent vector values with the zero'th value, which is harmful in the
+    // case of "is_extruder_used[]" as Slicer may lie about availability of such non-existent extruder. We rather
+    // sacrifice 256B of memory before we change the behavior of the PlaceholderParser, which should really only fill in
+    // the non-existent vector elements for filament parameters.
+    std::vector<unsigned char> is_extruder_used(std::max(size_t(255), print.config().filament_diameter.size()), 0);
     for (unsigned int extruder : tool_ordering.all_extruders())
         is_extruder_used[extruder] = true;
     m_placeholder_parser.set("is_extruder_used", new ConfigOptionBools(is_extruder_used));
@@ -1776,6 +1781,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         m_placeholder_parser.set("max_print_height",new ConfigOptionInt(m_config.printable_height));
         m_placeholder_parser.set("z_offset", new ConfigOptionFloat(0.0f));
         m_placeholder_parser.set("plate_name", new ConfigOptionString(print.get_plate_name()));
+        m_placeholder_parser.set("first_layer_height", new ConfigOptionFloat(m_config.initial_layer_print_height.value));
 
         //BBS: calculate the volumetric speed of outer wall. Ignore pre-object setting and multi-filament, and just use the default setting
         {
@@ -1871,7 +1877,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // SoftFever: calib
     if (print.calib_params().mode == CalibMode::Calib_PA_Line) {
         std::string gcode;
-        gcode += m_writer.set_acceleration((unsigned int)floor(m_config.outer_wall_acceleration.value + 0.5));
+        if ((m_config.default_acceleration.value > 0 && m_config.outer_wall_acceleration.value > 0)) {
+            gcode += m_writer.set_acceleration((unsigned int)floor(m_config.outer_wall_acceleration.value + 0.5));
+        }
 
         if (m_config.default_jerk.value > 0) {
             double jerk = m_config.outer_wall_jerk.value;
@@ -2857,7 +2865,7 @@ GCode::LayerResult GCode::process_layer(
         m_calib_config.set_key_value("outer_wall_speed", new ConfigOptionFloat(std::round(_speed)));
     }
     else if (print.calib_mode() == CalibMode::Calib_Retraction_tower) {
-        auto _length = print.calib_params().start + std::floor(print_z) * print.calib_params().step;
+        auto _length = print.calib_params().start + std::floor(std::max(0.0,print_z-0.4)) * print.calib_params().step;
         DynamicConfig _cfg;
         _cfg.set_key_value("retraction_length", new ConfigOptionFloats{_length});
         writer().config.apply(_cfg);
@@ -3635,14 +3643,6 @@ std::string GCode::extrude_loop(ExtrusionLoop loop, std::string description, dou
         gcode += m_writer.extrude_to_xy(this->point_to_gcode(pt), 0,"move inwards before travel",true);
     }
 
-    //BBS: don't reset acceleration when printing first layer. During first layer, acceleration is always same value.
-    if (!this->on_first_layer()) {
-        // reset acceleration
-        if (m_config.default_acceleration.value > 0)
-            gcode += m_writer.set_acceleration((unsigned int)(m_config.default_acceleration.value + 0.5));
-        if (m_config.default_jerk.value > 0)
-            gcode += m_writer.set_jerk_xy(m_config.default_jerk.value);
-    }
     return gcode;
 }
 
@@ -3666,14 +3666,7 @@ std::string GCode::extrude_multi_path(ExtrusionMultiPath multipath, std::string 
         }
         m_wipe.path.reverse();
     }
-    //BBS: don't reset acceleration when printing first layer. During first layer, acceleration is always same value.
-    if (!this->on_first_layer()) {
-        // reset acceleration
-        if (m_config.default_acceleration.value > 0)
-            gcode += m_writer.set_acceleration((unsigned int)floor(m_config.default_acceleration.value + 0.5));
-        if(m_config.default_jerk.value > 0)
-            gcode += m_writer.set_jerk_xy(m_config.default_jerk.value);
-        }
+
     return gcode;
 }
 
@@ -3698,15 +3691,7 @@ std::string GCode::extrude_path(ExtrusionPath path, std::string description, dou
         m_wipe.path = std::move(path.polyline);
         m_wipe.path.reverse();
     }
-    //BBS: don't reset acceleration when printing first layer. During first layer, acceleration is always same value.
-    if (!this->on_first_layer()){
-        // reset acceleration
-        if (m_config.default_acceleration.value > 0)
-            gcode += m_writer.set_acceleration((unsigned int)floor(m_config.default_acceleration.value + 0.5));
-        if(m_config.default_jerk.value > 0)
-            gcode += m_writer.set_jerk_xy(m_config.default_jerk.value);
 
-        }
     return gcode;
 }
 
@@ -4015,6 +4000,12 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
             }
         }
     }
+    // Override skirt speed if set
+    if (path.role() == erSkirt) {
+        const double skirt_speed = m_config.get_abs_value("skirt_speed");
+        if (skirt_speed > 0.0)
+        speed = skirt_speed;
+    }
     //BBS: remove this config
     //else if (this->object_layer_over_raft())
     //    speed = m_config.get_abs_value("first_layer_speed_over_raft", speed);
@@ -4272,15 +4263,16 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
                     
                 }
             }
-            gcode +=
-                m_writer.extrude_to_xy(p, e_per_mm * line_length, GCodeWriter::full_gcode_comment ? description : "");
-
-            prev = p;
             double new_speed = std::max((float)EXTRUDER_CONFIG(slow_down_min_speed), processed_point.speed) * 60.0;
             if (last_set_speed != new_speed) {
                 gcode += m_writer.set_speed(new_speed, "", comment);
                 last_set_speed = new_speed;
             }
+            gcode +=
+                m_writer.extrude_to_xy(p, e_per_mm * line_length, GCodeWriter::full_gcode_comment ? description : "");
+
+            prev = p;
+
         }
         if (is_overhang_fan_on) {
             is_overhang_fan_on = false;

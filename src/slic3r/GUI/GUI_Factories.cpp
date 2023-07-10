@@ -95,7 +95,7 @@ std::map<std::string, std::vector<SimpleSettingData>>  SettingsFactory::PART_CAT
                     }},
     { L("Strength"), {{"wall_loops", "",1},{"top_shell_layers", L("Top Solid Layers"),1},{"top_shell_thickness", L("Top Minimum Shell Thickness"),1},
                     {"bottom_shell_layers", L("Bottom Solid Layers"),1}, {"bottom_shell_thickness", L("Bottom Minimum Shell Thickness"),1},
-                    {"sparse_infill_density", "",1},{"sparse_infill_pattern", "",1},{"top_surface_pattern", "",1},{"bottom_surface_pattern", "",1},
+                    {"sparse_infill_density", "",1},{"sparse_infill_pattern", "",1},{"infill_anchor", "",1},{"infill_anchor_max", "",1},{"top_surface_pattern", "",1},{"bottom_surface_pattern", "",1},
                     {"infill_combination", "",1}, {"infill_wall_overlap", "",1}, {"infill_direction", "",1}, {"bridge_angle", "",1}, {"minimum_sparse_infill_area", "",1}
                     }},
     { L("Speed"), {{"outer_wall_speed", "",1},{"inner_wall_speed", "",2},{"sparse_infill_speed", "",3},{"top_surface_speed", "",4}, {"internal_solid_infill_speed", "",5},
@@ -490,13 +490,13 @@ wxMenu* MenuFactory::append_submenu_add_generic(wxMenu* menu, ModelVolumeType ty
             [type, item](wxCommandEvent &) {
               std::vector<boost::filesystem::path> input_files;
               std::string file_name = item;
-              if (file_name == "Orca Cube")
+              if (file_name == L("Orca Cube"))
                 file_name = "OrcaCube_v2.3mf";
-              else if (file_name == "3DBenchy")
+              else if (file_name == L("3DBenchy"))
                 file_name = "3DBenchy.stl";
-              else if (file_name == "Autodesk FDM Test")
+              else if (file_name == L("Autodesk FDM Test"))
                 file_name = "ksr_fdmtest_v4.stl";
-              else if (file_name == "Voron Cube")
+              else if (file_name == L("Voron Cube"))
                 file_name = "Voron_Design_Cube_v7.stl";
               else
                 return;

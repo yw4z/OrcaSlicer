@@ -177,14 +177,13 @@ std::string GCodeWriter::set_acceleration(unsigned int acceleration)
         // Use M204 P, we don't want to override travel acc by M204 S (which is deprecated anyway).
         gcode << "M204 P" << acceleration;
     } else if (FLAVOR_IS(gcfKlipper) && this->config.accel_to_decel_enable) {
-        gcode << "SET_VELOCITY_LIMIT ACCEL_TO_DECEL=" << acceleration * this->config.accel_to_decel_factor / 100;
+        gcode << "SET_VELOCITY_LIMIT ACCEL=" << acceleration
+              << " ACCEL_TO_DECEL=" << acceleration * this->config.accel_to_decel_factor / 100;
         if (GCodeWriter::full_gcode_comment)
             gcode << " ; adjust ACCEL_TO_DECEL";
-        gcode << "\nM204 S" << acceleration;
-        // Set max accel to decel to half of acceleration
     } else
         gcode << "M204 S" << acceleration;
-    
+
     //BBS
     if (GCodeWriter::full_gcode_comment) gcode << " ; adjust acceleration";
     gcode << "\n";
@@ -741,9 +740,9 @@ std::string GCodeWriter::set_fan(const GCodeFlavor gcode_flavor, unsigned int sp
             gcode << "M126";    break;
         case gcfMach3:
         case gcfMachinekit:
-            gcode << "M106 P" << 255.0 * speed / 100.0; break;
+            gcode << "M106 P" << static_cast<unsigned int>(255.5 * speed / 100.0); break;
         default:
-            gcode << "M106 S" << 255.0 * speed / 100.0; break;
+            gcode << "M106 S" << static_cast<unsigned int>(255.5 * speed / 100.0); break;
         }
         if (GCodeWriter::full_gcode_comment) 
             gcode << " ; enable fan";
