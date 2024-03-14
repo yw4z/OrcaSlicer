@@ -1091,7 +1091,7 @@ void MainFrame::init_tabpanel() {
         //BBS add pages
     m_monitor = new MonitorPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_monitor->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_monitor, _L("Device"), std::string("tab_calib_sf"), std::string("tab_calib_sf"), false);
+    m_tabpanel->AddPage(m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);
 
     m_printer_view = new PrinterWebView(m_tabpanel);
     Bind(EVT_LOAD_PRINTER_URL, [this](LoadPrinterViewEvent &evt) {
@@ -1137,8 +1137,8 @@ void MainFrame::show_device(bool bBBLPrinter) {
             m_monitor->Show(true);
       m_tabpanel->RemovePage(tpMonitor);
       m_tabpanel->InsertPage(tpMonitor, m_monitor, _L("Device"),
-                             std::string("tab_calib_sf"),
-                             std::string("tab_calib_sf"));
+                             std::string("tab_monitor_active"),
+                             std::string("tab_monitor_active"));
       //m_tabpanel->SetSelection(tp3DEditor);
     }
   } else {
@@ -1147,8 +1147,8 @@ void MainFrame::show_device(bool bBBLPrinter) {
             m_monitor->Show(false);
       m_tabpanel->RemovePage(tpMonitor);
       m_tabpanel->InsertPage(tpMonitor, m_printer_view, _L("Device"),
-                          std::string("tab_calib_sf"),
-                          std::string("tab_calib_sf"));
+                          std::string("tab_monitor_active"),
+                          std::string("tab_monitor_active"));
       //m_tabpanel->SetSelection(tp3DEditor);
     }
   }
