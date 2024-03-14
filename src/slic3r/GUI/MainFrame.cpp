@@ -587,14 +587,8 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
         if (evt.CmdDown() && evt.GetKeyCode() == 'P')
 #endif
         {
-            PreferencesDialog dlg(this);
-            dlg.ShowModal();
-#if ENABLE_GCODE_LINES_ID_IN_H_SLIDER
-            if (dlg.seq_top_layer_only_changed() || dlg.seq_seq_top_gcode_indices_changed())
-#else
-            if (dlg.seq_top_layer_only_changed())
-#endif // ENABLE_GCODE_LINES_ID_IN_H_SLIDER
-                plater()->refresh_print();
+            // Orca: Use GUI_App::open_preferences instead of direct call so windows associations are updated on exit
+            wxGetApp().open_preferences();
             return;
         }
 
@@ -940,7 +934,7 @@ void MainFrame::show_calibration_button(bool show)
     if (shown2 == show)
         ;
     else if (show)
-        m_tabpanel->InsertPage(tpCalibration, m_calibration, _L("Calibration"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);
+        m_tabpanel->InsertPage(tpCalibration, m_calibration, _L("Calibration"), std::string("tab_calib_sf"), std::string("tab_calib_sf"), false);
     else
         m_tabpanel->RemovePage(tpCalibration);
 }
@@ -1108,7 +1102,7 @@ void MainFrame::init_tabpanel() {
 
     m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_calibration->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_calibration, _L("Calibration"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);
+    m_tabpanel->AddPage(m_calibration, _L("Calibration"), std::string("tab_calib_sf"), std::string("tab_calib_sf"), false);
 
     if (m_plater) {
         // load initial config
@@ -1900,9 +1894,9 @@ void MainFrame::update_side_button_style()
     m_slice_btn->SetExtraSize(wxSize(FromDIP(38), FromDIP(10)));
     m_slice_btn->SetBottomColour(wxColour(0x3B4446));*/
     StateColor m_btn_bg_enable = StateColor(
-        std::pair<wxColour, int>(wxColour(0, 137, 123), StateColor::Pressed), 
+        std::pair<wxColour, int>(wxColour(199, 24, 24), StateColor::Pressed), 
         std::pair<wxColour, int>(wxColour(48, 221, 112), StateColor::Hovered),
-        std::pair<wxColour, int>(wxColour(0, 150, 136), StateColor::Normal)
+        std::pair<wxColour, int>(wxColour(235, 73, 73), StateColor::Normal)
     );
 
     // m_publish_btn->SetMinSize(wxSize(FromDIP(125), FromDIP(24)));
@@ -2279,6 +2273,9 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) { m_plater->add_model(); } }, "", nullptr,
             [this](){return can_add_models(); }, this);
 #endif
+        append_menu_item(import_menu, wxID_ANY, _L("Import Zip Archive") + dots, _L("Load models contained within a zip archive"),
+            [this](wxCommandEvent&) { if (m_plater) m_plater->import_zip_archive(); }, "menu_import", nullptr,
+            [this]() { return can_add_models(); });
         append_menu_item(import_menu, wxID_ANY, _L("Import Configs") + dots /*+ "\tCtrl+I"*/, _L("Load configs"),
             [this](wxCommandEvent&) { load_config_file(); }, "menu_import", nullptr,
             [this](){return true; }, this);
@@ -2751,14 +2748,8 @@ void MainFrame::init_menubar_as_editor()
     append_menu_item(
         m_topbar->GetTopMenu(), wxID_ANY, _L("Preferences") + "\t" + ctrl + "P", "",
         [this](wxCommandEvent &) {
-            PreferencesDialog dlg(this);
-            dlg.ShowModal();
-#if ENABLE_GCODE_LINES_ID_IN_H_SLIDER
-            if (dlg.seq_top_layer_only_changed() || dlg.seq_seq_top_gcode_indices_changed())
-#else
-            if (dlg.seq_top_layer_only_changed())
-#endif
-                plater()->refresh_print();
+            // Orca: Use GUI_App::open_preferences instead of direct call so windows associations are updated on exit
+            wxGetApp().open_preferences();
         },
         "", nullptr, []() { return true; }, this);
     //m_topbar->AddDropDownMenuItem(preference_item);
