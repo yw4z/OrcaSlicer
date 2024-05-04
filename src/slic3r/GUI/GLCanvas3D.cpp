@@ -1781,6 +1781,7 @@ float GLCanvas3D::get_collapse_toolbar_width() const
     GLToolbar& collapse_toolbar = wxGetApp().plater()->get_collapse_toolbar();
     const auto state            = wxGetApp().plater()->get_sidebar_docking_state();
 
+	return 0; // ORCA completely ignore sidebar toggle button
     return state != Sidebar::None ? collapse_toolbar.get_width() : 0;
 }
 
@@ -8119,9 +8120,9 @@ void GLCanvas3D::_render_collapse_toolbar() const
 {
     auto&      plater              = *wxGetApp().plater();
     const auto sidebar_docking_dir = plater.get_sidebar_docking_state();
-    if (sidebar_docking_dir == Sidebar::None) {
+    //if (sidebar_docking_dir == Sidebar::None) { // ORCA completely ignore sidebar toggle button
         return;
-    }
+    //}
 
     GLToolbar& collapse_toolbar = plater.get_collapse_toolbar();
 
