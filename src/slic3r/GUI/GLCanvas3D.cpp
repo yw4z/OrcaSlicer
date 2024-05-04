@@ -6241,8 +6241,8 @@ bool GLCanvas3D::_init_toolbars()
     if (!_init_return_toolbar())
         return false;
 
-    if (!_init_separator_toolbar())
-        return false;
+    //if (!_init_separator_toolbar()) // ORCA remove separators to reduce toolbar width 
+    //    return false;
 
     if (!_init_select_plate_toolbar())
         return false;
