@@ -7355,7 +7355,7 @@ void GLCanvas3D::_check_and_update_toolbar_icon_scale()
 {
     // Update collapse toolbar
     GLToolbar& collapse_toolbar = wxGetApp().plater()->get_collapse_toolbar();
-    collapse_toolbar.set_enabled(wxGetApp().plater()->get_sidebar_docking_state() != Sidebar::None);
+    //collapse_toolbar.set_enabled(wxGetApp().plater()->get_sidebar_docking_state() != Sidebar::None);
 
     // Don't update a toolbar scale, when we are on a Preview
     if (wxGetApp().plater()->is_preview_shown()) {
@@ -7407,7 +7407,8 @@ void GLCanvas3D::_check_and_update_toolbar_icon_scale()
 
     //BBS: GUI refactor: GLToolbar
 #if BBS_TOOLBAR_ON_TOP
-    float collapse_toolbar_width = collapse_toolbar.is_enabled() ? collapse_toolbar.get_width() : 0;
+	// ORCA sets spacers with 0
+    float collapse_toolbar_width = 0; //collapse_toolbar.is_enabled() ? collapse_toolbar.get_width() : 0;
 
     float top_tb_width = m_main_toolbar.get_width() + m_gizmos.get_scaled_total_width() + m_assemble_view_toolbar.get_width() + m_separator_toolbar.get_width() + collapse_toolbar_width * 2;
     int   items_cnt = m_main_toolbar.get_visible_items_cnt() + m_gizmos.get_selectable_icons_cnt() + m_assemble_view_toolbar.get_visible_items_cnt() + m_separator_toolbar.get_visible_items_cnt() + collapse_toolbar.get_visible_items_cnt();
@@ -7456,8 +7457,8 @@ void GLCanvas3D::_render_overlays()
     _render_assemble_control();
     _render_assemble_info();
 
-    _render_separator_toolbar_right();
-    _render_separator_toolbar_left();
+    //_render_separator_toolbar_right(); // ORCA dont add spacers
+    //_render_separator_toolbar_left(); // ORCA dont add spacers
     _render_main_toolbar();
     _render_collapse_toolbar();
     _render_assemble_view_toolbar();
@@ -7669,10 +7670,12 @@ float GLCanvas3D::get_main_toolbar_offset() const
     const float toolbar_total_width    = m_main_toolbar.get_width() + separator_width + gizmo_width + assemble_width + collapse_toolbar_width;
 
     if (cnv_width < toolbar_total_width) {
-        return is_collapse_toolbar_on_left() ? collapse_toolbar_width : 0;
+        return 0;
+        //return is_collapse_toolbar_on_left() ? collapse_toolbar_width : 0;
     } else {
         const int offset = (cnv_width - toolbar_total_width) / 2; // ORCA fix blurry icons on full scale
-        return is_collapse_toolbar_on_left() ? offset + collapse_toolbar_width : offset;
+        return int((cnv_width - (m_main_toolbar.get_width() + gizmo_width + assemble_width)) / 2);
+        //return is_collapse_toolbar_on_left() ? offset + collapse_toolbar_width : offset;
     }
 }
 
