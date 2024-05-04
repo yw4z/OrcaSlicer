@@ -7670,7 +7670,7 @@ float GLCanvas3D::get_main_toolbar_offset() const
     if (cnv_width < toolbar_total_width) {
         return is_collapse_toolbar_on_left() ? collapse_toolbar_width : 0;
     } else {
-        const float offset = (cnv_width - toolbar_total_width) / 2;
+        const int offset = (cnv_width - toolbar_total_width) / 2; // ORCA fix blurry icons on full scale
         return is_collapse_toolbar_on_left() ? offset + collapse_toolbar_width : offset;
     }
 }
