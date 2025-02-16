@@ -14,6 +14,7 @@
 #include "ObjectDataViewModel.hpp"
 
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Model.hpp"
 
 class wxBoxSizer;
 class wxBitmapComboBox;
@@ -312,6 +313,7 @@ public:
     bool                can_merge_to_multipart_object() const;
     bool                can_merge_to_single_object() const;
     bool                can_mesh_boolean() const;
+    bool                can_convert_unit(ConversionType conver_type);
 
     bool                has_selected_cut_object() const;
     void                invalidate_cut_info_for_selection();

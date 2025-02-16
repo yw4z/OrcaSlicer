@@ -3158,6 +3158,35 @@ bool ObjectList::can_mesh_boolean() const
     return (*m_objects)[obj_idx]->volumes.size() > 1 || ((*m_objects)[obj_idx]->volumes.size() == 1 && (*m_objects)[obj_idx]->volumes[0]->is_splittable());
 }
 
+bool ObjectList::can_convert_unit(ConversionType conver_type)
+{
+    std::vector<int> obj_idxs, vol_idxs;
+    get_selection_indexes(obj_idxs, vol_idxs);
+    if (obj_idxs.empty() && vol_idxs.empty())
+        return false;
+
+    auto volume_respects_conversion = [](ModelVolume* volume, ConversionType conver_type) {
+        return (conver_type == ConversionType::CONV_FROM_INCH  && volume->source.is_converted_from_inches) ||
+               (conver_type == ConversionType::CONV_TO_INCH    && !volume->source.is_converted_from_inches) ||
+               (conver_type == ConversionType::CONV_FROM_METER && volume->source.is_converted_from_meters) ||
+               (conver_type == ConversionType::CONV_TO_METER   && !volume->source.is_converted_from_meters);
+    };
+
+    for (int obj_idx : obj_idxs) {
+        ModelObject* object = (*m_objects)[obj_idx];
+        if (vol_idxs.empty()) {
+            for (ModelVolume* volume : object->volumes)
+                if (volume_respects_conversion(volume, conver_type))
+                    return false;
+        } else {
+            for (int vol_idx : vol_idxs)
+                if (volume_respects_conversion(object->volumes[vol_idx], conver_type))
+                    return false;
+        }
+    }
+    return true;
+}
+
 // NO_PARAMETERS function call means that changed object index will be determine from Selection()
 void ObjectList::changed_object(const int obj_idx/* = -1*/) const
 {

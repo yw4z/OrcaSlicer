@@ -525,6 +525,58 @@ wxMenu* MenuFactory::append_submenu_add_generic(wxMenu* menu, ModelVolumeType ty
     return sub_menu;
 }
 
+// ORCA
+void MenuFactory::append_menu_items_split_boolean(wxMenu* menu)
+{
+    wxMenu* split_menu = new wxMenu();
+    if (!split_menu)
+        return;
+
+    append_menu_item(split_menu, wxID_ANY, _L("Mesh boolean"), _L("Mesh boolean operations including union and subtraction"),
+        [](wxCommandEvent&) { obj_list()->boolean/*merge_volumes*/(); }, "", menu,
+        []() { return obj_list()->can_mesh_boolean(); }, m_parent);
+
+    split_menu->AppendSeparator();
+
+    append_menu_item(split_menu, wxID_ANY, _L("To objects"), _L("Split the selected object into multiple objects"),
+        [](wxCommandEvent&) { plater()->split_object(); }, "menu_split_objects", menu,
+        []() { return plater()->can_split(true); }, m_parent);
+    append_menu_item(split_menu, wxID_ANY, _L("To parts"), _L("Split the selected object into multiple parts"),
+        [](wxCommandEvent&) { plater()->split_volume(); }, "menu_split_parts", menu,
+        []() { return plater()->can_split(false); }, m_parent);
+
+    append_submenu(menu, split_menu, wxID_ANY, _L("Boolean / Split"), _L("Boolean or Split the selected object"), "",
+        []() { return plater()->can_split(true); }, m_parent);
+}
+
+// ORCA
+void MenuFactory::append_menu_items_utilities(wxMenu* menu)
+{
+    wxMenu* utilities_menu = new wxMenu();
+    if (!utilities_menu)
+        return;
+
+    append_menu_item_simplify(utilities_menu);
+    // ???? Doesnt appear
+    append_menu_item_fix_through_netfabb(utilities_menu);
+
+    utilities_menu->AppendSeparator();
+
+    append_menu_item_replace_with_stl(utilities_menu);
+    append_menu_item_export_stl(utilities_menu);
+
+    utilities_menu->AppendSeparator();
+
+    append_menu_item_reload_from_disk(utilities_menu);
+
+    utilities_menu->AppendSeparator();
+
+    append_menu_items_convert_unit(utilities_menu);
+
+    append_submenu(menu, utilities_menu, wxID_ANY, _L("Utilities"), _L("Utilities for the selected object"), "",
+        []() { return true; }, m_parent);
+}
+
 // Orca: add submenu for adding handy models
 wxMenu* MenuFactory::append_submenu_add_handy_model(wxMenu* menu, ModelVolumeType type) {
     auto sub_menu = new wxMenu;
@@ -818,8 +870,8 @@ void MenuFactory::append_menu_item_rename(wxMenu* menu)
 
 wxMenuItem* MenuFactory::append_menu_item_fix_through_netfabb(wxMenu* menu)
 {
-    if (!is_windows10())
-        return nullptr;
+    //if (!is_windows10())
+    //    return nullptr;
 
     wxMenuItem* menu_item = append_menu_item(menu, wxID_ANY, _L("Fix model"), "",
         [](wxCommandEvent&) { obj_list()->fix_through_netfabb(); }, "", menu,
@@ -1027,6 +1079,7 @@ void MenuFactory::append_menu_items_flush_options(wxMenu* menu)
     menu->Insert(i, wxID_ANY, _L("Flush Options"), flush_options_menu);
 }
 
+/*
 void MenuFactory::append_menu_items_convert_unit(wxMenu* menu)
 {
     std::vector<int> obj_idxs, vol_idxs;
@@ -1081,6 +1134,22 @@ void MenuFactory::append_menu_items_convert_unit(wxMenu* menu)
             menu->Destroy(menu_id);
         }
     }
+}
+*/
+void MenuFactory::append_menu_items_convert_unit(wxMenu* menu)
+{
+    append_menu_item(menu, wxID_ANY, _L("Convert from inch") , "",
+        [](wxCommandEvent&) { plater()->convert_unit(ConversionType::CONV_FROM_INCH);  }, "", menu,
+        []() {   return obj_list()->can_convert_unit(ConversionType::CONV_FROM_INCH);  }, m_parent);
+    append_menu_item(menu, wxID_ANY, _L("Restore to inch")   , "",
+        [](wxCommandEvent&) { plater()->convert_unit(ConversionType::CONV_TO_INCH);    }, "", menu,
+        []() {   return obj_list()->can_convert_unit(ConversionType::CONV_TO_INCH);    }, m_parent);
+    append_menu_item(menu, wxID_ANY, _L("Convert from meter"), "",
+        [](wxCommandEvent&) { plater()->convert_unit(ConversionType::CONV_FROM_METER); }, "", menu,
+        []() {   return obj_list()->can_convert_unit(ConversionType::CONV_FROM_METER); }, m_parent);
+    append_menu_item(menu, wxID_ANY,_L("Restore to meter")   , "",
+        [](wxCommandEvent&) { plater()->convert_unit(ConversionType::CONV_TO_METER);   }, "", menu,
+        []() {   return obj_list()->can_convert_unit(ConversionType::CONV_TO_METER);   }, m_parent);
 }
 
 void MenuFactory::append_menu_item_merge_to_multipart_object(wxMenu* menu)
@@ -1261,16 +1330,17 @@ void MenuFactory::create_common_object_menu(wxMenu* menu)
     menu->AppendSeparator();
 
     // BBS
-    append_menu_item_reload_from_disk(menu);
-    append_menu_item_export_stl(menu);
+    //append_menu_item_reload_from_disk(menu);
+    //append_menu_item_export_stl(menu);
     // "Scale to print volume" makes a sense just for whole object
     append_menu_item_scale_selection_to_fit_print_volume(menu);
 
-    append_menu_item_fix_through_netfabb(menu);
+    //append_menu_item_fix_through_netfabb(menu);
     append_menu_items_mirror(menu);
+    append_menu_items_utilities(menu);
 }
 
-void MenuFactory::create_object_menu()
+void MenuFactory::create_object_menu() //NOT USED
 {
     create_common_object_menu(&m_object_menu);
     wxMenu* split_menu = new wxMenu();
@@ -1300,31 +1370,22 @@ void MenuFactory::create_extra_object_menu()
     // Object Clone
     append_menu_item_clone(&m_object_menu);
     // Object Repair
-    append_menu_item_fix_through_netfabb(&m_object_menu);
+    //append_menu_item_fix_through_netfabb(&m_object_menu);
     // Object Simplify
-    append_menu_item_simplify(&m_object_menu);
+    //append_menu_item_simplify(&m_object_menu);
     // merge to single part
-    append_menu_item_merge_parts_to_single_part(&m_object_menu);
+    //append_menu_item_merge_parts_to_single_part(&m_object_menu);
     // Object Center
     append_menu_item_center(&m_object_menu);
     // Object Drop
+    // Show only when needed????
     append_menu_item_drop(&m_object_menu);
-    // Object Split
-    wxMenu* split_menu = new wxMenu();
-    if (!split_menu)
-        return;
-    append_menu_item(split_menu, wxID_ANY, _L("To objects"), _L("Split the selected object into multiple objects"),
-        [](wxCommandEvent&) { plater()->split_object(); }, "menu_split_objects", &m_object_menu,
-        []() { return plater()->can_split(true); }, m_parent);
-    append_menu_item(split_menu, wxID_ANY, _L("To parts"), _L("Split the selected object into multiple parts"),
-        [](wxCommandEvent&) { plater()->split_volume(); }, "menu_split_parts", &m_object_menu,
-        []() { return plater()->can_split(false); }, m_parent);
-
-    append_submenu(&m_object_menu, split_menu, wxID_ANY, _L("Split"), _L("Split the selected object"), "",
-        []() { return plater()->can_split(true); }, m_parent);
-
+    // Object Split / Boolean
+    append_menu_items_split_boolean(&m_object_menu);
     // Mirror
     append_menu_items_mirror(&m_object_menu);
+    // Utilites Menu
+    append_menu_items_utilities(&m_object_menu);
     // Delete
     append_menu_item_delete(&m_object_menu);
     m_object_menu.AppendSeparator();
@@ -1338,10 +1399,10 @@ void MenuFactory::create_extra_object_menu()
     append_menu_item_per_object_process(&m_object_menu);
     // Enter per object parameters
     append_menu_item_per_object_settings(&m_object_menu);
-    m_object_menu.AppendSeparator();
-    append_menu_item_reload_from_disk(&m_object_menu);
-    append_menu_item_replace_with_stl(&m_object_menu);
-    append_menu_item_export_stl(&m_object_menu);
+    //m_object_menu.AppendSeparator();
+    //append_menu_item_reload_from_disk(&m_object_menu);
+    //append_menu_item_replace_with_stl(&m_object_menu);
+    //append_menu_item_export_stl(&m_object_menu);
 }
 
 void MenuFactory::create_bbl_assemble_object_menu()
@@ -1349,9 +1410,10 @@ void MenuFactory::create_bbl_assemble_object_menu()
     // Delete
     append_menu_item_delete(&m_assemble_object_menu);
     // Object Repair
-    append_menu_item_fix_through_netfabb(&m_assemble_object_menu);
+    //append_menu_item_fix_through_netfabb(&m_assemble_object_menu);
     // Object Simplify
-    append_menu_item_simplify(&m_assemble_object_menu);
+    //append_menu_item_simplify(&m_assemble_object_menu);
+    append_menu_items_utilities(&m_assemble_object_menu);
     m_assemble_object_menu.AppendSeparator();
 }
 
@@ -1369,7 +1431,7 @@ void MenuFactory::create_sla_object_menu()
         [](wxCommandEvent&) { plater()->optimize_rotation(); });
 }
 
-void MenuFactory::create_part_menu()
+void MenuFactory::create_part_menu() // NOT USED
 {
     wxMenu* menu = &m_part_menu;
     append_menu_item_rename(menu);
@@ -1400,9 +1462,10 @@ void MenuFactory::create_text_part_menu()
 
     append_menu_item_edit_text(menu);
     append_menu_item_delete(menu);
-    append_menu_item_fix_through_netfabb(menu);
-    append_menu_item_simplify(menu);
+    //append_menu_item_fix_through_netfabb(menu);
+    //append_menu_item_simplify(menu);
     append_menu_items_mirror(menu);
+    append_menu_items_utilities(menu);
     menu->AppendSeparator();
     append_menu_item_per_object_settings(menu);
     append_menu_item_change_type(menu);
@@ -1414,9 +1477,10 @@ void MenuFactory::create_svg_part_menu()
 
     append_menu_item_edit_svg(menu);
     append_menu_item_delete(menu);
-    append_menu_item_fix_through_netfabb(menu);
-    append_menu_item_simplify(menu);
+    //append_menu_item_fix_through_netfabb(menu);
+    //append_menu_item_simplify(menu);
     append_menu_items_mirror(menu);
+    append_menu_items_utilities(menu);
     menu->AppendSeparator();
     append_menu_item_per_object_settings(menu);
     append_menu_item_change_type(menu);
@@ -1428,29 +1492,18 @@ void MenuFactory::create_bbl_part_menu()
 
     append_menu_item_delete(menu);
     append_menu_item_edit_text(menu);
-    append_menu_item_fix_through_netfabb(menu);
-    append_menu_item_simplify(menu);
+    //append_menu_item_fix_through_netfabb(menu);
+    //append_menu_item_simplify(menu);
     append_menu_item_center(menu);
     append_menu_item_drop(menu);
+    append_menu_items_split_boolean(menu);
     append_menu_items_mirror(menu);
-    wxMenu* split_menu = new wxMenu();
-    if (!split_menu)
-        return;
-
-    append_menu_item(split_menu, wxID_ANY, _L("To objects"), _L("Split the selected object into multiple objects"),
-        [](wxCommandEvent&) { plater()->split_object(); }, "menu_split_objects", menu,
-        []() { return plater()->can_split(true); }, m_parent);
-    append_menu_item(split_menu, wxID_ANY, _L("To parts"), _L("Split the selected object into multiple parts"),
-        [](wxCommandEvent&) { plater()->split_volume(); }, "menu_split_parts", menu,
-        []() { return plater()->can_split(false); }, m_parent);
-
-    append_submenu(menu, split_menu, wxID_ANY, _L("Split"), _L("Split the selected object"), "",
-        []() { return plater()->can_split(true); }, m_parent);
+    append_menu_items_utilities(menu);
     menu->AppendSeparator();
     append_menu_item_per_object_settings(menu);
     append_menu_item_change_type(menu);
-    append_menu_item_reload_from_disk(menu);
-    append_menu_item_replace_with_stl(menu);
+    //append_menu_item_reload_from_disk(menu);
+    //append_menu_item_replace_with_stl(menu);
 }
 
 void MenuFactory::create_bbl_assemble_part_menu()
@@ -1458,7 +1511,8 @@ void MenuFactory::create_bbl_assemble_part_menu()
     wxMenu* menu = &m_assemble_part_menu;
 
     append_menu_item_delete(menu);
-    append_menu_item_simplify(menu);
+    //append_menu_item_simplify(menu);
+    append_menu_items_utilities(menu);
     menu->AppendSeparator();
 }
 
@@ -1598,7 +1652,7 @@ wxMenu* MenuFactory::default_menu()
 
 wxMenu* MenuFactory::object_menu()
 {
-    append_menu_items_convert_unit(&m_object_menu);
+    //append_menu_items_convert_unit(&m_object_menu);
     append_menu_items_flush_options(&m_object_menu);
     append_menu_item_invalidate_cut_info(&m_object_menu);
     append_menu_item_edit_text(&m_object_menu);
@@ -1609,7 +1663,7 @@ wxMenu* MenuFactory::object_menu()
 
 wxMenu* MenuFactory::sla_object_menu()
 {
-    append_menu_items_convert_unit(&m_sla_object_menu);
+    //append_menu_items_convert_unit(&m_sla_object_menu);
     append_menu_item_settings(&m_sla_object_menu);
     //update_menu_items_instance_manipulation(mtObjectSLA);
     append_menu_item_edit_text(&m_sla_object_menu);
@@ -1620,7 +1674,7 @@ wxMenu* MenuFactory::sla_object_menu()
 
 wxMenu* MenuFactory::part_menu()
 {
-    append_menu_items_convert_unit(&m_part_menu);
+    //append_menu_items_convert_unit(&m_part_menu);
     append_menu_item_change_filament(&m_part_menu);
     append_menu_item_per_object_settings(&m_part_menu);
     return &m_part_menu;
@@ -1678,40 +1732,31 @@ wxMenu* MenuFactory::multi_selection_menu()
         }
         append_menu_item_center(menu);
         append_menu_item_drop(menu);
-        append_menu_item_fix_through_netfabb(menu);
+        //append_menu_item_fix_through_netfabb(menu);
         //append_menu_item_simplify(menu);
+        append_menu_items_utilities(menu);
         append_menu_item_delete(menu);
         menu->AppendSeparator();
 
         append_menu_item_set_printable(menu);
         append_menu_item_per_object_process(menu);
         menu->AppendSeparator();
-        append_menu_items_convert_unit(menu);
+        //append_menu_items_convert_unit(menu);
         //BBS
         append_menu_item_change_filament(menu);
-        menu->AppendSeparator();
-        append_menu_item_export_stl(menu, true);
+        //menu->AppendSeparator();
+        //append_menu_item_export_stl(menu, true);
     }
     else {
         append_menu_item_center(menu);
         append_menu_item_drop(menu);
-        append_menu_item_fix_through_netfabb(menu);
+        //append_menu_item_fix_through_netfabb(menu);
         //append_menu_item_simplify(menu);
+        append_menu_items_split_boolean(menu);
+        append_menu_items_utilities(menu);
         append_menu_item_delete(menu);
-        append_menu_items_convert_unit(menu);
+        //append_menu_items_convert_unit(menu);
         append_menu_item_change_filament(menu);
-        wxMenu* split_menu = new wxMenu();
-        if (split_menu) {
-            append_menu_item(split_menu, wxID_ANY, _L("To objects"), _L("Split the selected object into multiple objects"),
-                [](wxCommandEvent&) { plater()->split_object(); }, "menu_split_objects", menu,
-                []() { return plater()->can_split(true); }, m_parent);
-            append_menu_item(split_menu, wxID_ANY, _L("To parts"), _L("Split the selected object into multiple parts"),
-                [](wxCommandEvent&) { plater()->split_volume(); }, "menu_split_parts", menu,
-                []() { return plater()->can_split(false); }, m_parent);
-
-            append_submenu(menu, split_menu, wxID_ANY, _L("Split"), _L("Split the selected object"), "",
-                []() { return plater()->can_split(true); }, m_parent);
-        }
         menu->AppendSeparator();
         append_menu_item_change_filament(menu);
     }
