@@ -201,6 +201,7 @@ void Tab::create_preset_tab()
     if (m_type < Preset::TYPE_COUNT) {
         // preset chooser
         m_presets_choice = new TabPresetComboBox(panel, m_type);
+        m_presets_choice->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
         // m_presets_choice->SetFont(Label::Body_10); // BBS
         m_presets_choice->set_selection_changed_function([this](int selection) {
             if (!m_presets_choice->selection_is_changed_according_to_physical_printers())
@@ -393,10 +394,10 @@ void Tab::create_preset_tab()
 
     m_top_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
 
-    m_top_sizer->SetMinSize(-1, 3 * m_em_unit);
+    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::ComboboxHeight()));
     m_top_panel->SetSizer(m_top_sizer);
     if (m_presets_choice)
-        m_main_sizer->Add(m_top_panel, 0, wxEXPAND | wxUP | wxDOWN, m_em_unit);
+        m_main_sizer->Add(m_top_panel, 0, wxEXPAND | wxUP | wxDOWN, FromDIP(SidebarProps::VerticalSpacing()));
     else
         m_top_panel->Hide();
 
@@ -1190,8 +1191,10 @@ void Tab::msw_rescale()
     //BBS: GUI refactor
     //if (m_mode_sizer)
     //    m_mode_sizer->msw_rescale();
-    if (m_presets_choice)
-        m_presets_choice->msw_rescale();
+    if (m_presets_choice){
+        m_presets_choice->Rescale();
+        m_presets_choice->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    }
 
     m_tabctrl->SetMinSize(wxSize(20 * m_em_unit, -1));
 
@@ -1230,8 +1233,10 @@ void Tab::msw_rescale()
 
 void Tab::sys_color_changed()
 {
-    if (m_presets_choice)
+    if (m_presets_choice){
         m_presets_choice->sys_color_changed();
+        m_presets_choice->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    }
 
     // update buttons and cached bitmaps
     for (const auto btn : m_scaled_buttons)

@@ -313,11 +313,6 @@ enum class ActionButtonType : int {
     abSendGCode
 };
 
-int SidebarProps::TitlebarMargin() { return 8; }  // Use as side margins on titlebar. Has less margin on sides to create separation with its content
-int SidebarProps::ContentMargin()  { return 12; } // Use as side margins contents of title
-int SidebarProps::IconSpacing()    { return 10; } // Use on main elements
-int SidebarProps::ElementSpacing() { return 5; }  // Use if elements has relation between them like edit button for combo box etc.
-
 struct Sidebar::priv
 {
     Plater *plater;
@@ -780,7 +775,7 @@ Sidebar::Sidebar(Plater *parent)
         wxBoxSizer* vsizer_printer = new wxBoxSizer(wxVERTICAL);
         wxBoxSizer* hsizer_printer = new wxBoxSizer(wxHORIZONTAL);
 
-        vsizer_printer->AddSpacer(FromDIP(16));
+        vsizer_printer->AddSpacer(FromDIP(SidebarProps::VerticalSpacing()));
         hsizer_printer->Add(combo_printer, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(SidebarProps::ContentMargin()));
         hsizer_printer->Add(edit_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(SidebarProps::ElementSpacing()));
         hsizer_printer->Add(connection_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(SidebarProps::IconSpacing()));
@@ -793,7 +788,7 @@ Sidebar::Sidebar(Plater *parent)
         //bed_type_title->SetBackgroundColour();
         bed_type_title->Wrap(-1);
         bed_type_title->SetFont(Label::Body_14);
-        m_bed_type_list = new ComboBox(p->m_panel_printer_content, wxID_ANY, wxString(""), wxDefaultPosition, {-1, FromDIP(30)}, 0, nullptr, wxCB_READONLY);
+        m_bed_type_list = new ComboBox(p->m_panel_printer_content, wxID_ANY, wxString(""), wxDefaultPosition, {-1, FromDIP(SidebarProps::ComboboxHeight())}, 0, nullptr, wxCB_READONLY);
         const ConfigOptionDef* bed_type_def = print_config_def.get("curr_bed_type");
         if (bed_type_def && bed_type_def->enum_keys_map) {
             for (auto item : bed_type_def->enum_labels) {
@@ -834,7 +829,7 @@ Sidebar::Sidebar(Plater *parent)
         bed_type_sizer->Add(m_bed_type_list, 1, wxLEFT | wxEXPAND, FromDIP(SidebarProps::ElementSpacing()));
         bed_type_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
         vsizer_printer->Add(bed_type_sizer, 0, wxEXPAND | wxTOP, FromDIP(5));
-        vsizer_printer->AddSpacer(FromDIP(16));
+        vsizer_printer->AddSpacer(FromDIP(SidebarProps::VerticalSpacing()));
 
         auto& project_config = wxGetApp().preset_bundle->project_config;
         /*const t_config_enum_values* keys_map = print_config_def.get("curr_bed_type")->enum_keys_map;
@@ -1043,7 +1038,7 @@ Sidebar::Sidebar(Plater *parent)
         p->combos_filament[0]->clr_picker->SetLabel("1");
         combo_and_btn_sizer->Add(p->combos_filament[0]->clr_picker, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,FromDIP(SidebarProps::ElementSpacing()) - FromDIP(2)); // ElementSpacing - 2 (from combo box))
     }
-    combo_and_btn_sizer->Add(p->combos_filament[0], 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, FromDIP(30) });
+    combo_and_btn_sizer->Add(p->combos_filament[0], 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight()) });
 
     ScalableButton* edit_btn = new ScalableButton(p->m_panel_filament_content, wxID_ANY, "edit");
     edit_btn->SetBackgroundColour(wxColour(255, 255, 255));
@@ -1065,9 +1060,9 @@ Sidebar::Sidebar(Plater *parent)
 
     //bSizer_filament_content->Add(p->sizer_filaments, 1, wxALIGN_CENTER | wxALL);
     wxSizer *sizer_filaments2 = new wxBoxSizer(wxVERTICAL);
-    sizer_filaments2->AddSpacer(FromDIP(16));
+    sizer_filaments2->AddSpacer(FromDIP(SidebarProps::VerticalSpacing() - 2)); // -2 from combobox border
     sizer_filaments2->Add(p->sizer_filaments, 0, wxEXPAND, 0);
-    sizer_filaments2->AddSpacer(FromDIP(16));
+    sizer_filaments2->AddSpacer(FromDIP(SidebarProps::VerticalSpacing() - 2)); // -2 from combobox border
     p->m_panel_filament_content->SetSizer(sizer_filaments2);
     p->m_panel_filament_content->Layout();
     scrolled_sizer->Add(p->m_panel_filament_content, 0, wxEXPAND, 0);
@@ -1123,7 +1118,7 @@ Sidebar::Sidebar(Plater *parent)
     p->dia = new Search::SearchObjectDialog(p->m_object_list, p->m_search_bar);
 #if !NEW_OBJECT_SETTING
     p->object_settings->Hide();
-    p->sizer_params->Add(p->object_settings->get_sizer(), 0, wxEXPAND | wxTOP, 5 * em / 10);
+    p->sizer_params->Add(p->object_settings->get_sizer(), 0, wxEXPAND | wxTOP, FromDIP(SidebarProps::VerticalSpacing()));
 #else
     if (params_panel) {
         params_panel->Reparent(p->scrolled);
@@ -1176,7 +1171,7 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
 
     (*combo)->clr_picker->SetLabel(wxString::Format("%d", filament_idx + 1));
     combo_and_btn_sizer->Add((*combo)->clr_picker, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()) - FromDIP(2)); // ElementSpacing - 2 (from combo box))
-    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, FromDIP(30)});
+    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
 
     /* BBS hide del_btn
     ScalableButton* del_btn = new ScalableButton(p->m_panel_filament_content, wxID_ANY, "delete_filament");
@@ -1486,7 +1481,7 @@ void Sidebar::msw_rescale()
     p->m_flushing_volume_btn->Rescale();
     //BBS
     m_bed_type_list->Rescale();
-    m_bed_type_list->SetMinSize({-1, 3 * wxGetApp().em_unit()});
+    m_bed_type_list->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
 #if 0
     if (p->mode_sizer)
         p->mode_sizer->msw_rescale();
@@ -1498,9 +1493,12 @@ void Sidebar::msw_rescale()
     //                                                            //p->combo_printer
     //                                                            } )
     //    combo->msw_rescale();
-    p->combo_printer->msw_rescale();
-    for (PlaterPresetComboBox* combo : p->combos_filament)
-        combo->msw_rescale();
+    p->combo_printer->Rescale();
+    p->combo_printer->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    for (PlaterPresetComboBox* combo : p->combos_filament){
+        combo->Rescale();
+        combo->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    }
 
     // BBS
     //p->frequently_changed_parameters->msw_rescale();
@@ -1569,10 +1567,15 @@ void Sidebar::sys_color_changed()
                                                                 p->combo_printer })
         combo->sys_color_changed();
 #endif
-    p->combo_printer->sys_color_changed();
-    for (PlaterPresetComboBox* combo : p->combos_filament)
-        combo->sys_color_changed();
 
+    m_bed_type_list->Rescale();
+    m_bed_type_list->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    p->combo_printer->sys_color_changed();
+    p->combo_printer->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    for (PlaterPresetComboBox* combo : p->combos_filament){
+        combo->sys_color_changed();
+        combo->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
+    }
     // BBS
     obj_list()->sys_color_changed();
     obj_layers()->sys_color_changed();
@@ -1656,6 +1659,11 @@ void Sidebar::on_filaments_change(size_t num_filaments)
             sizer->Hide(p->m_flushing_volume_btn);
             sizer->Hide(p->m_bpButton_del_filament); // ORCA: Hide delete filament button if there is only one filament
         }
+    }
+
+    for (PlaterPresetComboBox* combo : p->combos_filament){ // Make sure size will stays same before layout() 
+        combo->Rescale();
+        combo->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
     }
 
     Layout();

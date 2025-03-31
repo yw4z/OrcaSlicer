@@ -107,13 +107,15 @@ using ColorEvent = Event<wxColour>;
 wxDECLARE_EVENT(EVT_ADD_CUSTOM_FILAMENT, ColorEvent);
 const wxString DEFAULT_PROJECT_NAME = "Untitled";
 
-class SidebarProps
+class SidebarProps // ORCA
 {
 public:
-    static int TitlebarMargin();
-    static int ContentMargin();
-    static int IconSpacing();
-    static int ElementSpacing();
+    static int TitlebarMargin() { return 8  ;} // Use as side margins on titlebar. Has less margin on sides to create separation with its content
+    static int ContentMargin()  { return 12 ;} // Use as side margins contents of title
+    static int IconSpacing()    { return 10 ;} // Use on main elements
+    static int ElementSpacing() { return 5  ;} // Use if elements has relation between them like edit button for combo box etc.
+    static int VerticalSpacing(){ return 12 ;} // Vertical spacing before/after combo boxes
+    static int ComboboxHeight() { return 26 ;} // Combobox height
 };
 
 class Sidebar : public wxPanel
