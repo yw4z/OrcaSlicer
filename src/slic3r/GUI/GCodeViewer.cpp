@@ -4659,7 +4659,8 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
-    float calc_padding = std::max((ImGui::GetFrameHeight() - 16 * m_scale) / 2, 0.f);       // ORCA calculated padding for 16x16 icon
+    // ORCA calculated padding for 16x16 icon. line height equals to FramePadding * 2 + CalcTextSize.y on combobox
+    float calc_padding = std::max(((ImGui::GetStyle().FramePadding.y * 2 + ImGui::CalcTextSize("Y").y) - 16 * m_scale) / 2, 0.f);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(calc_padding, calc_padding));    // ORCA Center icon with frame padding
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f * m_scale);                       // ORCA Match button style with combo box
 
