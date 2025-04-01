@@ -420,6 +420,7 @@ void PresetComboBox::msw_rescale()
 {
     m_em_unit = em_unit(this);
     Rescale();
+    SetMinSize(wxSize(10 * m_em_unit, SidebarProps::ComboboxHeight() * m_em_unit / 10));
 
     m_bitmapIncompatible.msw_rescale();
     m_bitmapCompatible.msw_rescale();
@@ -632,7 +633,7 @@ bool PresetComboBox::selection_is_changed_according_to_physical_printers()
 // ---------------------------------
 
 PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset_type) :
-    PresetComboBox(parent, preset_type, wxSize(25 * wxGetApp().em_unit(), 30 * wxGetApp().em_unit() / 10))
+    PresetComboBox(parent, preset_type, wxSize(25 * m_em_unit / 10, SidebarProps::ComboboxHeight() * m_em_unit / 10))
 {
     GetDropDown().SetUseContentWidth(true,true);
 
@@ -1127,14 +1128,14 @@ void PlaterPresetComboBox::update()
     // Use this part of code just on Windows to avoid of some layout issues on Linux
     // Update control min size after rescale (changed Display DPI under MSW)
     if (GetMinWidth() != 10 * m_em_unit)
-        SetMinSize(wxSize(10 * m_em_unit, GetSize().GetHeight()));
+        SetMinSize(wxSize(10 * m_em_unit, SidebarProps::ComboboxHeight() * m_em_unit / 10));
 #endif //__WXMSW__
 }
 
 void PlaterPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
-    SetMinSize({-1, 30 * m_em_unit / 10});
+    SetMinSize(wxSize(10 * m_em_unit, SidebarProps::ComboboxHeight() * m_em_unit / 10));
 
     if (clr_picker)
         clr_picker->SetSize(20 * m_em_unit / 10, 20 * m_em_unit / 10);
@@ -1150,7 +1151,7 @@ void PlaterPresetComboBox::msw_rescale()
 
 TabPresetComboBox::TabPresetComboBox(wxWindow* parent, Preset::Type preset_type) :
     // BBS: new layout
-    PresetComboBox(parent, preset_type, wxSize(20 * wxGetApp().em_unit(), 30 * wxGetApp().em_unit() / 10))
+    PresetComboBox(parent, preset_type, wxSize(20 * m_em_unit / 10, SidebarProps::ComboboxHeight() * m_em_unit / 10))
 {
 }
 
@@ -1365,7 +1366,7 @@ void TabPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
     // BBS: new layout
-    wxSize sz = wxSize(20 * m_em_unit, 30 * m_em_unit / 10);
+    wxSize sz = wxSize(20 * m_em_unit, SidebarProps::ComboboxHeight() * m_em_unit / 10);
     SetMinSize(sz);
     SetSize(sz);
 }
@@ -1547,6 +1548,7 @@ void GUI::CalibrateFilamentComboBox::update()
 
 void GUI::CalibrateFilamentComboBox::msw_rescale()
 {
+    SetMinSize({-1, SidebarProps::ComboboxHeight() * m_em_unit / 10});
     if (clr_picker) {
         clr_picker->SetSize(FromDIP(20), FromDIP(20));
         clr_picker->SetBitmap(*get_extruder_color_icon(m_filament_color, m_tray_name, FromDIP(20), FromDIP(20)));

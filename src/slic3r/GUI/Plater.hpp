@@ -110,12 +110,14 @@ const wxString DEFAULT_PROJECT_NAME = "Untitled";
 class SidebarProps // ORCA
 {
 public:
+    static int TitlebarHeight() { return 30 ;} // Titlebar height
     static int TitlebarMargin() { return 8  ;} // Use as side margins on titlebar. Has less margin on sides to create separation with its content
     static int ContentMargin()  { return 12 ;} // Use as side margins contents of title
     static int IconSpacing()    { return 10 ;} // Use on main elements
     static int ElementSpacing() { return 5  ;} // Use if elements has relation between them like edit button for combo box etc.
-    static int VerticalSpacing(){ return 12 ;} // Vertical spacing before/after combo boxes
-    static int ComboboxHeight() { return 26 ;} // Combobox height
+    static int VerticalMargin() { return 12 ;} // Vertical spacing before/after combo boxes
+    static int VerticalSpacing(){ return 5  ;} // Vertical spacing between combo boxes / elements
+    static int ComboboxHeight() { return 32 ;} // Combobox height
 };
 
 class Sidebar : public wxPanel

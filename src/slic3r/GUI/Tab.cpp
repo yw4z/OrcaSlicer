@@ -394,7 +394,7 @@ void Tab::create_preset_tab()
 
     m_top_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
 
-    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::ComboboxHeight()));
+    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     m_top_panel->SetSizer(m_top_sizer);
     if (m_presets_choice)
         m_main_sizer->Add(m_top_panel, 0, wxEXPAND | wxUP | wxDOWN, FromDIP(SidebarProps::VerticalSpacing()));
@@ -1186,7 +1186,7 @@ void Tab::msw_rescale()
 {
     m_em_unit = em_unit(m_parent);
 
-    m_top_sizer->SetMinSize(-1, 3 * m_em_unit);
+    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
 
     //BBS: GUI refactor
     //if (m_mode_sizer)

@@ -372,7 +372,7 @@ void ParamsPanel::create_layout()
         m_mode_sizer->Add( m_title_view, 0, wxALIGN_CENTER );
         m_mode_sizer->AddSpacer(FromDIP(SidebarProps::ElementSpacing()));
         m_mode_sizer->Add(m_mode_view, 0, wxALIGN_CENTER);
-        m_mode_sizer->AddStretchSpacer(2);
+        m_mode_sizer->AddSpacer(FromDIP(SidebarProps::ElementSpacing() * 6)); // ORCA using spacer prevents shaky mode_view when tips_arrow highlighting mode_region instead using AddStretchSpacer
         m_mode_sizer->Add(m_setting_btn, 0, wxALIGN_CENTER);
         m_mode_sizer->AddSpacer(FromDIP(SidebarProps::IconSpacing()));
         m_mode_sizer->Add(m_compare_btn, 0, wxALIGN_CENTER);
@@ -380,7 +380,7 @@ void ParamsPanel::create_layout()
         m_mode_sizer->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
         //m_mode_sizer->Add( m_search_btn, 0, wxALIGN_CENTER );
         //m_mode_sizer->AddSpacer(16);
-        m_mode_sizer->SetMinSize(-1, FromDIP(30));
+        m_mode_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
         m_top_panel->SetSizer(m_mode_sizer);
         //m_left_sizer->Add( m_top_panel, 0, wxEXPAND );
     }
@@ -653,7 +653,7 @@ void ParamsPanel::msw_rescale()
     if (m_tips_arrow) m_tips_arrow->msw_rescale();
     m_left_sizer->SetMinSize(wxSize(40 * em_unit(this), -1));
     if (m_mode_sizer)
-        m_mode_sizer->SetMinSize(-1, 3 * em_unit(this));
+        m_mode_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     if (m_mode_region)
         ((SwitchButton* )m_mode_region)->Rescale();
     if (m_mode_view)

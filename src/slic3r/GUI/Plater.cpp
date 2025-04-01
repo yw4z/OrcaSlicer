@@ -720,7 +720,7 @@ Sidebar::Sidebar(Plater *parent)
         h_sizer_title->AddStretchSpacer();
         h_sizer_title->Add(p->m_printer_setting, 0, wxALIGN_CENTER);
         h_sizer_title->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
-        h_sizer_title->SetMinSize(-1, 3 * em);
+        h_sizer_title->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
 
         p->m_panel_printer_title->SetSizer(h_sizer_title);
         p->m_panel_printer_title->Layout();
@@ -762,6 +762,8 @@ Sidebar::Sidebar(Plater *parent)
             });
         combo_printer->edit_btn = edit_btn;
         p->combo_printer = combo_printer;
+        p->combo_printer->Rescale();
+        p->combo_printer->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
 
         connection_btn = new ScalableButton(p->m_panel_printer_content, wxID_ANY, "monitor_signal_strong");
         connection_btn->SetBackgroundColour(wxColour(255, 255, 255));
@@ -775,7 +777,7 @@ Sidebar::Sidebar(Plater *parent)
         wxBoxSizer* vsizer_printer = new wxBoxSizer(wxVERTICAL);
         wxBoxSizer* hsizer_printer = new wxBoxSizer(wxHORIZONTAL);
 
-        vsizer_printer->AddSpacer(FromDIP(SidebarProps::VerticalSpacing()));
+        vsizer_printer->AddSpacer(FromDIP(SidebarProps::VerticalMargin()));
         hsizer_printer->Add(combo_printer, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(SidebarProps::ContentMargin()));
         hsizer_printer->Add(edit_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(SidebarProps::ElementSpacing()));
         hsizer_printer->Add(connection_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(SidebarProps::IconSpacing()));
@@ -826,10 +828,10 @@ Sidebar::Sidebar(Plater *parent)
         int bed_type_idx = bed_type_value - 1;
         m_bed_type_list->Select(bed_type_idx);
         bed_type_sizer->Add(bed_type_title, 0, wxLEFT | wxALIGN_CENTER_VERTICAL, FromDIP(SidebarProps::ContentMargin()));
-        bed_type_sizer->Add(m_bed_type_list, 1, wxLEFT | wxEXPAND, FromDIP(SidebarProps::ElementSpacing()));
+        bed_type_sizer->Add(m_bed_type_list, 1, wxLEFT, FromDIP(SidebarProps::ElementSpacing()));
         bed_type_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
-        vsizer_printer->Add(bed_type_sizer, 0, wxEXPAND | wxTOP, FromDIP(5));
-        vsizer_printer->AddSpacer(FromDIP(SidebarProps::VerticalSpacing()));
+        vsizer_printer->Add(bed_type_sizer, 0, wxEXPAND | wxTOP, FromDIP(SidebarProps::VerticalSpacing()));
+        vsizer_printer->AddSpacer(FromDIP(SidebarProps::VerticalMargin()));
 
         auto& project_config = wxGetApp().preset_bundle->project_config;
         /*const t_config_enum_values* keys_map = print_config_def.get("curr_bed_type")->enum_keys_map;
@@ -870,7 +872,7 @@ Sidebar::Sidebar(Plater *parent)
     bSizer39->AddSpacer(FromDIP(SidebarProps::ElementSpacing()));
     bSizer39->Add( p->m_staticText_filament_settings, 0, wxALIGN_CENTER );
     bSizer39->Add(FromDIP(10), 0, 0, 0, 0);
-    bSizer39->SetMinSize(-1, FromDIP(30));
+    bSizer39->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
 
     p->m_panel_filament_title->SetSizer( bSizer39 );
     p->m_panel_filament_title->Layout();
@@ -1060,9 +1062,9 @@ Sidebar::Sidebar(Plater *parent)
 
     //bSizer_filament_content->Add(p->sizer_filaments, 1, wxALIGN_CENTER | wxALL);
     wxSizer *sizer_filaments2 = new wxBoxSizer(wxVERTICAL);
-    sizer_filaments2->AddSpacer(FromDIP(SidebarProps::VerticalSpacing() - 2)); // -2 from combobox border
+    sizer_filaments2->AddSpacer(FromDIP(SidebarProps::VerticalMargin() - 2)); // -2 from combobox border
     sizer_filaments2->Add(p->sizer_filaments, 0, wxEXPAND, 0);
-    sizer_filaments2->AddSpacer(FromDIP(SidebarProps::VerticalSpacing() - 2)); // -2 from combobox border
+    sizer_filaments2->AddSpacer(FromDIP(SidebarProps::VerticalMargin() - 2)); // -2 from combobox border
     p->m_panel_filament_content->SetSizer(sizer_filaments2);
     p->m_panel_filament_content->Layout();
     scrolled_sizer->Add(p->m_panel_filament_content, 0, wxEXPAND, 0);
@@ -1118,7 +1120,7 @@ Sidebar::Sidebar(Plater *parent)
     p->dia = new Search::SearchObjectDialog(p->m_object_list, p->m_search_bar);
 #if !NEW_OBJECT_SETTING
     p->object_settings->Hide();
-    p->sizer_params->Add(p->object_settings->get_sizer(), 0, wxEXPAND | wxTOP, FromDIP(SidebarProps::VerticalSpacing()));
+    p->sizer_params->Add(p->object_settings->get_sizer(), 0, wxEXPAND | wxTOP, FromDIP(SidebarProps::VerticalMargin()));
 #else
     if (params_panel) {
         params_panel->Reparent(p->scrolled);
@@ -1167,7 +1169,7 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
 
     // int em = wxGetApp().em_unit();
     if ((filament_idx % 2) == 0) // Dont add right column item. this one create equal spacing on left, right & middle
-        combo_and_btn_sizer->AddSpacer(FromDIP((filament_idx % 2) == 0 ? 12 : 3)); // Content Margin
+        combo_and_btn_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
 
     (*combo)->clr_picker->SetLabel(wxString::Format("%d", filament_idx + 1));
     combo_and_btn_sizer->Add((*combo)->clr_picker, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()) - FromDIP(2)); // ElementSpacing - 2 (from combo box))
@@ -1468,9 +1470,8 @@ void Sidebar::change_top_border_for_mode_sizer(bool increase_border)
 void Sidebar::msw_rescale()
 {
     SetMinSize(wxSize(42 * wxGetApp().em_unit(), -1));
-    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, 3 * wxGetApp().em_unit());
-    p->m_panel_filament_title->GetSizer()
-        ->SetMinSize(-1, 3 * wxGetApp().em_unit());
+    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
+    p->m_panel_filament_title->GetSizer()->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     p->m_printer_icon->msw_rescale();
     p->m_printer_setting->msw_rescale();
     p->m_filament_icon->msw_rescale();
@@ -1661,7 +1662,7 @@ void Sidebar::on_filaments_change(size_t num_filaments)
         }
     }
 
-    for (PlaterPresetComboBox* combo : p->combos_filament){ // Make sure size will stays same before layout() 
+    for (PlaterPresetComboBox* combo : p->combos_filament){ // ORCA Make sure size will stays same before layout() 
         combo->Rescale();
         combo->SetMinSize({-1, FromDIP(SidebarProps::ComboboxHeight())});
     }
