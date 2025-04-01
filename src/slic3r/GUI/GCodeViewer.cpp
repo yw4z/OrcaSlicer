@@ -4472,7 +4472,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
                 //ImGui::Checkbox(("##" + columns_offsets[0].first).c_str(), &visible);
                 //ImGui::PopStyleVar(1);
                 // ORCA replace checkboxes with eye icon
-                ImGui::SameLine(ImGui::GetWindowWidth() - (16.f + 0.f) * m_scale - window_padding * 2 - (ImGui::GetScrollMaxY() > 0.0f ? ImGui::GetStyle().ScrollbarSize : 0));
+                ImGui::SameLine(ImGui::GetWindowWidth() - (16.f + 6.f) * m_scale - window_padding * 2 - (ImGui::GetScrollMaxY() > 0.0f ? ImGui::GetStyle().ScrollbarSize : 0));
                 ImGui::Text(into_u8(visible ? ImGui::VisibleIcon : ImGui::HiddenIcon).c_str(), ImVec2(16 * m_scale, 16 * m_scale));
             }
         }
@@ -4523,7 +4523,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         for (size_t i = 0; i < title_offsets.size(); i++) {
             if (title_offsets[i].first == _u8L("Display")) { // ORCA Hide Display header
                 ImGui::SameLine(title_offsets[i].second);
-                ImGui::Dummy({(16.f - 6.f) * m_scale, 1}); // 16(icon) - 6(half of spacing)
+                ImGui::Dummy({16.f * m_scale, 1});
                 continue;
             }
             ImGui::SameLine(title_offsets[i].second);
@@ -4533,6 +4533,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         ImGui::SameLine();
         ImGui::Dummy({window_padding, 1});
         ImGui::Separator();
+        ImGui::Dummy({1, 1.f * m_scale}); // ORCA add slight spacing after Separator to prevent overlapping with row items
     };
 
     auto max_width = [](const std::vector<std::string>& items, const std::string& title, float extra_size = 0.0f) {
@@ -4658,7 +4659,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
-    float calc_padding = (ImGui::GetFrameHeight() - 16 * m_scale) / 2;                      // ORCA calculated padding for 16x16 icon
+    float calc_padding = std::max((ImGui::GetFrameHeight() - 16 * m_scale) / 2, 0.f);       // ORCA calculated padding for 16x16 icon
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(calc_padding, calc_padding));    // ORCA Center icon with frame padding
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f * m_scale);                       // ORCA Match button style with combo box
 
