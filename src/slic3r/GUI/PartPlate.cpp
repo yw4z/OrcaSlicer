@@ -983,6 +983,7 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
 		shader->set_uniform("transparent_background", bottom);
 		//shader->set_uniform("svg_source", boost::algorithm::iends_with(m_partplate_list->m_del_texture.get_source(), ".svg"));
 		shader->set_uniform("svg_source", 0);
+        int plate_count = m_plater->get_partplate_list().get_plate_count();
 
         //if (bottom)
         //    glsafe(::glFrontFace(GL_CW));
@@ -992,12 +993,15 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
         glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
 
         if (!only_name) {
-            if (hover_id == 1) {
-                render_icon_texture(m_del_icon.model, m_partplate_list->m_del_hovered_texture);
-                show_tooltip(_u8L("Remove current plate (if not last one)"));
-            }
-            else
-                render_icon_texture(m_del_icon.model, m_partplate_list->m_del_texture);
+            if(plate_count>1){
+                if (hover_id == 1) {
+                    render_icon_texture(m_del_icon.model, m_partplate_list->m_del_hovered_texture);
+                    show_tooltip(_u8L("Remove current plate (if not last one)"));
+                }
+                else
+                    render_icon_texture(m_del_icon.model, m_partplate_list->m_del_texture);
+            }else // render dummy texture on same position
+                render_icon_texture(m_del_icon.model, m_partplate_list->m_del_dummy_texture);
 
             if (hover_id == 2) {
                 render_icon_texture(m_orient_icon.model, m_partplate_list->m_orient_hovered_texture);
@@ -1038,11 +1042,13 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
 			else
                 render_icon_texture(m_plate_name_edit_icon.model, m_partplate_list->m_plate_name_edit_texture);
 
-			if (hover_id == 7) {
-                render_icon_texture(m_move_front_icon.model, m_partplate_list->m_move_front_hovered_texture);
-                show_tooltip(_u8L("Move plate to the front"));
-            } else
-                render_icon_texture(m_move_front_icon.model, m_partplate_list->m_move_front_texture);
+            if(plate_count>1){
+			    if (hover_id == 7) {
+                    render_icon_texture(m_move_front_icon.model, m_partplate_list->m_move_front_hovered_texture);
+                    show_tooltip(_u8L("Move plate to the front"));
+                } else
+                    render_icon_texture(m_move_front_icon.model, m_partplate_list->m_move_front_texture);
+            }
 
 
 			if (m_partplate_list->render_plate_settings) {
@@ -1062,7 +1068,7 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
                 }
             }
 
-            if (m_plate_index >= 0 && m_plate_index < MAX_PLATE_COUNT) {
+            if (plate_count>1 && m_plate_index >= 0 && m_plate_index < MAX_PLATE_COUNT) {
                 render_icon_texture(m_plate_idx_icon, m_partplate_list->m_idx_textures[m_plate_index]);
             }
         }
@@ -1097,7 +1103,8 @@ void PartPlate::render_only_numbers(bool bottom)
         glsafe(::glEnable(GL_BLEND));
         glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
 
-        if (m_plate_index >=0 && m_plate_index < MAX_PLATE_COUNT) {
+        int plate_count = m_plater->get_partplate_list().get_plate_count();
+        if (plate_count>1 && m_plate_index >=0 && m_plate_index < MAX_PLATE_COUNT) {
             render_icon_texture(m_plate_idx_icon, m_partplate_list->m_idx_textures[m_plate_index]);
         }
 
@@ -3257,7 +3264,14 @@ void PartPlateList::generate_icon_textures()
 		}
 	}
 
-	
+	//if (m_del_dummy_texture.get_id() == 0)
+	{
+		file_name = path + "plate_close_dummy.svg";
+		if (!m_del_dummy_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
 	// if (m_move_front_texture.get_id() == 0)
     {
         file_name = path + (m_is_dark ? "plate_move_front_dark.svg" : "plate_move_front.svg");
