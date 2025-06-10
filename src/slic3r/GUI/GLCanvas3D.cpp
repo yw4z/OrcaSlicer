@@ -8224,8 +8224,9 @@ void GLCanvas3D::_render_return_toolbar() const
     auto canvas_h = float(cnv_size.get_height());
     float window_width = real_size.x + button_icon_size.x + imgui.scaled(2.0f);
     float window_height = button_icon_size.y + imgui.scaled(2.0f);
-    float window_pos_x = 30.0f + (is_collapse_toolbar_on_left() ? (get_collapse_toolbar_width() + 5.f) : 0);
-    float window_pos_y = 14.0f;
+    // ORCA place return button near collapse button
+    float window_pos_x = 10.0f + (is_collapse_toolbar_on_left() ? (get_collapse_toolbar_width() + 5.f) : 0);
+    float window_pos_y = 0;
 
     imgui.set_next_window_pos(window_pos_x, window_pos_y, ImGuiCond_Always, 0, 0);
 #ifdef __WINDOWS__
@@ -8233,6 +8234,7 @@ void GLCanvas3D::_render_return_toolbar() const
 #endif
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 18.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {2, 2}); // ORCA reduce margins of window to making position controlable
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.149f, 0.180f, 0.188f, 0.3f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.149f, 0.180f, 0.188f, 0.15f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.149f, 0.180f, 0.188f, 0.5f));
@@ -8260,7 +8262,7 @@ void GLCanvas3D::_render_return_toolbar() const
         wxGetApp().plater()->get_view3D_canvas3D()->reload_scene(true);
     }
     ImGui::PopStyleColor(5);
-    ImGui::PopStyleVar(1);
+    ImGui::PopStyleVar(2);
 
     imgui.end();
 }
