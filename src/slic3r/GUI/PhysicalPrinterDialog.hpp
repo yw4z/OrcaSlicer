@@ -7,9 +7,10 @@
 
 #include "libslic3r/Preset.hpp"
 #include "GUI_Utils.hpp"
-#include "Widgets/RoundedRectangle.hpp"
+#include "Widgets/TextInput.hpp"
 #include "Widgets/Button.hpp"
 
+class TextInput;
 class wxTextCtrl;
 class wxStaticText;
 class Button;
@@ -36,10 +37,10 @@ class PhysicalPrinterDialog : public DPIDialog
     Button*     m_printhost_client_cert_browse_btn  {nullptr};
     Button*     m_printhost_port_browse_btn         {nullptr};
 
-    RoundedRectangle*   m_input_area                        {nullptr};
-    wxStaticText*       m_valid_label                       {nullptr};
-    wxTextCtrl*         m_input_ctrl                        {nullptr};
-    Button*             btnOK                               {nullptr};
+    TextInput*     m_input_area                     {nullptr};
+    wxStaticText*  m_valid_label                    {nullptr};
+    wxTextCtrl*    m_input_ctrl                     {nullptr};
+    Button*        btnOK                            {nullptr};
 
     void build_printhost_settings(ConfigOptionsGroup* optgroup);
     void OnOK(wxEvent& event);
