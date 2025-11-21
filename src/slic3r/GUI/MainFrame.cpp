@@ -1952,7 +1952,7 @@ wxBoxSizer* MainFrame::create_side_tools()
     });
     sizer->Add(aux_btn, 0, wxLEFT | wxALIGN_CENTER_VERTICAL, 1 * em / 10);
     */
-    sizer->Add(FromDIP(19), 0, 0, 0, 0);
+    sizer->Add(FromDIP(15), 0, 0, 0, 0);
 
     return sizer;
 }
@@ -2118,23 +2118,23 @@ void MainFrame::update_side_button_style()
     // m_publish_btn->SetTextColor(StateColor::darkModeColorFor("#FFFFFE"));
 
     m_slice_btn->SetTextLayout(SideButton::EHorizontalOrientation::HO_Left, FromDIP(15));
-    m_slice_btn->SetCornerRadius(FromDIP(12));
+    m_slice_btn->SetCornerRadius(FromDIP(6)); // ORCA use less rounding on split button
     m_slice_btn->SetExtraSize(wxSize(FromDIP(38), FromDIP(10)));
     m_slice_btn->SetMinSize(wxSize(-1, FromDIP(24)));
 
     m_slice_option_btn->SetTextLayout(SideButton::EHorizontalOrientation::HO_Center);
-    m_slice_option_btn->SetCornerRadius(FromDIP(12));
+    m_slice_option_btn->SetCornerRadius(FromDIP(6)); // ORCA use less rounding on split button
     m_slice_option_btn->SetExtraSize(wxSize(FromDIP(10), FromDIP(10)));
     m_slice_option_btn->SetIconOffset(FromDIP(2));
     m_slice_option_btn->SetMinSize(wxSize(FromDIP(24), FromDIP(24)));
 
     m_print_btn->SetTextLayout(SideButton::EHorizontalOrientation::HO_Left, FromDIP(15));
-    m_print_btn->SetCornerRadius(FromDIP(12));
+    m_print_btn->SetCornerRadius(FromDIP(6)); // ORCA use less rounding on split button
     m_print_btn->SetExtraSize(wxSize(FromDIP(38), FromDIP(10)));
     m_print_btn->SetMinSize(wxSize(-1, FromDIP(24)));
 
     m_print_option_btn->SetTextLayout(SideButton::EHorizontalOrientation::HO_Center);
-    m_print_option_btn->SetCornerRadius(FromDIP(12));
+    m_print_option_btn->SetCornerRadius(FromDIP(6)); // ORCA use less rounding on split button
     m_print_option_btn->SetExtraSize(wxSize(FromDIP(10), FromDIP(10)));
     m_print_option_btn->SetIconOffset(FromDIP(2));
     m_print_option_btn->SetMinSize(wxSize(FromDIP(24), FromDIP(24)));

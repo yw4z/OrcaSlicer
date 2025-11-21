@@ -145,7 +145,7 @@ void ButtonsListCtrl::SetSelection(int sel)
     wxColour selected_btn_bg("#009688");    // Gradient #009688
     if (m_selection >= 0) {
         StateColor bg_color = StateColor(
-        std::pair{wxColour(107, 107, 107), (int) StateColor::Hovered},
+        std::pair{wxColour("#6C7374"), (int) StateColor::Hovered},
         std::pair{wxColour(59, 68, 70), (int) StateColor::Normal});
         m_pageButtons[m_selection]->SetBackgroundColor(bg_color);
         StateColor text_color = StateColor(
@@ -173,14 +173,14 @@ void ButtonsListCtrl::SetSelection(int sel)
 bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, const std::string &inactive_bmp_name)
 {
     Button * btn = new Button(this, text.empty() ? text : " " + text, bmp_name, wxNO_BORDER);
-    btn->SetCornerRadius(0);
+    btn->SetCornerRadius(6);
 
     int em = em_unit(this);
     //BBS set size for button
     btn->SetMinSize({(text.empty() ? 40 : 136) * em / 10, 36 * em / 10});
 
     StateColor bg_color = StateColor(
-        std::pair{wxColour(107, 107, 107), (int) StateColor::Hovered},
+        std::pair{wxColour("#6C7374"), (int) StateColor::Hovered},
         std::pair{wxColour(59, 68, 70), (int) StateColor::Normal});
 
     btn->SetBackgroundColor(bg_color);

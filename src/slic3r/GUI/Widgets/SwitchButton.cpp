@@ -110,9 +110,9 @@ void SwitchButton::Rescale()
 			if (size.x > thumbSize.x) thumbSize.x = size.x;
 			else size.x = thumbSize.x;
 			thumbSize.x += BS * 12;
-			thumbSize.y += BS * 6;
-			trackSize.x = thumbSize.x + size.x + BS * 10;
-			trackSize.y = thumbSize.y + BS * 2;
+			thumbSize.y += BS * 4;                          // ORCA
+			trackSize.x = thumbSize.x + size.x + BS * 14;   // ORCA
+			trackSize.y = thumbSize.y + BS * 4;             // ORCA
             auto maxWidth = GetMaxWidth();
 #ifdef __WXOSX__
             maxWidth *= scale;
@@ -152,27 +152,15 @@ void SwitchButton::Rescale()
 #endif
 				dc2.SetBrush(wxBrush(track_color.colorForStates(state)));
 				dc2.SetPen(wxPen(track_color.colorForStates(state)));
-                dc2.DrawRoundedRectangle(wxRect({0, 0}, trackSize), trackSize.y / 2);
+                dc2.DrawRoundedRectangle(wxRect({0, 0}, trackSize), BS * 6); // trackSize.y / 2 // ORCA
 				dc2.SetBrush(wxBrush(thumb_color.colorForStates(StateColor::Checked | StateColor::Enabled)));
 				dc2.SetPen(wxPen(thumb_color.colorForStates(StateColor::Checked | StateColor::Enabled)));
-				dc2.DrawRoundedRectangle(wxRect({ i == 0 ? BS : (trackSize.x - thumbSize.x - BS), BS}, thumbSize), thumbSize.y / 2);
+				dc2.DrawRoundedRectangle(wxRect({ i == 0 ? BS * 2 : (trackSize.x - thumbSize.x - BS * 2), BS * 2 }, thumbSize), BS * 6 - (trackSize.y - thumbSize.y) / 2); //thumbSize.y / 2 // ORCA
 			}
             memdc.SetTextForeground(text_color.colorForStates(state ^ StateColor::Checked));
-            auto text_y = BS + (thumbSize.y - textSize[0].y) / 2;
-#ifdef __APPLE__
-            if (Slic3r::is_mac_version_15()) {
-                text_y -= FromDIP(2);
-            }
-#endif
-            memdc.DrawText(labels[0], {BS + (thumbSize.x - textSize[0].x) / 2, text_y});
+            memdc.DrawText(labels[0], {BS * 2 + (thumbSize.x - textSize[0].x) / 2, BS * 2 + (thumbSize.y - textSize[0].y) / 2});
             memdc.SetTextForeground(text_color2.count() == 0 ? text_color.colorForStates(state) : text_color2.colorForStates(state));
-            auto text_y_1 = BS + (thumbSize.y - textSize[1].y) / 2;
-#ifdef __APPLE__
-            if (Slic3r::is_mac_version_15()) {
-                text_y_1 -= FromDIP(2);
-            }
-#endif
-            memdc.DrawText(labels[1], {trackSize.x - thumbSize.x - BS + (thumbSize.x - textSize[1].x) / 2, text_y_1});
+            memdc.DrawText(labels[1], {trackSize.x - thumbSize.x - BS * 2 + (thumbSize.x - textSize[1].x) / 2, BS * 2 + (thumbSize.y - textSize[1].y) / 2});
 			memdc.SelectObject(wxNullBitmap);
 #ifdef __WXOSX__
             bmp = wxBitmap(bmp.ConvertToImage(), -1, scale);

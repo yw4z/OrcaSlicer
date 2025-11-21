@@ -24,7 +24,8 @@ static std::map<wxColour, wxColour> gDarkColors{
     {"#FFFFFF", "#2D2D31"}, // rgb(255, 255, 255)  Window background
     {"#F8F8F8", "#36363C"}, // rgb(248, 248, 248)  Sidebar > Titlebar > Gradient Top | BBL monitor page titlebar bg
     {"#F1F1F1", "#36363B"}, // rgb(241, 241, 241)  Sidebar > Titlebar > Gradient Bottom
-    {"#3B4446", "#2D2D30"}, // rgb(59, 68, 78)     Top Bar / Main tab bar bg color
+    {"#3B4446", "#2D2D30"}, // rgb(59, 68, 78)     Top Bar / Main tab bar > bg color
+    {"#6C7374", "#575759"}, // rgb(59, 68, 78)     Top Bar / Main tab bar > Split button disabled bg color & Main tab hover bg color
     {"#CECECE", "#54545B"}, // rgb(206, 206, 206)  Sidebar wxPanel bg | 
     {"#DBFDD5", "#3B3B40"}, // rgb(219, 253, 213)  Not Used anymore // Was used for BBS combo boxes etc
     {"#000000", "#FFFFFE"}, // rgb(0, 0, 0)        Mostly Text color wxBlack
