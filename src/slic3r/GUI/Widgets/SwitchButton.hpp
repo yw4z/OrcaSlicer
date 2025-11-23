@@ -44,6 +44,7 @@ private:
     StateColor   text_color2;
 	StateColor   track_color;
 	StateColor   thumb_color;
+    StateColor   border_color;
 };
 
 class SwitchBoard : public wxWindow

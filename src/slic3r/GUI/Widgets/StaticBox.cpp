@@ -3,7 +3,7 @@
 #include <wx/dcclient.h>
 #include <wx/dcgraph.h>
 
-BEGIN_EVENT_TABLE(StaticBox, wxWindow)
+BEGIN_EVENT_TABLE(StaticBox, wxPanel)
 
 // catch paint events
 //EVT_ERASE_BACKGROUND(StaticBox::eraseEvent)

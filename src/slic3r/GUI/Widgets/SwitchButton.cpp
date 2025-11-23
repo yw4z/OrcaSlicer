@@ -20,8 +20,9 @@ SwitchButton::SwitchButton(wxWindow* parent, wxWindowID id)
 	, m_on(this, "toggle_on", 16)
 	, m_off(this, "toggle_off", 16)
     , text_color(std::pair{0xfffffe, (int) StateColor::Checked}, std::pair{0x6B6B6B, (int) StateColor::Normal})
-	, track_color(0xD9D9D9)
+	, track_color(std::pair{0xD9D9D9, (int) StateColor::NotFocused}, std::pair{0xE5F0EE, (int) StateColor::Focused})
     , thumb_color(std::pair{0x009688, (int) StateColor::Checked}, std::pair{0xD9D9D9, (int) StateColor::Normal})
+    , border_color(std::pair{0x009688, (int) StateColor::Focused}, std::pair{0xD9D9D9, (int) StateColor::Normal})
 {
 	SetBackgroundColour(StaticBox::GetParentBackgroundColor(parent));
 	Bind(wxEVT_TOGGLEBUTTON, [this](auto& e) { update(); e.Skip(); });
@@ -144,14 +145,15 @@ void SwitchButton::Rescale()
                 textSize[1] = memdc.GetTextExtent(labels[1]);
 			}
 			auto state = i == 0 ? StateColor::Enabled : (StateColor::Checked | StateColor::Enabled);
+            auto has_focus = HasFocus() ? StateColor::Focused : StateColor::NotFocused;
             {
 #ifdef __WXMSW__
 				wxGCDC dc2(memdc);
 #else
                 wxDC &dc2(memdc);
 #endif
-				dc2.SetBrush(wxBrush(track_color.colorForStates(state)));
-				dc2.SetPen(wxPen(track_color.colorForStates(state)));
+				dc2.SetBrush(wxBrush(track_color.colorForStates(has_focus)));
+				dc2.SetPen(wxPen(border_color.colorForStates(has_focus), 1));
                 dc2.DrawRoundedRectangle(wxRect({0, 0}, trackSize), trackSize.y / 2);
 				dc2.SetBrush(wxBrush(thumb_color.colorForStates(StateColor::Checked | StateColor::Enabled)));
 				dc2.SetPen(wxPen(thumb_color.colorForStates(StateColor::Checked | StateColor::Enabled)));

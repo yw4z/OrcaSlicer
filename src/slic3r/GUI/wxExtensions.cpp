@@ -1093,6 +1093,81 @@ void ScalableBitmap::msw_rescale()
 }
 
 // ----------------------------------------------------------------------------
+// ScalableImage with Static properties that uses same methods with ScalableButton
+// ----------------------------------------------------------------------------
+
+ScalableImage::ScalableImage(
+    wxWindow *          parent,
+    wxWindowID          id,
+    const std::string&  icon_name /*= ""*/,
+    const wxSize&       size /* = wxDefaultSize*/,
+    const wxPoint&      pos /* = wxDefaultPosition*/,
+    long                style /*= wxBU_EXACTFIT | wxNO_BORDER*/,
+    int                 bmp_px_cnt/* = 16*/
+) :
+    m_parent(parent),
+    m_current_icon_name(icon_name),
+    m_px_cnt(bmp_px_cnt)
+{
+    SetBackgroundColour(StaticBox::GetParentBackgroundColor(parent));
+    Create(parent, id, wxNullBitmap, pos, size, style);
+    Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
+
+    if (!icon_name.empty()) {
+        SetBitmap(create_scaled_bitmap(icon_name, parent, m_px_cnt));
+    }
+
+    if (size != wxDefaultSize)
+    {
+        const int em = em_unit(parent);
+        m_width = size.x * 10 / em;
+        m_height= size.y * 10 / em;
+    }
+}
+
+void ScalableImage::SetBitmap_(const ScalableBitmap& bmp)
+{
+    SetBitmap(bmp.bmp());
+    m_current_icon_name = bmp.name();
+}
+
+bool ScalableImage::SetBitmap_(const std::string& bmp_name)
+{
+    if (m_current_icon_name == bmp_name)
+        return true;
+
+    m_current_icon_name = bmp_name;
+    if (m_current_icon_name.empty())
+        return false;
+
+    SetBitmap(create_scaled_bitmap(m_current_icon_name, m_parent, m_px_cnt));
+    return true;
+}
+
+int ScalableImage::GetBitmapHeight()
+{
+#ifdef __APPLE__
+    return GetBitmap().GetScaledHeight();
+#else
+    return GetBitmap().GetHeight();
+#endif
+}
+
+void ScalableImage::msw_rescale()
+{
+    Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
+
+    if (!m_current_icon_name.empty())
+        SetBitmap(create_scaled_bitmap(m_current_icon_name, m_parent, m_px_cnt));
+
+    if (m_width > 0 || m_height>0){
+        const int em = em_unit(m_parent);
+        wxSize size(m_width * em / 10, m_height * em / 10);
+        SetMinSize(size);
+    }
+}
+
+// ----------------------------------------------------------------------------
 // BambuButton
 // ----------------------------------------------------------------------------
 
@@ -1114,6 +1189,10 @@ ScalableButton::ScalableButton( wxWindow *          parent,
     SetBackgroundColour(StaticBox::GetParentBackgroundColor(parent));
     Create(parent, id, label, pos, size, style);
     Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
+
+    // ORCA show background color on focus
+    Bind(wxEVT_SET_FOCUS,  [this](wxFocusEvent& e) {SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#009688"))); e.Skip();});
+    Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) {SetBackgroundColour(StaticBox::GetParentBackgroundColor(m_parent))    ; e.Skip();});
 
     if (!icon_name.empty()) {
         SetBitmap(create_scaled_bitmap(icon_name, parent, m_px_cnt));

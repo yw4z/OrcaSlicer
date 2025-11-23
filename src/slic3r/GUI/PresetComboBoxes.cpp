@@ -824,8 +824,11 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
     // BBS
     if (m_type == Preset::TYPE_FILAMENT) {
         int em = wxGetApp().em_unit();
-        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(FromDIP(20), FromDIP(20)), wxBU_EXACTFIT | wxBU_AUTODRAW | wxBORDER_NONE);
+        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, FromDIP(wxSize(22, 22)), wxBU_EXACTFIT | wxBU_AUTODRAW | wxBORDER_NONE);
         clr_picker->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
+        // ORCA add a focus border. use bigger size
+        clr_picker->Bind(wxEVT_SET_FOCUS,  [this](wxFocusEvent& e) {clr_picker->SetBackgroundColour(wxColour("#009688")); e.Skip();});
+        clr_picker->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) {clr_picker->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE))           ; e.Skip();});
         clr_picker->SetToolTip(_L("Click to select filament color"));
         clr_picker->Bind(wxEVT_BUTTON, [this](wxCommandEvent& e) {
             // Check if it's an official filament

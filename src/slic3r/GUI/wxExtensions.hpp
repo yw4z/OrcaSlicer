@@ -232,6 +232,42 @@ private:
     ScalableBitmap    m_bmp_lock_open_f;
 };
 
+class ScalableImage : public wxStaticBitmap
+{
+public:
+    ScalableImage(){}
+    ScalableImage(
+        wxWindow *          parent,
+        wxWindowID          id,
+        const std::string&  icon_name = "",
+        const wxSize&       size = wxDefaultSize,
+        const wxPoint&      pos = wxDefaultPosition,
+        long                style = wxBU_EXACTFIT | wxNO_BORDER,
+        int                 bmp_px_cnt = 16);
+
+    ScalableImage(
+        wxWindow *          parent,
+        wxWindowID          id,
+        const ScalableBitmap&  bitmap,
+        long                style = wxBU_EXACTFIT | wxNO_BORDER);
+
+    ~ScalableImage() {}
+
+    void SetBitmap_(const ScalableBitmap& bmp);
+    bool SetBitmap_(const std::string& bmp_name);
+    int  GetBitmapHeight();   
+
+    void    msw_rescale();
+    void    UpdateDarkUI() { msw_rescale(); };
+
+private:
+    wxWindow*       m_parent { nullptr };
+    std::string     m_current_icon_name;
+    int             m_width {-1}; // should be multiplied to em_unit
+    int             m_height{-1}; // should be multiplied to em_unit
+    int             m_px_cnt{ 16 };
+};
+
 
 // ----------------------------------------------------------------------------
 // ScalableButton

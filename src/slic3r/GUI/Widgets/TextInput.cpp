@@ -28,7 +28,11 @@ TextInput::TextInput()
     border_width = 1;
     border_color = StateColor(std::make_pair(0xDBDBDB, (int) StateColor::Disabled), std::make_pair(0x009688, (int) StateColor::Hovered),
                               std::make_pair(0xDBDBDB, (int) StateColor::Normal));
-    background_color = StateColor(std::make_pair(0xF0F0F1, (int) StateColor::Disabled), std::make_pair(*wxWHITE, (int) StateColor::Normal));
+    background_color = StateColor(
+        std::make_pair(0xF0F0F1, (int) StateColor::Disabled),
+        std::make_pair(0xE5F0EE, (int) StateColor::Focused),
+        std::make_pair(*wxWHITE, (int) StateColor::Normal)
+    );
     SetFont(Label::Body_12);
 }
 
@@ -65,7 +69,12 @@ void TextInput::Create(wxWindow *     parent,
     text_ctrl->SetBackgroundColour(background_color.colorForStates(state_handler.states()));
     text_ctrl->SetForegroundColour(text_color.colorForStates(state_handler.states()));
     state_handler.attach_child(text_ctrl);
+    text_ctrl->Bind(wxEVT_SET_FOCUS, [this](auto &e) {
+        text_ctrl->SetBackgroundColour(background_color.colorForStates(state_handler.states()));
+        e.Skip();
+    });
     text_ctrl->Bind(wxEVT_KILL_FOCUS, [this](auto &e) {
+        text_ctrl->SetBackgroundColour(background_color.colorForStates(state_handler.states()));
         OnEdit();
         e.SetId(GetId());
         ProcessEventLocally(e);

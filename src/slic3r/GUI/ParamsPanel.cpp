@@ -269,11 +269,11 @@ ParamsPanel::ParamsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, c
 
     if (dynamic_cast<Notebook*>(parent)) {
         // BBS: new layout
-        m_top_panel = new StaticBox(this, wxID_ANY, wxDefaultPosition);
+        m_top_panel = new StaticBox(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
         m_top_panel->SetBackgroundColor(0xF8F8F8);
         m_top_panel->SetBackgroundColor2(0xF1F1F1);
 
-        m_process_icon = new ScalableButton(m_top_panel, wxID_ANY, "process");
+        m_process_icon = new ScalableImage(m_top_panel, wxID_ANY, "process"); // ORCA use ScalableImage to prevent focus
 
         m_title_label = new Label(m_top_panel, _L("Process"));
 
