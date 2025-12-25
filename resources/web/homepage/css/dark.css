@@ -1,3 +1,6 @@
+/* ORCA disable dark.css. makes css file unusable. tempopary fix until disabling all dark.css usage*/
+@media (invalid-condition) { 
+
 body
 {
 	background-color:#242428;
@@ -128,3 +131,5 @@ body
 	background: rgba(54, 54, 60, 0.88);
     border: 1px solid rgba(129, 129, 131, 0.64);
 }
+
+} /* @media (invalid-condition) */

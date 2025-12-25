@@ -29,14 +29,34 @@ function Set_RecentFile_MouseRightBtn_Event()
 			
 			if(e.which == 3){
 				//鼠标点击了右键+$(this).attr('ff') );
-				ShowRecnetFileContextMenu();
+				/* ShowRecnetFileContextMenu();*/
 			}else if(e.which == 2){
 				//鼠标点击了中键
 			}else if(e.which == 1){
 				//鼠标点击了左键
 				OnOpenRecentFile( encodeURI(RightBtnFilePath) );
 			}
+			return false;
 		});
+
+	$(".FileActions").mousedown(function(e){		
+		return false; // Block events on empty area & parent
+	});
+
+	$(".FileActionsReveal").mousedown(function(e){		
+		RightBtnFilePath=$(this).attr('fpath');
+		if(e.which == 1){
+			OnExploreRecentFile();
+		}
+		return false; // Block events from parent
+	});
+	$(".FileActionsRemove").mousedown(function(e){		
+		RightBtnFilePath=$(this).attr('fpath');
+		if(e.which == 1){
+			OnDeleteRecentFile();
+		}
+		return false; // Block events from parent
+	});
 
 	$(document).bind("contextmenu",function(e){
 		//在这里书写代码，构建个性右键化菜单
@@ -203,6 +223,15 @@ function ShowRecentFileList( pList )
 				'<div class="FileImg" ><img src="'+sImg+'" onerror="this.onerror=null;this.src=\'img/d.png\';"  alt="No Image"  /></div>'+
 				'<div class="FileName TextS1">'+sName+'</div>'+
 				'<div class="FileDate">'+sTime+'</div>'+
+				'<div class="FileActions">'+
+					'<div class="FileActionsReveal ButtonStyleRegular ButtonTypeWindow trans" fpath="'+sPath+'">Show in folder</div>'+
+					'<div class="FileActionsRemove ButtonStyleAlert"   fpath="'+sPath+'">'+
+						'<svg class="FileActionIcon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'+
+							'<line x1="2.5" y1="2.5" x2="13.5" y2="13.5" style="fill:none;stroke-linecap:round;stroke-linejoin:round"/>'+
+							'<line x1="13.5" y1="2.5" x2="2.5" y2="13.5" style="fill:none;stroke-linecap:round;stroke-linejoin:round"/>'+
+						'</svg>'+
+					'</div>'+
+				'</div>'+
 			    '</div>';
 		
 		strHtml+=TmpHtml;
@@ -214,6 +243,7 @@ function ShowRecentFileList( pList )
 	UpdateRecentClearBtnDisplay();
 }
 
+/* 
 function ShowRecnetFileContextMenu()
 {
 	$("#recnet_context_menu").offset({top: 10000, left:-10000});
@@ -234,7 +264,8 @@ function ShowRecnetFileContextMenu()
 		RealY=DocumentHeight-ContextMenuHeight-24;
 	
 	$("#recnet_context_menu").offset({top: RealY, left:RealX});
-}
+} 
+*/
 
 /*-------RecentFile MX Message------*/
 function SendMsg_GetLoginInfo()

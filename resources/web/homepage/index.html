@@ -7,7 +7,7 @@
 <title>homepage</title>
 <link rel="stylesheet" type="text/css" href="../include/global.css" />	<!-- ORCA One for all-->
 <link rel="stylesheet" type="text/css" href="./css/home.css" />
-<link rel="stylesheet" type="text/css" href="./css/dark.css" />	
+<!-- <link rel="stylesheet" type="text/css" href="./css/dark.css" />	 -->
 
 <script type="text/javascript" src="../include/jquery-2.1.1.min.js"></script>
 <script type="text/javascript" src="../include/json2.js"></script>	
@@ -23,7 +23,12 @@
 <div id="LeftBoard" style="display: none;">
 	<div id="LoginArea">
 	<div id="Login1">
-		<div id="Icon1"><img id="BBLIcon" src="../image/logo.png" /></div> <!-- ORCA use square icon for better consistency on UI -->
+		<div id="Icon1"> <!-- ORCA add dark mode support for logo -->
+			<picture> <!-- should work on all browsers after 2019+ -->
+				<source media="(prefers-color-scheme: dark)" srcset="../image/logo-dark.png">
+				<img id="ORCAicon" src="../image/logo-light.png"/>
+			</picture>
+		</div> 
 		<div id="LoginBtn" class="ButtonStyleRegular ButtonTypeWindow" onClick="OnLoginOrRegister()"><span class="trans" tid="t26">login</span> / <span class="trans" tid="t27">register</span></div>
 	</div>
 		
@@ -43,8 +48,13 @@
 
 	<div id="BtnArea">
 	    <div menu="recent" class="BtnItem BtnItemSelected" onClick="GotoMenu('recent')">
-			<div class="BtnIcon "><img class="LeftIcon" src="img/i2.png" /></div>
+			<!--<div class="BtnIcon "><img class="LeftIcon" src="img/i2.png" /></div>-->	
 			<div class="trans" tid="t28">recent</div> 
+			<div class="BtnIcon ">
+				<svg class="SidebarArrow" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+					<path d="M5 12L8.50024 7.6247C8.79242 7.25948 8.79204 6.74005 8.49986 6.37483C7.23348 4.79185 6.38744 3.73431 5 2" style="stroke:#949494" stroke-linecap="round"/>
+				</svg>
+			</div>
 		</div>	
 
 	</div>
@@ -81,7 +91,7 @@
 	<div id="RecentFileArea">
 		<div id="RecentTitleBlock">
 		    <div id="RecentTitle" class="Content-Title trans TextS1" tid="t35">recent open</div>
-			<div id="RecentClearAllBtn" class="ButtonStyleRegular ButtonTypeWindow trans" tid="t12" onClick="OnDeleteAllRecentFiles()">Clear all</div>
+			<div id="RecentClearAllBtn" class="ButtonStyleAlert ButtonTypeWindow trans" tid="t12" onClick="OnDeleteAllRecentFiles()">Clear all</div>
 		</div>
 		<div id="FileList">
 <!--		    <div class="FileItem" onClick="OnOpenRecentFile('aaaa')" fpath='d:\model\11.3mf'>
@@ -159,7 +169,8 @@
 		</div>
 	</div>
 	
-    <div style="height: 14px;"></div>	
+	<!--     
+	<div style="height: 14px;"></div>	
 	
 	<div id="recnet_context_menu">
 		<div id="CT_Delete_Bar" class="CT_Item" onClick="OnDeleteRecentFile()">
@@ -170,7 +181,8 @@
 			<div class="CT_Icon CT_Explore"></div>
 			<div class="CT_Text trans" tid="t89">open in explorer </div>
 		</div>				
-    </div>
+    </div> 
+	-->
 	
 	
 </div>

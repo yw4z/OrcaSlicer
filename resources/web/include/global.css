@@ -8,8 +8,22 @@
 
 /*----GLOBAL COLORS ----*/
 :root { 
+	/*----Static colors ----*/
+	--main-color-fixed   : #009688; /*---Useful if dark version is hard to read on dark background ----*/
+	--alert-color        : #E14747;
+	--warning-color      : #EF754A;
+
+	/*----Dynamic colors ----*/
 	--main-color         : #009688;
 	--main-color-hover   : #26A69A;
+	--bg-color           : #FFFFFF;
+	--bg-alt1-color      : #F8F8F8; /*---Secondary background color Titlebar, infotip background ----*/
+	--bg-alt2-color      : #F8F8F8; /*---Third option for background if need have meny controls ----*/
+	--fg-color           : #262e30;
+	--fg-label           : #363636;
+	--fg-disabled        : #6B6B6B;
+	--focus-color        : #BFE1DE;
+	--border-color		 : #DBDBDB;
 	--button-fg-light    : #FEFEFE;
 	--button-fg-text     : #262E30;
 	--button-fg-disabled : #6B6B6B;
@@ -17,12 +31,21 @@
 	--button-bg-hover    : #D4D4D4;
 	--button-bg-disabled : var(--button-bg-normal);
 	--button-bg-alert    : #E14747;
+	--icon-color         : #949494;
 }
   
 @media (prefers-color-scheme: dark) { 
 :root {
 	--main-color         : #00675B;
 	--main-color-hover   : #008172;
+	--bg-color           : #2D2D31;
+	--bg-alt1-color      : #36363C;
+	--bg-alt2-color      : #242428;
+	--fg-color           : #EFEFF0;
+	--fg-label           : #B2B3B5;
+	--fg-disabled        : #818183;
+	--focus-color        : #223C3C;
+	--border-color		 : #4A4A51;
 	--button-fg-light    : #FEFEFE;
 	--button-fg-text     : #EFEFF0;
 	--button-fg-disabled : #818183;
@@ -30,6 +53,7 @@
 	--button-bg-hover    : #4D4D54;
 	--button-bg-disabled : var(--button-bg-normal);
 	--button-bg-alert    : #E14747;
+	--icon-color         : #7C8282;
 }
 }
 
