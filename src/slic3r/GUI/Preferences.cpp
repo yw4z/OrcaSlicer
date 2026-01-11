@@ -431,9 +431,10 @@ wxBoxSizer *PreferencesDialog::create_item_network_plugin_version_combobox(wxStr
     version_title->Wrap(DESIGN_TITLE_SIZE.x);
     m_sizer_combo->Add(version_title, 0, wxALIGN_CENTER);
 
-    m_network_version_combo = new ::ComboBox(m_parent, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(FromDIP(180), -1), 0, nullptr, wxCB_READONLY);
+    m_network_version_combo = new ::ComboBox(m_parent, wxID_ANY, wxEmptyString, wxDefaultPosition, DESIGN_LARGE_COMBOBOX_SIZE, 0, nullptr, wxCB_READONLY);
     m_network_version_combo->SetFont(::Label::Body_14);
     m_network_version_combo->GetDropDown().SetFont(::Label::Body_14);
+    m_network_version_combo->GetDropDown().SetUseContentWidth(true);
 
     std::string current_version = app_config->get_network_plugin_version();
     if (current_version.empty()) {
@@ -524,6 +525,22 @@ wxBoxSizer *PreferencesDialog::create_item_network_plugin_version_combobox(wxStr
             }
         }
         e.Skip();
+    });
+
+    auto m_reload_btn = new Button(m_parent, "", "refresh", 0, 16);
+    m_reload_btn->SetStyle(ButtonStyle::Regular, ButtonType::Icon);
+    m_reload_btn->SetToolTip(_L("Reload the network plugin without restarting the application"));
+
+    m_sizer_combo->Add(m_reload_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(5));
+
+    m_reload_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &){
+        if (wxGetApp().hot_reload_network_plugin()) {
+            MessageDialog dlg(this, _L("Network plugin reloaded successfully."), _L("Reload"), wxOK | wxICON_INFORMATION);
+            dlg.ShowModal();
+        } else {
+            MessageDialog dlg(this, _L("Failed to reload network plugin. Please restart the application."), _L("Reload Failed"), wxOK | wxICON_ERROR);
+            dlg.ShowModal();
+        }
     });
 
     return m_sizer_combo;
@@ -1532,17 +1549,6 @@ void PreferencesDialog::create_items()
 
     auto item_network_plugin_version = create_item_network_plugin_version_combobox(_L("Network plugin version"), _L("Select the network plugin version to use"));
     g_sizer->Add(item_network_plugin_version);
-
-    auto item_reload_plugin = create_item_button(_L("Network plugin"), _L("Reload"), _L("Reload the network plugin without restarting the application"), "", [this]() {
-        if (wxGetApp().hot_reload_network_plugin()) {
-            MessageDialog dlg(this, _L("Network plugin reloaded successfully."), _L("Reload"), wxOK | wxICON_INFORMATION);
-            dlg.ShowModal();
-        } else {
-            MessageDialog dlg(this, _L("Failed to reload network plugin. Please restart the application."), _L("Reload Failed"), wxOK | wxICON_ERROR);
-            dlg.ShowModal();
-        }
-    });
-    g_sizer->Add(item_reload_plugin);
 
     g_sizer->AddSpacer(FromDIP(10));
     sizer_page->Add(g_sizer, 0, wxEXPAND);

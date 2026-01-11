@@ -65,7 +65,7 @@ void NetworkPluginDownloadDialog::create_missing_plugin_ui()
     desc->Wrap(TEXT_WRAP);
     desc->SetMaxSize(wxSize(TEXT_WRAP, -1));
     main_sizer->Add(desc, 0, wxLEFT | wxRIGHT, BORDER_W);
-    main_sizer->AddSpacer(FromDIP(10));
+    main_sizer->AddSpacer(FromDIP(15));
 
     if (!m_error_message.empty()) {
         auto* error_label = new wxStaticText(this, wxID_ANY,
@@ -102,7 +102,7 @@ void NetworkPluginDownloadDialog::create_missing_plugin_ui()
                 Thaw();
             });
 
-            main_sizer->AddSpacer(FromDIP(10));
+            main_sizer->AddSpacer(FromDIP(15));
         }
     }
 
@@ -142,7 +142,7 @@ void NetworkPluginDownloadDialog::create_update_available_ui(const std::string& 
         wxString::Format(_L("Current version: %s"), wxString::FromUTF8(current_version)));
     version_text->SetFont(::Label::Body_14);
     main_sizer->Add(version_text, 0, wxLEFT | wxRIGHT, BORDER_W);
-    main_sizer->AddSpacer(FromDIP(10));
+    main_sizer->AddSpacer(FromDIP(15));
 
     auto* update_label = new wxStaticText(this, wxID_ANY, _L("Update to version:"));
     update_label->SetFont(::Label::Body_14);

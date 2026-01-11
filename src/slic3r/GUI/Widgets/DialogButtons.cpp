@@ -143,10 +143,8 @@ void DialogButtons::UpdateButtons() {
         m_sizer->AddSpacer(btn_gap);
 
     for (int i = 0; i < m_buttons.size(); i++) {
-        if(m_left_aligned_buttons_count == i){
-            m_sizer->AddSpacer(btn_gap * 3);
+        if(m_left_aligned_buttons_count == i)
             m_sizer->AddStretchSpacer();
-        }
 
         auto margin_to = (i >= m_left_aligned_buttons_count ? wxRIGHT : wxLEFT);
         m_sizer->Add(m_buttons[i], 0, margin_to | wxTOP | wxBOTTOM | wxALIGN_CENTER_VERTICAL, btn_gap);
