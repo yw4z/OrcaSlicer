@@ -1527,7 +1527,7 @@ void PreferencesDialog::create_items()
     auto item_enable_plugin    = create_item_checkbox(_L("Enable network plugin"), "", "installed_networking");
     g_sizer->Add(item_enable_plugin);
 
-    auto item_network_plugin_update = create_item_checkbox(_L("Don't show prompt for updates"), "", "network_plugin_update_prompts_disabled");
+    auto item_network_plugin_update = create_item_checkbox(_L("Don't show update dialog on start"), "", "network_plugin_update_prompts_disabled");
     g_sizer->Add(item_network_plugin_update);
 
     auto item_network_plugin_version = create_item_network_plugin_version_combobox(_L("Network plugin version"), _L("Select the network plugin version to use"));

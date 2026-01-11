@@ -116,14 +116,12 @@ void NetworkPluginDownloadDialog::create_missing_plugin_ui()
     main_sizer->AddSpacer(15);
 
     auto dlg_btns = new DialogButtons(this,
-        {"Don't Ask Again", "Download and Install", "Skip for Now"},
-        _L("Download and Install"),  // Primary button
-        1
+        {"Download and Install", "Skip for Now"},
+        _L("Download and Install")  // Primary button
     );
 
-    dlg_btns->GetButtonFromIndex(0)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_dont_ask, this);
-    dlg_btns->GetButtonFromIndex(1)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_download, this);
-    dlg_btns->GetButtonFromIndex(2)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_skip, this);
+    dlg_btns->GetButtonFromIndex(0)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_download, this);
+    dlg_btns->GetButtonFromIndex(1)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_skip, this);
 
     main_sizer->Add(dlg_btns, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, FromDIP(10));
 }
@@ -156,15 +154,14 @@ void NetworkPluginDownloadDialog::create_update_available_ui(const std::string& 
     main_sizer->AddSpacer(15);
 
     auto dlg_btns = new DialogButtons(this,
-        {"Don't Ask Again", "Update Now", "Remind Later", "Skip Version"},
-        _L("Update Now"), // Primary button
-        1 // Left Alignment
+        {"Update Now", "Remind Later", "Skip Version"},
+        _L("Update Now")
     );
 
-    dlg_btns->GetButtonFromIndex(0)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_dont_ask, this);
-    dlg_btns->GetButtonFromIndex(1)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_download, this);
-    dlg_btns->GetButtonFromIndex(2)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_remind_later, this);
-    dlg_btns->GetButtonFromIndex(3)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_skip_version, this);
+    //dlg_btns->GetButtonFromIndex(0)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_dont_ask, this);
+    dlg_btns->GetButtonFromIndex(0)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_download, this);
+    dlg_btns->GetButtonFromIndex(1)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_remind_later, this);
+    dlg_btns->GetButtonFromIndex(2)->Bind(wxEVT_BUTTON, &NetworkPluginDownloadDialog::on_skip_version, this);
 
     main_sizer->Add(dlg_btns, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, FromDIP(10));
 }
