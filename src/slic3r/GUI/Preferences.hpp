@@ -69,7 +69,6 @@ public:
     ::CheckBox * m_dark_mode_ckeckbox        = {nullptr};
     ::TextInput *m_backup_interval_textinput = {nullptr};
     ::ComboBox * m_network_version_combo     = {nullptr};
-    wxBoxSizer * m_network_version_sizer     = {nullptr};
     std::vector<BBL::NetworkLibraryVersionInfo> m_available_versions;
 
     wxString m_developer_mode_def;
@@ -84,6 +83,7 @@ public:
     wxBoxSizer *create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::vector<std::string> config_name_index);
     wxBoxSizer *create_item_region_combobox(wxString title, wxString tooltip);
     wxBoxSizer *create_item_language_combobox(wxString title, wxString tooltip);
+    wxBoxSizer *create_item_network_plugin_version_combobox(wxString title, wxString tooltip);
     wxBoxSizer *create_item_loglevel_combobox(wxString title, wxString tooltip, std::vector<wxString> vlist);
     wxBoxSizer *create_item_checkbox(wxString title, wxString tooltip, std::string param, const wxString secondary_title = "");
     wxBoxSizer *create_item_darkmode(wxString title,wxString tooltip, std::string param);

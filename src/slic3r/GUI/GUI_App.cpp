@@ -960,7 +960,8 @@ void GUI_App::post_init()
     hms_query = new HMSQuery();
 
     m_show_gcode_window = app_config->get_bool("show_gcode_window");
-    if (m_networking_need_update) {
+
+    if (m_networking_need_update && !app_config->is_network_update_prompt_disabled()) {
         show_network_plugin_download_dialog(false);
     }
 
