@@ -4122,14 +4122,16 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         return reason;
     };
 
+    std::map<std::string, DynamicPrintConfig> configs;
+    std::map<std::string, std::string> filament_id_maps;
 
     //3.1) paste the process
     presets = &this->prints;
-    std::map<std::string, DynamicPrintConfig> process_cfgs;
-    std::map<std::string, std::string>        process_fids;
+    configs.clear();
+    filament_id_maps.clear();
     for (auto& subfile : process_subfiles)
     {
-        std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, process_cfgs, process_fids, presets, presets_loaded);
+        std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, configs, filament_id_maps, presets, presets_loaded);
         if (!reason.empty()) {
             ++m_errors;
             //parse error
@@ -4141,8 +4143,8 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
 
     //3.2) paste the filaments
     presets = &this->filaments;
-    std::map<std::string, DynamicPrintConfig> filaments_cfgs;
-    std::map<std::string, std::string>        filaments_fids;
+    configs.clear();
+    filament_id_maps.clear();
     const auto is_orca_lib = vendor_name == ORCA_FILAMENT_LIBRARY;
     
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Processing filaments for " << vendor_name 
@@ -4151,7 +4153,7 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     
     for (auto& subfile : filament_subfiles)
     {
-        std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, filaments_cfgs, filaments_fids, presets,
+        std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, configs, filament_id_maps, presets,
                                            presets_loaded, is_orca_lib);
         if (!reason.empty()) {
             ++m_errors;
@@ -4163,17 +4165,17 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     }
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Finished processing filaments for " << vendor_name 
-                            << ", configs.size(): " << filaments_cfgs.size() 
-                            << ", filament_id_maps.size(): " << filaments_fids.size();
+                            << ", configs.size(): " << configs.size() 
+                            << ", filament_id_maps.size(): " << filament_id_maps.size();
     
     if (is_orca_lib) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Setting m_config_maps and m_filament_id_maps for OrcaFilamentLibrary"
-                                << ", configs.size(): " << filaments_cfgs.size()
-                                << ", filament_id_maps.size(): " << filaments_fids.size();
+                                << ", configs.size(): " << configs.size()
+                                << ", filament_id_maps.size(): " << filament_id_maps.size();
 
         // problem 1 data resets after defining variables because configs & filament_id_maps resets on each loop
-        this->m_config_maps      = std::move(filaments_cfgs);
-        this->m_filament_id_maps = std::move(filaments_fids);
+        this->m_config_maps      = std::move(configs);
+        this->m_filament_id_maps = std::move(filament_id_maps);
         
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ 
             << ": After assignment, m_config_maps.size(): " << this->m_config_maps.size()
@@ -4186,11 +4188,11 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     
     //3.3) paste the printers
     presets = &this->printers;
-    std::map<std::string, DynamicPrintConfig> printers_cfgs;
-    std::map<std::string, std::string>        printers_fids;
+    configs.clear();
+    filament_id_maps.clear();
     for (auto& subfile : machine_subfiles)
     {
-        std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, printers_cfgs, printers_fids, presets, presets_loaded);
+        std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, configs, filament_id_maps, presets, presets_loaded);
         if (!reason.empty()) {
             ++m_errors;
             //parse error
