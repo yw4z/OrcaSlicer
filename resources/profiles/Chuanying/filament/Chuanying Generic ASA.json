@@ -1,11 +1,11 @@
 {
     "type": "filament",
     "name": "Chuanying Generic ASA",
-    "inherits": "fdm_filament_asa",
+    "inherits": "Generic ASA @System",
     "from": "system",
     "setting_id": "GFSA04",
     "filament_id": "GFL99",
-    "instantiation": "true",
+    "instantiation": "false",
     "additional_cooling_fan_speed": [
         "0"
     ],

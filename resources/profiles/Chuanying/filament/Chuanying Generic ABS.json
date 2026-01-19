@@ -1,11 +1,11 @@
 {
     "type": "filament",
     "name": "Chuanying Generic ABS",
-    "inherits": "fdm_filament_abs",
+    "inherits": "Generic ABS @System",
     "from": "system",
     "setting_id": "GFSA04",
     "filament_id": "GFB99",
-    "instantiation": "true",
+    "instantiation": "false",
     "filament_flow_ratio": [
         "0.98"
     ],
