@@ -2214,6 +2214,29 @@ bool CreatePrinterPresetDialog::load_system_and_user_presets_with_curr_model(Pre
             return false;
         }
 
+        try { // Load OrcaFilamentLibrary FIRST to populate m_config_maps
+            std::string ofl_path;
+            if (boost::filesystem::exists(boost::filesystem::path(Slic3r::data_dir()) / PRESET_SYSTEM_DIR / PresetBundle::ORCA_FILAMENT_LIBRARY)) {
+                ofl_path = (boost::filesystem::path(Slic3r::data_dir()) / PRESET_SYSTEM_DIR).string();
+            } else if (boost::filesystem::exists(boost::filesystem::path(Slic3r::resources_dir()) / "profiles" / PresetBundle::ORCA_FILAMENT_LIBRARY)) {
+                ofl_path = (boost::filesystem::path(Slic3r::resources_dir()) / "profiles").string();
+            }
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Loading OrcaFilamentLibrary first";
+            temp_preset_bundle.load_vendor_configs_from_json(
+                ofl_path, 
+                PresetBundle::ORCA_FILAMENT_LIBRARY,  // "OrcaFilamentLibrary"
+                PresetBundle::LoadConfigBundleAttribute::LoadSystem | PresetBundle::LoadConfigBundleAttribute::LoadFilamentOnly,
+                ForwardCompatibilitySubstitutionRule::EnableSilent,
+                nullptr
+            );
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": OrcaFilamentLibrary loaded successfully";
+        } catch (const std::exception& e) {
+            // It's okay if OrcaFilamentLibrary doesn't exist, just log it
+            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not load OrcaFilamentLibrary: " << e.what();
+        } catch (...) {
+            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not load OrcaFilamentLibrary (unknown error)";
+        }
+
         try {
             temp_preset_bundle.load_vendor_configs_from_json(preset_path, selected_vendor_id, PresetBundle::LoadConfigBundleAttribute::LoadSystem,
                                                              ForwardCompatibilitySubstitutionRule::EnableSilent);
@@ -2276,6 +2299,28 @@ bool CreatePrinterPresetDialog::load_system_and_user_presets_with_curr_model(Pre
                               wxYES_NO | wxYES_DEFAULT | wxCENTRE);
             dlg.ShowModal();
             return false;
+        }
+        try { // Load OrcaFilamentLibrary FIRST to populate m_config_maps
+            std::string ofl_path;
+            if (boost::filesystem::exists(boost::filesystem::path(Slic3r::data_dir()) / PRESET_SYSTEM_DIR / PresetBundle::ORCA_FILAMENT_LIBRARY)) {
+                ofl_path = (boost::filesystem::path(Slic3r::data_dir()) / PRESET_SYSTEM_DIR).string();
+            } else if (boost::filesystem::exists(boost::filesystem::path(Slic3r::resources_dir()) / "profiles" / PresetBundle::ORCA_FILAMENT_LIBRARY)) {
+                ofl_path = (boost::filesystem::path(Slic3r::resources_dir()) / "profiles").string();
+            }
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Loading OrcaFilamentLibrary first";
+            temp_preset_bundle.load_vendor_configs_from_json(
+                ofl_path, 
+                PresetBundle::ORCA_FILAMENT_LIBRARY,  // "OrcaFilamentLibrary"
+                PresetBundle::LoadConfigBundleAttribute::LoadSystem | PresetBundle::LoadConfigBundleAttribute::LoadFilamentOnly,
+                ForwardCompatibilitySubstitutionRule::EnableSilent,
+                nullptr
+            );
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": OrcaFilamentLibrary loaded successfully";
+        } catch (const std::exception& e) {
+            // It's okay if OrcaFilamentLibrary doesn't exist, just log it
+            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not load OrcaFilamentLibrary: " << e.what();
+        } catch (...) {
+            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not load OrcaFilamentLibrary (unknown error)";
         }
         try {
             temp_preset_bundle.load_vendor_configs_from_json(preset_path, selected_vendor_id, PresetBundle::LoadConfigBundleAttribute::LoadSystem,

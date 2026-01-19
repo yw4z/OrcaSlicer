@@ -662,7 +662,7 @@ PresetsConfigSubstitutions PresetBundle::load_project_embedded_presets(std::vect
 
     //this->load_selections(config, "");
 
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, returned substitutions %1%")%substitutions.size();
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished project_embedded_presets, returned substitutions %1%")%substitutions.size();
     return substitutions;
 }
 
@@ -1484,7 +1484,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
                 // Load the other vendor configs, merge them with this PresetBundle.
                 // Report duplicate profiles.
                 PresetBundle other;
-                // transfer OrcaLibrary
+                // transfer OrcaFilamentLibrary
                 other.m_config_maps      = this->m_config_maps;
                 other.m_filament_id_maps = this->m_filament_id_maps;
                 append(substitutions, other.load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem, compatibility_rule, this).first);
@@ -1556,8 +1556,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
     for (auto &vendor_name : vendor_names) {
         try {
             if (first) {
-                // Load the config bundle, flatten it.
-                append(substitutions, load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadVendorOnly, compatibility_rule, nullptr).first);
+                append(substitutions, load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem, compatibility_rule, nullptr).first);
                 first = false;
             } else {
                 append(substitutions, load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadVendorOnly, compatibility_rule).first);
@@ -1614,7 +1613,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
                 // Load the other vendor configs, merge them with this PresetBundle.
                 // Report duplicate profiles.
                 PresetBundle other;
-                // transfer OrcaLibrary
+                // transfer OrcaFilamentLibrary
                 other.m_config_maps      = this->m_config_maps;
                 other.m_filament_id_maps = this->m_filament_id_maps;
                 append(substitutions, other.load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule).first);
