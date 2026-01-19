@@ -4173,9 +4173,8 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
                                 << ", configs.size(): " << configs.size()
                                 << ", filament_id_maps.size(): " << filament_id_maps.size();
 
-        // problem 1 data resets after defining variables because configs & filament_id_maps resets on each loop
-        this->m_config_maps      = std::move(configs);
-        this->m_filament_id_maps = std::move(filament_id_maps);
+        m_config_maps      = configs;
+        m_filament_id_maps = filament_id_maps;
         
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ 
             << ": After assignment, m_config_maps.size(): " << this->m_config_maps.size()
