@@ -1463,11 +1463,13 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
 
         // problem 2 OrcaFilamentLibrary was not on first place on list. insert fixes it
         vendor_name.erase(vendor_name.size() - 5); // Remove the .json suffix.
-        vendor_names.insert(                       // Use ORCA_FILAMENT_LIBRARY on beginning of the list
-            vendor_name == "OrcaFilamentLibrary" ? vendor_names.begin() : vendor_names.end(),
-            vendor_name
-        );
+        vendor_names.push_back(std::move(vendor_name));
     }
+
+    // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
+    auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
+    if (it != vendor_names.end() && it != vendor_names.begin())
+        std::rotate(vendor_names.begin(), it, it + 1);
 
     for (auto &vendor_name : vendor_names)
     {
@@ -1547,11 +1549,13 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
 
         // problem 2 OrcaFilamentLibrary was not on first place on list. insert fixes it
         vendor_name.erase(vendor_name.size() - 5); // Remove the .json suffix.
-        vendor_names.insert(                       // Use ORCA_FILAMENT_LIBRARY on beginning of the list
-            vendor_name == "OrcaFilamentLibrary" ? vendor_names.begin() : vendor_names.end(),
-            vendor_name
-        );
+        vendor_names.push_back(std::move(vendor_name));
     }
+
+    // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
+    auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
+    if (it != vendor_names.end() && it != vendor_names.begin())
+        std::rotate(vendor_names.begin(), it, it + 1);
 
     for (auto &vendor_name : vendor_names) {
         try {
@@ -1597,11 +1601,13 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
 
         // problem 2 OrcaFilamentLibrary was not on first place on list. insert fixes it
         vendor_name.erase(vendor_name.size() - 5); // Remove the .json suffix.
-        vendor_names.insert(                       // Use ORCA_FILAMENT_LIBRARY on beginning of the list
-            vendor_name == "OrcaFilamentLibrary" ? vendor_names.begin() : vendor_names.end(),
-            vendor_name
-        );
+        vendor_names.push_back(std::move(vendor_name));
     }
+
+    // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
+    auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
+    if (it != vendor_names.end() && it != vendor_names.begin())
+        std::rotate(vendor_names.begin(), it, it + 1);
 
     for (auto &vendor_name : vendor_names) {
         try {
