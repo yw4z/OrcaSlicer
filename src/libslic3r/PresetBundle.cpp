@@ -1466,9 +1466,12 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
         vendor_names.push_back(vendor_name);
     }
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
-    auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
-    if (it != vendor_names.end() && it != vendor_names.begin())
-        std::rotate(vendor_names.begin(), it, it + 1);
+    for (size_t i = 0; i < vendor_names.size(); ++ i) {
+        if (vendor_names[i] == ORCA_FILAMENT_LIBRARY) {
+            std::swap(vendor_names[0], vendor_names[i]);
+            break;
+        }
+    }
 
     for (auto &vendor_name : vendor_names)
     {
@@ -1479,7 +1482,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
             // Load the config bundle, flatten it.
             if (first) {
                 // Reset this PresetBundle and load the first vendor config.
-                append(substitutions, this->load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem, compatibility_rule, nullptr).first);
+                append(substitutions, this->load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem, compatibility_rule).first);
                 first = false;
             } else {
                 // Load the other vendor configs, merge them with this PresetBundle.
@@ -1538,7 +1541,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
     std::string                errors_cummulative;
     std::vector<std::string>   vendor_names;
     bool                       first = true;
-    for (auto& dir_entry : boost::filesystem::directory_iterator(dir)) {
+    for (auto &dir_entry : boost::filesystem::directory_iterator(dir)) {
         std::string vendor_file = dir_entry.path().string();
         if (!Slic3r::is_json_file(vendor_file))
             continue;
@@ -1550,14 +1553,17 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
         vendor_names.push_back(std::move(vendor_name));
     }
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
-    auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
-    if (it != vendor_names.end() && it != vendor_names.begin())
-        std::rotate(vendor_names.begin(), it, it + 1);
+    for (size_t i = 0; i < vendor_names.size(); ++ i) {
+        if (vendor_names[i] == ORCA_FILAMENT_LIBRARY) {
+            std::swap(vendor_names[0], vendor_names[i]);
+            break;
+        }
+    }
 
     for (auto &vendor_name : vendor_names) {
         try {
             if (first) {
-                append(substitutions, load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem, compatibility_rule, nullptr).first);
+                append(substitutions, load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem, compatibility_rule).first);
                 first = false;
             } else {
                 append(substitutions, load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadVendorOnly, compatibility_rule).first);
@@ -1601,15 +1607,18 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
         vendor_names.push_back(std::move(vendor_name));
     }
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
-    auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
-    if (it != vendor_names.end() && it != vendor_names.begin())
-        std::rotate(vendor_names.begin(), it, it + 1);
+    for (size_t i = 0; i < vendor_names.size(); ++ i) {
+        if (vendor_names[i] == ORCA_FILAMENT_LIBRARY) {
+            std::swap(vendor_names[0], vendor_names[i]);
+            break;
+        }
+    }
 
     for (auto &vendor_name : vendor_names) {
         try {
             if (first) {
                 // Reset this PresetBundle and load the first vendor config.
-                append(substitutions, this->load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule, nullptr).first);
+                append(substitutions, this->load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule).first);
                 first = false;
             } else {
                 // Load the other vendor configs, merge them with this PresetBundle.
