@@ -3683,8 +3683,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     std::string root_file = path + "/" + vendor_name + ".json";
     //boost::nowide::ifstream ifs(root_file);
 
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": file_path root" << root_file;
-
     yyjson_read_err err;
     yyjson_doc *doc = yyjson_read_file(root_file.c_str(), 0, NULL, &err);
 
@@ -3757,8 +3755,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         machine_subfiles.clear();
         process_subfiles.clear();
     }
-
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": file_path sub" << machine_model_subfiles.size() << vendor_profile.name;
 
     //2) paste the machine model
     for (auto& machine_model : machine_model_subfiles)
@@ -3912,112 +3908,103 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         std::vector<std::string>  renamed_from;
         const DynamicPrintConfig* default_config = nullptr;
         std::string               reason;
-        try {
-            std::map<std::string, std::string> key_values;
-            substitution_context.substitutions.clear();
 
-            //parse the json elements
-            DynamicPrintConfig config_src;
-            std::string _renamed_from_str;
-            config_src.load_from_json(subfile, substitution_context, false, key_values, reason);
-            if (!reason.empty()) {
-                ++m_errors;
-                BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": load config file "<<subfile<<" Failed!";
-                return reason;
+        std::map<std::string, std::string> key_values;
+        substitution_context.substitutions.clear();
+
+        //parse the json elements
+        DynamicPrintConfig config_src;
+        std::string _renamed_from_str;
+        int result = config_src.load_from_json(subfile, substitution_context, false, key_values, reason);
+        if (!reason.empty()) {
+            ++m_errors;
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": load config file "<<subfile<<" Failed!";
+            return reason;
+        }
+        preset_name = key_values[BBL_JSON_KEY_NAME];
+        description = key_values[BBL_JSON_KEY_DESCRIPTION];
+        if(key_values.find(BBL_JSON_KEY_INSTANTIATION) == key_values.end()) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": Missing instantiation attribute for " << preset_name;
+            ++m_errors;
+        }
+        instantiation   = key_values[BBL_JSON_KEY_INSTANTIATION];
+        if(instantiation != "false" && instantiation != "true") {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": Missing instantiation attribute for " << preset_name;
+            ++m_errors;
+        }
+        auto setting_it = key_values.find(BBL_JSON_KEY_SETTING_ID);
+        if (setting_it != key_values.end())
+            setting_id = setting_it->second;
+        auto filament_it = key_values.find(BBL_JSON_KEY_FILAMENT_ID);
+        if (filament_it != key_values.end())
+            filament_id = filament_it->second;
+        //check whether it inherits other preset or not
+        auto it1 = key_values.find(BBL_JSON_KEY_INHERITS);
+        if (it1 != key_values.end()) {
+            inherits = it1->second;
+            auto it2 = config_maps.find(inherits);
+            default_config = nullptr;
+            if (it2 != config_maps.end())
+                default_config = &(it2->second);
+            if(default_config == nullptr && base_bundle != nullptr) {
+                auto base_it2 = base_bundle->m_config_maps.find(inherits);
+                if (base_it2 != base_bundle->m_config_maps.end())
+                    default_config = &(base_it2->second);
             }
-            preset_name = key_values[BBL_JSON_KEY_NAME];
-            description     = key_values[BBL_JSON_KEY_DESCRIPTION];
-            if(key_values.find(BBL_JSON_KEY_INSTANTIATION) == key_values.end())
-            {
-                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": Missing instantiation attribute for " << preset_name;
-                ++m_errors;
-            }
-            instantiation   = key_values[BBL_JSON_KEY_INSTANTIATION];
-            if(instantiation != "false" && instantiation != "true"){
-                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": Missing instantiation attribute for " << preset_name;
-                ++m_errors;
-            }
-            auto setting_it = key_values.find(BBL_JSON_KEY_SETTING_ID);
-            if (setting_it != key_values.end())
-                setting_id = setting_it->second;
-            auto filament_it = key_values.find(BBL_JSON_KEY_FILAMENT_ID);
-            if (filament_it != key_values.end())
-                filament_id = filament_it->second;
-            //check whether it inherits other preset or not
-            auto it1 = key_values.find(BBL_JSON_KEY_INHERITS);
-            if (it1 != key_values.end()) {
-                inherits = it1->second;
-                auto it2 = config_maps.find(inherits);
-                default_config = nullptr;
-                if (it2 != config_maps.end())
-                    default_config = &(it2->second);
-                if(default_config == nullptr && base_bundle != nullptr) {
-                    auto base_it2 = base_bundle->m_config_maps.find(inherits);
-                    if (base_it2 != base_bundle->m_config_maps.end())
-                        default_config = &(base_it2->second);
-                }
-                if (default_config != nullptr) {
-                    if (filament_id.empty() && (presets_collection->type() == Preset::TYPE_FILAMENT)) {
-                        auto filament_id_map_iter = filament_id_maps.find(inherits);
-                        if (filament_id_map_iter != filament_id_maps.end()) {
+            if (default_config != nullptr) {
+                if (filament_id.empty() && (presets_collection->type() == Preset::TYPE_FILAMENT)) {
+                    auto filament_id_map_iter = filament_id_maps.find(inherits);
+                    if (filament_id_map_iter != filament_id_maps.end()) {
+                        filament_id = filament_id_map_iter->second;
+                    }
+                    if (filament_id.empty() && base_bundle != nullptr) {
+                        auto filament_id_map_iter = base_bundle->m_filament_id_maps.find(inherits);
+                        if (filament_id_map_iter != base_bundle->m_filament_id_maps.end()) {
                             filament_id = filament_id_map_iter->second;
-                        }
-                        if (filament_id.empty() && base_bundle != nullptr) {
-                            auto filament_id_map_iter = base_bundle->m_filament_id_maps.find(inherits);
-                            if (filament_id_map_iter != base_bundle->m_filament_id_maps.end()) {
-                                filament_id = filament_id_map_iter->second;
-                            }
                         }
                     }
                 }
-                else {
-                    ++m_errors;
-                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": can not find inherits " << inherits << " for " << preset_name;
-                    // throw ConfigurationError(format("can not find inherits %1% for %2%", inherits, preset_name));
-                    reason = "Can not find inherits: " + inherits;
-                    return reason;
-                }
             }
             else {
-                if (presets_collection->type() == Preset::TYPE_PRINTER)
-                    default_config = &presets_collection->default_preset_for(config_src).config;
-                else
-                    default_config = &presets_collection->default_preset().config;
-            }
-            config = *default_config;
-            config.apply(config_src);
-            extend_default_config_length(config, true, *default_config);
-            if (instantiation == "false" && "Template" != vendor_name) {
-                // Report configuration fields, which are misplaced into a wrong group.
-                std::string incorrect_keys = Preset::remove_invalid_keys(config, *default_config);
-                if (!incorrect_keys.empty()) {
-                    ++m_errors;
-                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": The config " << subfile << " contains incorrect keys: " << incorrect_keys
-                                             << ", which were removed";
-                }
-
-                config_maps.emplace(preset_name, std::move(config));
-                if ((presets_collection->type() == Preset::TYPE_FILAMENT) && (!filament_id.empty()))
-                    filament_id_maps.emplace(preset_name, filament_id);
+                ++m_errors;
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": can not find inherits " << inherits << " for " << preset_name;
+                // throw ConfigurationError(format("can not find inherits %1% for %2%", inherits, preset_name));
+                reason = "Can not find inherits: " + inherits;
                 return reason;
             }
-            if (config.has("alias"))
-                alias_name = (dynamic_cast<const ConfigOptionString *>(config.option("alias")))->value;
-
-            if (key_values.find(ORCA_JSON_KEY_RENAMED_FROM) != key_values.end()) {
-                if (!unescape_strings_cstyle(key_values[ORCA_JSON_KEY_RENAMED_FROM], renamed_from)) {
-                    BOOST_LOG_TRIVIAL(error) << "Error in a Config \"" << path << "\": The preset \"" << preset_name
-                                             << "\" contains invalid \"renamed_from\" key, which is being ignored.";
-                }
-            }
-            Preset::normalize(config);
         }
-        catch(nlohmann::detail::parse_error &err) {
-            ++m_errors;
-            BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<< subfile <<" got a nlohmann::detail::parse_error, reason = " << err.what();
-            reason = std::string("json parse error") + err.what();
+        else {
+            if (presets_collection->type() == Preset::TYPE_PRINTER)
+                default_config = &presets_collection->default_preset_for(config_src).config;
+            else
+                default_config = &presets_collection->default_preset().config;
+        }
+        config = *default_config;
+        config.apply(config_src);
+        extend_default_config_length(config, true, *default_config);
+        if (instantiation == "false" && "Template" != vendor_name) {
+            // Report configuration fields, which are misplaced into a wrong group.
+            std::string incorrect_keys = Preset::remove_invalid_keys(config, *default_config);
+            if (!incorrect_keys.empty()) {
+                ++m_errors;
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": The config " << subfile << " contains incorrect keys: " << incorrect_keys
+                                         << ", which were removed";
+            }
+            config_maps.emplace(preset_name, std::move(config));
+            if ((presets_collection->type() == Preset::TYPE_FILAMENT) && (!filament_id.empty()))
+                filament_id_maps.emplace(preset_name, filament_id);
             return reason;
         }
+        if (config.has("alias"))
+            alias_name = (dynamic_cast<const ConfigOptionString *>(config.option("alias")))->value;
+
+        if (key_values.find(ORCA_JSON_KEY_RENAMED_FROM) != key_values.end()) {
+            if (!unescape_strings_cstyle(key_values[ORCA_JSON_KEY_RENAMED_FROM], renamed_from)) {
+                BOOST_LOG_TRIVIAL(error) << "Error in a Config \"" << path << "\": The preset \"" << preset_name
+                                         << "\" contains invalid \"renamed_from\" key, which is being ignored.";
+            }
+        }
+        Preset::normalize(config);
 
         // Report configuration fields, which are misplaced into a wrong group.
         std::string incorrect_keys = Preset::remove_invalid_keys(config, *default_config);

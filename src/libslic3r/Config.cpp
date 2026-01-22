@@ -855,8 +855,7 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
     if (!doc) {
         BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": failed to parse " << file 
                                  << " - code=" << err.code 
-                                 << ", msg=" << (err.msg ? err.msg : "(null)") 
-                                 << ", pos=" << err.pos;
+                                 << ", msg=" << (err.msg ? err.msg : "(null)");
         reason = std::string("yyjson parse error: ") + (err.msg ? err.msg : "unknown");
         return -1;
     }
@@ -883,17 +882,12 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
         const char *k = yyjson_get_str(key);
         if (!k) continue;  // safety
 
-        std::string key_str = k;
         //std::string lc_key = k;
         //boost::to_lower(lc_key);
-        //std::string_view key_sv(k);
-        //std::string lc_key;
-        //lc_key.reserve(key_sv.length());
-        //for (char c : key_sv) lc_key += std::tolower(c);
         std::string lc_key = k;
         for (char& c : lc_key) {if (c >= 'A' && c <= 'Z') c += 32;} // faster toLower with ASCII
 
-        // Metadata keys (case-insensitive)
+        // Metadata keys
         if (yyjson_is_str(val)){
             std::string v_str = yyjson_get_str(val);
             if (lc_key ==  BBL_JSON_KEY_VERSION) {
@@ -935,7 +929,7 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
             else if (lc_key == ORCA_JSON_KEY_RENAMED_FROM) {
                 key_values.emplace(ORCA_JSON_KEY_RENAMED_FROM, v_str);
             } else {
-                t_config_option_key opt_key = key_str;
+                t_config_option_key opt_key = k;
                 this->set_deserialize(opt_key, v_str, substitution_context);
 
                 // Special handling
@@ -961,7 +955,7 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
             }
         }
         else if (yyjson_is_arr(val)) {
-            t_config_option_key opt_key     = key_str;
+            t_config_option_key opt_key     = k;
             t_config_option_key opt_key_src = opt_key;
             std::string value_str;
             this->handle_legacy(opt_key, value_str);
@@ -1016,11 +1010,11 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
         }
         else {
             BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": unsupported JSON type for key '" 
-                                     << key_str << "' in " << file;
+                                     << k << "' in " << file;
         }
     }
 
-    // Post-processing (your original special logic)
+    // Post-processing
     if (!different_settings_append.empty()) {
         if (!new_support_style.empty()) {
             auto* opt = this->option<ConfigOptionEnum<SupportMaterialStyle>>("support_style", true);
