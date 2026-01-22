@@ -28,6 +28,8 @@
 //BBS: add json support
 #include "nlohmann/json.hpp"
 
+#include <yyjson/yyjson.h>
+
 using namespace nlohmann;
 
 //FIXME for GCodeFlavor and gcfMarlin (for forward-compatibility conversion)
@@ -801,7 +803,6 @@ ConfigSubstitutions ConfigBase::load_from_json(const std::string &file, ForwardC
 
 int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContext& substitution_context, bool load_inherits_to_config, std::map<std::string, std::string>& key_values, std::string& reason)
 {
-    json j;
     std::list<std::string> different_settings_append;
     std::string new_support_style;
     std::string is_infill_first;
@@ -810,197 +811,232 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
 
     CNumericLocalesSetter locales_setter;
 
-    std::function<bool(const json::const_iterator&, const char,const char,const bool,std::string&)> parse_str_arr = [&parse_str_arr](const json::const_iterator& it, const char single_sep,const char array_sep,const bool escape_string_style,std::string& value_str)->bool {
-        // must have consistent type name
-        std::string consistent_type;
-        for (auto iter = it.value().begin(); iter != it.value().end(); ++iter) {
-            if (consistent_type.empty())
-                consistent_type = iter.value().type_name();
-            else {
-                if (consistent_type != iter.value().type_name())
-                    return false;
-            }
-        }
+    // Recursive helper: convert yyjson array > semicolon/comma separated string
+    auto parse_str_arr = [&](auto&& self, yyjson_val *arr_val, char single_sep, char array_sep, bool escape_string_style, std::string& out) -> bool 
+    {
+        if (!yyjson_is_arr(arr_val)) return false;
 
         bool first = true;
-        for (auto iter = it.value().begin(); iter != it.value().end(); iter++) {
-            if (iter.value().is_array()) {
-                if (!first)
-                    value_str += array_sep;
-                else
-                    first = false;
-                bool success = parse_str_arr(iter, single_sep, array_sep,escape_string_style, value_str);
-                if (!success)
+        size_t idx, max;
+        yyjson_val *item;
+        yyjson_arr_foreach(arr_val, idx, max, item) {
+            if (yyjson_is_arr(item)) {
+                // nested array > recursive call
+                if (!first) out += array_sep;
+                first = false;
+                if (!self(self, item, single_sep, array_sep, escape_string_style, out))
                     return false;
             }
-            else if (iter.value().is_string()) {
-                if (!first)
-                    value_str += single_sep;
-                else
-                    first = false;
-                if (!escape_string_style)
-                    value_str += iter.value();
-                else {
-                    value_str += "\"";
-                    value_str += escape_string_cstyle(iter.value());
-                    value_str += "\"";
+            else if (yyjson_is_str(item)) {
+                if (!first) out += single_sep;
+                first = false;
+
+                const char *s = yyjson_get_str(item);
+                if (!escape_string_style) {
+                    out += s;
+                } else {
+                    out += '"';
+                    // Reuse your existing escape function (assumed available)
+                    out += escape_string_cstyle(s);
+                    out += '"';
                 }
             }
             else {
-                //should not happen
-                return false;
+                return false; // unsupported type in array
             }
         }
         return true;
-        };
+    };
 
-    try {
-        boost::nowide::ifstream ifs(file);
-        ifs >> j;
-        ifs.close();
+    // Parse file
+    yyjson_read_err err;
+    yyjson_doc *doc = yyjson_read_file(file.c_str(), 0, NULL, &err);
 
-        const ConfigDef* config_def = this->def();
-        if (config_def == nullptr) {
-            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": no config defs!";
-            return -1;
-        }
-        //parse the json elements
-        for (auto it = j.begin(); it != j.end(); it++) {
-            if (boost::iequals(it.key(),BBL_JSON_KEY_VERSION)) {
-                key_values.emplace(BBL_JSON_KEY_VERSION, it.value());
+    if (!doc) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": failed to parse " << file 
+                                 << " - code=" << err.code 
+                                 << ", msg=" << (err.msg ? err.msg : "(null)") 
+                                 << ", pos=" << err.pos;
+        reason = std::string("yyjson parse error: ") + (err.msg ? err.msg : "unknown");
+        return -1;
+    }
+
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    if (!yyjson_is_obj(root)) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": root is not an object in " << file;
+        reason = "Root is not a JSON object";
+        yyjson_doc_free(doc);
+        return -1;
+    }
+
+    const ConfigDef* config_def = this->def();
+    if (config_def == nullptr) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": no config defs!";
+        yyjson_doc_free(doc);
+        return -1;
+    }
+
+    // Iterate top-level key-value pairs
+    size_t idx, max;
+    yyjson_val *key, *val;
+    yyjson_obj_foreach(root, idx, max, key, val) {
+        const char *k = yyjson_get_str(key);
+        if (!k) continue;  // safety
+
+        std::string key_str = k;
+        //std::string lc_key = k;
+        //boost::to_lower(lc_key);
+        //std::string_view key_sv(k);
+        //std::string lc_key;
+        //lc_key.reserve(key_sv.length());
+        //for (char c : key_sv) lc_key += std::tolower(c);
+        std::string lc_key = k;
+        for (char& c : lc_key) {if (c >= 'A' && c <= 'Z') c += 32;} // faster toLower with ASCII
+
+        // Metadata keys (case-insensitive)
+        if (yyjson_is_str(val)){
+            std::string v_str = yyjson_get_str(val);
+            if (lc_key ==  BBL_JSON_KEY_VERSION) {
+                key_values.emplace(BBL_JSON_KEY_VERSION, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_IS_CUSTOM)) {
-                //skip it
+            else if (lc_key == BBL_JSON_KEY_IS_CUSTOM) {
+                // skip
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_NAME)) {
-                key_values.emplace(BBL_JSON_KEY_NAME, it.value());
-                if (it.value() == "project_settings")
+            else if (lc_key == BBL_JSON_KEY_NAME) {
+                std::string name = v_str;
+                key_values.emplace(BBL_JSON_KEY_NAME, name);
+                if (name == "project_settings")
                     is_project_settings = true;
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_URL)) {
-                key_values.emplace(BBL_JSON_KEY_URL, it.value());
+            else if (lc_key == BBL_JSON_KEY_URL) {
+                key_values.emplace(BBL_JSON_KEY_URL, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_TYPE)) {
-                key_values.emplace(BBL_JSON_KEY_TYPE, it.value());
+            else if (lc_key == BBL_JSON_KEY_TYPE) {
+                key_values.emplace(BBL_JSON_KEY_TYPE, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_SETTING_ID)) {
-                key_values.emplace(BBL_JSON_KEY_SETTING_ID, it.value());
+            else if (lc_key == BBL_JSON_KEY_SETTING_ID) {
+                key_values.emplace(BBL_JSON_KEY_SETTING_ID, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_FILAMENT_ID)) {
-                key_values.emplace(BBL_JSON_KEY_FILAMENT_ID, it.value());
+            else if (lc_key == BBL_JSON_KEY_FILAMENT_ID) {
+                key_values.emplace(BBL_JSON_KEY_FILAMENT_ID, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_FROM)) {
-                key_values.emplace(BBL_JSON_KEY_FROM, it.value());
+            else if (lc_key == BBL_JSON_KEY_FROM) {
+                key_values.emplace(BBL_JSON_KEY_FROM, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_DESCRIPTION)) {
-                key_values.emplace(BBL_JSON_KEY_DESCRIPTION, it.value());
+            else if (lc_key == BBL_JSON_KEY_DESCRIPTION) {
+                key_values.emplace(BBL_JSON_KEY_DESCRIPTION, v_str);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_INSTANTIATION)) {
-                key_values.emplace(BBL_JSON_KEY_INSTANTIATION, it.value());
+            else if (lc_key == BBL_JSON_KEY_INSTANTIATION) {
+                key_values.emplace(BBL_JSON_KEY_INSTANTIATION, v_str);
             }
-            else if (!load_inherits_to_config && boost::iequals(it.key(), BBL_JSON_KEY_INHERITS)) {
-                key_values.emplace(BBL_JSON_KEY_INHERITS, it.value());
-            } else if (boost::iequals(it.key(), ORCA_JSON_KEY_RENAMED_FROM)) {
-                key_values.emplace(ORCA_JSON_KEY_RENAMED_FROM, it.value());
+            else if (!load_inherits_to_config && lc_key == BBL_JSON_KEY_INHERITS) {
+                key_values.emplace(BBL_JSON_KEY_INHERITS, v_str);
+            }
+            else if (lc_key == ORCA_JSON_KEY_RENAMED_FROM) {
+                key_values.emplace(ORCA_JSON_KEY_RENAMED_FROM, v_str);
             } else {
-                t_config_option_key opt_key = it.key();
-                std::string value_str;
+                t_config_option_key opt_key = key_str;
+                this->set_deserialize(opt_key, v_str, substitution_context);
 
-                if (it.value().is_string()) {
-                    //bool test1 = (it.key() == std::string("end_gcode"));
-                    this->set_deserialize(opt_key, it.value(), substitution_context);
-                    //some logic for special values
-                    if (opt_key == "support_type") {
-                        //std::string new_value = dynamic_cast<ConfigOptionString*>(this->option(opt_key))->value;
-                        if (it.value() == "hybrid(auto)") {
-                            different_settings_append.push_back(opt_key);
-                            different_settings_append.push_back("support_style");
-                            new_support_style = "tree_hybrid";
-                        }
-                    } else if (opt_key == "wall_infill_order") {
-                        //BBS: check wall_infill order to decide if it be different and append to diff_setting_append
-                        if (it.value() == "outer wall/inner wall/infill" || it.value() == "infill/outer wall/inner wall" || it.value() == "inner-outer-inner wall/infill") {
-                            get_wall_sequence = "wall_seq_diff_to_system";
-                        }
-
-                        if (it.value() == "infill/outer wall/inner wall" || it.value() == "infill/inner wall/outer wall") {
-                            different_settings_append.push_back("is_infill_first");
-                            is_infill_first = "true";
-                        }
+                // Special handling
+                if (opt_key == "support_type") {
+                    if (v_str == "hybrid(auto)") {
+                        different_settings_append.push_back(opt_key);
+                        different_settings_append.push_back("support_style");
+                        new_support_style = "tree_hybrid";
                     }
                 }
-                else if (it.value().is_array()) {
-                    t_config_option_key opt_key_src = opt_key;
-                    this->handle_legacy(opt_key, value_str);
-                    if (opt_key.empty()) {
-                        //BBS: record these options
-                        substitution_context.unrecogized_keys.push_back(opt_key_src);
-                        continue;
+                else if (opt_key == "wall_infill_order") {
+                    if (v_str == "outer wall/inner wall/infill" || 
+                        v_str == "infill/outer wall/inner wall" || 
+                        v_str == "inner-outer-inner wall/infill") {
+                        get_wall_sequence = "wall_seq_diff_to_system";
                     }
-                    bool valid = true, first = true;
-                    const ConfigOptionDef* optdef = config_def->get(opt_key);
-                    if (optdef == nullptr) {
-                        // If we didn't find an option, look for any other option having this as an alias.
-                        for (const auto& opt : config_def->options) {
-                            for (const t_config_option_key& opt_key2 : opt.second.aliases) {
-                                if (opt_key2 == opt_key) {
-                                    opt_key = opt.first;
-                                    optdef = &opt.second;
-                                    break;
-                                }
-                            }
-                            if (optdef != nullptr)
-                                break;
-                        }
+                    if (v_str == "infill/outer wall/inner wall" || 
+                        v_str == "infill/inner wall/outer wall") {
+                        different_settings_append.push_back("is_infill_first");
+                        is_infill_first = "true";
                     }
-
-                    char single_sep = ',';
-                    char array_sep = '#';  // currenty not used
-                    bool escape_string_type = false;
-                    if (optdef) {
-                        switch (optdef->type)
-                        {
-                        case coStrings:
-                            escape_string_type = true;
-                            single_sep = ';';
-                            break;
-                        case coPointsGroups:
-                            single_sep = '#';
-                            break;
-                        default:
-                            break;
-                        }
-                    }
-
-                    // BBS: we only support 2 depth array
-                    valid = parse_str_arr(it, single_sep, array_sep,escape_string_type, value_str);
-                    if (!valid) {
-                        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": parse " << file << " error, invalid json array for " << it.key();
-                        break;
-                    }
-                    if (valid)
-                        this->set_deserialize(opt_key, value_str, substitution_context);
-                }
-                else {
-                    //should not happen
-                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<<file<<" error, invalid json type for " << it.key();
                 }
             }
         }
-        if (!different_settings_append.empty()) {
-            if (!new_support_style.empty()) {
-                ConfigOptionEnum<SupportMaterialStyle>* opt = this->option<ConfigOptionEnum<SupportMaterialStyle>>("support_style", true);
-                opt->value = smsTreeHybrid;
+        else if (yyjson_is_arr(val)) {
+            t_config_option_key opt_key     = key_str;
+            t_config_option_key opt_key_src = opt_key;
+            std::string value_str;
+            this->handle_legacy(opt_key, value_str);
+
+            if (opt_key.empty()) {
+                substitution_context.unrecogized_keys.push_back(opt_key_src);
+                continue;
             }
 
-            if (!is_infill_first.empty()) {
-                ConfigOptionBool *opt = this->option<ConfigOptionBool>("is_infill_first", true);
-                opt->value = true;
+            const ConfigOptionDef* optdef = config_def->get(opt_key);
+            if (!optdef) {
+                // Try alias lookup
+                for (const auto& o : config_def->options) {
+                    for (const auto& alias : o.second.aliases) {
+                            if (alias == opt_key) {
+                            opt_key = o.first;
+                            optdef = &o.second;
+                            break;
+                        }
+                    }
+                    if (optdef) break;
+                }
             }
 
-            if (is_project_settings) {
-                std::vector<std::string>& different_settings = this->option<ConfigOptionStrings>("different_settings_to_system", true)->values;
+            char single_sep = ',';
+            char array_sep  = '#';   // rarely used
+            bool escape_string_type = false;
+
+            if (optdef) {
+                switch (optdef->type) {
+                    case coStrings:
+                        escape_string_type = true;
+                        single_sep = ';';
+                        break;
+                    case coPointsGroups:
+                        single_sep = '#';
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            bool valid = parse_str_arr(parse_str_arr, val, single_sep, array_sep, escape_string_type, value_str);
+            if (!valid) {
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": invalid array structure for key '";// << it.key() << "' in " << file;
+                yyjson_doc_free(doc);
+                return -1;
+            }
+
+            if (!value_str.empty())
+                this->set_deserialize(opt_key, value_str, substitution_context);
+        }
+        else {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": unsupported JSON type for key '" 
+                                     << key_str << "' in " << file;
+        }
+    }
+
+    // Post-processing (your original special logic)
+    if (!different_settings_append.empty()) {
+        if (!new_support_style.empty()) {
+            auto* opt = this->option<ConfigOptionEnum<SupportMaterialStyle>>("support_style", true);
+            if (opt) opt->value = smsTreeHybrid;
+        }
+        if (!is_infill_first.empty()) {
+            auto* opt = this->option<ConfigOptionBool>("is_infill_first", true);
+            if (opt) opt->value = true;
+        }
+
+        if (is_project_settings) {
+            auto* diff_opt = this->option<ConfigOptionStrings>("different_settings_to_system", true);
+            if (diff_opt) {
+                std::vector<std::string>& different_settings = diff_opt->values;
                 size_t size = different_settings.size();
+
                 if (size == 0) {
                     size = this->option<ConfigOptionStrings>("filament_settings_id")->values.size() + 2;
                     different_settings.resize(size);
@@ -1008,89 +1044,61 @@ int ConfigBase::load_from_json(const std::string &file, ConfigSubstitutionContex
 
                 std::vector<bool> is_first(size, false);
                 std::vector<std::vector<std::string>> original_diffs(size);
-                for (int index = 0; index < size; index++)
-                {
-                    if (different_settings[index].empty()) {
-                        is_first[index] = true;
-                    }
-                    else {
-                        // remove unneeded key
+
+                for (size_t i = 0; i < size; ++i) {
+                    if (different_settings[i].empty()) {
+                        is_first[i] = true;
+                    } else {
                         if (get_wall_sequence.empty()) {
-                            std::string wall_sqe_string = "wall_sequence";
-                            int pos=different_settings[index].find(wall_sqe_string);
-
-                            if (pos != different_settings[index].npos) {
-                                int erase_len = wall_sqe_string.size();
-                                if (pos + erase_len < different_settings[index].size() && different_settings[index][pos + erase_len] == ';')
-                                    erase_len++;
-                                different_settings[index].erase(pos, erase_len);
+                            std::string wall_seq = "wall_sequence";
+                            size_t pos = different_settings[i].find(wall_seq);
+                            if (pos != std::string::npos) {
+                                size_t len = wall_seq.size();
+                                if (pos + len < different_settings[i].size() && different_settings[i][pos + len] == ';')
+                                    ++len;
+                                different_settings[i].erase(pos, len);
                             }
-
                         }
-
-                        if (different_settings[index].empty()) {
-                            is_first[index] = true;
+                        if (different_settings[i].empty()) {
+                            is_first[i] = true;
                             continue;
                         }
-
-                        Slic3r::unescape_strings_cstyle(different_settings[index], original_diffs[index]);
+                        Slic3r::unescape_strings_cstyle(different_settings[i], original_diffs[i]);
                     }
                 }
 
-                for (auto diff_key : different_settings_append)
-                {
-                    //get the index in the group
+                for (const auto& diff_key : different_settings_append) {
                     int index = 0;
-                    bool need_insert = true;
-                    if (diff_key == "support_type")
-                        index = 0;
-                    else if (diff_key == "support_style")
-                        index = 0;
-                    else if (diff_key == "is_infill_first")
+                    if (diff_key == "support_type" || diff_key == "support_style" || diff_key == "is_infill_first")
                         index = 0;
 
-                    //check whether exist firstly
+                    bool need_insert = true;
                     if (!original_diffs[index].empty()) {
-                        for (int j = 0; j < original_diffs[index].size(); j++) {
-                            if (original_diffs[index][j] == diff_key) {
+                        for (const auto& existing : original_diffs[index]) {
+                            if (existing == diff_key) {
                                 need_insert = false;
                                 break;
                             }
                         }
                     }
-                    if (!need_insert)
-                        continue;
+                    if (!need_insert) continue;
 
-                    //insert this key
                     if (!is_first[index])
                         different_settings[index] += ";";
                     else
                         is_first[index] = false;
+
                     different_settings[index] += diff_key;
                 }
             }
         }
-        
-        // Do legacy conversion on a completely loaded dictionary.
-        // Perform composite conversions, for example merging multiple keys into one key.
-        this->handle_legacy_composite();
-        return 0;
     }
-    catch (const std::ifstream::failure &err)  {
-        BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<<file<<" got a ifstream error, reason = " << err.what();
-        reason = std::string("ifstreamError: ") + err.what();
-        //throw ConfigurationError(format("Failed loading configuration file \"%1%\": %2%", file, e.what()));
-    }
-    catch(nlohmann::detail::parse_error &err) {
-        BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<<file<<" got a nlohmann::detail::parse_error, reason = " << err.what();
-        reason = std::string("JsonParseError: ") + err.what();
-        //throw ConfigurationError(format("Failed loading configuration file \"%1%\": %2%", file, err.what()));
-    }
-    catch(std::exception &err) {
-        BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<<file<<" got a generic exception, reason = " << err.what();
-        reason = std::string("std::exception: ") + err.what();
-    }
-    return -1;
+
+    // Legacy composite handling (unchanged)
+    this->handle_legacy_composite();
+
+    yyjson_doc_free(doc);
+    return 0;
 }
 
 ConfigSubstitutions ConfigBase::load_from_ini(const std::string &file, ForwardCompatibilitySubstitutionRule compatibility_rule)

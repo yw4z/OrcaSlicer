@@ -504,6 +504,8 @@ add_library(libslic3r_cgal STATIC
 )
 target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
+target_link_libraries(libslic3r PRIVATE yyjson::yyjson)
+
 # Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
 # (-frounding-math) still propagate to dependent libs which is not desired.
 get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)

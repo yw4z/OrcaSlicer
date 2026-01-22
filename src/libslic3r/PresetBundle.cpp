@@ -9,6 +9,8 @@
 #include "format.hpp"
 #include "libslic3r_version.h"
 
+#include <yyjson/yyjson.h>
+
 #include <algorithm>
 #include <set>
 #include <fstream>
@@ -24,6 +26,9 @@
 #include <boost/locale.hpp>
 #include <boost/log/trivial.hpp>
 #include <miniz/miniz.h>
+
+#include <chrono>
+#include <iostream>
 
 // Mark string for localization and translate.
 #define L(s) Slic3r::I18N::translate(s)
@@ -430,6 +435,7 @@ void PresetBundle::copy_files(const std::string& from)
 PresetsConfigSubstitutions PresetBundle::load_presets(AppConfig &config, ForwardCompatibilitySubstitutionRule substitution_rule,
                                                       const PresetPreferences& preferred_selection/* = PresetPreferences()*/)
 {
+    auto start = std::chrono::steady_clock::now();
     // First load the vendor specific system presets.
     PresetsConfigSubstitutions substitutions;
     std::string errors_cummulative;
@@ -454,6 +460,14 @@ PresetsConfigSubstitutions PresetBundle::load_presets(AppConfig &config, Forward
     this->load_selections(config, preferred_selection);
 
     set_calibrate_printer("");
+
+    auto end = std::chrono::steady_clock::now();
+
+    BOOST_LOG_TRIVIAL(fatal) 
+              << "load_presets user Time: " 
+              << std::chrono::duration<double, std::milli>(end - start).count() 
+              << " ms";
+			  
 
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" finished, returned substitutions %1%")%substitutions.size();
@@ -869,7 +883,6 @@ PresetsConfigSubstitutions PresetBundle::load_user_presets(std::string user, For
     this->update_compatible(PresetSelectCompatibleType::Never);
 
     set_calibrate_printer("");
-
     return PresetsConfigSubstitutions();
 }
 
@@ -1434,6 +1447,7 @@ void PresetBundle::remove_users_preset(AppConfig &config, std::map<std::string, 
 //BBS: add json related logic, load system presets from json
 std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_presets_from_json(ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
+    auto start = std::chrono::steady_clock::now();
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" enter, compatibility_rule %1%")%compatibility_rule;
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
@@ -1517,6 +1531,13 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
 	}
 
 	this->update_system_maps();
+
+    auto end = std::chrono::steady_clock::now();
+
+    BOOST_LOG_TRIVIAL(fatal) 
+              << "load_system_presets_from_json Time: " 
+              << std::chrono::duration<double, std::milli>(end - start).count() 
+              << " ms";
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%")%errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
@@ -1524,6 +1545,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
 
 std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_models_from_json(ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
+    auto start = std::chrono::steady_clock::now();
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" enter, compatibility_rule %1%") % compatibility_rule;
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
         // Loading system presets, don't log substitutions.
@@ -1552,12 +1574,20 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
         }
     }
 
+    auto end = std::chrono::steady_clock::now();
+
+    BOOST_LOG_TRIVIAL(fatal) 
+              << "load_system_models_from_json Time: " 
+              << std::chrono::duration<double, std::milli>(end - start).count() 
+              << " ms";
+
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%") % errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
 }
 
 std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_filaments_json(ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
+    auto start = std::chrono::steady_clock::now();
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" enter, compatibility_rule %1%") % compatibility_rule;
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
         // Loading system presets, don't log substitutions.
@@ -1602,6 +1632,13 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
             }
         }
     }
+
+    auto end = std::chrono::steady_clock::now();
+
+    BOOST_LOG_TRIVIAL(fatal) 
+              << "load_system_filaments_json Time: " 
+              << std::chrono::duration<double, std::milli>(end - start).count() 
+              << " ms";
 
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%") % errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
@@ -3589,94 +3626,131 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
 
     // 1) load the vroot json and construct the vendor profile
     VendorProfile vendor_profile(vendor_name);
-    std::string root_file = path + "/" + vendor_name + ".json";
     std::vector<std::pair<std::string, std::string>> machine_model_subfiles;
     std::vector<std::pair<std::string, std::string>> process_subfiles;
     std::vector<std::pair<std::string, std::string>> filament_subfiles;
     std::vector<std::pair<std::string, std::string>> machine_subfiles;
-    auto get_name_and_subpath = [this](json::iterator& it, std::vector<std::pair<std::string, std::string>>& subfile_map) {
-        if (it.value().is_array()) {
-            for (auto iter1 = it.value().begin(); iter1 != it.value().end(); iter1++) {
-                if (iter1.value().is_object()) {
-                    std::string name, subpath;
-                    for (auto iter2 = iter1.value().begin(); iter2 != iter1.value().end(); iter2++) {
-                        if (iter2.value().is_string()) {
-                            if (boost::iequals(iter2.key(), BBL_JSON_KEY_NAME)) {
-                                name = iter2.value();
-                            } else if (boost::iequals(iter2.key(), BBL_JSON_KEY_SUB_PATH)) {
-                                subpath = iter2.value();
-                            }
-                        }
-                        else {
-                            ++m_errors;
-                            BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": invalid value type for " << iter2.key();
-                        }
-                    }
-                    if (!name.empty() && !subpath.empty())
-                        subfile_map.push_back(std::make_pair(name, subpath));
-                } else {
+    auto get_name_and_subpath = [this](yyjson_val *arr_val, std::vector<std::pair<std::string, std::string>>& subfile_map) {
+        if (!yyjson_is_arr(arr_val)) {
+            ++m_errors;
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": expected array for subfiles"; // ": invalid type for " << it.key();
+            return;
+        }
+        size_t a_idx, a_max;
+        yyjson_val *item;
+        yyjson_arr_foreach(arr_val, a_idx, a_max, item) {
+            if (!yyjson_is_obj(item)) {
+                ++m_errors;
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": expected object in array";
+                continue;
+            }
+
+            std::string name, subpath;
+
+            size_t i_idx, i_max;
+            yyjson_val *key_val, *val_val;
+            yyjson_obj_foreach(item, i_idx, i_max, key_val, val_val) {
+                if (!yyjson_is_str(key_val) || !yyjson_is_str(val_val)) {
                     ++m_errors;
-                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": invalid type for " << iter1.key();
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": invalid key/value type in subfile object";
+                    continue;
+                }
+
+                const char *k = yyjson_get_str(key_val);
+                const char *v = yyjson_get_str(val_val);
+                std::string lc_k = k;
+                //boost::to_lower(lc_k);
+                for (char& c : lc_k) {if (c >= 'A' && c <= 'Z') c += 32;}
+
+                if (lc_k == BBL_JSON_KEY_NAME) {
+                    name = v;
+                } else if (lc_k ==  BBL_JSON_KEY_SUB_PATH) {
+                    subpath = v;
                 }
             }
-        } else {
-            ++m_errors;
-            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": invalid type for " << it.key();
+
+            if (!name.empty() && !subpath.empty()) {
+                subfile_map.emplace_back(name, subpath);
+            } else {
+                ++m_errors;
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": missing name or subpath in subfile object";
+            }
         }
     };
-    try {
-        boost::nowide::ifstream ifs(root_file);
-        json j;
-        ifs >> j;
-        //parse the json elements
-        for (auto it = j.begin(); it != j.end(); it++) {
-            if (boost::iequals(it.key(), BBL_JSON_KEY_VERSION)) {
-                //get version
-                std::string version_str = it.value();
+
+    std::string lc_key , val;
+
+    std::string root_file = path + "/" + vendor_name + ".json";
+    //boost::nowide::ifstream ifs(root_file);
+
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": file_path root" << root_file;
+
+    yyjson_read_err err;
+    yyjson_doc *doc = yyjson_read_file(root_file.c_str(), 0, NULL, &err);
+
+    if (!doc) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": failed to parse " << root_file
+                                 << " (code " << err.code << "): " << err.msg;
+        throw ConfigurationError((boost::format("Failed loading configuration file %1%: %2%\nSuggest cleaning the directory %3% firstly")
+                                 % root_file % err.msg % path).str());
+    }
+
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    if (!root || !yyjson_is_obj(root)) {
+        yyjson_doc_free(doc);
+        ++m_errors;
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": root is not an object in " << root_file;
+        throw ConfigurationError("Invalid vendor root JSON structure");
+    }
+
+    size_t idx, max;
+    yyjson_val *key_val, *val_val;
+    yyjson_obj_foreach(root, idx, max, key_val, val_val) {
+        if (!yyjson_is_str(key_val)) continue;
+
+        lc_key = yyjson_get_str(key_val);
+        //boost::to_lower(lc_key);
+        for (char& c : lc_key) {if (c >= 'A' && c <= 'Z') c += 32;} // faster toLower with ASCII
+
+        if (yyjson_is_str(val_val)) {
+            val = yyjson_get_str(val_val);
+
+            if (lc_key == BBL_JSON_KEY_VERSION){
+                std::string version_str = val;
                 auto config_version = Semver::parse(version_str);
-                if (! config_version) {
+                if (!config_version) {
+                    yyjson_doc_free(doc);
                     throw ConfigurationError((boost::format("vendor %1%'s config version: %2% invalid\nSuggest cleaning the directory %3% firstly")
-                        % vendor_name % version_str % path).str());
-                } else {
-                    vendor_profile.config_version = std::move(*config_version);
+                                              % vendor_name % version_str % path).str());
                 }
+                vendor_profile.config_version = std::move(*config_version);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_URL)) {
-                //get url
-                vendor_profile.config_update_url = it.value();
+            else if (lc_key == BBL_JSON_KEY_URL){
+                vendor_profile.config_update_url = val;
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_DESCRIPTION)) {
-                //get description
-                BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< ": parse "<<root_file<<", got description:  " << it.value();
+            else if (lc_key == BBL_JSON_KEY_DESCRIPTION){
+                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": parse " << root_file << ", got description: " << val;
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_NAME)) {
-                //get name
-                vendor_profile.name = it.value();
+            else if (lc_key == BBL_JSON_KEY_NAME){
+                vendor_profile.name = val;
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_MACHINE_MODEL_LIST)) {
-                //get machine model list
-                get_name_and_subpath(it, machine_model_subfiles);
+        }
+        else if (yyjson_is_arr(val_val)) {
+            if (lc_key == BBL_JSON_KEY_MACHINE_MODEL_LIST) {
+                get_name_and_subpath(val_val, machine_model_subfiles);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_PROCESS_LIST)) {
-                //get process list
-                get_name_and_subpath(it, process_subfiles);
+            else if (lc_key == BBL_JSON_KEY_PROCESS_LIST) {
+                get_name_and_subpath(val_val, process_subfiles);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_FILAMENT_LIST)) {
-                //get filament list
-                get_name_and_subpath(it, filament_subfiles);
+            else if (lc_key == BBL_JSON_KEY_FILAMENT_LIST) {
+                get_name_and_subpath(val_val, filament_subfiles);
             }
-            else if (boost::iequals(it.key(), BBL_JSON_KEY_MACHINE_LIST)) {
-                //get machine list
-                get_name_and_subpath(it, machine_subfiles);
+            else if (lc_key == BBL_JSON_KEY_MACHINE_LIST) {
+                get_name_and_subpath(val_val, machine_subfiles);
             }
         }
     }
-    catch(nlohmann::detail::parse_error &err) {
-        BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<<root_file<<" got a nlohmann::detail::parse_error, reason = " << err.what();
-        throw ConfigurationError((boost::format("Failed loading configuration file %1%: %2%\nSuggest cleaning the directory %3% firstly")
-                %root_file %err.what() % path).str());
-        //goto __error_process;
-    }
+    yyjson_doc_free(doc);
 
     if (flags.has(LoadConfigBundleAttribute::LoadFilamentOnly)) {
         machine_model_subfiles.clear();
@@ -3684,113 +3758,126 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         process_subfiles.clear();
     }
 
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": file_path sub" << machine_model_subfiles.size() << vendor_profile.name;
+
     //2) paste the machine model
     for (auto& machine_model : machine_model_subfiles)
-    {
-        std::string subfile = path + "/" + vendor_name + "/" + machine_model.second;
+    {       
         VendorProfile::PrinterModel model;
         model.id = machine_model.first;
-        try {
-            boost::nowide::ifstream ifs(subfile);
-            json j;
-            ifs >> j;
-            //parse the json elements
-            for (auto it = j.begin(); it != j.end(); it++) {
-                if (boost::iequals(it.key(), BBL_JSON_KEY_VERSION)) {
-                    //get version
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_URL)) {
-                    //get url
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_NAME)) {
-                    //get name
-                    model.name = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_MODEL_ID)) {
-                    //get model_id
-                    model.model_id = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_NOZZLE_DIAMETER)) {
-                    //get nozzle diameter
-                    std::string nozzle_diameters = it.value();
-                    std::vector<std::string> variants;
-                    if (Slic3r::unescape_strings_cstyle(nozzle_diameters, variants)) {
-                        for (const std::string &variant_name : variants) {
-                            if (model.variant(variant_name) == nullptr)
-                                model.variants.emplace_back(VendorProfile::PrinterVariant(variant_name));
-                        }
-                    } else {
-                        ++m_errors;
-                        BOOST_LOG_TRIVIAL(error)<< __FUNCTION__ << boost::format(": invalid nozzle_diameters %1% for Vendor %1%") % nozzle_diameters % vendor_name;
+
+        std::string subfile = path + "/" + vendor_name + "/" + machine_model.second;
+        //boost::nowide::ifstream ifs(subfile);
+
+        yyjson_read_err sub_err;
+        yyjson_doc *sub_doc = yyjson_read_file(subfile.c_str(), 0, NULL, &err);
+        if (!sub_doc) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": failed to parse " << subfile
+                                     << " (code " << sub_err.code << "): " << sub_err.msg;
+            throw ConfigurationError((boost::format("Failed loading configuration file %1%: %2%\nSuggest cleaning the directory %3% firstly")
+                                      % subfile % sub_err.msg % path).str());
+        }
+
+        yyjson_val *sub_root = yyjson_doc_get_root(sub_doc);
+        if (!sub_root || !yyjson_is_obj(sub_root)) {
+            yyjson_doc_free(sub_doc);
+            ++m_errors;
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": root not object in " << subfile;
+            continue;
+        }
+
+        yyjson_obj_foreach(sub_root, idx, max, key_val, val_val) {
+            if (!yyjson_is_str(key_val) || !yyjson_is_str(val_val)) continue;
+
+            lc_key = yyjson_get_str(key_val);
+            //boost::to_lower(lc_key);
+            for (char& c : lc_key) {if (c >= 'A' && c <= 'Z') c += 32;} // faster toLower with ASCII
+
+            val = yyjson_get_str(val_val);
+
+            if (lc_key == BBL_JSON_KEY_NAME) {
+                model.name = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_MODEL_ID) {
+                model.model_id = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_NOZZLE_DIAMETER) {
+                std::string nozzle_diameters = val;
+                std::vector<std::string> variants;
+                if (Slic3r::unescape_strings_cstyle(nozzle_diameters, variants)) {
+                    for (const std::string &variant_name : variants) {
+                        if (model.variant(variant_name) == nullptr)
+                            model.variants.emplace_back(VendorProfile::PrinterVariant(variant_name));
                     }
+                } else {
+                    ++m_errors;
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": invalid nozzle_diameters %1% for Vendor %2%")
+                                             % nozzle_diameters % vendor_name;
                 }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_PRINTER_TECH)) {
-                    //get printer tech
-                    if (boost::algorithm::starts_with(it.value(), "SL"))
-                        model.technology = ptSLA;
-                    else
-                        model.technology = ptFFF;
+            }
+            else if (lc_key == BBL_JSON_KEY_PRINTER_TECH) {
+                std::string tech = val;
+                if (boost::algorithm::starts_with(tech, "SL"))
+                    model.technology = ptSLA;
+                else
+                    model.technology = ptFFF;
+            }
+            else if (lc_key == BBL_JSON_KEY_FAMILY) {
+                model.family = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_BED_MODEL) {
+                model.bed_model = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_BOTTOM_TEXTURE_END_NAME) {
+                model.bottom_texture_end_name = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_USE_DOUBLE_EXTRUDER_DEFAULT_TEXTURE) {
+                model.use_double_extruder_default_texture = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_BOTTOM_TEXTURE_RECT) {
+                model.bottom_texture_rect = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_MIDDLE_TEXTURE_RECT) {
+                model.middle_texture_rect = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_IMAGE_BED_TYPE) {
+                model.image_bed_type = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_BED_TEXTURE) {
+                model.bed_texture = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_HOTEND_MODEL) {
+                model.hotend_model = val;
+            }
+            else if (lc_key == BBL_JSON_KEY_DEFAULT_MATERIALS) {
+                std::string field = val;
+                if (Slic3r::unescape_strings_cstyle(field, model.default_materials)) {
+                    Slic3r::sort_remove_duplicates(model.default_materials);
+                    if (!model.default_materials.empty() && model.default_materials.front().empty())
+                        model.default_materials.erase(model.default_materials.begin());
+                } else {
+                    ++m_errors;
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": invalid default_materials %1% for Vendor %2%")
+                                             % field % vendor_name;
                 }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_FAMILY)) {
-                    //get family
-                    model.family = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_BED_MODEL)) {
-                    //get bed model
-                    model.bed_model = it.value();
-                } else if (boost::iequals(it.key(), BBL_JSON_KEY_BOTTOM_TEXTURE_END_NAME)) {
-                    model.bottom_texture_end_name = it.value();
-                } else if (boost::iequals(it.key(), BBL_JSON_KEY_USE_DOUBLE_EXTRUDER_DEFAULT_TEXTURE)) {
-                    model.use_double_extruder_default_texture = it.value();
-                } else if (boost::iequals(it.key(), BBL_JSON_KEY_BOTTOM_TEXTURE_RECT)) {
-                    model.bottom_texture_rect = it.value();
-                } else if (boost::iequals(it.key(), BBL_JSON_KEY_MIDDLE_TEXTURE_RECT)) {
-                    model.middle_texture_rect = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_IMAGE_BED_TYPE)) {
-                    model.image_bed_type = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_BED_TEXTURE)) {
-                    //get bed texture
-                    model.bed_texture = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_HOTEND_MODEL)) {
-                    model.hotend_model = it.value();
-                }
-                else if (boost::iequals(it.key(), BBL_JSON_KEY_DEFAULT_MATERIALS)) {
-                    //get machine list
-                    std::string default_materials_field = it.value();
-                    if (Slic3r::unescape_strings_cstyle(default_materials_field, model.default_materials)) {
-                    	Slic3r::sort_remove_duplicates(model.default_materials);
-                        if (! model.default_materials.empty() && model.default_materials.front().empty())
-                            // An empty material was inserted into the list of default materials. Remove it.
-                            model.default_materials.erase(model.default_materials.begin());
-                    } else {
-                        ++m_errors;
-                        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": invalid default_materials %1% for Vendor %1%") % default_materials_field % vendor_name;
-                    }
-                } else if (boost::iequals(it.key(), BBL_JSON_KEY_NOT_SUPPORT_BED_TYPE)) {
-                    // get machine list
-                    std::string not_support_bed_type_field = it.value();
-                    if (Slic3r::unescape_strings_cstyle(not_support_bed_type_field, model.not_support_bed_types)) {
-                        Slic3r::sort_remove_duplicates(model.not_support_bed_types);
-                        if (!model.not_support_bed_types.empty() && model.not_support_bed_types.front().empty())
-                            // An empty material was inserted into the list of default materials. Remove it.
-                            model.not_support_bed_types.erase(model.not_support_bed_types.begin());
-                    } else {
-                        BOOST_LOG_TRIVIAL(error) << __FUNCTION__
-                                                 << boost::format(": invalid not_support_bed_types %1% for Vendor %1%") % not_support_bed_type_field % vendor_name;
-                    }
+            }
+            else if (lc_key == BBL_JSON_KEY_NOT_SUPPORT_BED_TYPE) {
+                std::string field = val;
+                if (Slic3r::unescape_strings_cstyle(field, model.not_support_bed_types)) {
+                    Slic3r::sort_remove_duplicates(model.not_support_bed_types);
+                    if (!model.not_support_bed_types.empty() && model.not_support_bed_types.front().empty())
+                        model.not_support_bed_types.erase(model.not_support_bed_types.begin());
+                } else {
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__
+                                             << boost::format(": invalid not_support_bed_types %1% for Vendor %2%")
+                                             % field % vendor_name;
                 }
             }
         }
-        catch(nlohmann::detail::parse_error &err) {
-            BOOST_LOG_TRIVIAL(error) << __FUNCTION__<< ": parse "<< subfile <<" got a nlohmann::detail::parse_error, reason = " << err.what();
-            throw ConfigurationError((boost::format("Failed loading configuration file %1%: %2%\nSuggest cleaning the directory %3% firstly")
-                %subfile %err.what() % path).str());
-        }
 
-        if (! model.id.empty() && ! model.variants.empty())
+        yyjson_doc_free(sub_doc);
+
+        if (!model.id.empty() && !model.variants.empty())
             vendor_profile.models.push_back(std::move(model));
     }
 
