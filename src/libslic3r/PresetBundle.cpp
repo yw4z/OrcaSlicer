@@ -1451,8 +1451,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
 
     PresetsConfigSubstitutions  substitutions;
     std::string                 errors_cummulative;
-    bool                        first = true; // first one is always OrcaFilamentLibrary
-    std::vector<std::string>    vendor_names;
+    bool                        first = true;
+    std::vector<std::string> vendor_names;
     // store all vendor names in vendor_names
     for (auto& dir_entry : boost::filesystem::directory_iterator(dir)) {
         std::string vendor_file = dir_entry.path().string();
@@ -1537,7 +1537,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
     boost::filesystem::path    dir = (boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
     PresetsConfigSubstitutions substitutions;
     std::string                errors_cummulative;
-    bool                       first = true; // first one is always OrcaFilamentLibrary
+    bool                       first = true;
     std::vector<std::string>   vendor_names;
     // store all vendor names in vendor_names
     for (auto& dir_entry : boost::filesystem::directory_iterator(dir)) {
@@ -3905,20 +3905,16 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
                         default_config = &(base_it2->second);
                 }
 
-                // Problem 3 newer checks OrcaFilamentLibrary
-  
                 // Allow vendor filaments to inherit from OrcaFilamentLibrary profiles
                 if (!is_from_lib && default_config == nullptr && presets_collection->type() == Preset::TYPE_FILAMENT) {
                     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": Looking for inherits " << inherits  << " in OrcaFilamentLibrary";
         
                     auto orca_lib_it = this->m_config_maps.find(inherits);
                     if (orca_lib_it != this->m_config_maps.end()) {
-                        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Found inherits " << inherits 
-                                                << " for " << preset_name << " in OrcaFilamentLibrary";
-            
-                        // Copy the config from OrcaFilamentLibrary into local config_maps. Ensure reference remains valid throughout the parsing
                         auto insert_result = config_maps.emplace(inherits, orca_lib_it->second);
                         default_config = &(insert_result.first->second);
+                        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Found inherits " << inherits 
+                                                << " for " << preset_name << " in OrcaFilamentLibrary";
                     } else {
                         BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not find inherits " << inherits 
                                                    << " in OrcaFilamentLibrary m_config_maps";
@@ -3937,7 +3933,7 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
                                 filament_id = filament_id_map_iter->second;
                             }
                         }
-                        // Check this->m_filament_id_maps for OrcaFilamentLibrary
+                        // Check for OrcaFilamentLibrary
                         if (filament_id.empty()) {
                             auto orca_fid_it = this->m_filament_id_maps.find(inherits);
                             if (orca_fid_it != this->m_filament_id_maps.end()) {
