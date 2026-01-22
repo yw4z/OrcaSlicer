@@ -1465,7 +1465,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
         vendor_name.erase(vendor_name.size() - 5);
         vendor_names.push_back(vendor_name);
     }
-
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
     auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
     if (it != vendor_names.end() && it != vendor_names.begin())
@@ -1537,9 +1536,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
     boost::filesystem::path    dir = (boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
     PresetsConfigSubstitutions substitutions;
     std::string                errors_cummulative;
-    bool                       first = true;
     std::vector<std::string>   vendor_names;
-    // store all vendor names in vendor_names
+    bool                       first = true;
     for (auto& dir_entry : boost::filesystem::directory_iterator(dir)) {
         std::string vendor_file = dir_entry.path().string();
         if (!Slic3r::is_json_file(vendor_file))
@@ -1551,7 +1549,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
         vendor_name.erase(vendor_name.size() - 5); 
         vendor_names.push_back(std::move(vendor_name));
     }
-
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
     auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
     if (it != vendor_names.end() && it != vendor_names.begin())
@@ -1589,7 +1586,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
     boost::filesystem::path    dir = (boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
     PresetsConfigSubstitutions substitutions;
     std::string                errors_cummulative;
-    bool                       first = true; // first one is always OrcaFilamentLibrary
+    bool                       first = true;
     std::vector<std::string>   vendor_names;
 
     for (auto& dir_entry : boost::filesystem::directory_iterator(dir)) {
@@ -1603,7 +1600,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
         vendor_name.erase(vendor_name.size() - 5);
         vendor_names.push_back(std::move(vendor_name));
     }
-
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
     auto it = std::find(vendor_names.begin(), vendor_names.end(), ORCA_FILAMENT_LIBRARY);
     if (it != vendor_names.end() && it != vendor_names.begin())
@@ -4108,7 +4104,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
 
     std::map<std::string, DynamicPrintConfig> configs;
     std::map<std::string, std::string> filament_id_maps;
-
     //3.1) paste the process
     presets = &this->prints;
     configs.clear();
@@ -4130,7 +4125,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     configs.clear();
     filament_id_maps.clear();
     const auto is_orca_lib = vendor_name == ORCA_FILAMENT_LIBRARY;
-
     for (auto& subfile : filament_subfiles)
     {
         std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, configs, filament_id_maps, presets,
@@ -4143,7 +4137,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
             throw ConfigurationError((boost::format("Failed loading configuration file %1%\nSuggest cleaning the directory %2% firstly") % subfile_path % path).str());
         }
     }
-
     if (is_orca_lib) {
         m_config_maps      = configs;
         m_filament_id_maps = filament_id_maps;
