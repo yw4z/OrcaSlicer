@@ -456,7 +456,7 @@ PresetsConfigSubstitutions PresetBundle::load_presets(AppConfig &config, Forward
     set_calibrate_printer("");
 
     //BBS: add config related logs
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" finished load_presets, returned substitutions %1%")%substitutions.size();
+    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" finished, returned substitutions %1%")%substitutions.size();
     return substitutions;
 }
 
@@ -662,7 +662,7 @@ PresetsConfigSubstitutions PresetBundle::load_project_embedded_presets(std::vect
 
     //this->load_selections(config, "");
 
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished project_embedded_presets, returned substitutions %1%")%substitutions.size();
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, returned substitutions %1%")%substitutions.size();
     return substitutions;
 }
 
@@ -1461,9 +1461,9 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
 
         std::string vendor_name = dir_entry.path().filename().string();
 
-        // problem 2 OrcaFilamentLibrary was not on first place on list. insert fixes it
-        vendor_name.erase(vendor_name.size() - 5); // Remove the .json suffix.
-        vendor_names.push_back(std::move(vendor_name));
+        // Remove the .json suffix.
+        vendor_name.erase(vendor_name.size() - 5);
+        vendor_names.push_back(vendor_name);
     }
 
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
@@ -1519,7 +1519,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
 
 	this->update_system_maps();
     //BBS: add config related logs
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished system_presets, errors_cummulative %1%")%errors_cummulative;
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%")%errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
 }
 
@@ -1547,8 +1547,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
 
         std::string vendor_name = dir_entry.path().filename().string();
 
-        // problem 2 OrcaFilamentLibrary was not on first place on list. insert fixes it
-        vendor_name.erase(vendor_name.size() - 5); // Remove the .json suffix.
+        // Remove the .json suffix.
+        vendor_name.erase(vendor_name.size() - 5); 
         vendor_names.push_back(std::move(vendor_name));
     }
 
@@ -1571,7 +1571,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
         }
     }
 
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished system_models, errors_cummulative %1%") % errors_cummulative;
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%") % errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
 }
 
@@ -1591,7 +1591,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
     std::string                errors_cummulative;
     bool                       first = true; // first one is always OrcaFilamentLibrary
     std::vector<std::string>   vendor_names;
-    // store all vendor names in vendor_names
+
     for (auto& dir_entry : boost::filesystem::directory_iterator(dir)) {
         std::string vendor_file = dir_entry.path().string();
         if (!Slic3r::is_json_file(vendor_file))
@@ -1599,8 +1599,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
 
         std::string vendor_name = dir_entry.path().filename().string();
 
-        // problem 2 OrcaFilamentLibrary was not on first place on list. insert fixes it
-        vendor_name.erase(vendor_name.size() - 5); // Remove the .json suffix.
+        // Remove the .json suffix.
+        vendor_name.erase(vendor_name.size() - 5);
         vendor_names.push_back(std::move(vendor_name));
     }
 
@@ -1638,7 +1638,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
         }
     }
 
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished system_filaments, errors_cummulative %1%") % errors_cummulative;
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%") % errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
 }
 
@@ -3612,10 +3612,6 @@ void PresetBundle::load_config_file_config(const std::string &name_or_path, bool
 std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_from_json(
     const std::string &path, const std::string &vendor_name, LoadConfigBundleAttributes flags, ForwardCompatibilitySubstitutionRule compatibility_rule, const PresetBundle* base_bundle)
 {
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__
-        << ": Loading vendor: "            << vendor_name 
-        << ", m_config_maps size BEFORE: " << this->m_config_maps.size();
-
     // Enable substitutions for user config bundle, throw an exception when loading a system profile.
     ConfigSubstitutionContext  substitution_context { compatibility_rule };
     PresetsConfigSubstitutions substitutions;
@@ -3913,8 +3909,7 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
   
                 // Allow vendor filaments to inherit from OrcaFilamentLibrary profiles
                 if (!is_from_lib && default_config == nullptr && presets_collection->type() == Preset::TYPE_FILAMENT) {
-                    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": Looking for inherits " << inherits 
-                                             << " in OrcaFilamentLibrary, m_config_maps size: " << this->m_config_maps.size();
+                    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": Looking for inherits " << inherits  << " in OrcaFilamentLibrary";
         
                     auto orca_lib_it = this->m_config_maps.find(inherits);
                     if (orca_lib_it != this->m_config_maps.end()) {
@@ -3927,13 +3922,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
                     } else {
                         BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not find inherits " << inherits 
                                                    << " in OrcaFilamentLibrary m_config_maps";
-
-                        if (this->m_config_maps.size() < 50) { // Only log if reasonable size
-                            BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": Available configs in m_config_maps:";
-                            for (const auto& cfg : this->m_config_maps) {
-                                BOOST_LOG_TRIVIAL(debug) << "  - " << cfg.first;
-                            }
-                        }
                     }
                 }
     
@@ -4146,11 +4134,7 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     configs.clear();
     filament_id_maps.clear();
     const auto is_orca_lib = vendor_name == ORCA_FILAMENT_LIBRARY;
-    
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Processing filaments for " << vendor_name 
-                            << ", is_orca_lib: " << is_orca_lib 
-                            << ", filament_subfiles.size(): " << filament_subfiles.size();
-    
+
     for (auto& subfile : filament_subfiles)
     {
         std::string reason = parse_subfile(substitution_context, substitutions, flags, subfile, configs, filament_id_maps, presets,
@@ -4164,27 +4148,11 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         }
     }
 
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Finished processing filaments for " << vendor_name 
-                            << ", configs.size(): " << configs.size() 
-                            << ", filament_id_maps.size(): " << filament_id_maps.size();
-    
     if (is_orca_lib) {
-        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Setting m_config_maps and m_filament_id_maps for OrcaFilamentLibrary"
-                                << ", configs.size(): " << configs.size()
-                                << ", filament_id_maps.size(): " << filament_id_maps.size();
-
         m_config_maps      = configs;
         m_filament_id_maps = filament_id_maps;
-        
-        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ 
-            << ": After assignment, m_config_maps.size(): " << this->m_config_maps.size()
-            << ", m_filament_id_maps.size(): "              << this->m_filament_id_maps.size();
     }
-    
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ 
-        << ": Finished loading "          << vendor_name 
-        << ", m_config_maps size AFTER: " << this->m_config_maps.size();
-    
+
     //3.3) paste the printers
     presets = &this->printers;
     configs.clear();
@@ -4200,12 +4168,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
             throw ConfigurationError((boost::format("Failed loading configuration file %1%\nSuggest cleaning the directory %2% firstly") % subfile_path % path).str());
         }
     }
-
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__
-        << ": FINAL RETURN for "         << vendor_name
-        << ", is_orca_lib: "             << is_orca_lib 
-        << ", m_config_maps size: "      << this->m_config_maps.size()
-        << ", m_filament_id_maps size: " << this->m_filament_id_maps.size();
 
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(", finished, presets_loaded %1%")%presets_loaded;
