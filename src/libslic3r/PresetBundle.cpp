@@ -3869,6 +3869,21 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
                     if (base_it2 != base_bundle->m_config_maps.end())
                         default_config = &(base_it2->second);
                 }
+                // Check for OrcaFilamentLibrary. triggered when vendor if filament uses fdm_filament... but not exist on its folder
+                if (!is_from_lib && default_config == nullptr && presets_collection->type() == Preset::TYPE_FILAMENT) {
+                   BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ": Looking for inherits " << inherits  << " in OrcaFilamentLibrary";
+        
+                    auto orca_lib_it = this->m_config_maps.find(inherits);
+                    if (orca_lib_it != this->m_config_maps.end()) {
+                        auto insert_result = config_maps.emplace(inherits, orca_lib_it->second);
+                        default_config = &(insert_result.first->second);
+                        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Found inherits " << inherits 
+                                                << " for " << preset_name << " in OrcaFilamentLibrary";
+                    } else {
+                        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not find inherits " << inherits 
+                                                   << " in OrcaFilamentLibrary m_config_maps";
+                    }
+                }
                 if (default_config != nullptr) {
                     if (filament_id.empty() && (presets_collection->type() == Preset::TYPE_FILAMENT)) {
                         auto filament_id_map_iter = filament_id_maps.find(inherits);
@@ -3879,6 +3894,15 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
                             auto filament_id_map_iter = base_bundle->m_filament_id_maps.find(inherits);
                             if (filament_id_map_iter != base_bundle->m_filament_id_maps.end()) {
                                 filament_id = filament_id_map_iter->second;
+                            }
+                        }
+                        // Check for OrcaFilamentLibrary. triggered when vendor uses filaments from other brands with @base
+                        if (filament_id.empty()) {
+                            auto orca_fid_it = this->m_filament_id_maps.find(inherits);
+                            if (orca_fid_it != this->m_filament_id_maps.end()) {
+                                filament_id = orca_fid_it->second;
+                                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": Found filament_id for " << inherits 
+                                                        << " in OrcaFilamentLibrary: " << filament_id;
                             }
                         }
                     }
