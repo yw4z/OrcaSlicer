@@ -490,7 +490,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::PushStyleColor(ImGuiCol_ButtonActive      , ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
             
         const float main_wnd_height = ImGui::GetWindowHeight();
-        if (ImGui::Button(into_u8(properties_shown ? ImGui::FoldButtonIcon : ImGui::UnfoldButtonIcon).c_str(), ImVec2(24.f, 24.f))) {
+        if (ImGui::Button(into_u8(properties_shown ? ImGui::UnfoldButtonIcon : ImGui::FoldButtonIcon).c_str(), ImVec2(24.f, 24.f))) {
             properties_shown = !properties_shown;
             static float main_wnd_height_temp = ImGui::GetWindowHeight();
             static float first_click = true;
