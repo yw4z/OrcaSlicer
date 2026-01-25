@@ -308,7 +308,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGuiWrapper::COL_BUTTON_HOVERED);
         ImGui::PushStyleColor(ImGuiCol_Border   , ImVec4(.0f,.0f,.0f,.0f));
         ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f,1.0f,1.0f,0.6f));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * m_scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding , ImVec2(10.f, 10.f) * m_scale);
         ImGui::SetNextWindowBgAlpha(0.8f);
         imgui.begin(std::string("ToolPosition"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
         ImGui::AlignTextToFramePadding();
@@ -416,9 +417,9 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 static bool table_shown = false;
                 imgui.push_confirm_button_style();
                 const float table_btn_width = std::max(ImGui::CalcTextSize(_u8L("Hide table").c_str()).x, ImGui::CalcTextSize(_u8L("Show table").c_str()).x);
-                float btn_padding_x = 12.0f;
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 4.f);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , ImVec2(btn_padding_x, 4.f));
+                float btn_padding_x = 12.0f * m_scale;
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 4.f * m_scale);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , ImVec2(btn_padding_x, 4.f * m_scale));
                 ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(.5f, .5f));
                 if (imgui.button(table_shown ? _u8L("Hide table") : _u8L("Show table"), ImVec2(table_btn_width + btn_padding_x * 2.f, 0.f), actual_speed_exist))
                     table_shown = !table_shown;
@@ -430,7 +431,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 if (actual_speed_exist && table_shown) {
                     static float table_wnd_height = 0.0f;
                     const ImVec2 wnd_size = ImGui::GetWindowSize();
-                    imgui.set_next_window_pos(ImGui::GetWindowPos().x - 5.f /*+ wnd_size.x*/, static_cast<float>(canvas_height), ImGuiCond_Always, 1.0f, 1.0f);
+                    imgui.set_next_window_pos(ImGui::GetWindowPos().x - 5.f * m_scale /*+ wnd_size.x*/, static_cast<float>(canvas_height), ImGuiCond_Always, 1.0f, 1.0f);
                     ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f }, { -1.0f, wnd_size.y });
                     imgui.begin(std::string("ToolPositionTableWnd"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
@@ -481,17 +482,17 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
 
             ImGui::Spacing();
             ImGui::Separator();
-            ImGui::Spacing();
+            ImGui::Dummy({0, ImGui::GetStyle().FramePadding.y});
         }
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 3.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 3.f * m_scale);
         ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(.5f, .5f));
         ImGui::PushStyleColor(ImGuiCol_Button            , ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered     , ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive      , ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
-            
+         
         const float main_wnd_height = ImGui::GetWindowHeight();
-        if (ImGui::Button(into_u8(properties_shown ? ImGui::UnfoldButtonIcon : ImGui::FoldButtonIcon).c_str(), ImVec2(24.f, 24.f))) {
+        if (ImGui::Button(into_u8(properties_shown ? ImGui::UnfoldButtonIcon : ImGui::FoldButtonIcon).c_str(), ImVec2(24.f, 24.f) * m_scale)) {
             properties_shown = !properties_shown;
             static float main_wnd_height_temp = ImGui::GetWindowHeight();
             static float first_click = true;
@@ -506,6 +507,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
 
         ImGui::SameLine();
 
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().FramePadding.y); // aligns button with next group
+
         ImGui::BeginGroup(); // group contents to make information area more compact
 
         // ORCA Use colorized axes labels & reduce precision on big scaled prints
@@ -513,18 +516,20 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         auto precision = max_value > 9999 ? "%.1f" : max_value > 999 ? "%.2f" : "%.3f";
         const float axes_width = ImGui::CalcTextSize("X  999.999spc").x;
 
-        char xBuf[32]; char yBuf[32]; char zBuf[32];
+        char xBuf[32];
         ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X  ");
         ImGui::SameLine(0,0); // ignore item spacing
         sprintf(xBuf, precision, vertex.position[0]);
         ImGui::Text("%s", xBuf);
 
+        char yBuf[32];
         ImGui::SameLine(axes_width);
         ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y  ");
         ImGui::SameLine(0,0); // ignore item spacing
         sprintf(yBuf, precision, vertex.position[1]);
         ImGui::Text("%s", yBuf);
 
+        char zBuf[32];
         ImGui::SameLine(axes_width * 2);
         ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z  ");
         ImGui::SameLine(0,0); // ignore item spacing
@@ -602,15 +607,6 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
             ImGuiWrapper::text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
         }
 
-        // force extra frame to automatically update window size
-        const float width = ImGui::GetWindowWidth();
-        const size_t length = strlen(buf);
-        if (width != last_window_width || length != last_text_length) {
-            last_window_width = width;
-            last_text_length = length;
-            imgui.set_requires_extra_frame();
-        }
-
         ImGui::EndGroup();
 
         imgui.end();
@@ -618,26 +614,45 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
     }
     else {
         ImGuiWrapper& imgui = *wxGetApp().imgui();
-        const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
-        imgui.set_next_window_pos(0.5f * static_cast<float>(cnv_size.get_width()), static_cast<float>(cnv_size.get_height()), ImGuiCond_Always, 0.5f, 1.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        //const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
+        //imgui.set_next_window_pos(0.5f * static_cast<float>(cnv_size.get_width()), static_cast<float>(cnv_size.get_height()), ImGuiCond_Always, 0.5f, 1.0f);
+        imgui.set_next_window_pos(0.5f * static_cast<float>(canvas_width), static_cast<float>(canvas_height), ImGuiCond_Always, 0.5f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_Border   , ImVec4(.0f,.0f,.0f,.0f));
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f,1.0f,1.0f,0.6f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * m_scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding , ImVec2(10.f, 10.f) * m_scale);
         ImGui::SetNextWindowBgAlpha(0.8f);
         imgui.begin(std::string("ToolPosition"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
-        imgui.text_colored(ImGuiWrapper::COL_ORCA, _u8L("Tool position") + ":");
-        ImGui::SameLine();
-        char buf[1024];
-        const Vec3f position = m_world_position + m_world_offset + m_z_offset * Vec3f::UnitZ();
-        sprintf(buf, "X: %.3f, Y: %.3f, Z: %.3f", position.x(), position.y(), position.z());
-        ImGuiWrapper::text(std::string(buf));
 
-        // force extra frame to automatically update window size
-        const float width = ImGui::GetWindowWidth();
-        const size_t length = strlen(buf);
-        if (width != last_window_width || length != last_text_length) {
-            last_window_width = width;
-            last_text_length = length;
-            imgui.set_requires_extra_frame();
-        }
+        const Vec3f pos = m_world_position + m_world_offset + m_z_offset * Vec3f::UnitZ();
+
+        int  max_value = std::round(std::max(std::max(pos.x(), pos.y()),pos.z()));
+        auto precision = max_value > 9999 ? "%.1f" : max_value > 999 ? "%.2f" : "%.3f";
+        const float axes_width = ImGui::CalcTextSize("X  999.999spc").x;
+
+        char xBuf[32];
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X  ");
+        ImGui::SameLine(0,0); // ignore item spacing
+        sprintf(xBuf, precision, pos.x());
+        ImGui::Text("%s", xBuf);
+
+        char yBuf[32]; 
+        ImGui::SameLine(axes_width);
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y  ");
+        ImGui::SameLine(0,0); // ignore item spacing
+        sprintf(yBuf, precision, pos.y());
+        ImGui::Text("%s", yBuf);
+
+        char zBuf[32];
+        ImGui::SameLine(axes_width * 2);
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z  ");
+        ImGui::SameLine(0,0); // ignore item spacing
+        sprintf(zBuf, precision, pos.z());
+        ImGui::Text("%s", zBuf);
+
+        ImGui::SameLine(axes_width * 3);
+        ImGui::Dummy({0,0});
+
         imgui.end();
         ImGui::PopStyleVar();
     }
