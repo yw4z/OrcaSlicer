@@ -157,7 +157,7 @@ int GCodeViewer::SequentialView::ActualSpeedImguiWidget::plot(const char* label,
         const float y0 = y_range.first;
 
         const ImU32 grid_main_color = ImGui::GetColorU32(ImVec4(0.5f, 0.5f, 0.5f, 0.5f));
-        const ImU32 grid_secondary_color = ImGui::GetColorU32(ImVec4(0.0f, 0.0f, 0.5f, 0.5f));
+        const ImU32 grid_secondary_color = ImGui::GetColorU32(ImVec4(0.0f, 150.f / 255.0f, 136.0f / 255.f, 0.5f)); // ORCA color with opacity
 
         // horizontal levels
         for (const auto& [level, color] : levels) {
@@ -177,7 +177,7 @@ int GCodeViewer::SequentialView::ActualSpeedImguiWidget::plot(const char* label,
 
         // profiile
         const ImU32 col_base = ImGui::GetColorU32(ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-        const ImU32 col_hovered = ImGui::GetColorU32(ImGuiCol_PlotLinesHovered);
+        const ImU32 col_hovered = ImGui::GetColorU32(ImVec4(0.0f, 150.f / 255.0f, 136.0f / 255.f, 1.0f)); // ORCA color
         for (int n = 0; n < values_count - 1; ++n) {
             const ImVec2 tp1(ImSaturate((data[n].pos - x0) * inv_scale_x), 1.0f - ImSaturate((data[n].speed - y0) * inv_scale_y));
             const ImVec2 tp2(ImSaturate((data[n + 1].pos - x0) * inv_scale_x), 1.0f - ImSaturate((data[n + 1].speed - y0) * inv_scale_y));
@@ -306,7 +306,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_BUTTON_BACKGROUND);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGuiWrapper::COL_BUTTON_ACTIVE);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGuiWrapper::COL_BUTTON_HOVERED);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f,1.0f,1.0f,0.6f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
         ImGui::SetNextWindowBgAlpha(0.8f);
         imgui.begin(std::string("ToolPosition"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
         ImGui::AlignTextToFramePadding();
@@ -319,77 +320,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
             vertex = viewer->get_vertex_at(vertex_id);
         }
 
-        const bool is_extrusion = vertex.is_extrusion();
-        char buf[1024]; char valBuf[32];
-        sprintf(buf, "X: %.3f, Y: %.3f, Z: %.3f Speed: %.0f ", vertex.position[0], vertex.position[1], vertex.position[2], vertex.feedrate);
-        switch (view_type) {
-            case libvgcode::EViewType::Height: {
-                if (is_extrusion)
-                    sprintf(valBuf, "%.2f", vertex.height);
-                else
-                    sprintf(valBuf, "%s", NA_CSTR);
-                sprintf(buf, "%s %s%s", buf, _u8L("Height: ").c_str(), valBuf);
-                break;
-            }
-            case libvgcode::EViewType::Width: {
-                if (is_extrusion)
-                    sprintf(valBuf, "%.2f", vertex.width);
-                else
-                    sprintf(valBuf, "%s", NA_CSTR);
-                sprintf(buf, "%s %s%s", buf, _u8L("Width: ").c_str(), valBuf);
-                break;
-            }
-            case libvgcode::EViewType::VolumetricFlowRate: {
-                if (is_extrusion)
-                    sprintf(valBuf, "%.2f", vertex.volumetric_rate());
-                else
-                    sprintf(valBuf, "%s", NA_CSTR);
-                sprintf(buf, "%s %s%s", buf, _u8L("Flow: ").c_str(), valBuf);
-                break;
-            }
-            case libvgcode::EViewType::FanSpeed: {
-                sprintf(buf, "%s %s%.0f", buf, _u8L("Fan: ").c_str(), vertex.fan_speed);
-                break;
-            }
-            case libvgcode::EViewType::Temperature: {
-                sprintf(buf, "%s %s%.0f", buf, _u8L("Temperature: ").c_str(), vertex.temperature);
-                break;
-            }
-            case libvgcode::EViewType::LayerTimeLinear:
-            case libvgcode::EViewType::LayerTimeLogarithmic: {
-                sprintf(buf, "%s %s%.1f", buf, _u8L("Layer Time: ").c_str(), vertex.layer_duration);
-                break;
-            }
-            case libvgcode::EViewType::Tool: {
-                sprintf(buf, "%s %s%d", buf, _u8L("Tool: ").c_str(), vertex.extruder_id + 1);
-                break;
-            }
-            case libvgcode::EViewType::ColorPrint: {
-                sprintf(buf, "%s %s%d", buf, _u8L("Color: ").c_str(), vertex.color_id + 1);
-                break;
-            }
-            case libvgcode::EViewType::ActualVolumetricFlowRate: {
-                // Don't display the actual flow, since it only gives data for the end of a segment
-                // sprintf(buf, "%s %s%.2f", buf, _u8L("Actual Flow: ").c_str(), vertex.actual_volumetric_rate());
-                break;
-            }
-            case libvgcode::EViewType::ActualSpeed: {
-                sprintf(buf, "%s %s%.1f", buf, _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
-                break;
-            }
-
-            default:
-                break;
-            }
-        ImGuiWrapper::text(std::string(buf));
-        if (view_type == libvgcode::EViewType::FeatureType) {
-            ImGui::SameLine();
-            ImGuiWrapper::text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
-        }
-        ImGui::SameLine();
-        if (imgui.image_button(properties_shown ? ImGui::HorizontalHide : ImGui::HorizontalShow, properties_shown ? _u8L("Hide properties") : _u8L("Show properties"))) {
-            properties_shown = !properties_shown;
-        }
+        // ORCA Moved position and information to bottom
 
         if (properties_shown) {
             auto append_table_row = [](const std::string& label, std::function<void(void)> value_callback) {
@@ -400,7 +331,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 value_callback();
             };
 
-            ImGui::Separator();
+            //ImGui::Separator();
             if (ImGui::BeginTable("Properties", 2)) {
                 char buff[1024];
 
@@ -445,7 +376,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     const std::string text = std::string(buff);
                     ImGuiWrapper::text(text);
                 });
-                  append_table_row(_u8L("Volumetric flow rate") + " (" + _u8L("mm³/s") + ")", [&vertex, &buff, NA_TXT]() {
+                  append_table_row(_u8L("Flow rate") + " (" + _u8L("mm³/s") + ")", [&vertex, &buff, NA_TXT]() { // ORCA use "Flow rate" instead "Volumetric flow Rate" to make window more compact
                     std::string text;
                     if (vertex.is_extrusion()) {
                         sprintf(buff, "%.3f", vertex.volumetric_rate());
@@ -475,22 +406,35 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
             }
 
 #if ENABLE_ACTUAL_SPEED_DEBUG
-            if (vertex.is_extrusion() || vertex.is_travel() || vertex.is_wipe()) {
+            bool actual_speed_exist = vertex.is_extrusion() || vertex.is_travel() || vertex.is_wipe();
+            //if (vertex.is_extrusion() || vertex.is_travel() || vertex.is_wipe()) { // ORCA always show button to keep properties on same place
                 ImGui::Spacing();
-                ImGuiWrapper::text(_u8L("Actual speed profile"));
-                ImGui::SameLine();
+                //ImGuiWrapper::text(_u8L("Actual speed profile"));
+                //ImGui::SameLine();
+
                 static bool table_shown = false;
-                if (imgui.button(table_shown ? _u8L("Hide table") : _u8L("Show table")))
+                imgui.push_confirm_button_style();
+                const float table_btn_width = std::max(ImGui::CalcTextSize(_u8L("Hide table").c_str()).x, ImGui::CalcTextSize(_u8L("Show table").c_str()).x);
+                float btn_padding_x = 12.0f;
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 4.f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , ImVec2(btn_padding_x, 4.f));
+                ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(.5f, .5f));
+                if (imgui.button(table_shown ? _u8L("Hide table") : _u8L("Show table"), ImVec2(table_btn_width + btn_padding_x * 2.f, 0.f), actual_speed_exist))
                     table_shown = !table_shown;
-                ImGui::Separator();
-                const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
-                if (table_shown) {
+                ImGui::PopStyleVar(3);
+                imgui.pop_confirm_button_style();
+
+                //ImGui::Separator();
+                //const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
+                if (actual_speed_exist && table_shown) {
                     static float table_wnd_height = 0.0f;
                     const ImVec2 wnd_size = ImGui::GetWindowSize();
-                    imgui.set_next_window_pos(ImGui::GetWindowPos().x + wnd_size.x, static_cast<float>(canvas_height), ImGuiCond_Always, 0.0f, 1.0f);
+                    imgui.set_next_window_pos(ImGui::GetWindowPos().x - 5.f /*+ wnd_size.x*/, static_cast<float>(canvas_height), ImGuiCond_Always, 1.0f, 1.0f);
                     ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f }, { -1.0f, wnd_size.y });
                     imgui.begin(std::string("ToolPositionTableWnd"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
+                    ImGuiWrapper::text(_u8L("Actual speed profile")); // ORCA show label and plot on external window to make main window more compact
+                    const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
                     if (ImGui::BeginTable("ToolPositionTable", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY)) {
                         char buff[1024];
                         ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
@@ -503,7 +447,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                             if (highlight && counter == hover_id)
                                 ImGui::SetScrollHereY();
                             ImGui::TableNextRow();
-                            const ImU32 row_bg_color = ImGui::GetColorU32(item.internal ? ImVec4(0.0f, 0.0f, 0.5f, 0.25f) : ImVec4(0.5f, 0.5f, 0.5f, 0.25f));
+                            const ImU32 row_bg_color = ImGui::GetColorU32(item.internal ? ImVec4(0.0f, 150.f / 255.0f, 136.0f / 255.f, 0.15f) : ImVec4(0.2f, 0.2f, 0.2f, 0.25f)); // ORCA
                             ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, row_bg_color);
                             ImGui::TableSetColumnIndex(0);
                             sprintf(buff, "%.3f", item.pos);
@@ -513,6 +457,14 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                             imgui.text_colored(highlight ? ImGuiWrapper::COL_ORCA : ImGuiWrapper::to_ImVec4(ColorRGBA::WHITE()), buff);
                             ++counter;
                         }
+
+                        // ORCA add blank rows to keep plot in same place
+                        for (int id = 4 - counter; id > 0; --id) {
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            imgui.text_colored(ImVec4(0.f, 0.f, 0.f, 0.f), "filler");
+                        }
+
                         ImGui::EndTable();
                     }
                     const float curr_table_wnd_height = ImGui::GetWindowHeight();
@@ -523,8 +475,130 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     }
                     imgui.end();
                 }
-            }
+
 #endif // ENABLE_ACTUAL_SPEED_DEBUG
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 3.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(.5f, .5f));
+        ImGui::PushStyleColor(ImGuiCol_Button            , ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered     , ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive      , ImVec4(84 / 255.f, 84 / 255.f, 90 / 255.f, 1.f));
+            
+        const float main_wnd_height = ImGui::GetWindowHeight();
+        if (ImGui::Button(into_u8(properties_shown ? ImGui::FoldButtonIcon : ImGui::UnfoldButtonIcon).c_str(), ImVec2(24.f, 24.f))) {
+            properties_shown = !properties_shown;
+            static float main_wnd_height_temp = ImGui::GetWindowHeight();
+            static float first_click = true;
+            if (first_click || main_wnd_height_temp != main_wnd_height) {
+                main_wnd_height_temp = main_wnd_height;
+                first_click = false;
+                imgui.set_requires_extra_frame();
+            }
+        }
+        ImGui::PopStyleColor(3);
+        ImGui::PopStyleVar(2);
+
+        ImGui::SameLine();
+
+        ImGui::BeginGroup(); // group contents to make information area more compact
+
+        // ORCA Use colorized axes labels & reduce precision on big scaled prints
+        int  max_value = std::round(std::max(std::max(vertex.position[0], vertex.position[1]),vertex.position[2]));
+        auto precision = max_value > 9999 ? "%.1f" : max_value > 999 ? "%.2f" : "%.3f";
+        const float axes_width = ImGui::CalcTextSize("X  999.999spc").x;
+
+        char xBuf[32]; char yBuf[32]; char zBuf[32];
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X  ");
+        ImGui::SameLine(0,0); // ignore item spacing
+        sprintf(xBuf, precision, vertex.position[0]);
+        ImGui::Text("%s", xBuf);
+
+        ImGui::SameLine(axes_width);
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y  ");
+        ImGui::SameLine(0,0); // ignore item spacing
+        sprintf(yBuf, precision, vertex.position[1]);
+        ImGui::Text("%s", yBuf);
+
+        ImGui::SameLine(axes_width * 2);
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z  ");
+        ImGui::SameLine(0,0); // ignore item spacing
+        sprintf(zBuf, precision, vertex.position[2]);
+        ImGui::Text("%s", zBuf);
+
+        ImGui::SameLine(axes_width * 3);
+        ImGui::Dummy({0,0});
+
+        const bool is_extrusion = vertex.is_extrusion();
+        char buf[1024]; char valBuf[32];
+        sprintf(buf, "Speed: %.0f ", vertex.feedrate);
+        switch (view_type) {
+                case libvgcode::EViewType::Height: {
+                    if (is_extrusion)
+                        sprintf(valBuf, "%.2f", vertex.height);
+                    else
+                        sprintf(valBuf, "%s", NA_CSTR);
+                    sprintf(buf, "%s %s%s", buf, _u8L("Height: ").c_str(), valBuf);
+                    break;
+                }
+                case libvgcode::EViewType::Width: {
+                    if (is_extrusion)
+                        sprintf(valBuf, "%.2f", vertex.width);
+                    else
+                        sprintf(valBuf, "%s", NA_CSTR);
+                    sprintf(buf, "%s %s%s", buf, _u8L("Width: ").c_str(), valBuf);
+                    break;
+                }
+                case libvgcode::EViewType::VolumetricFlowRate: {
+                    if (is_extrusion)
+                        sprintf(valBuf, "%.2f", vertex.volumetric_rate());
+                    else
+                        sprintf(valBuf, "%s", NA_CSTR);
+                    sprintf(buf, "%s %s%s", buf, _u8L("Flow: ").c_str(), valBuf);
+                    break;
+                }
+                case libvgcode::EViewType::FanSpeed: {
+                    sprintf(buf, "%s %s%.0f", buf, _u8L("Fan: ").c_str(), vertex.fan_speed);
+                    break;
+                }
+                case libvgcode::EViewType::Temperature: {
+                    sprintf(buf, "%s %s%.0f", buf, _u8L("Temperature: ").c_str(), vertex.temperature);
+                    break;
+                }
+                case libvgcode::EViewType::LayerTimeLinear:
+                case libvgcode::EViewType::LayerTimeLogarithmic: {
+                    sprintf(buf, "%s %s%.1f", buf, _u8L("Layer Time: ").c_str(), vertex.layer_duration);
+                    break;
+                }
+                case libvgcode::EViewType::Tool: {
+                    sprintf(buf, "%s %s%d", buf, _u8L("Tool: ").c_str(), vertex.extruder_id + 1);
+                    break;
+                }
+                case libvgcode::EViewType::ColorPrint: {
+                    sprintf(buf, "%s %s%d", buf, _u8L("Color: ").c_str(), vertex.color_id + 1);
+                    break;
+                }
+                case libvgcode::EViewType::ActualVolumetricFlowRate: {
+                    // Don't display the actual flow, since it only gives data for the end of a segment
+                    // sprintf(buf, "%s %s%.2f", buf, _u8L("Actual Flow: ").c_str(), vertex.actual_volumetric_rate());
+                    break;
+                }
+                case libvgcode::EViewType::ActualSpeed: {
+                    sprintf(buf, "%s %s%.1f", buf, _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
+                    break;
+                }
+
+                default:
+                    break;
+                }
+        ImGuiWrapper::text(std::string(buf));
+        if (view_type == libvgcode::EViewType::FeatureType) {
+            ImGui::SameLine();
+            ImGuiWrapper::text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
         }
 
         // force extra frame to automatically update window size
@@ -535,6 +609,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
             last_text_length = length;
             imgui.set_requires_extra_frame();
         }
+
+        ImGui::EndGroup();
 
         imgui.end();
         ImGui::PopStyleVar();
