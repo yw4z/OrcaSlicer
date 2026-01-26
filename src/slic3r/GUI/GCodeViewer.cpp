@@ -430,14 +430,16 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 //const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
                 if (actual_speed_exist && table_shown) {
                     static float table_wnd_height = 0.0f;
-                    const ImVec2 wnd_size = ImGui::GetWindowSize();
+                    //const ImVec2 wnd_size = ImGui::GetWindowSize();
                     imgui.set_next_window_pos(ImGui::GetWindowPos().x - 5.f * m_scale /*+ wnd_size.x*/, static_cast<float>(canvas_height), ImGuiCond_Always, 1.0f, 1.0f);
-                    ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f }, { -1.0f, wnd_size.y });
+                    //ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f }, { -1.0f, wnd_size.y });
                     imgui.begin(std::string("ToolPositionTableWnd"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
                     ImGuiWrapper::text(_u8L("Actual speed profile")); // ORCA show label and plot on external window to make main window more compact
-                    const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
-                    if (ImGui::BeginTable("ToolPositionTable", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY)) {
+                    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(5.f, 1.f) * m_scale);
+                    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
+                    const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.f, 130.f });
+                    if (ImGui::BeginTable("ToolPositionTable", 2, ImGuiTableFlags_Borders /*| ImGuiTableFlags_ScrollY*/)) { // ORCA showing scrollbar causes expanding window
                         char buff[1024];
                         ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
                         ImGui::TableSetupColumn("Position (mm)");
@@ -446,8 +448,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         int counter = 0;
                         for (const ActualSpeedImguiWidget::Item& item : m_actual_speed_imgui_widget.data) {
                             const bool highlight = hover_id >= 0 && (counter == hover_id || counter == hover_id + 1);
-                            if (highlight && counter == hover_id)
-                                ImGui::SetScrollHereY();
+                            //if (highlight && counter == hover_id)
+                            //    ImGui::SetScrollHereY();
                             ImGui::TableNextRow();
                             const ImU32 row_bg_color = ImGui::GetColorU32(item.internal ? ImVec4(0.0f, 150.f / 255.0f, 136.0f / 255.f, 0.15f) : ImVec4(0.2f, 0.2f, 0.2f, 0.25f)); // ORCA
                             ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, row_bg_color);
@@ -461,14 +463,15 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         }
 
                         // ORCA add blank rows to keep plot in same place
-                        for (int id = 4 - counter; id > 0; --id) {
+                        for (int id = 6 - counter; id > 0; --id) {
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
-                            imgui.text_colored(ImVec4(0.f, 0.f, 0.f, 0.f), "filler");
+                            imgui.text_colored(ImVec4(0.f, 0.f, 0.f, 0.f), "f");
                         }
 
                         ImGui::EndTable();
                     }
+                    ImGui::PopStyleVar(2);
                     const float curr_table_wnd_height = ImGui::GetWindowHeight();
                     if (table_wnd_height != curr_table_wnd_height) {
                         table_wnd_height = curr_table_wnd_height;
