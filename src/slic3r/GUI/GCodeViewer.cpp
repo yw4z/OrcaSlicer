@@ -266,11 +266,11 @@ static std::string to_string(libvgcode::EGCodeExtrusionRole role)
     switch (role)
     {                                                              // ORCA matched terms
     case libvgcode::EGCodeExtrusionRole::None:                     { return _u8L("Unknown"); }
-    case libvgcode::EGCodeExtrusionRole::Perimeter:                { return _u8L("Inner Wall"); }
-    case libvgcode::EGCodeExtrusionRole::ExternalPerimeter:        { return _u8L("Outer Wall"); }
-    case libvgcode::EGCodeExtrusionRole::OverhangPerimeter:        { return _u8L("Overhang Wall"); }
+    case libvgcode::EGCodeExtrusionRole::Perimeter:                { return _u8L("Inner wall"); }
+    case libvgcode::EGCodeExtrusionRole::ExternalPerimeter:        { return _u8L("Outer wall"); }
+    case libvgcode::EGCodeExtrusionRole::OverhangPerimeter:        { return _u8L("Overhang wall"); }
     case libvgcode::EGCodeExtrusionRole::InternalInfill:           { return _u8L("Sparse infill"); }
-    case libvgcode::EGCodeExtrusionRole::SolidInfill:              { return _u8L("Internal Solid infill"); }
+    case libvgcode::EGCodeExtrusionRole::SolidInfill:              { return _u8L("Internal solid infill"); }
     case libvgcode::EGCodeExtrusionRole::TopSolidInfill:           { return _u8L("Top surface"); }
     case libvgcode::EGCodeExtrusionRole::Ironing:                  { return _u8L("Ironing"); }
     case libvgcode::EGCodeExtrusionRole::BridgeInfill:             { return _u8L("Bridge"); }
@@ -340,7 +340,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 append_table_row(_u8L("Type"), [&vertex]() {
                     ImGuiWrapper::text(_u8L(to_string(vertex.type)));
                 });
-                append_table_row(_u8L("Line type"), [&vertex, NA_TXT]() {
+                append_table_row(_u8L("Line Type"), [&vertex, NA_TXT]() {
                     std::string text;
                     if (vertex.is_extrusion())
                         text = _u8L(to_string(vertex.role));
@@ -421,12 +421,12 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 3.f * m_scale);
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , ImVec2(btn_padding_x, 3.f * m_scale));
                 ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(.5f, .5f));
-                if (imgui.button(table_shown ? _u8L("Hide") : _u8L("Show"), ImVec2(table_btn_width + btn_padding_x * 2.f, 0.f), actual_speed_exist))
+                if (imgui.button((table_shown ? _L("Hide") : _L("Show")).c_str(), ImVec2(table_btn_width + btn_padding_x * 2.f, 0.f), actual_speed_exist))
                     table_shown = !table_shown;
                 ImGui::PopStyleVar(3);
                 imgui.pop_confirm_button_style();
                 ImGui::SameLine();
-                ImGuiWrapper::text(_u8L("Actual speed profile")); // ORCA show label and plot on external window to make main window more compact
+                ImGuiWrapper::text(_u8L("Actual speed profile").c_str()); // ORCA show label and plot on external window to make main window more compact
 
                 //ImGui::Separator();
                 //const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
@@ -444,8 +444,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     if (ImGui::BeginTable("ToolPositionTable", 2, ImGuiTableFlags_Borders /*| ImGuiTableFlags_ScrollY*/)) { // ORCA showing scrollbar causes expanding window
                         char buff[1024];
                         //ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
-                        ImGui::TableSetupColumn(_L("Position (mm)").c_str());
-                        ImGui::TableSetupColumn(_L("Speed (mm/s)").c_str());
+                        ImGui::TableSetupColumn(_u8L("Position (mm)").c_str());
+                        ImGui::TableSetupColumn(_u8L("Speed (mm/s)").c_str());
                         ImGui::TableHeadersRow();
                         int counter = 0;
                         for (const ActualSpeedImguiWidget::Item& item : m_actual_speed_imgui_widget.data) {
