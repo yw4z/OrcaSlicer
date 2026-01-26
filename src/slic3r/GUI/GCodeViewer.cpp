@@ -264,25 +264,25 @@ static std::string to_string(libvgcode::EMoveType type)
 static std::string to_string(libvgcode::EGCodeExtrusionRole role)
 {
     switch (role)
-    {
+    {                                                              // ORCA matched terms
     case libvgcode::EGCodeExtrusionRole::None:                     { return _u8L("Unknown"); }
-    case libvgcode::EGCodeExtrusionRole::Perimeter:                { return _u8L("Perimeter"); }
-    case libvgcode::EGCodeExtrusionRole::ExternalPerimeter:        { return _u8L("External perimeter"); }
-    case libvgcode::EGCodeExtrusionRole::OverhangPerimeter:        { return _u8L("Overhang perimeter"); }
-    case libvgcode::EGCodeExtrusionRole::InternalInfill:           { return _u8L("Internal infill"); }
-    case libvgcode::EGCodeExtrusionRole::SolidInfill:              { return _u8L("Solid infill"); }
-    case libvgcode::EGCodeExtrusionRole::TopSolidInfill:           { return _u8L("Top solid infill"); }
+    case libvgcode::EGCodeExtrusionRole::Perimeter:                { return _u8L("Inner Wall"); }
+    case libvgcode::EGCodeExtrusionRole::ExternalPerimeter:        { return _u8L("Outer Wall"); }
+    case libvgcode::EGCodeExtrusionRole::OverhangPerimeter:        { return _u8L("Overhang Wall"); }
+    case libvgcode::EGCodeExtrusionRole::InternalInfill:           { return _u8L("Sparse infill"); }
+    case libvgcode::EGCodeExtrusionRole::SolidInfill:              { return _u8L("Internal Solid infill"); }
+    case libvgcode::EGCodeExtrusionRole::TopSolidInfill:           { return _u8L("Top surface"); }
     case libvgcode::EGCodeExtrusionRole::Ironing:                  { return _u8L("Ironing"); }
-    case libvgcode::EGCodeExtrusionRole::BridgeInfill:             { return _u8L("Bridge infill"); }
-    case libvgcode::EGCodeExtrusionRole::GapFill:                  { return _u8L("Gap fill"); }
-    case libvgcode::EGCodeExtrusionRole::Skirt:                    { return _u8L("Skirt"); } // ORCA
-    case libvgcode::EGCodeExtrusionRole::SupportMaterial:          { return _u8L("Support material"); }
-    case libvgcode::EGCodeExtrusionRole::SupportMaterialInterface: { return _u8L("Support material interface"); }
-    case libvgcode::EGCodeExtrusionRole::WipeTower:                { return _u8L("Wipe tower"); }
+    case libvgcode::EGCodeExtrusionRole::BridgeInfill:             { return _u8L("Bridge"); }
+    case libvgcode::EGCodeExtrusionRole::GapFill:                  { return _u8L("Gap infill"); }
+    case libvgcode::EGCodeExtrusionRole::Skirt:                    { return _u8L("Skirt"); }
+    case libvgcode::EGCodeExtrusionRole::SupportMaterial:          { return _u8L("Support"); }
+    case libvgcode::EGCodeExtrusionRole::SupportMaterialInterface: { return _u8L("Support interface"); }
+    case libvgcode::EGCodeExtrusionRole::WipeTower:                { return _u8L("Prime tower"); }
     case libvgcode::EGCodeExtrusionRole::Custom:                   { return _u8L("Custom"); }
     // ORCA
     case libvgcode::EGCodeExtrusionRole::BottomSurface:            { return _u8L("Bottom surface"); }
-    case libvgcode::EGCodeExtrusionRole::InternalBridgeInfill:     { return _u8L("Internal bridge infill"); }
+    case libvgcode::EGCodeExtrusionRole::InternalBridgeInfill:     { return _u8L("Internal bridge"); } // ORCA
     case libvgcode::EGCodeExtrusionRole::Brim:                     { return _u8L("Brim"); }
     case libvgcode::EGCodeExtrusionRole::SupportTransition:        { return _u8L("Support transition"); }
     case libvgcode::EGCodeExtrusionRole::Mixed:                    { return _u8L("Mixed"); }
