@@ -253,7 +253,7 @@ static std::string to_string(libvgcode::EMoveType type)
     case libvgcode::EMoveType::ToolChange:  { return _u8L("Tool Change"); }
     case libvgcode::EMoveType::ColorChange: { return _u8L("Color Change"); }
     case libvgcode::EMoveType::PausePrint:  { return _u8L("Pause Print"); }
-    case libvgcode::EMoveType::CustomGCode: { return _u8L("Custom GCode"); }
+    case libvgcode::EMoveType::CustomGCode: { return _u8L("Custom G-code"); }
     case libvgcode::EMoveType::Travel:      { return _u8L("Travel"); }
     case libvgcode::EMoveType::Wipe:        { return _u8L("Wipe"); }
     case libvgcode::EMoveType::Extrude:     { return _u8L("Extrude"); }
@@ -444,8 +444,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     if (ImGui::BeginTable("ToolPositionTable", 2, ImGuiTableFlags_Borders /*| ImGuiTableFlags_ScrollY*/)) { // ORCA showing scrollbar causes expanding window
                         char buff[1024];
                         //ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
-                        ImGui::TableSetupColumn(_u8L("Position (mm)").c_str());
-                        ImGui::TableSetupColumn(_u8L("Speed (mm/s)").c_str());
+                        ImGui::TableSetupColumn((_u8L("Position") + " (" + _u8L("mm")   + ")").c_str());
+                        ImGui::TableSetupColumn((_u8L("Speed")    + " (" + _u8L("mm/s") + ")").c_str());
                         ImGui::TableHeadersRow();
                         int counter = 0;
                         for (const ActualSpeedImguiWidget::Item& item : m_actual_speed_imgui_widget.data) {
