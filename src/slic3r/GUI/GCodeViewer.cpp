@@ -622,7 +622,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::EndGroup();
 
         imgui.end();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(5);
+        ImGui::PopStyleVar(2);
     }
     else {
         ImGuiWrapper& imgui = *wxGetApp().imgui();
@@ -666,7 +667,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::Dummy({0,0});
 
         imgui.end();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar(2);
     }
 }
 
