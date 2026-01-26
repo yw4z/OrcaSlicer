@@ -307,7 +307,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGuiWrapper::COL_BUTTON_ACTIVE);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGuiWrapper::COL_BUTTON_HOVERED);
         ImGui::PushStyleColor(ImGuiCol_Border   , ImVec4(.0f,.0f,.0f,.0f));
-        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f,1.0f,1.0f,0.6f));
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.f,1.f,1.f,.6f));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * m_scale);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding , ImVec2(10.f, 10.f) * m_scale);
         ImGui::SetNextWindowBgAlpha(0.8f);
@@ -340,7 +340,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 append_table_row(_u8L("Type"), [&vertex]() {
                     ImGuiWrapper::text(_u8L(to_string(vertex.type)));
                 });
-                append_table_row(_u8L("Feature type"), [&vertex, NA_TXT]() {
+                append_table_row(_u8L("Line type"), [&vertex, NA_TXT]() {
                     std::string text;
                     if (vertex.is_extrusion())
                         text = _u8L(to_string(vertex.role));
@@ -348,20 +348,20 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         text = NA_TXT;
                     ImGuiWrapper::text(text);
                 });
-                append_table_row(_u8L("Width") + " (" + _u8L("mm") + ")", [&vertex, &buff, NA_TXT]() {
+                append_table_row(_u8L("Width"), [&vertex, &buff, NA_TXT]() {
                     std::string text;
                     if (vertex.is_extrusion()) {
-                        sprintf(buff, "%.3f", vertex.width);
+                        sprintf(buff, ("%.3f " + _u8L("mm")).c_str(), vertex.width);
                         text = std::string(buff);
                     }
                     else
                         text = NA_TXT;
                     ImGuiWrapper::text(text);
                 });
-                append_table_row(_u8L("Height") + " (" + _u8L("mm") + ")", [&vertex, &buff, NA_TXT]() {
+                append_table_row(_u8L("Height"), [&vertex, &buff, NA_TXT]() {
                     std::string text;
                     if (vertex.is_extrusion()) {
-                        sprintf(buff, "%.3f", vertex.height);
+                        sprintf(buff, ("%.3f " + _u8L("mm")).c_str(), vertex.height);
                         text = std::string(buff);
                     }
                     else
@@ -373,28 +373,28 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     const std::string text = std::string(buff);
                     ImGuiWrapper::text(text);
                 });
-                append_table_row(_u8L("Speed") + " (" + _u8L("mm/s") + ")", [&vertex, &buff]() {
-                    sprintf(buff, "%.1f", vertex.feedrate);
+                append_table_row(_u8L("Speed"), [&vertex, &buff]() {
+                    sprintf(buff, ("%.1f " + _u8L("mm/s")).c_str(), vertex.feedrate);
                     const std::string text = std::string(buff);
                     ImGuiWrapper::text(text);
                 });
-                  append_table_row(_u8L("Flow rate") + " (" + _u8L("mm³/s") + ")", [&vertex, &buff, NA_TXT]() { // ORCA use "Flow rate" instead "Volumetric flow Rate" to make window more compact
+                  append_table_row(_u8L("Flow rate"), [&vertex, &buff, NA_TXT]() { // ORCA use "Flow rate" instead "Volumetric flow Rate" to make window more compact
                     std::string text;
                     if (vertex.is_extrusion()) {
-                        sprintf(buff, "%.3f", vertex.volumetric_rate());
+                        sprintf(buff, ("%.3f " + _u8L("mm³/s")).c_str(), vertex.volumetric_rate());
                         text = std::string(buff);
                     }
                     else
                         text = NA_TXT;
                     ImGuiWrapper::text(text);
                   });
-                append_table_row(_u8L("Fan speed") + " (" + _u8L("%") + ")", [&vertex, &buff]() {
-                    sprintf(buff, "%.0f", vertex.fan_speed);
+                append_table_row(_u8L("Fan speed"), [&vertex, &buff]() {
+                    sprintf(buff, "%.0f %%", vertex.fan_speed);
                     const std::string text = std::string(buff);
                     ImGuiWrapper::text(text);
                 });
-                append_table_row(_u8L("Temperature") + " (" + _u8L("°C") + ")", [&vertex, &buff]() {
-                    sprintf(buff, "%.0f", vertex.temperature);
+                append_table_row(_u8L("Temperature"), [&vertex, &buff]() {
+                    sprintf(buff, ("%.0f " + _u8L("°C")).c_str(), vertex.temperature);
                     ImGuiWrapper::text(std::string(buff));
                 });
                 append_table_row(_u8L("Time"), [viewer, &vertex, &buff, vertex_id]() {
@@ -416,15 +416,17 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
 
                 static bool table_shown = false;
                 imgui.push_confirm_button_style();
-                const float table_btn_width = std::max(ImGui::CalcTextSize(_u8L("Hide table").c_str()).x, ImGui::CalcTextSize(_u8L("Show table").c_str()).x);
-                float btn_padding_x = 12.0f * m_scale;
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 4.f * m_scale);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , ImVec2(btn_padding_x, 4.f * m_scale));
+                const float table_btn_width = std::max(ImGui::CalcTextSize(_u8L("Hide").c_str()).x, ImGui::CalcTextSize(_u8L("Show").c_str()).x);
+                float btn_padding_x = 8.0f * m_scale;
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 3.f * m_scale);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , ImVec2(btn_padding_x, 3.f * m_scale));
                 ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(.5f, .5f));
-                if (imgui.button(table_shown ? _u8L("Hide table") : _u8L("Show table"), ImVec2(table_btn_width + btn_padding_x * 2.f, 0.f), actual_speed_exist))
+                if (imgui.button(table_shown ? _u8L("Hide") : _u8L("Show"), ImVec2(table_btn_width + btn_padding_x * 2.f, 0.f), actual_speed_exist))
                     table_shown = !table_shown;
                 ImGui::PopStyleVar(3);
                 imgui.pop_confirm_button_style();
+                ImGui::SameLine();
+                ImGuiWrapper::text(_u8L("Actual speed profile")); // ORCA show label and plot on external window to make main window more compact
 
                 //ImGui::Separator();
                 //const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.0f, 150.0f });
@@ -435,15 +437,15 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     //ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f }, { -1.0f, wnd_size.y });
                     imgui.begin(std::string("ToolPositionTableWnd"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
-                    ImGuiWrapper::text(_u8L("Actual speed profile")); // ORCA show label and plot on external window to make main window more compact
-                    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(5.f, 1.f) * m_scale);
+                    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(9.f, 1.f) * m_scale);
                     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
-                    const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.f, 130.f });
+                    ImGui::PushStyleColor(ImGuiCol_HeaderHovered , ImGui::GetStyle().Colors[ImGuiCol_TableHeaderBg]);
+                    const int hover_id = m_actual_speed_imgui_widget.plot("##ActualSpeedProfile", { -1.f, 135.f * m_scale});
                     if (ImGui::BeginTable("ToolPositionTable", 2, ImGuiTableFlags_Borders /*| ImGuiTableFlags_ScrollY*/)) { // ORCA showing scrollbar causes expanding window
                         char buff[1024];
-                        ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
-                        ImGui::TableSetupColumn("Position (mm)");
-                        ImGui::TableSetupColumn("Speed (mm/s)");
+                        //ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
+                        ImGui::TableSetupColumn(_L("Position (mm)").c_str());
+                        ImGui::TableSetupColumn(_L("Speed (mm/s)").c_str());
                         ImGui::TableHeadersRow();
                         int counter = 0;
                         for (const ActualSpeedImguiWidget::Item& item : m_actual_speed_imgui_widget.data) {
@@ -462,8 +464,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                             ++counter;
                         }
 
-                        // ORCA add blank rows to keep plot in same place
-                        for (int id = 6 - counter; id > 0; --id) {
+                        // ORCA add blank rows to keep plot in same place. row count can be 9 but mostly it shows between 3 to 5 
+                        for (int id = 7 - counter; id > 0; --id) {
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             imgui.text_colored(ImVec4(0.f, 0.f, 0.f, 0.f), "f");
@@ -472,6 +474,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         ImGui::EndTable();
                     }
                     ImGui::PopStyleVar(2);
+                    ImGui::PopStyleColor(1);
                     const float curr_table_wnd_height = ImGui::GetWindowHeight();
                     if (table_wnd_height != curr_table_wnd_height) {
                         table_wnd_height = curr_table_wnd_height;
@@ -515,36 +518,39 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::BeginGroup(); // group contents to make information area more compact
 
         // ORCA Use colorized axes labels & reduce precision on big scaled prints
-        int  max_value = std::round(std::max(std::max(vertex.position[0], vertex.position[1]),vertex.position[2]));
+        auto pos       =vertex.position;
+        int  max_value = std::round(std::max(std::max(pos[0], pos[1]),pos[2]));
         auto precision = max_value > 9999 ? "%.1f" : max_value > 999 ? "%.2f" : "%.3f";
-        const float axes_width = ImGui::CalcTextSize("X  999.999spc").x;
+        const float axes_width = ImGui::CalcTextSize("X 999.999sp").x;
 
         char xBuf[32];
-        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X  ");
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X ");
         ImGui::SameLine(0,0); // ignore item spacing
-        sprintf(xBuf, precision, vertex.position[0]);
+        sprintf(xBuf, precision, pos[0]);
         ImGui::Text("%s", xBuf);
 
         char yBuf[32];
         ImGui::SameLine(axes_width);
-        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y  ");
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y ");
         ImGui::SameLine(0,0); // ignore item spacing
-        sprintf(yBuf, precision, vertex.position[1]);
+        sprintf(yBuf, precision, pos[1]);
         ImGui::Text("%s", yBuf);
 
         char zBuf[32];
         ImGui::SameLine(axes_width * 2);
-        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z  ");
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z ");
         ImGui::SameLine(0,0); // ignore item spacing
-        sprintf(zBuf, precision, vertex.position[2]);
+        sprintf(zBuf, precision, pos[2]);
         ImGui::Text("%s", zBuf);
 
         ImGui::SameLine(axes_width * 3);
         ImGui::Dummy({0,0});
 
         const bool is_extrusion = vertex.is_extrusion();
-        char buf[1024]; char valBuf[32];
-        sprintf(buf, "Speed: %.0f ", vertex.feedrate);
+        char buf[1024]; char valBuf[32]; char spdBuf[128];
+        sprintf(spdBuf, "%s%.0f ", _u8L("Speed: ").c_str(), vertex.feedrate);
+        const float speed_width = ImGui::CalcTextSize((_u8L("Speed: ") + "9999  ").c_str()).x;
+        ImGuiWrapper::text(std::string(spdBuf)); // render Speed as differrent item to keep next item in same place
         switch (view_type) {
                 case libvgcode::EViewType::Height: {
                     if (is_extrusion)
@@ -604,10 +610,13 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 default:
                     break;
                 }
-        ImGuiWrapper::text(std::string(buf));
+        
+        ImGui::SameLine(speed_width);
         if (view_type == libvgcode::EViewType::FeatureType) {
-            ImGui::SameLine();
-            ImGuiWrapper::text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
+            ImGuiWrapper::text(vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
+        }
+        else {
+            ImGuiWrapper::text(std::string(buf));
         }
 
         ImGui::EndGroup();
@@ -621,7 +630,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         //imgui.set_next_window_pos(0.5f * static_cast<float>(cnv_size.get_width()), static_cast<float>(cnv_size.get_height()), ImGuiCond_Always, 0.5f, 1.0f);
         imgui.set_next_window_pos(0.5f * static_cast<float>(canvas_width), static_cast<float>(canvas_height), ImGuiCond_Always, 0.5f, 1.0f);
         ImGui::PushStyleColor(ImGuiCol_Border   , ImVec4(.0f,.0f,.0f,.0f));
-        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f,1.0f,1.0f,0.6f));
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.f,1.f,1.f,.6f));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * m_scale);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding , ImVec2(10.f, 10.f) * m_scale);
         ImGui::SetNextWindowBgAlpha(0.8f);
@@ -631,24 +640,24 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
 
         int  max_value = std::round(std::max(std::max(pos.x(), pos.y()),pos.z()));
         auto precision = max_value > 9999 ? "%.1f" : max_value > 999 ? "%.2f" : "%.3f";
-        const float axes_width = ImGui::CalcTextSize("X  999.999spc").x;
+        const float axes_width = ImGui::CalcTextSize("X 999.999sp").x;
 
         char xBuf[32];
-        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X  ");
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::X()),"X ");
         ImGui::SameLine(0,0); // ignore item spacing
         sprintf(xBuf, precision, pos.x());
         ImGui::Text("%s", xBuf);
 
         char yBuf[32]; 
         ImGui::SameLine(axes_width);
-        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y  ");
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Y()),"Y ");
         ImGui::SameLine(0,0); // ignore item spacing
         sprintf(yBuf, precision, pos.y());
         ImGui::Text("%s", yBuf);
 
         char zBuf[32];
         ImGui::SameLine(axes_width * 2);
-        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z  ");
+        ImGui::TextColored(ImGuiWrapper::to_ImVec4(ColorRGBA::Z()),"Z ");
         ImGui::SameLine(0,0); // ignore item spacing
         sprintf(zBuf, precision, pos.z());
         ImGui::Text("%s", zBuf);
