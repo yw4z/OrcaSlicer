@@ -78,7 +78,8 @@
 				<div class="filter-icon"></div>
 			</div>
 			<div class="cbr-filter-btns">
-				<span class="cbr-filter-indicator trans">Select filtered</span>
+				<span class="cbr-filter-indicator-fil trans">Select filtered</span>
+				<span class="cbr-filter-indicator-vis trans">Select visible</span>
 				<div class="ButtonStyleConfirm ButtonTypeWindow  trans" tid="t11" onClick="SelectAllFilament(1)">all</div>
 				<div class="ButtonStyleRegular ButtonTypeWindow  trans" tid="t12" onClick="SelectAllFilament(0)">Clear all</div>
 			</div>	
@@ -159,7 +160,8 @@
         const list   = this.closest('.cbr-column').querySelector('.cbr-content');
         const items  = list.querySelectorAll('label');
         var hiddenCount = 0;
-		document.querySelector('.cbr-filter-indicator').style.display = search ? "block" : "none";
+		document.querySelector('.cbr-filter-indicator-fil').style.display = search ? "block" : "none";
+		document.querySelector('.cbr-filter-indicator-vis').style.display = search ? "none" : "block";
 		
         items.forEach(item => {
             const text   = item.querySelector("span").textContent.toLowerCase();

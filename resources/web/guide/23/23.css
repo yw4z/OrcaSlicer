@@ -282,7 +282,11 @@ input
 	margin: 5px;
 }
 
-.cbr-filter-indicator {
+.cbr-filter-indicator-vis{
+	margin-right: 10px;
+}
+
+.cbr-filter-indicator-fil {
 	display: none;
 	margin-right: 10px;
 }
