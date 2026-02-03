@@ -740,6 +740,13 @@ void PrintConfigDef::init_common_params()
     def->cli = ConfigOptionDef::nocli;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("printer_agent", coString);
+    def->label = L("Printer Agent");
+    def->tooltip = L("Select the network agent implementation for printer communication.");
+    def->mode = comAdvanced;
+    def->cli = ConfigOptionDef::nocli;
+    def->set_default_value(new ConfigOptionString(""));
+
     def = this->add("print_host", coString);
     def->label = L("Hostname, IP or URL");
     def->tooltip = L("Orca Slicer can upload G-code files to a printer host. This field should contain "
@@ -2466,7 +2473,7 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Shrinkage (XY)");
     // xgettext:no-c-format, no-boost-format
     def->tooltip = L("Enter the shrinkage percentage that the filament will get after cooling (94% if you measure 94mm instead of 100mm). "
-        "The part will be scaled in XY to compensate. Only the filament used for the perimeter is taken into account.\n"
+        "The part will be scaled in XY to compensate. For multi-material prints, ensure filament shrinkage matches across all used filaments\n"
         "Be sure to allow enough space between objects, as this compensation is done after the checks.");
     def->sidetext = "%";
     def->ratio_over = "";
