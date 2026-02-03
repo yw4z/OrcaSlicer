@@ -207,37 +207,27 @@ input
 .cbr-browser-container {
 	display: flex;
 	width: 100%;
-	margin: 0 auto;
 	border: 1px solid var(--border-color);
 	overflow: hidden;
-	/* border-radius: 6px; */
 }
 
-.cbr-browser-container.columns{
+.cbr-browser-container.columns {
 	flex: 0 0 220px;
 }
 
-.cbr-browser-container.filtered{
+.cbr-browser-container.filtered {
 	flex: 1 1 auto;
-}
-
-.cbr-browser-container:first-child{
-	border-bottom: none;
-}
-
-.cbr-browser-container:last-child{
 	border-top: none;
 }
 
 .cbr-column {
 	flex: 1;
-	border-right: 1px solid var(--border-color);
 	display: flex;
 	flex-direction: column;
 }
 
-.cbr-column:last-child {
-	border-right: none;
+.cbr-browser-container.columns > .cbr-column:not(:last-child) {
+	border-right: 1px solid var(--border-color);
 }
 
 #MachineList  .CValues,
@@ -254,31 +244,31 @@ input
 .cbr-column-title-container {
 	position: sticky;
 	background: var(--bg-color-secondary);
-	border-bottom:1px solid var(--bg-color);
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 }
 
-.cbr-search-bar{
+.cbr-search-bar,
+.cbr-filter-bar {
 	margin: 0px;
+	border: 1px solid transparent;
+	font-size: 16px;
+}
+
+.cbr-search-bar {
 	padding: 3px 8px;
 	width: calc(100% - 18px);
-	border: 1px solid transparent;
 	background: var(--bg-color-secondary);
-	font-size: 16px;
-	/* border-radius: 5px; */
 }
 
 .cbr-filter-bar {
-	border: 1px solid transparent;
-	background: var(--bg-color);
-	border-radius: 11px;
+	background: var(--bg-color-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: 4px;
 	padding-left: 30px;
 	width: 200px;
-	height:22px;
-	margin: 0;
-	font-size: 16px;
+	height:24px;
 }
 
 .cbr-filter-box {
@@ -292,7 +282,12 @@ input
 	margin: 5px;
 }
 
-.search-icon{
+.cbr-filter-indicator {
+	display: none;
+	margin-right: 10px;
+}
+
+.search-icon {
 	content: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="%237C8282"><path d="M6.5,2A4.505,4.505,0,0,0,2,6.5a.5.5,0,0,0,1,0A3.5,3.5,0,0,1,6.5,3a.5.5,0,0,0,0-1Z"/><path d="M14.854,14.146l-3.423-3.422a6.518,6.518,0,1,0-.707.707l3.422,3.423a.5.5,0,0,0,.708-.708ZM1,6.5A5.5,5.5,0,1,1,6.5,12,5.507,5.507,0,0,1,1,6.5Z"/></svg>');
 	position:absolute;
 	top: 50%;
@@ -317,20 +312,18 @@ input
 .cbr-filter-placeholder {
 	left: 36px;
 	line-height: 24px;
-	opacity: 0.35
+	opacity: 0.5
 }
 
-.cbr-search-bar:hover,
-.cbr-search-bar:focus,
-.cbr-filter-bar:hover,
-.cbr-filter-bar:focus {
+.cbr-search-bar:is(:hover,:focus),
+.cbr-filter-bar:is(:hover,:focus) {
 	border: 1px solid var(--main-color);
 	outline: none;
 }
 
-.cbr-search-bar:not(:focus)::placeholder,
-.cbr-filter-bar:not(:focus)::placeholder {
-	color: var(--fg-color-text);
+.cbr-search-bar:is(:focus),
+.cbr-filter-bar:is(:focus) {
+	background: var(--focus-bg-box);
 }
 
 .cbr-search-placeholder,
@@ -345,7 +338,7 @@ input
 
 .cbr-search-bar:focus + .cbr-search-placeholder,
 .cbr-filter-bar:focus + .cbr-filter-placeholder {
-	opacity: 0.3;
+	opacity: 0.5;
 }
 
 .cbr-search-bar:not(:placeholder-shown) + .cbr-search-placeholder,
@@ -355,6 +348,7 @@ input
 
 .cbr-content {
 	overflow-y: auto;
+	border-top:1px solid var(--border-color);
 }
 
 .cbr-content div {
@@ -389,7 +383,6 @@ input
 .thin-scroll::-webkit-scrollbar-thumb:hover {
 	background: var(--button-bg-hover);
 }
-
 
 @media (prefers-color-scheme: dark) {
 	.search-icon{
