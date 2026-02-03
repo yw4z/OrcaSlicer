@@ -23,33 +23,70 @@
 <div id="Content" class="ZScrol">
 	
 <div id="SystemFilamentsArea">
-<div id="MachineList" class="ChooseBlock">
-	<div class="CName"><span class="trans" tid="t15">printer</span>：</div>
-	<div class="CValues">
-	<label><input type="checkbox" mode="all" onClick="ChooseAllMachine()"  /><span class="trans" tid="t11">all</span></label>
-	</div>
-</div>	
-	
-<div id="FilatypeList" class="ChooseBlock">
-	<div class="CName"><span class="trans" tid="t16">filament type</span>：</div>
-	<div class="CValues">
-	<label><input type="checkbox" class="trans" tid="t11" onClick="ChooseAllFilament()" /><span class="trans" tid="t11">all</span></label>	
-	</div>
-</div>
-	
-<div id="VendorList" class="ChooseBlock">
-	<div class="CName"><span class="trans" tid="t17">vendor</span>：</div>
-	<div class="CValues">
-	<label><input type="checkbox" class="trans" tid="t11" onClick="ChooseAllVendor()" /><span class="trans" tid="t11">all</span></label>
+
+<!-- ORCA column browser -->
+<div class="cbr-browser-container columns">
+    <div class="cbr-column">
+        <div class="cbr-column-title-container">
+            <input type="text" class="cbr-search-bar" placeholder=" "/>
+			<span class="cbr-search-placeholder trans" tid="t15">printer</span>
+            <div class="search-icon"></div>
+        </div>
+        <div class="cbr-content thin-scroll" id="MachineList">
+			<div class="CValues">
+				<label><input type="checkbox" mode="all" onClick="ChooseAllMachine()"  /><span class="trans" tid="t11">all</span></label>
+			</div>
+            <div class="cbr-no-items">No items</div>
+        </div>
+    </div>
+
+    <div class="cbr-column">
+        <div class="cbr-column-title-container">
+            <input type="text" class="cbr-search-bar" placeholder=" "/>
+			<span class="cbr-search-placeholder trans" tid="t16">filament type</span>
+            <div class="search-icon"></div>
+        </div>
+        <div class="cbr-content thin-scroll" id="FilatypeList">
+			<div class="CValues">
+				<label><input type="checkbox" class="trans" tid="t11" onClick="ChooseAllFilament()" /><span class="trans" tid="t11">all</span></label>	
+			</div>
+            <div class="cbr-no-items">No items</div>
+        </div>
+    </div>
+
+    <div class="cbr-column">
+        <div class="cbr-column-title-container">
+            <input type="text" class="cbr-search-bar" placeholder=" "/>
+			<span class="cbr-search-placeholder trans" tid="t17">vendor</span>
+            <div class="search-icon"></div>
+        </div>
+        <div class="cbr-content thin-scroll" id="VendorList">
+			<div class="CValues">
+				<label><input type="checkbox" class="trans" tid="t11" onClick="ChooseAllVendor()" /><span class="trans" tid="t11">all</span></label>
+			</div>
+            <div class="cbr-no-items">No items</div>
+        </div>
     </div>
 </div>
 
-<div id="ItemSelectArea">
-	<div class="ButtonStyleConfirm ButtonTypeWindow  trans" tid="t11" onClick="SelectAllFilament(1)">all</div>
-	<div class="ButtonStyleRegular ButtonTypeWindow  trans" tid="t12" onClick="SelectAllFilament(0)">Clear all</div>
-</div>	
-	
-<div id="ItemBlockArea" class="ZScrol">	
+<div class="cbr-browser-container filtered">
+	<div class="cbr-column">
+		<div class="cbr-column-title-container">
+			<div class="cbr-filter-box">
+				<input type="text" class="cbr-filter-bar" placeholder=" "/>
+				<span class="cbr-filter-placeholder">Filter items</span>
+				<div class="filter-icon"></div>
+			</div>
+			<div class="cbr-filter-btns">
+				<div class="ButtonStyleConfirm ButtonTypeWindow  trans" tid="t11" onClick="SelectAllFilament(1)">all</div>
+				<div class="ButtonStyleRegular ButtonTypeWindow  trans" tid="t12" onClick="SelectAllFilament(0)">Clear all</div>
+			</div>	
+		</div>
+		<div class="cbr-content thin-scroll" id="ItemBlockArea">
+			<!-- <label class="MItem"><input type="checkbox" class="trans" tid="t11" onClick="SelectAllFilament()" /><span class="trans" tid="t11">all</span></label> -->
+			<div class="cbr-no-items">No items</div>
+		</div>
+	</div>
 </div>
 </div>
 	
@@ -89,15 +126,45 @@
 		if (e.keyCode == 27)
 			ClosePage();
 
-		if (window.event) {
-			try { e.keyCode = 0; } catch (e) { }
-			e.returnValue = false;
-		}
+		//if (window.event) {
+		//	try { e.keyCode = 0; } catch (e) { }
+		//	e.returnValue = false;
+		//}
 	};
     window.addEventListener('wheel', function (event) {
         if (event.ctrlKey === true || event.metaKey) {
             event.preventDefault();
         }
     }, { passive: false });
+
+	document.querySelectorAll('.cbr-search-bar').forEach(searchBar => {
+        searchBar.addEventListener('input', function() {
+            const search = this.value.trim().toLowerCase();
+            const list   = this.closest('.cbr-column').querySelector('.cbr-content');
+            const items  = list.querySelectorAll('label');
+            var hiddenCount = 0;
+            items.forEach(item => {
+                const text   = item.querySelector("span").textContent.toLowerCase();
+                const hidden = search && !text.includes(search);
+                item.style.display = hidden ? "none" : "block";
+                if(hidden) hiddenCount++;
+            });
+            list.querySelector('.cbr-no-items').style.display = (hiddenCount === items.length) ? "block" : "none";
+        });
+	});
+
+	document.querySelector('.cbr-filter-bar').addEventListener('input', function() {
+        const search = this.value.trim().toLowerCase();
+        const list   = this.closest('.cbr-column').querySelector('.cbr-content');
+        const items  = list.querySelectorAll('label');
+        var hiddenCount = 0;
+        items.forEach(item => {
+            const text   = item.querySelector("span").textContent.toLowerCase();
+            const hidden = search && !text.includes(search); //item.style.display == "none"
+			item.style.position = hidden ? "absolute" : "unset";
+            if(hidden) hiddenCount++;
+        });
+        list.querySelector('.cbr-no-items').style.display = (hiddenCount === items.length) ? "block" : "none";
+	});
 </script>
 </html>

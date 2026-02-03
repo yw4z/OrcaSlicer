@@ -129,6 +129,7 @@ label:has(input[type="checkbox"]){
 
 label:has(input[type="checkbox"])>span{
 	vertical-align: middle;
+	line-height: 1.2em;
 	margin:0;
 }
 
