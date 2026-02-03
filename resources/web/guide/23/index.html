@@ -78,8 +78,8 @@
 				<div class="filter-icon"></div>
 			</div>
 			<div class="cbr-filter-btns">
-				<span class="cbr-filter-indicator-fil trans">Select filtered</span>
-				<span class="cbr-filter-indicator-vis trans">Select visible</span>
+				<span class="cbr-filter-indicator-filter  trans">Select filtered</span>
+				<span class="cbr-filter-indicator-visible trans">Select visible</span>
 				<div class="ButtonStyleConfirm ButtonTypeWindow  trans" tid="t11" onClick="SelectAllFilament(1)">all</div>
 				<div class="ButtonStyleRegular ButtonTypeWindow  trans" tid="t12" onClick="SelectAllFilament(0)">Clear all</div>
 			</div>	
@@ -155,13 +155,17 @@
         });
 	});
 
+	const filterIndicatorFilter  = document.querySelector('.cbr-filter-indicator-filter' );
+	const filterIndicatorVisible = document.querySelector('.cbr-filter-indicator-visible');
+
 	document.querySelector('.cbr-filter-bar').addEventListener('input', function() {
         const search = this.value.trim().toLowerCase();
         const list   = this.closest('.cbr-column').querySelector('.cbr-content');
         const items  = list.querySelectorAll('label');
         var hiddenCount = 0;
-		document.querySelector('.cbr-filter-indicator-fil').style.display = search ? "block" : "none";
-		document.querySelector('.cbr-filter-indicator-vis').style.display = search ? "none" : "block";
+		
+		filterIndicatorFilter.style.display  = search ? "block" : "none";
+		filterIndicatorVisible.style.display = search ? "none" : "block";
 		
         items.forEach(item => {
             const text   = item.querySelector("span").textContent.toLowerCase();

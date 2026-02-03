@@ -8,48 +8,50 @@
 
 /*----GLOBAL COLORS ----*/
 :root { 
-	--main-color         : #009688;
-	--main-color-hover   : #26A69A;
-	--main-color-fixed   : #009688;
-	--bg-color           : #FFFFFF;
-	--bg-color-secondary : #F1F1F1;
-	--bg-color-alt		 : #F8F8F8;
-	--fg-color-text	     : #262E30;
-	--fg-color-label     : #363636;
-	--fg-color-disabled  : #ACACAC;
-	--focus-bg-item 	 : #BFE1DE;
-	--focus-bg-box  	 : #E5F0EE;
-	--border-color		 : #DBDBDB;
-	--button-fg-light    : #FEFEFE;
-	--button-fg-text     : #262E30;
-	--button-fg-disabled : #6B6B6B;
-	--button-bg-normal   : #DFDFDF;
-	--button-bg-hover    : #D4D4D4;
-	--button-bg-disabled : var(--button-bg-normal);
-	--button-bg-alert    : #E14747;
+	--main-color			: #009688;
+	--main-color-hover		: #26A69A;
+	--main-color-fixed		: #009688;
+	--bg-color				: #FFFFFF;
+	--bg-color-secondary	: #F8F8F8;
+	--bg-color-alt			: #F1F1F1;
+	--fg-color-text			: #262E30;
+	--fg-color-label		: #363636;
+	--fg-color-disabled		: #ACACAC;
+	--focus-bg-item			: #BFE1DE;
+	--focus-bg-box			: #E5F0EE;
+	--border-color			: #DBDBDB;
+	--icon-color			: #7C8282;
+	--button-fg-light		: #FEFEFE;
+	--button-fg-text		: #262E30;
+	--button-fg-disabled	: #6B6B6B;
+	--button-bg-normal		: #DFDFDF;
+	--button-bg-hover		: #D4D4D4;
+	--button-bg-disabled	: var(--button-bg-normal);
+	--button-bg-alert		: #E14747;
 }
   
 @media (prefers-color-scheme: dark) { 
 :root {
-	--main-color         : #00675B;
-	--main-color-hover   : #008172;
-	--main-color-fixed   : #009688;
-	--bg-color           : #2D2D31;
-	--bg-color-secondary : #36363B;
-	--bg-color-alt		 : #242428;
-	--fg-color-text	     : #EFEFF0;
-	--fg-color-label     : #B2B3B5;
-	--fg-color-disabled  : #65656A;
-	--focus-bg-item 	 : #223C3C;
-	--focus-bg-box  	 : #283232;
-	--border-color		 : #4A4A51;
-	--button-fg-light    : #FEFEFE;
-	--button-fg-text     : #EFEFF0;
-	--button-fg-disabled : #818183;
-	--button-bg-normal   : #3E3E45;
-	--button-bg-hover    : #4D4D54;
-	--button-bg-disabled : var(--button-bg-normal);
-	--button-bg-alert    : #E14747;
+	--main-color			: #00675B;
+	--main-color-hover		: #008172;
+	--main-color-fixed		: #009688;
+	--bg-color				: #2D2D31;
+	--bg-color-secondary	: #36363B;
+	--bg-color-alt			: #242428;
+	--fg-color-text			: #EFEFF0;
+	--fg-color-label		: #B2B3B5;
+	--fg-color-disabled		: #65656A;
+	--focus-bg-item			: #223C3C;
+	--focus-bg-box			: #283232;
+	--border-color			: #4A4A51;
+	--icon-color			: #949494;
+	--button-fg-light		: #FEFEFE;
+	--button-fg-text		: #EFEFF0;
+	--button-fg-disabled	: #818183;
+	--button-bg-normal		: #3E3E45;
+	--button-bg-hover		: #4D4D54;
+	--button-bg-disabled	: var(--button-bg-normal);
+	--button-bg-alert		: #E14747;
 }
 }
 

@@ -232,8 +232,7 @@ input
 
 #MachineList  .CValues,
 #VendorList   .CValues,
-#FilatypeList .CValues
-{
+#FilatypeList .CValues {
 	display:grid;
 }
 
@@ -252,18 +251,17 @@ input
 .cbr-search-bar,
 .cbr-filter-bar {
 	margin: 0px;
-	border: 1px solid transparent;
 	font-size: 16px;
+	background: var(--bg-color-secondary);
 }
 
 .cbr-search-bar {
+	border: 1px solid transparent;
 	padding: 3px 8px;
 	width: calc(100% - 18px);
-	background: var(--bg-color-secondary);
 }
 
 .cbr-filter-bar {
-	background: var(--bg-color-secondary);
 	border: 1px solid var(--border-color);
 	border-radius: 4px;
 	padding-left: 30px;
@@ -282,41 +280,35 @@ input
 	margin: 5px;
 }
 
-.cbr-filter-indicator-vis{
-	margin-right: 10px;
+.cbr-filter-btns div:first-of-type {
+	margin-left: 10px;
 }
 
-.cbr-filter-indicator-fil {
+.cbr-filter-indicator-filter {
 	display: none;
-	margin-right: 10px;
 }
 
-.search-icon {
-	content: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="%237C8282"><path d="M6.5,2A4.505,4.505,0,0,0,2,6.5a.5.5,0,0,0,1,0A3.5,3.5,0,0,1,6.5,3a.5.5,0,0,0,0-1Z"/><path d="M14.854,14.146l-3.423-3.422a6.518,6.518,0,1,0-.707.707l3.422,3.423a.5.5,0,0,0,.708-.708ZM1,6.5A5.5,5.5,0,1,1,6.5,12,5.507,5.507,0,0,1,1,6.5Z"/></svg>');
+.search-icon,
+.filter-icon {
+	--webkit-mask-image: var(--url);
+	mask-image:var(--url);
+	width:  16px;
+  	height: 16px;
+	background-color: var(--icon-color);
 	position:absolute;
 	top: 50%;
 	transform: translateY(-50%);
-	right: 8px;
 	pointer-events:none;
-}
-
-.cbr-search-placeholder {
-	left: 10px;
 }
 
 .filter-icon {
-	content: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g style="fill:none; stroke:%23949494; stroke-linecap:round; stroke-linejoin:round;"><polygon points=".5 .5 5.5 7.5 5.5 13.5 9.5 15.5 9.5 7.5 14.5 .5 .5 .5"/><line x1="8.64" y1="4.5" x2="10.19" y2="2.34"/></g></svg>');
-	position:absolute;
-	top: 50%;
-	transform: translateY(-50%);
+	--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g style="fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;"><polygon points=".5 .5 5.5 7.5 5.5 13.5 9.5 15.5 9.5 7.5 14.5 .5 .5 .5"/><line x1="8.64" y1="4.5" x2="10.19" y2="2.34"/></g></svg>');
 	left: 12px;
-	pointer-events:none;
 }
 
-.cbr-filter-placeholder {
-	left: 36px;
-	line-height: 24px;
-	opacity: 0.5
+.search-icon {
+	--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5,2A4.505,4.505,0,0,0,2,6.5a.5.5,0,0,0,1,0A3.5,3.5,0,0,1,6.5,3a.5.5,0,0,0,0-1Z"/><path d="M14.854,14.146l-3.423-3.422a6.518,6.518,0,1,0-.707.707l3.422,3.423a.5.5,0,0,0,.708-.708ZM1,6.5A5.5,5.5,0,1,1,6.5,12,5.507,5.507,0,0,1,1,6.5Z"/></svg>');
+	right: 8px;
 }
 
 .cbr-search-bar:is(:hover,:focus),
@@ -330,6 +322,15 @@ input
 	background: var(--focus-bg-box);
 }
 
+.cbr-filter-placeholder {
+	left: 36px;
+	line-height: 24px;
+}
+
+.cbr-search-placeholder {
+	left: 10px;
+}
+
 .cbr-search-placeholder,
 .cbr-filter-placeholder {
 	position: absolute;
@@ -338,10 +339,6 @@ input
 	font-size: 16px;
 	color: var(--fg-color-text);
 	pointer-events: none;
-}
-
-.cbr-search-bar:focus + .cbr-search-placeholder,
-.cbr-filter-bar:focus + .cbr-filter-placeholder {
 	opacity: 0.5;
 }
 
@@ -365,8 +362,7 @@ input
 	padding-bottom: 1px !important;
 }
 
-.cbr-content div.cbr-no-items,
-.cbr-content div.hidden {
+.cbr-content div.cbr-no-items {
 	display: none;
 }
 
@@ -386,13 +382,4 @@ input
 
 .thin-scroll::-webkit-scrollbar-thumb:hover {
 	background: var(--button-bg-hover);
-}
-
-@media (prefers-color-scheme: dark) {
-	.search-icon{
-		content: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="%23949494"><path d="M6.5,2A4.505,4.505,0,0,0,2,6.5a.5.5,0,0,0,1,0A3.5,3.5,0,0,1,6.5,3a.5.5,0,0,0,0-1Z"/><path d="M14.854,14.146l-3.423-3.422a6.518,6.518,0,1,0-.707.707l3.422,3.423a.5.5,0,0,0,.708-.708ZM1,6.5A5.5,5.5,0,1,1,6.5,12,5.507,5.507,0,0,1,1,6.5Z"/></svg>');
-	}
-	.filter-icon{
-		content: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g style="fill:none; stroke:%23949494; stroke-linecap:round; stroke-linejoin:round;"><polygon points=".5 .5 5.5 7.5 5.5 13.5 9.5 15.5 9.5 7.5 14.5 .5 .5 .5"/><line x1="8.64" y1="4.5" x2="10.19" y2="2.34"/></g></svg>');
-	}
 }
