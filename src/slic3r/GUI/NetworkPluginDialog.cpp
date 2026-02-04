@@ -171,7 +171,7 @@ void NetworkPluginDownloadDialog::setup_version_selector()
     m_version_combo = new ComboBox(this, wxID_ANY, wxEmptyString,
         wxDefaultPosition, wxSize(-1, FromDIP(28)), 0, nullptr, wxCB_READONLY);
 
-    m_available_versions = BBL::get_all_available_versions();
+    m_available_versions = get_all_available_versions();
     for (size_t i = 0; i < m_available_versions.size(); ++i) {
         const auto& ver = m_available_versions[i];
         wxString label;

@@ -52,7 +52,7 @@ private:
     ComboBox* m_version_combo{nullptr};
     std::string m_error_message;
     std::string m_error_details;
-    std::vector<BBL::NetworkLibraryVersionInfo> m_available_versions;
+    std::vector<NetworkLibraryVersionInfo> m_available_versions;
 };
 
 class NetworkPluginRestartDialog : public DPIDialog
