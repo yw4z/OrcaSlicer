@@ -439,11 +439,11 @@ wxBoxSizer *PreferencesDialog::create_item_network_plugin_version_combobox(wxStr
 
     std::string current_version = app_config->get_network_plugin_version();
     if (current_version.empty()) {
-        current_version = BBL::get_latest_network_version();
+        current_version = get_latest_network_version();
     }
     int current_selection = 0;
 
-    m_available_versions = BBL::get_all_available_versions();
+    m_available_versions = get_all_available_versions();
 
     for (size_t i = 0; i < m_available_versions.size(); i++) {
         const auto& ver = m_available_versions[i];
@@ -474,7 +474,7 @@ wxBoxSizer *PreferencesDialog::create_item_network_plugin_version_combobox(wxStr
             std::string new_version = selected_ver.version;
             std::string old_version = app_config->get_network_plugin_version();
             if (old_version.empty()) {
-                old_version = BBL::get_latest_network_version();
+                old_version = get_latest_network_version();
             }
 
             app_config->set(SETTING_NETWORK_PLUGIN_VERSION, new_version);

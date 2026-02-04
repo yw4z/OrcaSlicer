@@ -69,7 +69,7 @@ public:
     ::CheckBox * m_dark_mode_ckeckbox        = {nullptr};
     ::TextInput *m_backup_interval_textinput = {nullptr};
     ::ComboBox * m_network_version_combo     = {nullptr};
-    std::vector<BBL::NetworkLibraryVersionInfo> m_available_versions;
+    std::vector<NetworkLibraryVersionInfo> m_available_versions;
 
     wxString m_developer_mode_def;
     wxString m_internal_developer_mode_def;
