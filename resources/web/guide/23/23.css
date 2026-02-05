@@ -252,6 +252,7 @@ body:has(#SystemFilamentBtn.TitleSelected) #Content {
 	background: var(--bg-color-secondary);
 	border: 1px solid transparent;
 	padding: 2px 27px 2px 27px;
+	line-height: 24px;
 }
 
 .cbr-search-bar {
@@ -260,7 +261,6 @@ body:has(#SystemFilamentBtn.TitleSelected) #Content {
 
 .cbr-filter-bar {
 	border-color: var(--border-color);
-	border-radius: 4px;
 	width: 180px;
 	height:24px;
 }
@@ -298,8 +298,8 @@ body:has(#SystemFilamentBtn.TitleSelected) #Content {
 	position: absolute;
 	top: 50%;
 	transform: translateY(-50%);
-	--webkit-mask-image: var(--url);
-	mask-image:var(--url);
+	-webkit-mask-image: var(--url);
+	mask-image: var(--url);
 	width:  16px;
   	height: 16px;
 	background-color: var(--icon-color);

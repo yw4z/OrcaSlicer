@@ -101,45 +101,60 @@
 /*/// COMBOBOX ///*/
 /*
 STRUCTURE
-	<select class="ComboBox NoLabel">
-		<option value="1">Checked</option>
-		<option value="2">Unchecked</option>
-	</select>
+	<div class="ComboBox NoLabel">
+		<div class="arrow-icon"></div>
+		<select id="filter-tags">
+			<option value="0" disabled selected hidden></option>
+			<option value="1">Checked</option>
+			<option value="2">Unchecked</option>
+		</select>
+	</div>
 OPTIONS
 	NoLabel : Hides label and just shows arrow icon
 */
-.ComboBox {
+.ComboBox{
+	position: relative;
+}
+
+.ComboBox > select{
     width: 120px;
     background: inherit;
     border: 1px solid var(--border-color);
     border-radius: 0;
+	appearance: none;
     -webkit-appearance: none; /* Hide arrow */
-    background-image:  url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><polyline points="11.5 6.5 6.5 9.5 1.5 6.5" style="fill:none;stroke:gray;stroke-linecap:round;stroke-linejoin:round"/></svg>');
-    background-repeat: no-repeat;
-    background-position: left 5px center;
-    background-size: 16px;
 	font-size: 14px;
     color: var(--fg-color-text);
     padding: 4px 4px 4px 24px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
 }
 
-.ComboBox:focus {
+.ComboBox > .arrow-icon {
+    position: absolute;
+    width:  16px;
+    height: 16px;
+    left: 7px;
+    top:  50%;
+    transform: translateY(-50%);
+	--arrow-icon: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><polyline points="11.5 6.5 6.5 9.5 1.5 6.5" style="fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round"/></svg>'); 
+	mask-image: var(--arrow-icon);
+	-webkit-mask-image: var(--arrow-icon);
+	background-color: var(--icon-color);
+    pointer-events: none;
+}
+
+.ComboBox > select:focus {
     outline: none;
     background-color: var(--focus-bg-box);
     border-color: var(--main-color);;
 }
     
-.ComboBox:hover {
+.ComboBox > select:hover {
     border-color: var(--main-color);;
 }
 
-.ComboBox.NoLabel {
+.ComboBox.NoLabel select{
     width: 28px;
     padding: 4px;
-    background-position: left 6px center;
     color: transparent;
 }
 
