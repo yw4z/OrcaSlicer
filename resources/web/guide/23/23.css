@@ -261,8 +261,13 @@ body:has(#SystemFilamentBtn.TitleSelected) #Content {
 
 .cbr-filter-bar {
 	border-color: var(--border-color);
-	width: 180px;
+	width: 160px;
 	height:24px;
+}
+
+.cbr-column-title-container .ComboBox > select {
+	margin: 3px 0;
+	height: 30px;
 }
 
 .cbr-column-title-container input:is(:hover,:focus) {
@@ -360,22 +365,4 @@ input[onclear="1"]{
 
 .cbr-content div.cbr-no-items {
 	display: none;
-}
-
-.thin-scroll::-webkit-scrollbar {
-	width: 10px;
-	height: 10px
-}
-
-.thin-scroll::-webkit-scrollbar-track {
-	background:  var(--bg-color-alt);
-}
-
-.thin-scroll::-webkit-scrollbar-thumb {
-	background:  var(--button-bg-normal);
-	border-radius: 5px;
-}
-
-.thin-scroll::-webkit-scrollbar-thumb:hover {
-	background: var(--button-bg-hover);
 }

@@ -112,11 +112,12 @@ STRUCTURE
 OPTIONS
 	NoLabel : Hides label and just shows arrow icon
 */
-.ComboBox{
+.ComboBox {
 	position: relative;
+    background: inherit;
 }
 
-.ComboBox > select{
+.ComboBox > select {
     width: 120px;
     background: inherit;
     border: 1px solid var(--border-color);
@@ -152,10 +153,12 @@ OPTIONS
     border-color: var(--main-color);;
 }
 
-.ComboBox.NoLabel select{
+.ComboBox.NoLabel > select {
     width: 28px;
+	height: 28px;
     padding: 4px;
     color: transparent;
+	font-size: unset;
 }
 
 .ComboBox option {
@@ -164,4 +167,24 @@ OPTIONS
 
 .ComboBox option:checked {
     background: var(--focus-bg-item);
+}
+
+/*/// SCROLL BARS ///*/
+
+.thin-scroll::-webkit-scrollbar {
+	width: 10px;
+	height: 10px
+}
+
+.thin-scroll::-webkit-scrollbar-track {
+	background:  var(--bg-color-alt);
+}
+
+.thin-scroll::-webkit-scrollbar-thumb {
+	background:  var(--button-bg-normal);
+	border-radius: 5px;
+}
+
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+	background: var(--button-bg-hover);
 }
