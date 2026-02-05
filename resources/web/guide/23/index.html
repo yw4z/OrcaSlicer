@@ -31,6 +31,7 @@
             <input type="text" class="cbr-search-bar" placeholder=" " tabindex="1"/>
 			<span class="cbr-search-placeholder trans" tid="t15">printer</span>
             <div class="search-icon"></div>
+			<div class="clear-icon"></div>
         </div>
         <div class="cbr-content thin-scroll" id="MachineList">
 			<div class="CValues">
@@ -45,6 +46,7 @@
             <input type="text" class="cbr-search-bar" placeholder=" " tabindex="2"/>
 			<span class="cbr-search-placeholder trans" tid="t16">filament type</span>
             <div class="search-icon"></div>
+			<div class="clear-icon"></div>
         </div>
         <div class="cbr-content thin-scroll" id="FilatypeList">
 			<div class="CValues">
@@ -59,6 +61,7 @@
             <input type="text" class="cbr-search-bar" placeholder=" " tabindex="3"/>
 			<span class="cbr-search-placeholder trans" tid="t17">vendor</span>
             <div class="search-icon"></div>
+			<div class="clear-icon"></div>
         </div>
         <div class="cbr-content thin-scroll" id="VendorList">
 			<div class="CValues">
@@ -74,10 +77,11 @@
 				<input type="text" class="cbr-filter-bar" placeholder=" " tabindex="4"/>
 				<span class="cbr-filter-placeholder trans">Filter items</span>
 				<div class="filter-icon"></div>
+				<div class="clear-icon"></div>
 			</div>
 			<div class="cbr-filter-btns">
-				<span class="cbr-filter-indicator-filter  trans">Select filtered</span>
-				<span class="cbr-filter-indicator-visible trans">Select visible</span>
+				<span class="cbr-filter-mode-filter  trans">Select filtered</span>
+				<span class="cbr-filter-mode-visible trans">Select visible</span>
 				<div class="ButtonStyleConfirm ButtonTypeWindow  trans" tid="t11" onClick="SelectAllFilament(1)">all</div>
 				<div class="ButtonStyleRegular ButtonTypeWindow  trans" tid="t12" onClick="SelectAllFilament(0)">Clear all</div>
 			</div>	
@@ -137,41 +141,65 @@
         }
     }, { passive: false });
 
+	function addClearBtnEvents(el){
+		el.addEventListener('click', e => {
+			if (el.getAttribute("onclear") == "1") {
+				el.value = '';
+				el.dispatchEvent(new Event('input', {bubbles: true}));
+			}
+		});
+		el.addEventListener('mousemove', e => {
+			const rc = el.getBoundingClientRect();
+			const onRight = el.value && (e.clientX - rc.left > rc.width - 32);
+			el.setAttribute("onclear", onRight ? "1" : "0");
+		});
+		el.addEventListener('mouseleave', e => {
+			el.setAttribute("onclear", "0");
+		});
+	}
+
 	document.querySelectorAll('.cbr-search-bar').forEach(searchBar => {
         searchBar.addEventListener('input', function() {
-            const search = this.value.trim().toLowerCase();
-            const list   = this.closest('.cbr-column').querySelector('.cbr-content');
-            const items  = list.querySelectorAll('label');
-            var hiddenCount = 0;
+            const search = this.value.trim().toLowerCase(),
+            	  list   = this.closest('.cbr-column').querySelector('.cbr-content'),
+            	  items  = list.querySelectorAll('label');
+            let   hidden = 0;
+
             items.forEach(item => {
-                const text   = item.querySelector("span").textContent.toLowerCase();
-                const hidden = search && !text.includes(search);
-                item.style.display = hidden ? "none" : "block";
-                if(hidden) hiddenCount++;
+                const text = item.querySelector("span").textContent.toLowerCase();
+                const hide = search && !text.includes(search);
+                item.style.display = hide ? "none" : "block";
+                if(hide) hidden++;
             });
-            list.querySelector('.cbr-no-items').style.display = (hiddenCount === items.length) ? "block" : "none";
+
+            list.querySelector('.cbr-no-items').style.display = (hidden === items.length) ? "block" : "none";
         });
+		addClearBtnEvents(searchBar);
 	});
 
-	const filterIndicatorFilter  = document.querySelector('.cbr-filter-indicator-filter' );
-	const filterIndicatorVisible = document.querySelector('.cbr-filter-indicator-visible');
-
-	document.querySelector('.cbr-filter-bar').addEventListener('input', function() {
-        const search = this.value.trim().toLowerCase();
-        const list   = this.closest('.cbr-column').querySelector('.cbr-content');
-        const items  = list.querySelectorAll('label');
-        var hiddenCount = 0;
+	const filterBar         = document.querySelector('.cbr-filter-bar');
+	const filterModeFilter  = document.querySelector('.cbr-filter-mode-filter' );
+	const filterModeVisible = document.querySelector('.cbr-filter-mode-visible');
+	
+	filterBar.addEventListener('input', function() {
+        const search = this.value.trim().toLowerCase(),
+        	  list   = this.closest('.cbr-column').querySelector('.cbr-content'),
+        	  items  = list.querySelectorAll('label');
+        let   hidden = 0;
 		
-		filterIndicatorFilter.style.display  = search ? "block" : "none";
-		filterIndicatorVisible.style.display = search ? "none" : "block";
+		filterModeFilter.style.display  = search ? "block" : "none";
+		filterModeVisible.style.display = search ? "none" : "block";
 		
         items.forEach(item => {
-            const text   = item.querySelector("span").textContent.toLowerCase();
-            const hidden = search && !text.includes(search); //item.style.display == "none"
-			item.style.position = hidden ? "absolute" : "unset";
-            if(hidden) hiddenCount++;
+            const text = item.querySelector("span").textContent.toLowerCase();
+            const hide = search && !text.includes(search);
+			item.style.position = hide ? "absolute" : "unset";
+            if(hide) hidden++;
         });
-        list.querySelector('.cbr-no-items').style.display = (hiddenCount === items.length) ? "block" : "none";
+	
+        list.querySelector('.cbr-no-items').style.display = (hidden === items.length) ? "block" : "none";
 	});
+	addClearBtnEvents(filterBar);
+
 </script>
 </html>
