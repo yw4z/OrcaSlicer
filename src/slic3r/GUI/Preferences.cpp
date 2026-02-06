@@ -424,7 +424,7 @@ wxBoxSizer *PreferencesDialog::create_item_multiple_combobox(
     return m_sizer;
 }
 
-wxBoxSizer *PreferencesDialog::create_item_input(wxString title, wxString title2, wxString tooltip, std::string param, std::function<void(wxString)> onchange)
+wxBoxSizer *PreferencesDialog::create_item_input(wxString title, wxString secondary_title, wxString tooltip, std::string param, std::function<void(wxString)> onchange)
 {
     auto m_sizer = create_item_label(title, tooltip);
 
@@ -433,15 +433,16 @@ wxBoxSizer *PreferencesDialog::create_item_input(wxString title, wxString title2
     wxTextValidator validator(wxFILTER_DIGITS);
     input->SetToolTip(tooltip);
     input->GetTextCtrl()->SetValidator(validator);
+    m_sizer->Add(input, 0, wxALIGN_CENTER_VERTICAL);
 
-    auto second_title = new wxStaticText(m_parent, wxID_ANY, title2, wxDefaultPosition, wxDefaultSize, 0);
-    second_title->SetForegroundColour(DESIGN_GRAY900_COLOR);
-    second_title->SetFont(Label::Body_14);
-    second_title->SetToolTip(tooltip);
-    second_title->Wrap(-1);
-
-    m_sizer->Add(input       , 0, wxALIGN_CENTER_VERTICAL);
-    m_sizer->Add(second_title, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(2));
+    if(!secondary_title.IsEmpty()){
+        auto second_title = new wxStaticText(m_parent, wxID_ANY, secondary_title, wxDefaultPosition, wxDefaultSize, 0);
+        second_title->SetForegroundColour(DESIGN_GRAY900_COLOR);
+        second_title->SetFont(Label::Body_14);
+        second_title->SetToolTip(tooltip);
+        second_title->Wrap(-1);
+        m_sizer->Add(second_title, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(2));
+    }
 
     input->GetTextCtrl()->Bind(wxEVT_TEXT_ENTER, [this, param, input, onchange](wxCommandEvent &e) {
         auto value = input->GetTextCtrl()->GetValue();
@@ -624,29 +625,17 @@ wxBoxSizer *PreferencesDialog::create_item_auto_reslice(wxString title, wxString
     return m_sizer;
 }
 
-wxBoxSizer* PreferencesDialog::create_item_draco(wxString title, wxString side_label, wxString tooltip)
+wxBoxSizer* PreferencesDialog::create_item_draco(wxString title, wxString tooltip)
 {
-    wxBoxSizer* sizer_input = new wxBoxSizer(wxHORIZONTAL);
+    auto m_sizer = create_item_label(title, title);
 
-    auto input_title = new wxStaticText(m_parent, wxID_ANY, title, wxDefaultPosition, DESIGN_TITLE_SIZE, wxST_NO_AUTORESIZE);
-    input_title->SetForegroundColour(DESIGN_GRAY900_COLOR);
-    input_title->SetFont(::Label::Body_14);
-    input_title->SetToolTip(tooltip);
-    input_title->Wrap(DESIGN_TITLE_SIZE.x);
-    input_title->SetToolTip(tooltip);
-
-    auto input = new ::TextInput(m_parent, wxEmptyString, side_label, wxEmptyString, wxDefaultPosition, DESIGN_INPUT_SIZE, wxTE_PROCESS_ENTER);
-    StateColor input_bg(std::pair<wxColour, int>(wxColour("#F0F0F1"), StateColor::Disabled),
-                        std::pair<wxColour, int>(*wxWHITE, StateColor::Enabled));
-    input->SetBackgroundColor(input_bg);
+    auto input = new ::TextInput(m_parent, wxEmptyString, _L("bits"), wxEmptyString, wxDefaultPosition, DESIGN_INPUT_SIZE, wxTE_PROCESS_ENTER);
     input->GetTextCtrl()->SetValue(app_config->get("drc_bits"));
     wxTextValidator validator(wxFILTER_DIGITS);
     input->SetToolTip(tooltip);
     input->GetTextCtrl()->SetValidator(validator);
 
-    sizer_input->AddSpacer(FromDIP(DESIGN_LEFT_MARGIN));
-    sizer_input->Add(input_title, 0, wxALIGN_CENTER_VERTICAL);
-    sizer_input->Add(input      , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(5));
+    m_sizer->Add(input, 0, wxALIGN_CENTER_VERTICAL);
 
     std::function<void()> set_draco_bits = [this, input]() {
         long drc_bits = DRC_BITS_DEFAULT;
@@ -673,7 +662,7 @@ wxBoxSizer* PreferencesDialog::create_item_draco(wxString title, wxString side_l
         e.Skip();
     });
 
-    return sizer_input;
+    return m_sizer;
 }
 
 wxBoxSizer* PreferencesDialog::create_item_darkmode(wxString title,wxString tooltip, std::string param)
@@ -1170,8 +1159,14 @@ void PreferencesDialog::create_items()
     auto item_step_dialog      = create_item_checkbox(_L("Show options when importing STEP file"), _L("If enabled, a parameter settings dialog will appear during STEP file import."), "enable_step_mesh_setting");
     g_sizer->Add(item_step_dialog);
 
+    auto item_draco_bits = create_item_draco(_L("Quality level for Draco export"),
+        _L("Controls the quantization bit depth used when compressing the mesh to Draco format.\n"
+           "0 = lossless compression (geometry is preserved at full precision). Valid lossy values range from 8 to 30.\n"
+           "Lower values produce smaller files but lose more geometric detail; higher values preserve more detail at the cost of larger files."));
+    g_sizer->Add(item_draco_bits);
+
     auto item_backup           = create_item_backup(_L("Auto backup"), _L("Backup your project periodically for restoring from the occasional crash."));
-    g_sizer->Add(item_backup); 
+    g_sizer->Add(item_backup);
 
     //// GENERAL > Preset
     g_sizer->Add(create_item_title(_L("Preset")), 1, wxEXPAND);
@@ -1196,13 +1191,6 @@ void PreferencesDialog::create_items()
     auto item_pop_up_filament_map_dialog = create_item_checkbox(_L("Pop up to select filament grouping mode"), _L("Pop up to select filament grouping mode"), 50, "pop_up_filament_map_dialog");
     g_sizer->Add(item_pop_up_filament_map_dialog);
 #endif
-
-    auto item_draco_bits = create_item_draco(_L("Quality level for Draco export"),
-        _L("bits"),
-        _L("Controls the quantization bit depth used when compressing the mesh to Draco format.\n"
-           "0 = lossless compression (geometry is preserved at full precision). Valid lossy values range from 8 to 30.\n"
-           "Lower values produce smaller files but lose more geometric detail; higher values preserve more detail at the cost of larger files."));
-    g_sizer->Add(item_draco_bits);
 
     g_sizer->AddSpacer(FromDIP(10));
     sizer_page->Add(g_sizer, 0, wxEXPAND);
