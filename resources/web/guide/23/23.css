@@ -67,7 +67,7 @@
 
 #NoticeBar
 {
-	background-color:#00f0d8;
+	background-color: var(--main-color);
 	height: 40px;
 	line-height: 40px;
 	color: #fff;
@@ -104,7 +104,7 @@
 #Title
 {
 	margin: 0px 40px;
-	border-bottom: 1px solid #000;
+	border-bottom: 1px solid var(--border-color);
 	display: flex;
 	flex-direction: row;
 	justify-content: center;
@@ -122,7 +122,7 @@
 	height: calc(100% - 6px);
 	display: flex;
 	align-items: center;
-	border-bottom: 6px solid #009688;
+	border-bottom: 6px solid var(--main-color);
 }
 
 #Title div.TitleUnselected
@@ -183,8 +183,12 @@
 
 /* ORCA column browser */
 
+#Content {
+	height: 100%;
+}
+
 body:has(#SystemFilamentBtn.TitleSelected) #Content {
-	padding: 10px 15px 5px;
+	padding: 15px 15px 5px;
 }
 
 .cbr-browser-container {
