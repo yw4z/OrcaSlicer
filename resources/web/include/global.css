@@ -1,12 +1,16 @@
 /*----ORCA UNIFIED STYLING FOR ALL CONTROLS----*/
 
-/*----GLOBAL VARIABLES ----*/
+/*////////////////////////////*/
+/*         VARIABLES          */
+/*////////////////////////////*/
+
+/*/// CONTROL VALUES ///*/
 :root {
 	--dialog-button-sizer-height : 62px; /*----32 + 15 * 2----*/
 	--dialog-button-gap          : 15px;
 }
 
-/*----GLOBAL COLORS ----*/
+/*/// COLORS ///*/
 :root { 
 	--main-color			: #009688;
 	--main-color-hover		: #26A69A;
@@ -53,6 +57,21 @@
 	--button-bg-disabled	: var(--button-bg-normal);
 	--button-bg-alert		: #E14747;
 }
+}
+
+/*////////////////////////////*/
+/*           ICONS            */
+/*////////////////////////////*/
+
+:root {
+--icon-filter:
+	url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g style="fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round"><polygon points=".5 .5 5.5 7.5 5.5 13.5 9.5 15.5 9.5 7.5 14.5 .5 .5 .5"/><line x1="8.64" y1="4.5" x2="10.19" y2="2.34"/></g></svg>');
+--icon-search:
+	url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5,2A4.505,4.505,0,0,0,2,6.5a.5.5,0,0,0,1,0A3.5,3.5,0,0,1,6.5,3a.5.5,0,0,0,0-1Z"/><path d="M14.854,14.146l-3.423-3.422a6.518,6.518,0,1,0-.707.707l3.422,3.423a.5.5,0,0,0,.708-.708ZM1,6.5A5.5,5.5,0,1,1,6.5,12,5.507,5.507,0,0,1,1,6.5Z"/></svg>');
+--icon-input-clear:
+	url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g style="fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round"><path d="M.76,7.32L4.91,2.82c.19-.21.46-.32.74-.32h8.86c.55,0,1,.45,1,1v9c0,.55-.45,1-1,1H5.64c-.28,0-.55-.12-.74-.32L.76,8.68c-.35-.38-.35-.97,0-1.35Z"/><line x1="12.5" y1="5.5" x2="7.5" y2="10.5"/><line x1="12.5" y1="10.5" x2="7.5" y2="5.5"/></g></svg>');
+--icon-combo-arrow:
+	url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="11.5 6.5 6.5 9.5 1.5 6.5" style="fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round"/></svg>'); 
 }
 
 /*////////////////////////////*/
@@ -136,9 +155,8 @@ OPTIONS
     left: 7px;
     top:  50%;
     transform: translateY(-50%);
-	--arrow-icon: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><polyline points="11.5 6.5 6.5 9.5 1.5 6.5" style="fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round"/></svg>'); 
-	mask-image: var(--arrow-icon);
-	-webkit-mask-image: var(--arrow-icon);
+	mask-image: var(--icon-combo-arrow);
+	-webkit-mask-image: var(--icon-combo-arrow);
 	background-color: var(--icon-color);
     pointer-events: none;
 }
@@ -170,7 +188,6 @@ OPTIONS
 }
 
 /*/// SCROLL BARS ///*/
-
 .thin-scroll::-webkit-scrollbar {
 	width: 10px;
 	height: 10px
