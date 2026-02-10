@@ -187,7 +187,7 @@
 	height: 100%;
 }
 
-body:has(#SystemFilamentBtn.TitleSelected) #Content {
+body:has(#SystemFilamentBtn.TitleSelected) #Content { /* :has selector browser support 2023+ */
 	padding: 15px 15px 5px;
 }
 
@@ -311,7 +311,8 @@ body:has(#SystemFilamentBtn.TitleSelected) #Content {
 	display: none;
 }
 
-.cbr-column-title-container:has(input:not(:placeholder-shown)) .clear-icon {
+.cbr-search-bar:not(:placeholder-shown) ~ .clear-icon,
+.cbr-filter-bar:not(:placeholder-shown) ~ .clear-icon  {
 	display: block;
 }
 

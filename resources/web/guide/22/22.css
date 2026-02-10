@@ -220,7 +220,8 @@
 	display: none;
 }
 
-.cbr-column-title-container:has(input:not(:placeholder-shown)) .clear-icon {
+.cbr-search-bar:not(:placeholder-shown) ~ .clear-icon,
+.cbr-filter-bar:not(:placeholder-shown) ~ .clear-icon  {
 	display: block;
 }
 
