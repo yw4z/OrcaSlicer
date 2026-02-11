@@ -20,16 +20,20 @@
 <div id="Title">
 	<div class="trans" tid="t10">Printer Selection</div>
 </div>
-<div class="wrap">
-	<div class="search">
-		<input type="text" class="searchTerm" placeholder="Device keyword" oninput="textInput(this)">
-		<svg id="search-icon" width="16px" height="16px"> <!-- ORCA -->
-			<path d="M6.5,2A4.505,4.505,0,0,0,2,6.5a.5.5,0,0,0,1,0A3.5,3.5,0,0,1,6.5,3a.5.5,0,0,0,0-1Z"/>
-			<path d="M14.854,14.146l-3.423-3.422a6.518,6.518,0,1,0-.707.707l3.422,3.423a.5.5,0,0,0,.708-.708ZM1,6.5A5.5,5.5,0,1,1,6.5,12,5.507,5.507,0,0,1,1,6.5Z"/>
-		</svg>
+<div class="search">
+	<div class="search-icon"></div>
+	<input type="text" class="searchTerm" placeholder="" oninput="textInput(this)">
+	<span class="search-placeholder trans">Search...</span>
+</div>
+<div class="LayoutSelector">
+	<div class="TabGroup">
+		<div class="TabButton" onclick="LayoutMode(0)"><div class="icon"></div></div>
+		<div class="TabButton" onclick="LayoutMode(1)"><div class="icon"></div></div>
+		<div class="TabButton" onclick="LayoutMode(2)"><div class="icon"></div></div>
 	</div>
 </div>
-<div id="Content"  class="ZScrol"s>
+
+<div id="Content"  class="thin-scroll"s>
 
 <!--<div class="OneVendorBlock" Vendor="BBL">	
 <div class="BlockBanner">
@@ -93,6 +97,7 @@
 	
 </div>
 <div id="AcceptArea">
+	<div class="ButtonStyleRegular ButtonTypeChoice trans"           id="CreateBtn"  onclick="CreateNewPrinter()">Create</div>
 	<div class="ButtonStyleConfirm ButtonTypeChoice trans" tid="t39" id="AcceptBtn"  onclick="ConfirmSelect()">Confirm</div>	
 	<div class="ButtonStyleRegular ButtonTypeChoice trans" tid="t38" id="PreBtn"  onclick="CancelSelect()">Cancel</div>
 </div>
@@ -111,21 +116,41 @@
 	
 </body>
 <script>
+	const SearchBox = document.querySelector('.searchTerm');
+
 	document.onkeydown = function (event) {
 		var e = event || window.event || arguments.callee.caller.arguments[0];
 
 		if (e.keyCode == 27)
 			ClosePage();
 
-		if (window.event) {
-			try { e.keyCode = 0; } catch (e) { }
-			e.returnValue = true;
+		// ORCA focus search bar on key input
+		// SearchBox not in focus && writable character && non modifier
+		if (document.activeElement != SearchBox && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			SearchBox.focus();
 		}
+
+		//if (window.event) {
+		//	try { e.keyCode = 0; } catch (e) { }
+		//	e.returnValue = true;
+		//}
 	};
 	let pModel = {};
 	let ModelNozzleSelected = {};
 	function textInput(obj) {
 		FilterModelList(obj.value);
 	}
+
+
+	const LayoutSelector = document.querySelector('.LayoutSelector > .TabGroup');
+	const LayoutTabBtns  = Array.from(LayoutSelector.children);
+
+	function LayoutMode(index) {
+		LayoutTabBtns.forEach(el=>el.classList.remove('selected'));
+		LayoutTabBtns[index].classList.add('selected');
+		document.getElementById("Content").setAttribute("layout", index);
+	}
+
+	LayoutMode(2);
 </script>
 </html>
