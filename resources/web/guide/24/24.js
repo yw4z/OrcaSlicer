@@ -348,7 +348,6 @@ function ChooseVendor(sVendor) {
 		: $cbs.removeClass('ModelCheckBoxSelected');
 
 	$cbs.each((i, el)=>{SetModelSelect(sVendor, el.getAttribute('model'), sel)});
-	alert(document.getElementById("Content").scrollHeight)
 }
 
 function UpdateVendorCheckbox(sVendor) {
