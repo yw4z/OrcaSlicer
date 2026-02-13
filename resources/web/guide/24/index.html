@@ -25,25 +25,25 @@
 	<div id="Sidebar" class="thin-scroll">
 		<div class="title">Vendors</div>
 		<div class="area" id="SidebarVendors">
-			<!-- <div class="SidebarItem">Afinia</div> -->
+			<!-- <div class="SidebarItem"></div> -->
 		</div>
 	</div>
 	<div class="back" onclick="document.getElementById('SidebarContainer').setAttribute('open', '0')"></div>
 </div>
 <div class="SidebarBtn ButtonStyleRegular" onclick="document.getElementById('SidebarContainer').setAttribute('open', '1')">
-	<div class="icon"></div>
+	<div class="icon16"></div>
 </div>
 
 <div class="search" hasvalue="0">
-	<div class="search-icon"></div>
+	<div class="search-icon icon16"></div>
 	<input type="text" class="searchTerm" placeholder="" oninput="textInput(this)">
 	<span class="search-placeholder trans">Search...</span>
 </div>
 <div class="LayoutSelector">
 	<div class="TabGroup">
-		<div class="TabButton" onclick="LayoutMode(0)"><div class="icon"></div></div>
-		<div class="TabButton" onclick="LayoutMode(1)"><div class="icon"></div></div>
-		<div class="TabButton" onclick="LayoutMode(2)"><div class="icon"></div></div>
+		<div class="TabButton" onclick="LayoutMode('compact-list')" ><div class="icon16"></div></div>
+		<div class="TabButton" onclick="LayoutMode('compact-cover')"><div class="icon16"></div></div>
+		<div class="TabButton" onclick="LayoutMode('large-cover')"  ><div class="icon16"></div></div>
 	</div>
 </div>
 
@@ -165,14 +165,15 @@
 	});
 
 	const LayoutSelector = document.querySelector('.LayoutSelector > .TabGroup');
-	const LayoutTabBtns  = Array.from(LayoutSelector.children);
+	const LayoutBtns     = Array.from(LayoutSelector.children);
+	const LayoutTypes    = ["compact-list","compact-cover","large-cover"];
 
-	function LayoutMode(index) {
-		LayoutTabBtns.forEach(el=>el.classList.remove('selected'));
-		LayoutTabBtns[index].classList.add('selected');
-		document.getElementById("Content").setAttribute("layout", index);
+	function LayoutMode(value) {
+		LayoutBtns.forEach(el=>el.classList.remove('selected'));
+		LayoutBtns[LayoutTypes.indexOf(value)].classList.add('selected');
+		document.getElementById("Content").setAttribute("layout", value);
 	}
 
-	LayoutMode(2);
+	LayoutMode("large-cover");
 </script>
 </html>

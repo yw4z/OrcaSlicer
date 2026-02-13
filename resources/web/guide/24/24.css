@@ -10,7 +10,7 @@
 	margin-bottom: 7px;
 }
 
-.OneVendorBlock:last-of-type{
+.OneVendorBlock:last-of-type {
 	margin-bottom: 36px;
 }
 
@@ -72,8 +72,12 @@
 
 .PrinterBlock
 {
+	display: flex;
+	align-items: center;
 	text-align: center;
-	padding: 10px;
+	flex-direction: column;
+	gap:10px;
+	padding: 15px 10px 10px 10px;
 	background-color: var(--bg-color-secondary);
 	position: relative;
 	border: 1px solid transparent
@@ -84,31 +88,27 @@
 	border-color:var(--main-color);
 }
 
-.PImg
-{
-	position:relative;
+.PImg {
 	width:120px;      /* ORCA use covers as 120x120px but use source file as 240x240 for better quality on hidpi */
 	height:120px;	  /* ORCA fit image to fill frame */
-	padding:5px 20px 10px /* ORCA use less vertical padding */
 }
 
 .PrinterInfo {
+	--card-animation-delay: .8s; /* open info with delay on list / compact view to prevent them appear while mouse movements */
+	--card-info-height: fit-content;
 	position: absolute;
-	width: 22px;
-	height: 22px;
-	background-color: var(--main-color);
+	width: 20px;
+	height: 20px;
 	right: 4px;
 	top: 4px;
 	opacity: 0;
+	background: var(--main-color);
 	border-radius: 11px;
-	box-sizing: border-box;
 	border: 1px solid transparent;
-	z-index: 9999;
-	--card-animation-delay: .8s; /* open info with delay on list / compact view to prevent them appear while mouse movements */
-	--card-info-height: fit-content;
-	overflow: hidden;
 	line-height: 18px;
 	font-size: 14px;
+	overflow: hidden;
+	z-index: 9999;
 }
 
 .PrinterBlock:hover .PrinterInfo {
@@ -117,41 +117,39 @@
 
 #Content[layout="2"] .PrinterInfo {
 	--card-animation-delay: .3s;
-	--card-info-height: 132px;
+	--card-info-height: 116px;
 }
 
-@keyframes cardInfo {
-	100% {
-		height: var(--card-info-height);
-		width: calc(100% - 10px);
-		box-shadow: 0 5px 10px rgba(0,0,0,.2);
-		border-color: var(--border-color);
-		color: var(--fg-color-text);
-		background-color: var(--bg-color);
-		padding: 10px;
-		text-align: left;
-	}
-}
+@keyframes cardInfo { 100% {
+	height: var(--card-info-height);
+	left: 4px;
+	width: auto;
+	border-color: var(--border-color);
+	color: var(--fg-color-text);
+	background: var(--bg-color);
+	padding: 10px;
+	text-align: left;
+	box-shadow: 0 5px 10px rgba(0,0,0,.2);
+}}
 
 .PrinterInfo:hover {	
-	background-color: var(--main-color-hover);
-	animation: cardInfo 0s forwards;  
-	animation-delay: var(--card-animation-delay);
+	background: var(--main-color-hover);
+	animation: cardInfo 0s forwards var(--card-animation-delay);
 }
 
 .PrinterInfo .dots {
-	margin: auto;
-	color: #FFF
+	color: #FFF;
+	line-height: 19px;
+	text-align: center;
 }
 
 .PrinterInfo:hover .dots {
-	animation: markHide 0s forwards;  
-	animation-delay: var(--card-animation-delay);
+	animation: markHide 0s forwards var(--card-animation-delay);
 }
 
-@keyframes markHide {
-	100% {display: none}
-}
+@keyframes markHide {100% {
+	display: none
+}}
 
 .PrinterInfo .title {font-weight: 700}
 .PrinterInfo .value {font-weight: 400}
@@ -161,14 +159,14 @@
 	position: absolute;
 	height: 6px;
 	bottom: 0;
-	left:10%;
+	left: 10%;
 	width: 80%;
-	background-color: var(--button-bg-hover)
+	background: var(--button-bg-hover)
 }
 
 .ModelCheckBox.ModelCheckBoxSelected
 {
-	background-color: var(--main-color-fixed)
+	background: var(--main-color-fixed)
 }
 
 img.ModelThumbnail
@@ -215,12 +213,7 @@ img.ModelThumbnail
 	background-color: var(--bg-color-alt);
 }
 
-.LayoutSelector .icon {
-	-webkit-mask-image: var(--url);
-	mask-image: var(--url);
-	width:  16px;
-  	height: 16px;
-	background-color: var(--icon-color);
+.LayoutSelector .icon16 {
 	opacity: .8;
 }
 
@@ -229,84 +222,58 @@ img.ModelThumbnail
 	border-radius: 4px;
 }
 
-.LayoutSelector .TabButton.selected       {background: var(--main-color)}
-.LayoutSelector .TabButton.selected:hover {background: var(--main-color-hover)}
-.LayoutSelector .TabButton.selected .icon {background: #FFF}
+.LayoutSelector .TabButton.selected         {background: var(--main-color)}
+.LayoutSelector .TabButton.selected:hover   {background: var(--main-color-hover)}
+.LayoutSelector .TabButton.selected .icon16 {background: #FFF}
 
-.LayoutSelector .TabButton:nth-of-type(1) .icon {--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M.5,3.5h6M.5.5h6M.5,6.5h6M.5,9.5h6M.5,12.5h6M.5,15.5h6M9.5,3.5h6M9.5.5h6M9.5,6.5h6M9.5,9.5h6M9.5,12.5h6M9.5,15.5h6" style="fill:none; stroke:currentColor; stroke-linecap:square"/></svg>')}
-.LayoutSelector .TabButton:nth-of-type(2) .icon {--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M2.83,3.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM8.83,3.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM14.83,3.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM2.83,9.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM8.83,9.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM14.83,9.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM2.83,15.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM8.83,15.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM14.83,15.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67Z" style="fill:none; stroke:currentColor"/></svg>')}
-.LayoutSelector .TabButton:nth-of-type(3) .icon {--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M5.5,6.5H1.5c-.55,0-1-.45-1-1V1.5C.5.95.95.5,1.5.5h4c.55,0,1,.45,1,1v4c0,.55-.45,1-1,1ZM15.5,5.5V1.5c0-.55-.45-1-1-1h-4c-.55,0-1,.45-1,1v4c0,.55.45,1,1,1h4c.55,0,1-.45,1-1ZM5.5,15.5H1.5c-.55,0-1-.45-1-1v-4c0-.55.45-1,1-1h4c.55,0,1,.45,1,1v4c0,.55-.45,1-1,1ZM15.5,14.5v-4c0-.55-.45-1-1-1h-4c-.55,0-1,.45-1,1v4c0,.55.45,1,1,1h4c.55,0,1-.45,1-1Z" style="fill:none; stroke:currentColor"/></svg>')}
+.LayoutSelector .TabButton:nth-of-type(1) .icon16 {--icon-url: var(--icon-layout-list)}
+.LayoutSelector .TabButton:nth-of-type(2) .icon16 {--icon-url: var(--icon-layout-compact)}
+.LayoutSelector .TabButton:nth-of-type(3) .icon16 {--icon-url: var(--icon-layout-cover)}
 
 #CreateBtn {
 	margin: 0 auto 0 0;
 }
 
-/* LIST LAYOUT */
-#Content[layout="0"] .PrinterArea {
+/* LAYOUT */
+#Content[layout="compact-list"] .PrinterArea {
 	grid-template-columns: repeat(4, 1fr);
 }
 
-#Content[layout="0"] .PrinterBlock {
-	display: flex;
-	align-items: center;
-	padding: 5px 10px;
-}
-
-#Content[layout="0"] .PName {
-	text-align: left;
-	margin-left: 5px;
-	font-weight: 400;
-}
-
-#Content[layout="0"] .PImg {
+#Content[layout="compact-list"] .PImg {
 	display: none;
 }
 
-#Content[layout="0"] .ModelCheckBox {
-	width: 6px;
-	height: 100%;
-	left:0;
-	top:0
-}
-
-#Content[layout="0"] .OneVendorBlock {
+#Content[layout="compact-list"] .OneVendorBlock {
 	margin-bottom: 15px;
 }
 
-#Content[layout="0"] .OneVendorBlock:last-of-type{
-	margin-bottom: 0px;
-}
-
-/* COMPACT LAYOUT */
-#Content[layout="1"] .PrinterArea {
+#Content[layout="compact-cover"] .PrinterArea {
 	grid-template-columns: repeat(3, 1fr);
 }
 
-#Content[layout="1"] .PrinterBlock {
-	display: flex;
-	align-items: center;
-	padding: 3px 5px;
-}
-
-#Content[layout="1"] .PName {
-	text-align: left;
-}
-
-#Content[layout="1"] .PImg {
+#Content[layout="compact-cover"] .PImg {
 	width: 60px;
 	min-width: 60px;
 	height: 60px;
-	padding: 3px 12px
 }
 
-#Content[layout="1"] .ModelCheckBox {
+#Content[layout|="compact"] .PName {
+	text-align: left;
+}
+
+#Content[layout|="compact"] .PrinterBlock {
+	flex-direction: row;
+	padding: 5px 5px 5px 18px;
+}
+
+#Content[layout|="compact"] .ModelCheckBox {
 	width: 6px;
 	height: 80%;
 	left:0;
 	top:10%
 }
 
-#Content[layout="1"] .OneVendorBlock:last-of-type{
+#Content[layout|="compact"] .OneVendorBlock:last-of-type {
 	margin-bottom: 0px;
 }
 
@@ -374,7 +341,6 @@ img.ModelThumbnail
 }
 
 .search {
-	display: flex;
 	position: absolute;
 	left:66px;
 	top: 14px;
@@ -392,25 +358,28 @@ img.ModelThumbnail
 .searchTerm {
 	width: 100%;
 	height: 100%;
-	border: 1px solid var(--button-bg-normal);
 	padding: 4px 5px;
-	line-height: 24px; /* ORCA center text vertically */
 	border-radius: 6px;
 	outline: none;
-	font-size: 14px;
 	box-sizing: border-box;
-	background-color: var(--button-bg-normal);
+	background: var(--button-bg-normal);
+	border: 1px solid var(--button-bg-normal);
+}
+
+.searchTerm,
+.search-placeholder {
+	line-height: 24px; /* ORCA center text vertically */
+	font-size: 14px;
 }
 
 .search:focus-within .searchTerm,
-.search[hasvalue="1"] .searchTerm,
-.search[hasvalue="1"]:not(:focus-within) .searchTerm:hover {
+.search[hasvalue="1"] .searchTerm {
 	padding-left:33px;
-	background-color: var(--bg-color);
+	background: var(--bg-color);
 	border-color: var(--main-color);
 }
 
-.search:is([hasvalue="1"]):not(:focus-within) .searchTerm {
+.search[hasvalue="1"]:not(:focus-within, :hover) .searchTerm {
 	border-color: var(--border-color);
 }
 
@@ -419,17 +388,11 @@ img.ModelThumbnail
 }
 
 .search:not(:focus-within, [hasvalue="1"]) .searchTerm:hover {
-	background-color: var(--button-bg-hover);
+	background: var(--button-bg-hover);
 }
 
 .search-placeholder {
-	position: absolute;
-	top: 50%;
-	transform: translateY(-50%);
-	font-size: 14px;
 	color: var(--fg-color-disabled);
-	pointer-events: none;
-	line-height: 24px;
 	left: 33px;
 }
 
@@ -437,18 +400,17 @@ img.ModelThumbnail
 	opacity: 0;
 }
 
-.search-icon {
-	--url: var(--icon-search);
+.search-icon,
+.search-placeholder {
 	position: absolute;
 	top: 50%;
 	transform: translateY(-50%);
+	pointer-events: none;
+}
+
+.search-icon {
 	left: 9px;
-	-webkit-mask-image: var(--url);
-	mask-image: var(--url);
-	width:  16px;
-  	height: 16px;
-	background-color: var(--icon-color);
-	pointer-events:none;
+	--icon-url: var(--icon-search);
 }
 
 .SidebarBtn {
@@ -459,14 +421,8 @@ img.ModelThumbnail
 	border-radius: 6px;
 }
 
-.SidebarBtn .icon {
-	--url: url('data:image/svg+xml;utf8,<svg id="a" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M14.5,15.5H1.5c-.55,0-1-.45-1-1V1.5C.5.95.95.5,1.5.5h13c.55,0,1,.45,1,1v13c0,.55-.45,1-1,1ZM6.5.5v15M2.5,3.5h2M2.5,6.5h2M2.5,9.5h2M2.5,12.5h2" style="fill:none; stroke:currentColor; stroke-linecap:square"/></svg>');
-	-webkit-mask-image: var(--url);
-	mask-image: var(--url);
-	width:  16px;
-  	height: 16px;
-	background-color: var(--icon-color);
-	pointer-events: none;
+.SidebarBtn .icon16 {
+	--icon-url: var(--icon-sidebar);
 }
 
 #SidebarContainer {
@@ -495,13 +451,12 @@ img.ModelThumbnail
 	font-size: 17px;
 	line-height: 17px;
 	font-weight: 600;
-	padding-left: 20px;
-	margin-bottom: 5px;
+	padding: 0 0 5px 20px;
 }
 
 #Sidebar .SidebarItem {
 	width: 100%;
-	padding:2px 10px 2px 20px;
+	padding: 2px 10px 2px 20px;
 	color:var(--fg-color-text);
 	font-size: 14px;
 	border: 1px solid transparent;
