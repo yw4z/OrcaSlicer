@@ -50,12 +50,8 @@
 	color: var(--fg-color-text);
 }
 
-.BlockBanner .modelCount{
+.BlockBanner .modelCount {
 	margin: 0 15px 0 auto;
-}
-
-.BlockBanner .modelCount,
-.BlockBanner .modelCount *{
 	font-size: 14px;
 	line-height: 14px;
 	height: 15px;
@@ -83,8 +79,7 @@
 	border: 1px solid transparent
 }
 
-.PrinterBlock:hover
-{
+.PrinterBlock:hover {
 	background-color: var(--focus-bg-item);
 	border-color:var(--main-color);
 }
@@ -105,84 +100,61 @@
 	right: 4px;
 	top: 4px;
 	opacity: 0;
-	border-radius: 12px;
+	border-radius: 11px;
 	box-sizing: border-box;
 	border: 1px solid transparent;
-	color: transparent;
 	z-index: 9999;
+	--card-animation-delay: .8s; /* open info with delay on list / compact view to prevent them appear while mouse movements */
+	--card-info-height: fit-content;
+	overflow: hidden;
+	line-height: 18px;
+	font-size: 14px;
 }
 
 .PrinterBlock:hover .PrinterInfo {
 	opacity: 1;
 }
 
-.PrinterInfo .dots {
-	text-align: center;
-	margin: auto;
-	font-size: 14px;
-	line-height: 18px;
-}
-
-.PrinterInfo {
-	--card-animation-delay: .6s;
-}
-
 #Content[layout="2"] .PrinterInfo {
 	--card-animation-delay: .3s;
+	--card-info-height: 132px;
 }
 
-.PrinterInfo:hover .dots{
+@keyframes cardInfo {
+	100% {
+		height: var(--card-info-height);
+		width: calc(100% - 10px);
+		box-shadow: 0 5px 10px rgba(0,0,0,.2);
+		border-color: var(--border-color);
+		color: var(--fg-color-text);
+		background-color: var(--bg-color);
+		padding: 10px;
+		text-align: left;
+	}
+}
+
+.PrinterInfo:hover {	
+	background-color: var(--main-color-hover);
+	animation: cardInfo 0s forwards;  
+	animation-delay: var(--card-animation-delay);
+}
+
+.PrinterInfo .dots {
+	margin: auto;
+	color: #FFF
+}
+
+.PrinterInfo:hover .dots {
 	animation: markHide 0s forwards;  
 	animation-delay: var(--card-animation-delay);
 }
 
 @keyframes markHide {
-	0%   {display: block} 
-	100% {display: none }   
-}
-
-.PrinterBlock:hover .PrinterInfo:hover {
-	--card-info-height: 132px;
-	background-color: var(--main-color-hover);
-	animation: cardInfo 0s forwards;  
-	animation-delay: var(--card-animation-delay);
-	font-size: 0;
-}
-
-@keyframes cardInfo {
-	0%   {
-		color: transparent
-	}
-	100% {
-		height: var(--card-info-height);
-		width: calc(100% - 10px);
-		box-shadow: 0 5px 10px rgba(0,0,0,.2);
-		border: 1px solid var(--border-color);
-		color: var(--fg-color-text);
-		background-color: var(--bg-color);
-		padding:10px;
-		text-align: left;
-		line-height: 18px;
-		font-size: 14px;
-	}
-}
-
-#Content[layout="0"] .PrinterBlock:hover .PrinterInfo:hover,
-#Content[layout="1"] .PrinterBlock:hover .PrinterInfo:hover{
-	--card-info-height: fit-content;
+	100% {display: none}
 }
 
 .PrinterInfo .title {font-weight: 700}
 .PrinterInfo .value {font-weight: 400}
-
-.PrinterInfo :not(.dots){
-	display: none;
-}
-
-.PrinterInfo:hover :not(.dots){
-	display: block;
-}
-
 
 .ModelCheckBox
 {
@@ -211,9 +183,6 @@ img.ModelThumbnail
 	line-height: 20px; /* ORCA */
 	text-align: center;
 	width: 100%;
-}
-
-.PName > p {
 	color: var(--fg-color-text);
 }
 
@@ -239,10 +208,9 @@ img.ModelThumbnail
 }
 
 .LayoutSelector .TabGroup {
-	position: relative;
 	display: flex;
 	padding: 2px;
-	gap:2px;
+	gap: 2px;
 	border-radius: 6px;
 	background-color: var(--bg-color-alt);
 }
@@ -253,7 +221,7 @@ img.ModelThumbnail
 	width:  16px;
   	height: 16px;
 	background-color: var(--icon-color);
-	opacity: 0.8;
+	opacity: .8;
 }
 
 .LayoutSelector .TabButton {
@@ -261,26 +229,19 @@ img.ModelThumbnail
 	border-radius: 4px;
 }
 
-.LayoutSelector .TabButton.selected {
-	background-color: var(--main-color);
-}
-.LayoutSelector .TabButton.selected:hover {
-	background-color: var(--main-color-hover);
-}
-.LayoutSelector .TabButton.selected .icon{
-	background-color: #FFFFFF;
-}
+.LayoutSelector .TabButton.selected       {background: var(--main-color)}
+.LayoutSelector .TabButton.selected:hover {background: var(--main-color-hover)}
+.LayoutSelector .TabButton.selected .icon {background: #FFF}
 
 .LayoutSelector .TabButton:nth-of-type(1) .icon {--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M.5,3.5h6M.5.5h6M.5,6.5h6M.5,9.5h6M.5,12.5h6M.5,15.5h6M9.5,3.5h6M9.5.5h6M9.5,6.5h6M9.5,9.5h6M9.5,12.5h6M9.5,15.5h6" style="fill:none; stroke:currentColor; stroke-linecap:square"/></svg>')}
 .LayoutSelector .TabButton:nth-of-type(2) .icon {--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M2.83,3.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM8.83,3.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM14.83,3.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM2.83,9.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM8.83,9.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM14.83,9.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM2.83,15.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM8.83,15.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67ZM14.83,15.5h-1.67c-.37,0-.67-.3-.67-.67v-1.67c0-.37.3-.67.67-.67h1.67c.37,0,.67.3.67.67v1.67c0,.37-.3.67-.67.67Z" style="fill:none; stroke:currentColor"/></svg>')}
 .LayoutSelector .TabButton:nth-of-type(3) .icon {--url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M5.5,6.5H1.5c-.55,0-1-.45-1-1V1.5C.5.95.95.5,1.5.5h4c.55,0,1,.45,1,1v4c0,.55-.45,1-1,1ZM15.5,5.5V1.5c0-.55-.45-1-1-1h-4c-.55,0-1,.45-1,1v4c0,.55.45,1,1,1h4c.55,0,1-.45,1-1ZM5.5,15.5H1.5c-.55,0-1-.45-1-1v-4c0-.55.45-1,1-1h4c.55,0,1,.45,1,1v4c0,.55-.45,1-1,1ZM15.5,14.5v-4c0-.55-.45-1-1-1h-4c-.55,0-1,.45-1,1v4c0,.55.45,1,1,1h4c.55,0,1-.45,1-1Z" style="fill:none; stroke:currentColor"/></svg>')}
 
-
-/* LIST LAYOUT */
-#Content[layout="0"] .OneVendorBlock {
-	margin-bottom: 15px;
+#CreateBtn {
+	margin: 0 auto 0 0;
 }
 
+/* LIST LAYOUT */
 #Content[layout="0"] .PrinterArea {
 	grid-template-columns: repeat(4, 1fr);
 }
@@ -306,6 +267,10 @@ img.ModelThumbnail
 	height: 100%;
 	left:0;
 	top:0
+}
+
+#Content[layout="0"] .OneVendorBlock {
+	margin-bottom: 15px;
 }
 
 #Content[layout="0"] .OneVendorBlock:last-of-type{
@@ -350,22 +315,14 @@ img.ModelThumbnail
 	scroll-snap-type: y mandatory;
 }
 
+.PrinterBlock,
 .OneVendorBlock {
 	scroll-snap-align: start;
-	scroll-margin-top: 0px;
 	scroll-margin-bottom: 9999px; /* disables bottom snapping */
 }
 
-.PrinterBlock {
-	scroll-snap-align: start;
-	scroll-margin-top: 38px; /* should match with titlebar height + margin */
-	scroll-margin-bottom: 9999px; /* disables bottom snapping */
-} 
-
-#CreateBtn{
-	margin-right: auto;
-	margin-left: 0;
-}
+.OneVendorBlock {scroll-margin-top: 0px}
+.PrinterBlock   {scroll-margin-top: 38px}/* should match with titlebar height + margin */
 
 /*-----Notice-----*/
 #NoticeMask
@@ -509,36 +466,28 @@ img.ModelThumbnail
 	width:  16px;
   	height: 16px;
 	background-color: var(--icon-color);
-	pointer-events:none;
+	pointer-events: none;
 }
 
 #SidebarContainer {
 	position: absolute;
 	top: 0;
-	left:0;
+	left: 0;
 	width: 100%;
-	height:100%;
+	height: 100%;
 	z-index: 999999;
-	opacity: 0;
-	display: flex;
-	pointer-events: none;
+	display: none;
 }
 
 #SidebarContainer[open="1"] {
-	opacity: 1;
-	pointer-events: all;
+	display: flex;
 }
 
 #Sidebar {
-	width: 280px;
-	margin-left: -280px;
-	height:100%;
-	background-color: var(--bg-color);
+	flex: 0 0 220px;
+	background: var(--bg-color);
 	box-shadow: 5px 0 20px rgba(0,0,0,.2);
 	padding: 15px 0;
-	display: flex;
-	flex-direction: column;
-	box-sizing: border-box;
 	overflow-y: auto;
 }
 
@@ -548,11 +497,6 @@ img.ModelThumbnail
 	font-weight: 600;
 	padding-left: 20px;
 	margin-bottom: 5px;
-}
-
-#Sidebar .area {
-	width: 100%;
-	flex-grow: 1;
 }
 
 #Sidebar .SidebarItem {
@@ -568,12 +512,7 @@ img.ModelThumbnail
 	border-color: var(--main-color);
 }
 
-#SidebarContainer .back{
-	width: 100%;
-	height:100%;
-	background-color: rgba(0,0,0,.3);
-}
-
-#SidebarContainer[open = "1"] #Sidebar {
-	margin-left: 0px;
+#SidebarContainer .back {
+	flex-grow: 1;
+	background: rgba(0,0,0,.3);
 }

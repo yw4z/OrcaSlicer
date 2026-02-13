@@ -94,7 +94,7 @@ function HandleModelList( pVal )
 '<div class="BlockBanner">'+
 '	<a>'+sVV+'</a>'+
 '	<div class="BannerBtns" onClick="ChooseVendor('+"\'"+strVendor+"\'"+')">'+
-'		<div class="modelCount"><span class="selected"></span> / <span class="total"></span></div>' +
+'		<div class="modelCount"></div>' +
 '		<input type="checkbox" class="VendorCheckbox"/>'+
 '	</div>'+		
 //'	<div class="BannerBtns">'+
@@ -237,7 +237,7 @@ function FilterModelList(keyword) {
 				'<div class="BlockBanner">' +
 				'	<a>' + sVV + '</a>' +
 				'	<div class="BannerBtns" onClick="ChooseVendor('+"\'"+strVendor+"\'"+')">'+
-				'		<div class="modelCount"><span class="selected"></span> / <span class="total"></span></div>' +
+				'		<div class="modelCount"></div>' +
 				'		<input type="checkbox" class="VendorCheckbox"/>'+
 				'	</div>'+	
 				//'	<div class="BannerBtns">' +
@@ -338,7 +338,7 @@ function CreatePrinterBlock(OneModel)
 	'</div>'+
 	'<div style="display: flex;">'+
 	'	<div class="ModelCheckBox" vendor="' +vendor+ '" model="'+OneModel['model']+'"></div>'+
-	'	<div class="PName"><p>'+ modelName +'</p></div>'+ // ><p>'+ vendorName +'</p>
+	'	<div class="PName">'+ modelName +'</div>'+ // ><p>'+ vendorName +'</p>
 	'</div>'+
 	'</div>';
 }
@@ -383,8 +383,7 @@ function UpdateVendorCheckbox(sVendor) {
 
 	$vcb.prop({checked: allSel , indeterminate: !allSel && !nonSel});
 
-	$vb.find(".modelCount>.selected").text(selCount);
-	$vb.find(".modelCount>.total"	).text($cbs.length);
+	$vb.find(".modelCount").text(selCount + " / " + $cbs.length);
 }
 
 function OnExitFilter() {
