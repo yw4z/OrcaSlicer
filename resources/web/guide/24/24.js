@@ -137,7 +137,13 @@ function HandleModelList( pVal )
 		}
 	}	
 
-	$(`.OneVendorBlock`).each((i, el)=>UpdateVendorCheckbox(el.getAttribute("vendor")));
+	const $SidebarVendors = $('#SidebarVendors');
+	let SidebarHTML = "";
+	$(`.OneVendorBlock`).each((i, el)=>{
+		UpdateVendorCheckbox(el.getAttribute("vendor"));
+		SidebarHTML +=`<div class="SidebarItem" onclick="scrollToVendor(this.textContent)">${el.getAttribute('vendor')}</div>`;
+	});
+	$SidebarVendors.html(SidebarHTML)
 
 	// let AlreadySelect=$(".ModelCheckBoxSelected");
 	// let nSelect=AlreadySelect.length;
@@ -147,6 +153,14 @@ function HandleModelList( pVal )
 	// }
 	
 	TranslatePage();
+}
+
+function scrollToVendor(vendor) {
+	const el = $(".OneVendorBlock[vendor='"+vendor+"']")[0];
+	if (el){
+		document.getElementById('SidebarContainer').setAttribute('open', '0');
+		document.getElementById('Content').scrollTo({top: el.offsetTop, behavior: "smooth"});
+	}
 }
 
 function SetModelSelect(vendor, model, checked) {
@@ -192,6 +206,8 @@ function FilterModelList(keyword) {
 
 		SetModelSelect(strVendor, strModel, $(OneItem).hasClass('ModelCheckBoxSelected'));
 	}
+
+	$('.search')[0].setAttribute("hasvalue", keyword ? "1" : "0")
 
 	let nTotal = pModel.length;
 	let ModelHtml = {};
@@ -267,7 +283,13 @@ function FilterModelList(keyword) {
 			$(OneItem).removeClass('ModelCheckBoxSelected');
 	}
 
-	$(`.OneVendorBlock`).each((i, el)=>UpdateVendorCheckbox(el.getAttribute("vendor")));
+	const $SidebarVendors = $('#SidebarVendors');
+	let SidebarHTML = "";
+	$(`.OneVendorBlock`).each((i, el)=>{
+		UpdateVendorCheckbox(el.getAttribute("vendor"));
+		SidebarHTML +=`<div class="SidebarItem" onclick="scrollToVendor(this.textContent)">${el.getAttribute('vendor')}</div>`;
+	});
+	$SidebarVendors.html(SidebarHTML)
 
 	const $content = $('#Content');
 	$content.css("padding-right",  $content[0].scrollHeight > $content[0].clientHeight ? "10px" : "20px");

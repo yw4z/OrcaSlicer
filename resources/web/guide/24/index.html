@@ -20,7 +20,21 @@
 <div id="Title">
 	<div class="trans" tid="t10">Printer Selection</div>
 </div>
-<div class="search">
+
+<div id="SidebarContainer">
+	<div id="Sidebar" class="thin-scroll">
+		<div class="title">Vendors</div>
+		<div class="area" id="SidebarVendors">
+			<!-- <div class="SidebarItem">Afinia</div> -->
+		</div>
+	</div>
+	<div class="back" onclick="document.getElementById('SidebarContainer').setAttribute('open', '0')"></div>
+</div>
+<div class="SidebarBtn ButtonStyleRegular" onclick="document.getElementById('SidebarContainer').setAttribute('open', '1')">
+	<div class="icon"></div>
+</div>
+
+<div class="search" hasvalue="0">
 	<div class="search-icon"></div>
 	<input type="text" class="searchTerm" placeholder="" oninput="textInput(this)">
 	<span class="search-placeholder trans">Search...</span>
@@ -33,7 +47,7 @@
 	</div>
 </div>
 
-<div id="Content"  class="thin-scroll"s>
+<div id="Content"  class="thin-scroll">
 
 <!--<div class="OneVendorBlock" Vendor="BBL">	
 <div class="BlockBanner">
@@ -130,6 +144,9 @@
 			SearchBox.focus();
 		}
 
+		// Close sidebar
+		document.getElementById('SidebarContainer').setAttribute('open', '0')
+
 		//if (window.event) {
 		//	try { e.keyCode = 0; } catch (e) { }
 		//	e.returnValue = true;
@@ -141,6 +158,11 @@
 		FilterModelList(obj.value);
 	}
 
+	// ORCA unfocus search bar while scrolling and its content empty
+	document.getElementById("Content").addEventListener("scroll", () => {
+		if (document.activeElement === SearchBox && SearchBox.value == "")
+			SearchBox.blur();
+	});
 
 	const LayoutSelector = document.querySelector('.LayoutSelector > .TabGroup');
 	const LayoutTabBtns  = Array.from(LayoutSelector.children);
