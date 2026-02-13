@@ -259,7 +259,7 @@ UpdateVersionDialog::UpdateVersionDialog(wxWindow *parent)
 
     m_simplebook_release_note = new wxSimplebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSIMPLE_BORDER);
     //m_simplebook_release_note->SetSize(wxSize(FromDIP(560), FromDIP(430)));
-    m_simplebook_release_note->SetMinSize(FromDIP(wxSize(640,480)));
+    m_simplebook_release_note->SetMinSize(FromDIP(wxSize(640,420)));
     m_simplebook_release_note->SetBackgroundColour(wxColour(0xF8, 0xF8, 0xF8));
 
     m_scrollwindows_release_note = new wxScrolledWindow(m_simplebook_release_note, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(560), FromDIP(430)), wxVSCROLL);
