@@ -366,6 +366,12 @@ img.ModelThumbnail
 	border: 1px solid var(--button-bg-normal);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+	.searchTerm {
+		transition: background-color .2s
+	}
+}
+
 .searchTerm,
 .search-placeholder {
 	line-height: 24px; /* ORCA center text vertically */
@@ -428,15 +434,24 @@ img.ModelThumbnail
 #SidebarContainer {
 	position: absolute;
 	top: 0;
-	left: 0;
-	width: 100%;
+	left: -240px;
+	right: 0;
 	height: 100%;
 	z-index: 999999;
-	display: none;
+	display: flex;
+	pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	#SidebarContainer {
+		transition: background-color .2s, left .2s
+	}
 }
 
 #SidebarContainer[open="1"] {
-	display: flex;
+	left: 0px;
+	pointer-events: all;
+	background: rgba(0,0,0,.3);
 }
 
 #Sidebar {
@@ -468,6 +483,5 @@ img.ModelThumbnail
 }
 
 #SidebarContainer .back {
-	flex-grow: 1;
-	background: rgba(0,0,0,.3);
+	flex: 1;
 }
