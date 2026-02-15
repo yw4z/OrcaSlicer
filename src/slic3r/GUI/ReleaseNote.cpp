@@ -483,7 +483,7 @@ void UpdateVersionDialog::update_version_info(wxString release_note, wxString ve
     auto data_buf_in = release_note.utf8_str();
     auto bg_color = StateColor::darkModeColorFor(wxColour("#FFFFFF")).GetAsString();
     auto fg_color = StateColor::darkModeColorFor(wxColour("#262E30")).GetAsString();
-    html_source = (boost::format("<html><head><style>body { color: %1%; background-color: %2%; font-family: sans-serif; } a { color: #009688 }</style></head><body>")
+    html_source = (boost::format("<html><head><style>body { color: %1%; background-color: %2%; font-family: sans-serif; } a { color: #009688 } img { max-width:100%%; height: auto}</style></head><body>")
         % fg_color % bg_color).str();
     md_html(data_buf_in.data(), data_buf_in.length(), [](const MD_CHAR* text, MD_SIZE size, void* userdata) {
         std::string* out_buf = (std::string*)userdata;
