@@ -2108,7 +2108,7 @@ Sidebar::Sidebar(Plater *parent)
     p->m_panel_filament_content = new wxScrolledWindow( p->scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
     p->m_panel_filament_content->SetScrollbars(0, 100, 1, 2);
     p->m_panel_filament_content->SetScrollRate(0, 5);
-    p->m_panel_filament_content->SetMaxSize(wxSize{-1, FromDIP(174)});
+    p->m_panel_filament_content->SetMaxSize(wxSize{-1, FromDIP(280)}); // ORCA use height matches for 16 filaments (4 AMS units)
     p->m_panel_filament_content->SetBackgroundColour(wxColour(255, 255, 255));
 
     //wxBoxSizer* bSizer_filament_content;
@@ -3519,7 +3519,7 @@ void Sidebar::sync_ams_list(bool is_from_big_sync_btn)
     for (auto& c : p->combos_filament)
         c->update();
     // Expand filament list
-    p->m_panel_filament_content->SetMaxSize({-1, FromDIP(174)});
+    p->m_panel_filament_content->SetMaxSize({-1, FromDIP(280)}); // ORCA use height matches for 16 filaments (4 AMS units)
     auto min_size = p->m_panel_filament_content->GetSizer()->GetMinSize();
     if (min_size.y > p->m_panel_filament_content->GetMaxHeight())
         min_size.y = p->m_panel_filament_content->GetMaxHeight();
