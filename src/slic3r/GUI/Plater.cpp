@@ -2107,7 +2107,7 @@ Sidebar::Sidebar(Plater *parent)
 
     // add filament content
     // ORCA use a height with user preference
-    int filament_count_user = std::stoi(wxGetApp().app_config->get("filaments_area_preffered_count"));
+    int filament_count_user = std::stoi(wxGetApp().app_config->get("filaments_area_preferred_count"));
     p->filament_area_height = std::ceil(filament_count_user * 0.5) * (30 + SidebarProps::ElementSpacing()) - SidebarProps::ElementSpacing();
 
     p->m_panel_filament_content = new wxScrolledWindow( p->scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
