@@ -90,7 +90,10 @@ private:
     wxWindow* m_parent {nullptr};
 
     MenuWithSeparators m_object_menu;
+    wxMenu*            m_object_menu_top;
+    wxMenu*            m_object_utilities_menu;
     MenuWithSeparators m_part_menu;
+    wxMenu*            m_part_utilities_menu;
     MenuWithSeparators m_text_part_menu;
     MenuWithSeparators m_svg_part_menu;
     MenuWithSeparators m_sla_object_menu;
@@ -169,11 +172,12 @@ private:
     void        append_menu_item_drop(wxMenu* menu);
     void        append_menu_item_per_object_process(wxMenu* menu);
     void        append_menu_item_per_object_settings(wxMenu* menu);
-    void        append_menu_item_change_filament(wxMenu* menu);
+    void        append_menu_item_change_filament(wxMenu* menu, size_t pos = 0);
     void        append_menu_item_set_printable(wxMenu* menu);
     void        append_menu_item_locked(wxMenu* menu);
     void        append_menu_item_fill_bed(wxMenu *menu);
     void        append_menu_item_plate_name(wxMenu *menu);
+    void        append_menu_item_model(wxMenu* menu, bool splittable, bool is_mesh, bool show_mirror);
 };
 
 }}
