@@ -74,10 +74,10 @@ function SortUI()
 	
 	$('#MachineList .CValues').append(HtmlMode);	
 	$('#MachineList .CValues input').prop("checked",true);
-	if(nMode<=1)
-	{
-		$('#MachineList').hide();
-	}
+	//if(nMode<=1)
+	//{
+	//	$('#MachineList').hide();
+	//}
 	
 	//Filament - Create sorted array with generic vendor first
 	let FilamentArray=new Array();
