@@ -165,7 +165,7 @@ function SortUI()
 	        if(pFila.length==0)
 		    {
 				/* ORCA use label tag to allow checkbox to toggle when user ckicked to text */
-			    let HtmlFila='<label class="MItem"><input type="checkbox" vendor="'+fVendor+'"  filatype="'+fType+'" filalist="'+fWholeName+';'+'"  model="'+fModel+'" name="'+fShortName+'" /><span>'+fShortName+'</span></label>';
+			    let HtmlFila='<label class="MItem"><input type="checkbox" onChange="UpdateStats()" vendor="'+fVendor+'"  filatype="'+fType+'" filalist="'+fWholeName+';'+'"  model="'+fModel+'" name="'+fShortName+'" /><span>'+fShortName+'</span></label>';
 			
 			    $("#ItemBlockArea").append(HtmlFila);
 		    } 
@@ -240,6 +240,8 @@ function SortUI()
 		$("#AcceptBtn").hide();
 		$("#GotoNetPluginBtn").show();
 	}
+
+	UpdateStats();
 }
 
 
@@ -405,9 +407,28 @@ function SortFilament()
 			else
 				$(OneNode).hide();
 		}
-		else
+		else{
 			$(OneNode).hide();
+			//alert(fName) //debug non common filament type
+		}
 	}
+
+	UpdateStats();
+}
+
+function UpdateStats()
+{
+	let $i             = $("#ItemBlockArea");
+	let $allItems      = $i.find(".MItem");
+	let $visibleItems  = $i.find(".MItem:visible");
+	let $filteredItems = $visibleItems.filter(function() { return $(this).css('position') !== 'absolute'});
+	let visibleCount   = Math.min($filteredItems.length, $visibleItems.length);
+	
+	$(".list-item-count").text(
+		$i.find("input:checked").length + " / " + 
+		$allItems.length +
+		($allItems.length > visibleCount ? (" [" + visibleCount + "]") : "") // filtered items
+	);
 }
 
 function ChooseDefaultFilament()
@@ -471,6 +492,8 @@ function ChooseDefaultFilament()
 	}
 	
 	ShowNotice(0);
+
+	UpdateStats();
 }
 
 function SelectAllFilament( nShow )
