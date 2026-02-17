@@ -142,12 +142,13 @@
 
 #CFilament_List
 {
-	display:grid;
+	display:flex;
 	overflow-y:auto;
-	grid-template-columns: repeat(2, 44%);
+	flex-wrap:wrap;
+	justify-content:flex-start;
+	align-items: flex-start;
+	align-content:flex-start;
 	line-height: 32px;
-	column-gap: 10%;
-	padding: 0 2% 0 0;
 	height: 100%;
 }
 
@@ -155,6 +156,12 @@
 {
 	display: flex;
 	align-items: center;
+	width: 44%;
+	margin-right: 10%;
+}
+
+.CFilament_Item:nth-of-type(2n) {
+	margin-right: 2%;
 }
 
 .CFilament_Name
