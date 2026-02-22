@@ -2310,6 +2310,16 @@ static wxMenu* generate_help_menu()
 {
     wxMenu* helpMenu = new wxMenu();
 
+    // Troubleshoot center
+    append_menu_item(helpMenu, wxID_ANY, _L("Troubleshoot Center"), "",
+        [](wxCommandEvent&) { wxGetApp().troubleshoot(); });
+
+    // Open Config Folder
+    append_menu_item(helpMenu, wxID_ANY, _L("Show Configuration Folder"), _L("Show Configuration Folder"),
+        [](wxCommandEvent&) { Slic3r::GUI::desktop_open_datadir_folder(); });
+
+    helpMenu->AppendSeparator();
+
     // shortcut key
     append_menu_item(helpMenu, wxID_ANY, _L("Keyboard Shortcuts") + sep + "&?", _L("Show the list of the keyboard shortcuts"),
         [](wxCommandEvent&) { wxGetApp().keyboard_shortcuts(); });
@@ -2317,9 +2327,6 @@ static wxMenu* generate_help_menu()
     append_menu_item(helpMenu, wxID_ANY, _L("Setup Wizard"), _L("Setup Wizard"), [](wxCommandEvent &) {wxGetApp().ShowUserGuide();});
 
     helpMenu->AppendSeparator();
-    // Open Config Folder
-    append_menu_item(helpMenu, wxID_ANY, _L("Show Configuration Folder"), _L("Show Configuration Folder"),
-        [](wxCommandEvent&) { Slic3r::GUI::desktop_open_datadir_folder(); });
 
     append_menu_item(helpMenu, wxID_ANY, _L("Show Tip of the Day"), _L("Show Tip of the Day"), [](wxCommandEvent&) {
         wxGetApp().plater()->get_dailytips()->open();
@@ -2339,10 +2346,10 @@ static wxMenu* generate_help_menu()
             return true;
         });
 
-    append_menu_item(helpMenu, wxID_ANY, _L("Open Network Test"), _L("Open Network Test"), [](wxCommandEvent&) {
-            NetworkTestDialog dlg(wxGetApp().mainframe);
-            dlg.ShowModal();
-        });
+    //append_menu_item(helpMenu, wxID_ANY, _L("Open Network Test"), _L("Open Network Test"), [](wxCommandEvent&) {
+    //        NetworkTestDialog dlg(wxGetApp().mainframe);
+    //        dlg.ShowModal();
+    //    });
 
     // About
 #ifndef __APPLE__

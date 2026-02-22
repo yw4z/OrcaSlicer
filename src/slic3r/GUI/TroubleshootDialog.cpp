@@ -1,0 +1,783 @@
+#include "TroubleshootDialog.hpp"
+#include "I18N.hpp"
+
+#include "GUI.hpp"
+#include "GUI_App.hpp"
+#include "MainFrame.hpp"
+
+#include <wx/display.h>
+
+#include "libslic3r/libslic3r.h"
+#include "libslic3r/Utils.hpp"
+#include "libslic3r/AppConfig.hpp"
+#include "libslic3r/PresetBundle.hpp"
+#include "libslic3r/Preset.hpp"
+
+#ifdef __WINDOWS__
+#include <windows.h>
+#include <VersionHelpers.h>
+#include <sysinfoapi.h>
+#endif
+
+#ifdef __LINUX__
+#include <wx/textfile.h>
+#include <wx/tokenzr.h>
+#include <cstdlib>
+#endif
+
+#include "NetworkTestDialog.hpp"
+
+#include "Widgets/StaticLine.hpp"
+#include "Widgets/HyperLink.hpp"
+#include "Widgets/Button.hpp"
+#include "Widgets/ComboBox.hpp"
+
+namespace Slic3r {
+namespace GUI {
+
+wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
+{
+    auto g_sizer = new wxFlexGridSizer(1, 7, FromDIP(3), FromDIP(15));
+
+    g_sizer->AddSpacer(0);
+    g_sizer->AddSpacer(0);
+    g_sizer->Add(new Label(this, Label::Body_12, "Act"), 0, wxALIGN_CENTER);
+    g_sizer->AddSpacer(0);
+    g_sizer->Add(new Label(this, Label::Body_12, "Sys"), 0, wxALIGN_CENTER);
+    g_sizer->AddSpacer(0);
+    g_sizer->Add(new Label(this, Label::Body_12, "Usr"), 0, wxALIGN_CENTER);
+
+    auto preset_bundle = wxGetApp().preset_bundle;
+    auto app_config    = wxGetApp().app_config;
+    auto vendors       = app_config->vendors();
+
+    int enabled_models = 0;
+    for (auto vendor_profile: vendors) {
+        auto models = vendor_profile.second;
+        enabled_models += models.size();
+    }
+
+    int enabled_filaments = app_config->has_section("filaments") ? app_config->get_section("filaments").size() : 0;
+
+    int enabled_processes = preset_bundle->printers.num_visible();
+
+    auto add_sizer = [this, g_sizer](PresetCollection* col, int in_use) {
+        int sys = 0, user = 0, enabled = 0;
+        for (auto it = col->begin(); it != col->end(); it++) {
+            if (it->is_system)
+                sys++;
+            else
+                user++;
+        }
+        g_sizer->Add(new Label(this, ": "));
+        g_sizer->Add(new Label(this, wxString::Format("%d", in_use)), 0, wxALIGN_CENTER);
+        g_sizer->Add(new Label(this, Label::Body_12, "/")           , 0, wxALIGN_CENTER);
+        g_sizer->Add(new Label(this, wxString::Format("%d", sys   )), 0, wxALIGN_CENTER);
+        g_sizer->Add(new Label(this, Label::Body_12, "+")           , 0, wxALIGN_CENTER);
+        g_sizer->Add(new Label(this, wxString::Format("%d", user  )), 0, wxALIGN_CENTER);
+    };
+
+    g_sizer->Add(new Label(this, "Printers"));
+    add_sizer(&preset_bundle->printers , enabled_models);
+    g_sizer->Add(new Label(this, "Filaments"));
+    add_sizer(&preset_bundle->filaments, enabled_filaments);
+    g_sizer->Add(new Label(this, "Process"));
+    add_sizer(&preset_bundle->prints   , enabled_processes);
+
+    return g_sizer;
+}
+
+wxBoxSizer *TroubleshootDialog::create_item_log_info()
+{
+    auto title = new Label(this, _L("Log Level"));
+
+    auto combobox = new ComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, DESIGN_COMBOBOX_SIZE, 0, nullptr, wxCB_READONLY);
+
+    for (const auto& item : std::vector<wxString>{_L("fatal"), _L("error"), _L("warning"), _L("info"), _L("debug"), _L("trace")})
+        combobox->Append(item);
+
+    auto severity_level = wxGetApp().app_config->get("log_severity_level");
+    if (!severity_level.empty()) { combobox->SetValue(severity_level); }
+
+    combobox->GetDropDown().Bind(wxEVT_COMBOBOX, [this](wxCommandEvent &e) {
+        auto level = Slic3r::get_string_logging_level(e.GetSelection());
+        Slic3r::set_logging_level(Slic3r::level_string_to_boost(level));
+        wxGetApp().app_config->set("log_severity_level",level);
+        e.Skip();
+     });
+
+    m_logs_storage = new Label(this, "");
+
+    wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
+    sizer->Add(title         , 0, wxALIGN_CENTER);
+    sizer->Add(combobox      , 0, wxALIGN_CENTER | wxLEFT, FromDIP(15));
+    sizer->AddStretchSpacer();
+    sizer->Add(m_logs_storage, 0, wxALIGN_CENTER);
+
+    UpdateLogsStorage();
+
+    return sizer;
+}
+
+TroubleshootDialog::TroubleshootDialog()
+    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, _L("Troubleshoot Center"),
+    wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
+{
+    SetFont(wxGetApp().normal_font());
+    SetBackgroundColour(*wxWHITE);
+
+    auto data_dir   = boost::filesystem::path(Slic3r::data_dir());
+    auto app_config = wxGetApp().app_config;
+    bool is_dark    = app_config->get("dark_color_mode") == "1";
+ 
+    // LEFT SIZER //////////////////////
+
+    // HEADER
+    m_logo            = ScalableBitmap(this, is_dark ? "OrcaSlicer_horizontal_dark" : "OrcaSlicer_horizontal_light", 64);
+    m_header_logo     = new wxStaticBitmap(this, wxID_ANY, m_logo.bmp());
+    auto logo_line    = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(3)));
+    logo_line->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#009687")));
+    auto version      = new Label(this, wxString(SoftFever_VERSION), wxALIGN_CENTRE_HORIZONTAL);
+    wxFont version_font = GetFont();
+    version_font.SetPointSize(18);
+    version->SetFont(version_font);
+    version->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+    auto build        = new Label(this, wxString(GIT_COMMIT_HASH), wxALIGN_CENTRE_HORIZONTAL);
+    build->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+
+    // SYSTEM INFO
+    auto* info_panel = new CenteredMultiLinePanel(this, {GetOSinfo(), GetCPUinfo(), (GetRAMinfo() + " RAM"), GetGPUinfo(), GetMONinfo()});
+    info_panel->SetBackgroundColour(*wxWHITE);
+    info_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+
+    auto info_copy_btn = new Button(this, "Copy");
+    info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    info_copy_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        wxString text = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
+                      + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n"
+                      + "System    :  " + GetOSinfo()  + "\n"
+                      + "Processor :  " + GetCPUinfo() + "\n"
+                      + "Memory    :  " + GetRAMinfo() + "\n"
+                      + "Renderer  :  " + GetGPUinfo() + "\n"
+                      + "Monitors  :  " + GetMONinfo() + "\n";
+        wxClipboardLocker lock;
+        if (!lock)
+            return false;
+
+        return wxTheClipboard->SetData(new wxTextDataObject(text));
+    });
+
+    // LINKS
+    auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
+    auto link_report  = new HyperLink(this, _L("Report issue") + " ");
+
+    // RIGHT SIZER //////////////////////
+
+    auto create_btn = [this](wxString title, wxString tooltip) {
+        auto btn = new Button(this, title);
+        btn->SetToolTip(tooltip);
+        btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+        return btn;
+    };
+
+    // CONFIGURATION
+    wxBoxSizer* cfg_btns = new wxBoxSizer(wxHORIZONTAL);
+
+    auto cfg_export_btn = create_btn("Export...", "Exports configuration file to selected folder as compressed file");
+    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        ExportAsZip((data_dir / "OrcaSlicer.conf").string(), "OrcaSlicer_Config");
+    });
+    cfg_btns->Add(cfg_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
+
+    auto cfg_browse_btn = create_btn("Browse...", "Opens configurations folder");
+    cfg_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        BrowseFolder(data_dir.string());
+    }); 
+    cfg_btns->Add(cfg_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+
+    // PROFILES
+    wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
+    auto prf_export_btn = create_btn("Export...", "Exports profiles to selected folder as compressed file");
+    prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        ExportAsZip((data_dir / "user").string(), "OrcaSlicer_UserProfiles");
+    });
+    prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
+
+    auto prf_browse_btn = create_btn("Browse...", "Opens profiles folder");
+    prf_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        BrowseFolder((data_dir / "user").string());
+    }); 
+    prf_btns->Add(prf_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+
+    auto prf_rebuild_btn = create_btn("Rebuild", "Cleans and rebuilds profiles cache on next launch");
+    prf_rebuild_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        RebuildSystemProfiles();
+    });
+    prf_btns->Add(prf_rebuild_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+
+    auto profiles_loaded = create_item_loaded_profiles();
+
+    // LOG
+    wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
+    auto logs_export_btn = create_btn("Export...", "Exports logs to selected folder as compressed file");
+    logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        ExportAsZip((data_dir / "log").string(), "OrcaSlicer_Logs");
+    }); 
+    log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
+
+    auto log_browse_btn = create_btn("Browse...", "Opens profiles folder");
+    log_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) { 
+        BrowseFolder((data_dir / "log").string());
+    }); 
+    log_btns->Add(log_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+
+    auto log_clear_btn = create_btn("Clear", "");
+    log_clear_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        ClearLogs();
+    }); 
+    log_btns->Add(log_clear_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+
+    auto log_info   = create_item_log_info();
+
+    // NETWORK
+    wxBoxSizer* net_btns = new wxBoxSizer(wxHORIZONTAL);
+    auto net_test_btn = new Button(this, "Test...");
+    net_test_btn->SetToolTip("Opens network test dialog");
+    net_test_btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    net_test_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        EndModal(wxID_CLOSE);
+        NetworkTestDialog dlg(wxGetApp().mainframe);
+        dlg.ShowModal();
+    }); 
+    net_btns->Add(net_test_btn  , 0, wxALIGN_CENTER_VERTICAL);
+
+
+    // LAYOUT //////////////////////
+    wxBoxSizer *left_sizer  = new wxBoxSizer(wxVERTICAL);
+    left_sizer->Add(m_header_logo                 , 0, wxEXPAND | wxALIGN_CENTER);
+    left_sizer->Add(logo_line                     , 0, wxEXPAND | wxTOP, FromDIP(15));
+    left_sizer->Add(version                       , 0, wxEXPAND | wxTOP, FromDIP(10));
+    left_sizer->Add(build                         , 0, wxEXPAND | wxTOP, FromDIP(3));
+    left_sizer->Add(info_panel                    , 0, wxEXPAND | wxTOP, FromDIP(20));
+    left_sizer->Add(info_copy_btn                 , 0, wxALIGN_CENTER | wxTOP, FromDIP(10));
+
+    wxBoxSizer *right_sizer  = new wxBoxSizer(wxVERTICAL);
+
+    auto create_title = [this](wxString title) {
+        auto line = new StaticLine(this, false, title);
+        line->SetFont(Label::Head_16);
+        line->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+        return line;
+    };
+
+    wxBoxSizer *links_sizer = new wxBoxSizer(wxHORIZONTAL);
+    links_sizer->Add(link_report, 0);
+    links_sizer->AddStretchSpacer();
+    links_sizer->Add(link_wiki, 0);
+
+    right_sizer->Add(create_title("Configuration"), 0, wxEXPAND);
+    right_sizer->Add(cfg_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
+
+    right_sizer->Add(create_title("Profiles")     , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(prf_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(profiles_loaded              , 0, wxEXPAND | wxTOP, FromDIP(10));
+    
+    right_sizer->Add(create_title("Logs")         , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(log_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(log_info                     , 0, wxEXPAND | wxTOP, FromDIP(10));
+
+    right_sizer->Add(create_title("Network")      , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(net_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
+
+    right_sizer->Add(links_sizer                  , 0, wxEXPAND | wxTOP, FromDIP(20));
+
+    wxBoxSizer *m_sizer = new wxBoxSizer(wxHORIZONTAL);
+    m_sizer->Add(left_sizer , 0, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT , FromDIP(15));
+    m_sizer->AddSpacer(FromDIP(20));
+    m_sizer->Add(right_sizer, 0, wxEXPAND | wxTOP | wxBOTTOM | wxRIGHT, FromDIP(15));
+
+    SetSizer(m_sizer);
+    Layout();
+    Fit();
+    CenterOnParent();
+    wxGetApp().UpdateDlgDarkUI(this);
+}
+
+wxString TroubleshootDialog::GetOSinfo()
+{
+    wxString result;
+#ifdef __WINDOWS__
+    typedef NTSTATUS(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
+    HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+    if (hNtdll) {
+        auto RtlGetVersion = (RtlGetVersionPtr)GetProcAddress(hNtdll, "RtlGetVersion");
+        if (RtlGetVersion) {
+            RTL_OSVERSIONINFOW osvi = {};
+            osvi.dwOSVersionInfoSize = sizeof(osvi);
+            if (RtlGetVersion(&osvi) == 0) { // STATUS_SUCCESS
+                int build = osvi.dwBuildNumber;
+                wxString win = (build >= 22000) ? "11" 
+                             : (build >= 10240) ? "10"
+                             : (build >= 9200)  ? "8"
+                             : (build >= 7601)  ? "7"
+                             : "?";
+                result = wxString::Format("Windows %s [%d]", win, build);
+            }
+        }
+    }
+    else {
+        result = "Windows (unknown)";
+    }
+#elif defined(__LINUX__)
+    result = GetLinuxDistroName() + " | " + GetDisplayServer();
+#elif defined(__APPLE__)
+    result = wxGetOsDescription();
+#endif
+    return result;
+}
+
+#ifdef __LINUX__
+wxString TroubleshootDialog::GetLinuxDistroName()
+{
+    wxTextFile file;
+    if (!file.Open("/etc/os-release"))
+        file.Open("/usr/lib/os-release");
+
+    if (!file.IsOpened())
+        return "Linux";
+
+    for (wxString line = file.GetFirstLine(); !file.Eof(); line = file.GetNextLine()) {
+        if (line.StartsWith("PRETTY_NAME=")) {
+            wxString value = line.Mid(12); // skip "PRETTY_NAME="
+            value.Replace("\"", "");
+            return value;
+        }
+    }
+    return "Linux";
+}
+
+wxString TroubleshootDialog::GetDisplayServer()
+{
+    const char* wayland = getenv("WAYLAND_DISPLAY");
+    if (wayland && wayland[0] != '\0') // WAYLAND_DISPLAY is set when running under Wayland
+        return "Wayland";
+
+    const char* sessionType = getenv("XDG_SESSION_TYPE");
+    if (sessionType) { // XDG_SESSION_TYPE is more explicit
+        if (wxString(sessionType).IsSameAs("wayland", false))
+            return "Wayland";
+        if (wxString(sessionType).IsSameAs("x11", false))
+            return "X11";
+    }
+
+    const char* display = getenv("DISPLAY");
+    if (display && display[0] != '\0')
+        return "X11"; // DISPLAY being set suggests X11
+
+    return "";
+}
+#endif
+
+wxString TroubleshootDialog::GetCPUinfo()
+{
+    wxString info;
+#ifdef _WIN32
+    std::map<std::string, std::string> cpu_info = get_cpu_info_from_registry();
+    info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
+#elif __APPLE__
+    std::map<std::string, std::string> cpu_info = parse_lscpu_etc("sysctl -a", ':');
+    info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
+#else // linux/BSD
+    std::map<std::string, std::string> cpu_info = parse_lscpu_etc("cat /proc/cpuinfo", ':');
+    if (auto ncpu_it = cpu_info.find("processor"); ncpu_it != cpu_info.end()) {
+        std::string& ncpu = ncpu_it->second;
+        if (int num=0; std::from_chars(ncpu.data(), ncpu.data() + ncpu.size(), num).ec != std::errc::invalid_argument)
+            ncpu = std::to_string(num + 1);
+    }
+    info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
+#endif
+    info.Trim();
+    return info;
+}
+
+#ifdef _WIN32
+std::map<std::string, std::string> TroubleshootDialog::get_cpu_info_from_registry()
+{
+    std::map<std::string, std::string> out;
+
+    int idx = -1;
+    constexpr DWORD bufsize_ = 500;
+    DWORD bufsize = bufsize_-1; // Ensure a terminating zero.
+    char buf[bufsize_] = "";
+    memset(buf, 0, bufsize_);
+    const std::string reg_dir = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\";
+    std::string reg_path = reg_dir;
+
+    // Look into that reg dir and possibly into subdirs called 0, 1, 2, etc.
+    // If the latter, count them.
+
+    while (true) {
+        if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "ProcessorNameString",
+            RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS) {
+            out["Model"] = buf;
+            out["Cores"] = std::to_string(std::max(1, idx + 1));
+            if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(),
+                "VendorIdentifier", RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS)
+                out["Vendor"] = buf;
+        }
+        else {
+            if (idx >= 0)
+                break;
+        }
+        ++idx;
+        reg_path = reg_dir + std::to_string(idx) + "\\";
+        bufsize = bufsize_-1;
+    }
+    return out;
+}
+#else // macOS / linux / BSD
+std::map<std::string, std::string> TroubleshootDialog::parse_lscpu_etc(const std::string& name, char delimiter)
+{
+    std::map<std::string, std::string> out;
+    constexpr size_t max_len = 1000;
+    char cline[max_len] = "";
+    FILE* fp = popen(name.data(), "r");
+    if (fp != NULL) {
+        while (fgets(cline, max_len, fp) != NULL) {
+            std::string line(cline);
+            line.erase(std::remove_if(line.begin(), line.end(),
+                [](char c) { return c == '\"' || c == '\r' || c == '\n'; }),
+                line.end());
+            size_t pos = line.find(delimiter);
+            if (pos < line.size() - 1) {
+                std::string key = line.substr(0, pos);
+                std::string value = line.substr(pos + 1);
+                boost::trim_all(key); // remove leading and trailing spaces
+                boost::trim_all(value);
+                out[key] = value;
+            }
+        }
+        pclose(fp);
+    }
+    return out;
+}
+#endif
+
+wxString TroubleshootDialog::GetRAMinfo()
+{
+    size_t n = std::round(Slic3r::total_physical_memory() / 107374182.40);
+    return std::to_string(n / 10) + "." + std::to_string(n % 10) + " GB";
+}
+
+wxString TroubleshootDialog::GetGPUinfo()
+{
+    auto gl_info = OpenGLManager::get_gl_info();
+    return  gl_info.get_renderer()+ "  GLSL:" +  gl_info.get_glsl_version();
+}
+
+wxString TroubleshootDialog::GetMONinfo()
+{
+    wxString m_str, d_str;
+    int m_count = wxDisplay::GetCount();
+    for (int i=0; i < m_count; ++i) {
+        wxDisplay display(i);
+        double scale = display.GetScaleFactor();
+        wxRect l_res = display.GetGeometry();
+        d_str = wxString::Format("%dx%d-%.0f%%", l_res.width,  l_res.height, scale * 100.00);
+        m_str += (i == 0 ? "" : "  ") + d_str;
+    }
+    return m_str;
+}
+
+void TroubleshootDialog::RebuildSystemProfiles()
+{
+    if (wxGetApp().plater()->is_project_dirty()) {
+        MessageDialog msg(this, _L("The current project has unsaved changes, save it before continue?"),
+            wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Save"), wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxCENTRE
+        );
+        if (msg.ShowModal() == wxID_YES){
+            wxGetApp().plater()->save_project();
+            return;
+        }
+    }
+    
+    MessageDialog msg(this, _L("Restart Required") + "\n\n" + _L("Do you want to continue?"),
+         wxString(SLIC3R_APP_FULL_NAME), wxICON_QUESTION | wxOK | wxCANCEL
+    );
+    if (msg.ShowModal() == wxID_OK){
+        auto sys_folder = boost::filesystem::path(Slic3r::data_dir()) / "system";
+        if (boost::filesystem::exists(sys_folder)) {
+            bool is_deletable = true;
+            try {
+                for (const auto& entry : boost::filesystem::recursive_directory_iterator(sys_folder)) {
+                    if (boost::filesystem::is_regular_file(entry.path())) {
+                        std::ofstream file(entry.path().string(), std::ios::in | std::ios::out);
+                        if (!file.is_open()) {
+                            BOOST_LOG_TRIVIAL(warning) << "File is locked: " << entry.path().string();
+                            is_deletable = false;
+                        }
+                        file.close();
+                    }
+                }
+            }
+            catch (const std::exception& ex) {
+                is_deletable = false;
+            }
+            if (!is_deletable) {
+                MessageDialog(this, _L("System folder cannot be deleted because some files are in use by another application. Please close any applications using these files and try again."),
+                    wxString(SLIC3R_APP_FULL_NAME), wxOK | wxICON_ERROR | wxCENTRE
+                ).ShowModal();
+                return;
+            }
+            try {
+                boost::filesystem::remove_all(sys_folder);
+                EndModal(wxID_REMOVE);
+            }
+            catch (const std::exception& ex) {
+                MessageDialog(this, _L("Failed to delete system folder..."),
+                    wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Error"), wxOK | wxICON_ERROR | wxCENTRE
+                ).ShowModal();
+            }
+        }
+    }
+}
+
+void TroubleshootDialog::ClearLogs()
+{
+    // Same method with GUI_App::post_init() only LOG_FILES_MAX_NUM replaced with 1
+    auto data_dir = boost::filesystem::path(Slic3r::data_dir());
+    auto log_folder = data_dir / "log";
+    if (boost::filesystem::exists(log_folder)) {
+       std::vector<std::pair<time_t, std::string>> files_vec;
+       for (auto& it : boost::filesystem::directory_iterator(log_folder)) {
+           auto temp_path = it.path();
+           try {
+               if (it.status().type() == boost::filesystem::regular_file) {
+                   std::time_t lw_t = boost::filesystem::last_write_time(temp_path) ;
+                   files_vec.push_back({ lw_t, temp_path.filename().string() });
+               }
+           } catch (const std::exception &) {
+           }
+       }
+       std::sort(files_vec.begin(), files_vec.end(), [](
+           std::pair<time_t, std::string> &a, std::pair<time_t, std::string> &b) {
+           return a.first > b.first;
+       });
+
+       while (files_vec.size() > 1) {
+           auto full_path = log_folder / boost::filesystem::path(files_vec[files_vec.size() - 1].second);
+           BOOST_LOG_TRIVIAL(info) << "delete log file over " << LOG_FILES_MAX_NUM << ", filename: "<< files_vec[files_vec.size() - 1].second;
+           try {
+               boost::filesystem::remove(full_path);
+           }
+           catch (const std::exception& ex) {
+               BOOST_LOG_TRIVIAL(error) << "failed to delete log file: "<< files_vec[files_vec.size() - 1].second << ". Error: " << ex.what();
+           }
+           files_vec.pop_back();
+        }
+    }
+    UpdateLogsStorage();
+}
+
+void TroubleshootDialog::UpdateLogsStorage()
+{
+    boost::filesystem::path logsPath = boost::filesystem::path(Slic3r::data_dir()) / "log";
+    
+    uintmax_t totalBytes = 0;
+    if (boost::filesystem::exists(logsPath) && boost::filesystem::is_directory(logsPath)) {
+        for (const auto& entry : boost::filesystem::recursive_directory_iterator(logsPath)) {
+            if (boost::filesystem::is_regular_file(entry.path()))
+                totalBytes += boost::filesystem::file_size(entry.path());
+        }
+    }
+
+    wxString label;
+    if (totalBytes >= 1024 * 1024)
+        label = wxString::Format("%.2f MB", totalBytes / (1024.0 * 1024.0));
+    else
+        label = wxString::Format("%.2f KB", totalBytes / 1024.0);
+
+    m_logs_storage->SetLabel(label);
+}
+
+void TroubleshootDialog::BrowseFolder(std::string path)
+{
+    wxString wxpath = wxString::FromUTF8(path);
+
+    if (!wxpath.IsEmpty() && !wxFileName::IsPathSeparator(wxpath.Last()))
+        wxpath += wxFileName::GetPathSeparator();
+
+    if (wxLaunchDefaultApplication(wxpath))
+        return;
+
+    #ifdef _WIN32
+        ::wxExecute(L"explorer.exe \"" + wxpath + L"\"", wxEXEC_ASYNC);
+    #elif defined(__APPLE__)
+        ::wxExecute(wxString::Format("open %s", wxShellQuote(wxpath)), wxEXEC_ASYNC);
+    #else
+        const char* argv[] = { "xdg-open", nullptr, nullptr };
+
+        wxString utf8_path = wxpath.ToUTF8();
+        argv[1] = utf8_path.c_str();
+
+        if (wxGetEnv("APPIMAGE", nullptr)) {
+            wxEnvVariableHashMap env_vars;
+            wxGetEnvMap(&env_vars);
+
+            env_vars.erase("APPIMAGE");
+            env_vars.erase("APPDIR");
+            env_vars.erase("LD_LIBRARY_PATH");
+            env_vars.erase("LD_PRELOAD");
+            env_vars.erase("UNION_PRELOAD");
+
+            wxExecuteEnv exec_env;
+            exec_env.env = std::move(env_vars);
+
+            wxString owd;
+            if (wxGetEnv("OWD", &owd))
+                exec_env.cwd = std::move(owd);
+
+            ::wxExecute(const_cast<char**>(argv), wxEXEC_ASYNC, nullptr, &exec_env);
+        }
+        else
+            ::wxExecute(const_cast<char**>(argv), wxEXEC_ASYNC);
+    #endif
+}
+
+bool TroubleshootDialog::ExportAsZip(const wxString& source, const wxString& export_name)
+{
+    wxDirDialog dialog(this, "Choose where to save the exported ZIP file", wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+    wxString destDir = (dialog.ShowModal() == wxID_OK) ? dialog.GetPath() : "";
+    if (destDir.IsEmpty())
+        return false;
+
+    wxString baseName = export_name.IsEmpty() ? wxFileName(source).GetFullName() : export_name;
+    wxString zipPath = wxFileName(destDir, baseName + ".zip").GetFullPath();
+
+    if (wxFileExists(zipPath)) {
+        MessageDialog msg(this, _L("File already exists. Overwrite?"),
+             wxString(SLIC3R_APP_FULL_NAME), wxICON_QUESTION | wxYES_NO
+        );
+        if (msg.ShowModal() != wxID_YES)
+            return false;
+    }
+    if (!SaveAsZip(source, zipPath)) {
+        MessageDialog(this, _L("Export failed. Check write permissions"),
+             wxString(SLIC3R_APP_FULL_NAME), wxICON_ERROR | wxOK
+        ).ShowModal();
+        return false;
+    }
+    return true;
+}
+
+bool TroubleshootDialog::AddToZip(wxZipOutputStream& zip, const wxString& fullPath, const wxString& rootDir)
+{
+    wxString relPath = fullPath.Mid(rootDir.length());
+    if (relPath.StartsWith(wxFileName::GetPathSeparator()))
+        relPath = relPath.Mid(1);
+    relPath.Replace(wxFileName::GetPathSeparator(), wxT("/"));
+    if (wxDirExists(fullPath)) {
+        if (!relPath.IsEmpty()) {
+            if (!relPath.EndsWith(wxT("/")))
+                relPath += wxT("/");
+            if (!zip.PutNextDirEntry(relPath))
+                return false;
+        }
+
+        wxDir dir(fullPath);
+        if (!dir.IsOpened())
+            return false;
+
+        wxString filename;
+        bool cont = dir.GetFirst(&filename, wxEmptyString, wxDIR_FILES | wxDIR_DIRS | wxDIR_HIDDEN);
+        while (cont) {
+            wxString childPath = fullPath;
+            if (!wxEndsWithPathSeparator(childPath))
+                childPath += wxFileName::GetPathSeparator();
+            childPath += filename;
+
+            if (!AddToZip(zip, childPath, rootDir))
+                return false;
+
+            cont = dir.GetNext(&filename);
+        }
+    }
+    else if (wxFileExists(fullPath)) {
+        wxFileInputStream in(fullPath);
+        if (!in.IsOk())
+            return false;
+        if (!zip.PutNextEntry(relPath))
+            return false;
+        zip.Write(in);
+        if (!zip.CloseEntry())
+            return false;
+    }
+    else
+        return false;
+
+    return true;
+}
+
+bool TroubleshootDialog::SaveAsZip(const wxString& sourcePath, const wxString& zipFullPath)
+{
+    if (!wxDirExists(sourcePath) && !wxFileExists(sourcePath))
+        return false;
+
+    wxFileOutputStream out(zipFullPath);
+    if (!out.IsOk())
+        return false;
+
+    wxZipOutputStream zip(out);
+    if (!zip.IsOk()) {
+        out.Close();
+        return false;
+    }
+
+    wxString rootDir = wxDirExists(sourcePath) ? sourcePath : wxFileName(sourcePath).GetPath();
+    if (!wxEndsWithPathSeparator(rootDir))
+        rootDir += wxFileName::GetPathSeparator();
+
+    bool success = AddToZip(zip, sourcePath, rootDir);
+
+    if (!zip.Close()) success = false;
+    if (!out.Close()) success = false;
+
+    if (!success)
+        wxRemoveFile(zipFullPath);
+
+    return success;
+}
+
+void TroubleshootDialog::on_dpi_changed(const wxRect& suggested_rect)
+{
+    m_logo.msw_rescale();
+    m_header_logo->SetBitmap(m_logo.bmp());
+
+    auto processCtrls = [&](auto&& self, wxWindow* win) -> void {
+        if (!win)
+            return;
+        
+        if (Button* btn = dynamic_cast<Button*>(win))
+            btn->Rescale();
+
+        if (ComboBox* combo = dynamic_cast<ComboBox*>(win))
+            combo->Rescale();
+
+        wxWindowList children = win->GetChildren();
+        for (auto child : children)
+            self(self, child);
+    };
+
+    processCtrls(processCtrls, this);
+
+    Layout();
+    Fit();
+    Refresh();
+}
+
+//TroubleshootDialog::~TroubleshootDialog()
+//{
+//}
+
+} // namespace GUI
+} // namespace Slic3r
