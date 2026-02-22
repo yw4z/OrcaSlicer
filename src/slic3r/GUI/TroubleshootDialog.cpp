@@ -173,7 +173,77 @@ TroubleshootDialog::TroubleshootDialog()
         return wxTheClipboard->SetData(new wxTextDataObject(GetSysInfoAll(true)));
     });
 
+    auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
+
     // RIGHT SIZER //////////////////////
+    auto link_report  = new HyperLink(this, _L("Report issue") + " ");
+    link_report->SetFont(Label::Head_16);
+    link_report->Bind(wxEVT_LEFT_DOWN, [this, GetSysInfoAll](wxMouseEvent &e) {
+        auto encodeStr = [](const wxString& text) {
+            wxString str = text;
+            wxString out;
+            for (wxChar c : str) {
+                if (wxIsalnum(c) || c == wxT('-') || c == wxT('_') || c == wxT('.') || c == wxT('~'))
+                    out += c;
+                else if (c == wxT(' '))
+                    out += wxT("%20");
+                else {
+                    wxString hex = wxString::Format(wxT("%%%02X"), (unsigned char)c);
+                    out += hex;
+                }
+            }
+            return out;
+        };
+
+        wxString url = "https://github.com/OrcaSlicer/OrcaSlicer/issues/new?template=bug_report.yml";
+        #ifdef __WINDOWS__
+            url += "&os_type=%22Windows%22";
+        #elif defined(__LINUX__)
+            url += "&os_type=%Linux%22";
+        #elif defined(__APPLE__)
+            url += "&os_type=%macOS%22";
+        #endif
+        url += "&version="     + encodeStr(wxString(SoftFever_VERSION));
+        url += "&os_version="  + encodeStr(GetOSinfo());
+        url += "&system_info=" + encodeStr(GetSysInfoAll(false));
+
+        wxLaunchDefaultBrowser(url);
+    });
+
+    auto issue_cb = new CheckBox(this);
+    issue_cb->SetValue(m_include_detailed_info);
+
+    auto issue_cb_label = new Label(this, _L("Include system information"));
+    issue_cb_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+    issue_cb_label->SetToolTip(
+        _L("Reporting issue with clicking \"Report issue\" link adds basic information (OrcaSlicer Version / Build, Operating system type / version) as default\n"
+           "and automatically fills related fields on Github with including them on URL.\n"
+           "Adds Processor, Memory, GPU and Monitor information to URL when this option selected"
+    ));
+
+    issue_cb->Bind(wxEVT_TOGGLEBUTTON, [this, issue_cb](wxCommandEvent& e) {
+        m_include_detailed_info = e.IsChecked();
+        e.Skip();
+    });
+
+    issue_cb_label->Bind(wxEVT_LEFT_DOWN,([this, issue_cb](wxMouseEvent& e) {
+        if (e.LeftDClick()) return;
+        issue_cb->SetValue(!issue_cb->GetValue());
+        m_include_detailed_info = issue_cb->GetValue();
+        e.Skip();
+    }));
+
+    issue_cb_label->Bind(wxEVT_LEFT_DCLICK,([this, issue_cb](wxMouseEvent& e) {
+        issue_cb->SetValue(!issue_cb->GetValue());
+        e.Skip();
+    }));
+
+    auto pack_btn = new Button(this, _L("Pack All") + "...");
+    pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
+    pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
+    pack_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+
+    });
 
     auto create_btn = [this](wxString title, wxString tooltip) {
         auto btn = new Button(this, title);
@@ -251,76 +321,11 @@ TroubleshootDialog::TroubleshootDialog()
     }); 
     net_btns->Add(net_test_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
-    // LINKS
-    auto links_sep    = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(1)));
-    links_sep->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#EEEEEE")));
-
-    auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
-    auto link_report  = new HyperLink(this, _L("Report issue") + " ");
-    link_report->Bind(wxEVT_LEFT_DOWN, [this, GetSysInfoAll](wxMouseEvent &e) {
-        auto encodeStr = [](const wxString& text) {
-            wxString str = text;
-            wxString out;
-            for (wxChar c : str) {
-                if (wxIsalnum(c) || c == wxT('-') || c == wxT('_') || c == wxT('.') || c == wxT('~'))
-                    out += c;
-                else if (c == wxT(' '))
-                    out += wxT("%20");
-                else {
-                    wxString hex = wxString::Format(wxT("%%%02X"), (unsigned char)c);
-                    out += hex;
-                }
-            }
-            return out;
-        };
-
-        wxString url = "https://github.com/OrcaSlicer/OrcaSlicer/issues/new?template=bug_report.yml";
-        #ifdef __WINDOWS__
-            url += "&os_type=%22Windows%22";
-        #elif defined(__LINUX__)
-            url += "&os_type=%Linux%22";
-        #elif defined(__APPLE__)
-            url += "&os_type=%macOS%22";
-        #endif
-        url += "&version="     + encodeStr(wxString(SoftFever_VERSION));
-        url += "&os_version="  + encodeStr(GetOSinfo());
-        url += "&system_info=" + encodeStr(GetSysInfoAll(false));
-
-        wxLaunchDefaultBrowser(url);
-    });
-
-    auto issue_cb = new CheckBox(this);
-    issue_cb->SetValue(m_include_detailed_info);
-
-    auto issue_cb_label = new Label(this, _L("Include detailed information on report"));
-    issue_cb_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
-    issue_cb_label->SetToolTip(
-        _L("Reporting issue with clicking this link adds basic information (OrcaSlicer Version / Build, Operating system type / version) as default\n"
-           "and automatically fills related fields on Github with including them to URL.\n"
-           "It will also adds Processor, Memory, GPU and Monitor information to URL when this option selected"
-    ));
-
-
-    issue_cb->Bind(wxEVT_TOGGLEBUTTON, [this, issue_cb](wxCommandEvent& e) {
-        m_include_detailed_info = e.IsChecked();
-        e.Skip();
-    });
-
-    issue_cb_label->Bind(wxEVT_LEFT_DOWN,([this, issue_cb](wxMouseEvent& e) {
-        if (e.LeftDClick()) return;
-        issue_cb->SetValue(!issue_cb->GetValue());
-        m_include_detailed_info = issue_cb->GetValue();
-        e.Skip();
-    }));
-
-    issue_cb_label->Bind(wxEVT_LEFT_DCLICK,([this, issue_cb](wxMouseEvent& e) {
-        issue_cb->SetValue(!issue_cb->GetValue());
-        e.Skip();
-    }));
-
     wxBoxSizer *issue_cb_sizer = new wxBoxSizer(wxHORIZONTAL);
-    issue_cb_sizer->Add(issue_cb, 0);
-    issue_cb_sizer->Add(issue_cb_label, 0, wxLEFT, FromDIP(5));
+    issue_cb_sizer->Add(link_report   , 0, wxALIGN_CENTER_VERTICAL);
+    issue_cb_sizer->AddStretchSpacer();
+    issue_cb_sizer->Add(issue_cb      , 0, wxALIGN_CENTER_VERTICAL);
+    issue_cb_sizer->Add(issue_cb_label, 0,  wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(5));
 
     // LAYOUT //////////////////////
     wxBoxSizer *left_sizer  = new wxBoxSizer(wxVERTICAL);
@@ -330,7 +335,10 @@ TroubleshootDialog::TroubleshootDialog()
     left_sizer->Add(build                         , 0, wxEXPAND | wxTOP, FromDIP(3));
     left_sizer->Add(info_panel                    , 0, wxEXPAND | wxTOP, FromDIP(20));
     left_sizer->Add(info_copy_btn                 , 0, wxALIGN_CENTER | wxTOP, FromDIP(10));
-
+    left_sizer->AddStretchSpacer();
+    left_sizer->Add(link_wiki                     , 0, wxALIGN_CENTER | wxTOP, FromDIP(20));
+    left_sizer->AddSpacer(FromDIP(5));
+    
     wxBoxSizer *right_sizer  = new wxBoxSizer(wxVERTICAL);
 
     auto create_title = [this](wxString title) {
@@ -340,12 +348,10 @@ TroubleshootDialog::TroubleshootDialog()
         return line;
     };
 
-    wxBoxSizer *links_sizer = new wxBoxSizer(wxHORIZONTAL);
-    links_sizer->Add(link_report, 0);
-    links_sizer->AddStretchSpacer();
-    links_sizer->Add(link_wiki, 0);
+    right_sizer->Add(issue_cb_sizer                   , 0, wxEXPAND);
+    right_sizer->Add(pack_btn                         , 0, wxEXPAND | wxTOP, FromDIP(8));
 
-    right_sizer->Add(create_title(_L("Configuration")), 0, wxEXPAND);
+    right_sizer->Add(create_title(_L("Configuration")), 0, wxEXPAND | wxTOP, FromDIP(15));
     right_sizer->Add(cfg_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
 
     right_sizer->Add(create_title(_L("Profiles"))     , 0, wxEXPAND | wxTOP, FromDIP(12));
@@ -358,10 +364,6 @@ TroubleshootDialog::TroubleshootDialog()
 
     right_sizer->Add(create_title(_L("Network"))      , 0, wxEXPAND | wxTOP, FromDIP(12));
     right_sizer->Add(net_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
-
-    right_sizer->Add(links_sep                        , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(links_sizer                      , 0, wxEXPAND | wxTOP, FromDIP(8));
-    right_sizer->Add(issue_cb_sizer                   , 0, wxEXPAND | wxTOP, FromDIP(8));
 
     wxBoxSizer *m_sizer = new wxBoxSizer(wxHORIZONTAL);
     m_sizer->Add(left_sizer , 0, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT , FromDIP(15));

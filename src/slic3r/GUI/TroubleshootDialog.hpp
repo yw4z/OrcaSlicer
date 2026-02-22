@@ -2,6 +2,7 @@
 #define slic3r_GUI_TroublesootDialog_hpp_
 
 #include <wx/wx.h>
+#include <wx/zipstrm.h>
 
 #include "GUI_Utils.hpp"
 #include "wxExtensions.hpp"
