@@ -27,7 +27,6 @@ public:
 private:
     ScalableBitmap   m_logo;
     wxStaticBitmap*  m_header_logo;
-    Label*           m_mon_info;
     Label*           m_logs_storage;
 
 protected:

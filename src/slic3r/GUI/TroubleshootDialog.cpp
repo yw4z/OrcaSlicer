@@ -99,7 +99,7 @@ wxBoxSizer *TroubleshootDialog::create_item_log_info()
     auto severity_level = wxGetApp().app_config->get("log_severity_level");
     if (!severity_level.empty()) { combobox->SetValue(severity_level); }
 
-    combobox->GetDropDown().Bind(wxEVT_COMBOBOX, [this](wxCommandEvent &e) {
+    combobox->GetDropDown().Bind(wxEVT_COMBOBOX, [](wxCommandEvent &e) {
         auto level = Slic3r::get_string_logging_level(e.GetSelection());
         Slic3r::set_logging_level(Slic3r::level_string_to_boost(level));
         wxGetApp().app_config->set("log_severity_level",level);
@@ -163,11 +163,10 @@ TroubleshootDialog::TroubleshootDialog()
 
     auto info_copy_btn = new Button(this, _L("Copy"));
     info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
-    info_copy_btn->Bind(wxEVT_BUTTON, [this, GetSysInfoAll](wxCommandEvent &e) {
+    info_copy_btn->Bind(wxEVT_BUTTON, [GetSysInfoAll](wxCommandEvent &e) {
         wxClipboardLocker lock;
         if (!lock)
             return false;
-
         return wxTheClipboard->SetData(new wxTextDataObject(GetSysInfoAll()));
     });
 
@@ -175,7 +174,7 @@ TroubleshootDialog::TroubleshootDialog()
     auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
     auto link_report  = new HyperLink(this, _L("Report issue") + " ");
     link_report->Bind(wxEVT_LEFT_DOWN, [this, GetSysInfoAll](wxMouseEvent &e) {
-        auto encodeStr = [this](const wxString& text) {
+        auto encodeStr = [](const wxString& text) {
             wxString str = text;
             wxString out;
             for (wxChar c : str) {
@@ -424,7 +423,7 @@ wxString TroubleshootDialog::GetPackageType()
     if (path.StartsWith("/usr/local"))   return "Compiled (local)";
     if (path.StartsWith("/opt"))         return "Third-party / manual";
 
-    return "Native Package (deb/rpm/etc)";
+    return "Native Package"; // (deb/rpm/etc)
 }
 #endif
 
@@ -663,10 +662,29 @@ void TroubleshootDialog::BrowseFolder(std::string path)
     if (wxLaunchDefaultApplication(wxpath))
         return;
 
+    auto ShellQuote = [this](const wxString& arg) {
+        #ifdef __WXMSW__
+            wxString result = "\"";
+            for (wxChar c : arg) {
+                if (c == '"') result += '\\';
+                result += c;
+            }
+            result += "\"";
+            return result;
+        #else
+            wxString result = "'";
+            for (wxChar c : arg) {
+                result += (c == '\'') ? "'\\''" : c;
+            }
+            result += "'";
+            return result;
+        #endif
+    };
+
     #ifdef _WIN32
-        ::wxExecute(L"explorer.exe \"" + wxpath + L"\"", wxEXEC_ASYNC);
+        ::wxExecute(L"explorer.exe " + ShellQuote(wxpath), wxEXEC_ASYNC);
     #elif defined(__APPLE__)
-        ::wxExecute(wxString::Format("open %s", wxShellQuote(wxpath)), wxEXEC_ASYNC);
+        ::wxExecute(wxString::Format("open %s", ShellQuote(wxpath)), wxEXEC_ASYNC);
     #else
         const char* argv[] = { "xdg-open", nullptr, nullptr };
 
