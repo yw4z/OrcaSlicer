@@ -499,8 +499,11 @@ void TroubleshootDialog::RebuildSystemProfiles()
         }
     }
     
-    MessageDialog msg(this, _L("Restart Required") + "\n\n" + _L("Do you want to continue?"),
-         wxString(SLIC3R_APP_FULL_NAME), wxICON_QUESTION | wxOK | wxCANCEL
+    MessageDialog msg(this,
+        _L("Restart Required") + "\n" +
+        _L("Please make sure any instances of OrcaSlicer are not running") + "\n" +
+        _L("Do you want to continue?")
+        , wxString(SLIC3R_APP_FULL_NAME), wxICON_QUESTION | wxOK | wxCANCEL
     );
     if (msg.ShowModal() == wxID_OK){
         auto sys_folder = boost::filesystem::path(Slic3r::data_dir()) / "system";
