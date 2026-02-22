@@ -38,6 +38,7 @@ protected:
 #ifdef __LINUX__
     wxString GetLinuxDistroName();
     wxString GetDisplayServer();
+    wxString GetPackageType()
 #endif
 
     wxString GetCPUinfo();

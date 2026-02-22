@@ -362,7 +362,7 @@ wxString TroubleshootDialog::GetOSinfo()
         result = "Windows (unknown)";
     }
 #elif defined(__LINUX__)
-    result = GetLinuxDistroName() + " | " + GetDisplayServer();
+    result = GetLinuxDistroName() + " " + GetDisplayServer() + " " + GetPackageType();
 #elif defined(__APPLE__)
     result = wxGetOsDescription();
 #endif
@@ -408,6 +408,23 @@ wxString TroubleshootDialog::GetDisplayServer()
         return "X11"; // DISPLAY being set suggests X11
 
     return "";
+}
+
+wxString TroubleshootDialog::GetPackageType()
+{
+    if (wxGetEnv("APPIMAGE"  , nullptr)) return "AppImage";
+    if (wxGetEnv("FLATPAK_ID", nullptr)) return "Flatpak";
+    //if (wxGetEnv("SNAP"      , nullptr)) return "Snap";
+    if (wxFileExists("/.flatpak-info"))  return "Flatpak";
+    //if (wxFileExists("/usr/bin/dpkg"))   return "Debian/Ubuntu (deb)";
+    //if (wxFileExists("/usr/bin/rpm"))    return "RPM-based (rpm)";
+    //if (wxFileExists("/usr/bin/pacman")) return "Arch (pacman)";
+
+    wxString path = wxStandardPaths::Get().GetExecutablePath();
+    if (path.StartsWith("/usr/local"))   return "Compiled (local)";
+    if (path.StartsWith("/opt"))         return "Third-party / manual";
+
+    return "Native Package (deb/rpm/etc)";
 }
 #endif
 
