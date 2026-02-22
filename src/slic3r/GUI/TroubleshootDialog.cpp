@@ -241,7 +241,12 @@ TroubleshootDialog::TroubleshootDialog()
     auto pack_btn = new Button(this, _L("Pack All") + "...");
     pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
-    pack_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        ExportAsZip({
+            (data_dir / "OrcaSlicer.conf").string(),
+            (data_dir / "user").string(),
+            (data_dir / "log").string()
+        }, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());;
 
     });
 
@@ -257,7 +262,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     auto cfg_export_btn = create_btn(_L("Export") + "...", _L("Exports configuration file to selected folder as compressed file"));
     cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip((data_dir / "OrcaSlicer.conf").string(), "OrcaSlicer_Config");
+        ExportAsZip({(data_dir / "OrcaSlicer.conf").string()}, "OrcaSlicer_Config_" + GetTimestamp());
     });
     cfg_btns->Add(cfg_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
@@ -271,7 +276,7 @@ TroubleshootDialog::TroubleshootDialog()
     wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
     auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports profiles to selected folder as compressed file"));
     prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip((data_dir / "user").string(), "OrcaSlicer_UserProfiles");
+        ExportAsZip({(data_dir / "user").string()}, "OrcaSlicer_UserProfiles_" + GetTimestamp());
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
@@ -293,7 +298,7 @@ TroubleshootDialog::TroubleshootDialog()
     wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
     auto logs_export_btn = create_btn(_L("Export") + "...", _L("Exports logs to selected folder as compressed file"));
     logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip((data_dir / "log").string(), "OrcaSlicer_Logs");
+        ExportAsZip({(data_dir / "log").string()}, "OrcaSlicer_Logs_" + GetTimestamp());
     }); 
     log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
@@ -348,7 +353,7 @@ TroubleshootDialog::TroubleshootDialog()
         return line;
     };
 
-    right_sizer->Add(issue_cb_sizer                   , 0, wxEXPAND);
+    right_sizer->Add(issue_cb_sizer                   , 0, wxEXPAND | wxTOP, FromDIP(5));
     right_sizer->Add(pack_btn                         , 0, wxEXPAND | wxTOP, FromDIP(8));
 
     right_sizer->Add(create_title(_L("Configuration")), 0, wxEXPAND | wxTOP, FromDIP(15));
@@ -377,6 +382,13 @@ TroubleshootDialog::TroubleshootDialog()
     wxGetApp().UpdateDlgDarkUI(this);
 }
 
+wxString TroubleshootDialog::GetTimestamp()
+{
+    wxDateTime now = wxDateTime::Now();
+    return now.Format("%Y%m%d_%H%M%S");
+}
+
+#ifdef _WIN32
 wxString TroubleshootDialog::GetWindowsDisplayVersion() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
@@ -401,6 +413,7 @@ wxString TroubleshootDialog::GetWindowsDisplayVersion() {
     RegCloseKey(hKey);
     return wxString(buf);
 }
+#endif
 
 wxString TroubleshootDialog::GetOSinfo()
 {
@@ -534,9 +547,6 @@ std::map<std::string, std::string> TroubleshootDialog::get_cpu_info_from_registr
     memset(buf, 0, bufsize_);
     const std::string reg_dir = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\";
     std::string reg_path = reg_dir;
-
-    // Look into that reg dir and possibly into subdirs called 0, 1, 2, etc.
-    // If the latter, count them.
 
     while (true) {
         if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "ProcessorNameString",
@@ -791,16 +801,14 @@ void TroubleshootDialog::BrowseFolder(std::string path)
     #endif
 }
 
-bool TroubleshootDialog::ExportAsZip(const wxString& source, const wxString& export_name)
+bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const wxString& export_name)
 {
-    wxDirDialog dialog(this, "Choose where to save the exported ZIP file", wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+    wxDirDialog dialog(this, _L("Choose where to save the exported ZIP file"), wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
     wxString destDir = (dialog.ShowModal() == wxID_OK) ? dialog.GetPath() : "";
     if (destDir.IsEmpty())
         return false;
-
-    wxString baseName = export_name.IsEmpty() ? wxFileName(source).GetFullName() : export_name;
+    wxString baseName = export_name.IsEmpty() ? wxFileName(sources[0]).GetFullName() : export_name;
     wxString zipPath = wxFileName(destDir, baseName + ".zip").GetFullPath();
-
     if (wxFileExists(zipPath)) {
         MessageDialog msg(this, _L("File already exists. Overwrite?"),
              wxString(SLIC3R_APP_FULL_NAME), wxICON_QUESTION | wxYES_NO
@@ -808,8 +816,8 @@ bool TroubleshootDialog::ExportAsZip(const wxString& source, const wxString& exp
         if (msg.ShowModal() != wxID_YES)
             return false;
     }
-    if (!SaveAsZip(source, zipPath)) {
-        MessageDialog(this, _L("Export failed. Check write permissions"),
+    if (!SaveAsZip(sources, zipPath)) {
+        MessageDialog(this, _L("Export failed\nPlease check write permissions or file in use by another application"),
              wxString(SLIC3R_APP_FULL_NAME), wxICON_ERROR | wxOK
         ).ShowModal();
         return false;
@@ -865,33 +873,34 @@ bool TroubleshootDialog::AddToZip(wxZipOutputStream& zip, const wxString& fullPa
     return true;
 }
 
-bool TroubleshootDialog::SaveAsZip(const wxString& sourcePath, const wxString& zipFullPath)
+bool TroubleshootDialog::SaveAsZip(const std::vector<wxString>& sourcePaths, const wxString& zipFullPath)
 {
-    if (!wxDirExists(sourcePath) && !wxFileExists(sourcePath))
-        return false;
-
     wxFileOutputStream out(zipFullPath);
     if (!out.IsOk())
         return false;
-
     wxZipOutputStream zip(out);
     if (!zip.IsOk()) {
         out.Close();
         return false;
     }
-
-    wxString rootDir = wxDirExists(sourcePath) ? sourcePath : wxFileName(sourcePath).GetPath();
-    if (!wxEndsWithPathSeparator(rootDir))
-        rootDir += wxFileName::GetPathSeparator();
-
-    bool success = AddToZip(zip, sourcePath, rootDir);
-
+    bool success = true;
+    for (const auto& sourcePath : sourcePaths) {
+        if (!wxDirExists(sourcePath) && !wxFileExists(sourcePath)) {
+            success = false;
+            break;
+        }
+        wxString rootDir = wxFileName(sourcePath).GetPath();
+        if (!wxEndsWithPathSeparator(rootDir))
+            rootDir += wxFileName::GetPathSeparator();
+        if (!AddToZip(zip, sourcePath, rootDir)) {
+            success = false;
+            break;
+        }
+    }
     if (!zip.Close()) success = false;
     if (!out.Close()) success = false;
-
     if (!success)
         wxRemoveFile(zipFullPath);
-
     return success;
 }
 

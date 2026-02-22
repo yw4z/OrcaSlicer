@@ -35,6 +35,8 @@ protected:
     wxFlexGridSizer* create_item_loaded_profiles();
     wxBoxSizer*      create_item_log_info();
 
+    wxString GetTimestamp();
+
     wxString GetOSinfo();
 #ifdef __LINUX__
     wxString GetLinuxDistroName();
@@ -59,9 +61,9 @@ protected:
     static std::map<std::string, std::string> parse_lscpu_etc(const std::string& name, char delimiter);
 #endif
 
-    bool     ExportAsZip(const wxString& source, const wxString& export_name);
+    bool     ExportAsZip(const std::vector<wxString>& sources, const wxString& export_name);
     bool     AddToZip(wxZipOutputStream& zip, const wxString& fullPath, const wxString& rootDir);
-    bool     SaveAsZip(const wxString& sourcePath, const wxString& zipFullPath);
+    bool     SaveAsZip(const std::vector<wxString>& sourcePaths, const wxString& zipFullPath);
 
     void     on_dpi_changed(const wxRect &suggested_rect) override;
 };
