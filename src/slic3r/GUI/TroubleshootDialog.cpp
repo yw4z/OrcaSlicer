@@ -150,26 +150,61 @@ TroubleshootDialog::TroubleshootDialog()
     info_panel->SetBackgroundColour(*wxWHITE);
     info_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
-    auto info_copy_btn = new Button(this, _L("Copy"));
-    info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
-    info_copy_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        wxString text = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
+    auto GetSysInfoAll = [this]() {
+        wxString info = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
                       + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n"
                       + "System    :  " + GetOSinfo()  + "\n"
                       + "Processor :  " + GetCPUinfo() + "\n"
                       + "Memory    :  " + GetRAMinfo() + "\n"
                       + "Renderer  :  " + GetGPUinfo() + "\n"
                       + "Monitors  :  " + GetMONinfo() + "\n";
+        return info;
+    };
+
+    auto info_copy_btn = new Button(this, _L("Copy"));
+    info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    info_copy_btn->Bind(wxEVT_BUTTON, [this, GetSysInfoAll](wxCommandEvent &e) {
         wxClipboardLocker lock;
         if (!lock)
             return false;
 
-        return wxTheClipboard->SetData(new wxTextDataObject(text));
+        return wxTheClipboard->SetData(new wxTextDataObject(GetSysInfoAll()));
     });
 
     // LINKS
     auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
-    auto link_report  = new HyperLink(this, _L("Report issue") + " ", "https://github.com/OrcaSlicer/OrcaSlicer/issues/new?template=bug_report.yml");
+    auto link_report  = new HyperLink(this, _L("Report issue") + " ");
+    link_report->Bind(wxEVT_LEFT_DOWN, [this, GetSysInfoAll](wxMouseEvent &e) {
+        auto encodeStr = [this](const wxString& text) {
+            wxString str = text;
+            wxString out;
+            for (wxChar c : str) {
+                if (wxIsalnum(c) || c == wxT('-') || c == wxT('_') || c == wxT('.') || c == wxT('~'))
+                    out += c;
+                else if (c == wxT(' '))
+                    out += wxT("%20");
+                else {
+                    wxString hex = wxString::Format(wxT("%%%02X"), (unsigned char)c);
+                    out += hex;
+                }
+            }
+            return out;
+        };
+
+        wxString url = "https://github.com/OrcaSlicer/OrcaSlicer/issues/new?template=bug_report.yml";
+        #ifdef __WINDOWS__
+            url += "&os_type=%22Windows%22";
+        #elif defined(__LINUX__)
+            url += "&os_type=%Linux%22";
+        #elif defined(__APPLE__)
+            url += "&os_type=%macOS%22";
+        #endif
+        url += "&version="     + encodeStr(wxString(SoftFever_VERSION));
+        url += "&os_version="  + encodeStr(GetOSinfo());
+        url += "&system_info=" + encodeStr(GetSysInfoAll());
+
+        wxLaunchDefaultBrowser(url);
+    });
 
     // RIGHT SIZER //////////////////////
 
