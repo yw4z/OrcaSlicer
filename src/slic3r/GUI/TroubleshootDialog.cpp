@@ -77,11 +77,11 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
         g_sizer->Add(new Label(this, wxString::Format("%d", user  )), 0, wxALIGN_CENTER);
     };
 
-    g_sizer->Add(new Label(this, "Printers"));
+    g_sizer->Add(new Label(this, _L("Printers")));
     add_sizer(&preset_bundle->printers , enabled_models);
-    g_sizer->Add(new Label(this, "Filaments"));
+    g_sizer->Add(new Label(this, _L("Filaments")));
     add_sizer(&preset_bundle->filaments, enabled_filaments);
-    g_sizer->Add(new Label(this, "Process"));
+    g_sizer->Add(new Label(this, _L("Process")));
     add_sizer(&preset_bundle->prints   , enabled_processes);
 
     return g_sizer;
@@ -150,7 +150,7 @@ TroubleshootDialog::TroubleshootDialog()
     info_panel->SetBackgroundColour(*wxWHITE);
     info_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
-    auto info_copy_btn = new Button(this, "Copy");
+    auto info_copy_btn = new Button(this, _L("Copy"));
     info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
     info_copy_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         wxString text = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
@@ -169,7 +169,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     // LINKS
     auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
-    auto link_report  = new HyperLink(this, _L("Report issue") + " ");
+    auto link_report  = new HyperLink(this, _L("Report issue") + " ", "https://github.com/OrcaSlicer/OrcaSlicer/issues/new?template=bug_report.yml");
 
     // RIGHT SIZER //////////////////////
 
@@ -183,13 +183,13 @@ TroubleshootDialog::TroubleshootDialog()
     // CONFIGURATION
     wxBoxSizer* cfg_btns = new wxBoxSizer(wxHORIZONTAL);
 
-    auto cfg_export_btn = create_btn("Export...", "Exports configuration file to selected folder as compressed file");
+    auto cfg_export_btn = create_btn(_L("Export") + "...", _L("Exports configuration file to selected folder as compressed file"));
     cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip((data_dir / "OrcaSlicer.conf").string(), "OrcaSlicer_Config");
     });
     cfg_btns->Add(cfg_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
-    auto cfg_browse_btn = create_btn("Browse...", "Opens configurations folder");
+    auto cfg_browse_btn = create_btn(_L("Browse") + "...", _L("Opens configurations folder"));
     cfg_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         BrowseFolder(data_dir.string());
     }); 
@@ -197,19 +197,19 @@ TroubleshootDialog::TroubleshootDialog()
 
     // PROFILES
     wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto prf_export_btn = create_btn("Export...", "Exports profiles to selected folder as compressed file");
+    auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports profiles to selected folder as compressed file"));
     prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip((data_dir / "user").string(), "OrcaSlicer_UserProfiles");
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
-    auto prf_browse_btn = create_btn("Browse...", "Opens profiles folder");
+    auto prf_browse_btn = create_btn(_L("Browse") + "...", _L("Opens profiles folder"));
     prf_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         BrowseFolder((data_dir / "user").string());
     }); 
     prf_btns->Add(prf_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
 
-    auto prf_rebuild_btn = create_btn("Rebuild", "Cleans and rebuilds profiles cache on next launch");
+    auto prf_rebuild_btn = create_btn(_L("Rebuild"), _L("Cleans and rebuilds profiles cache on next launch"));
     prf_rebuild_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         RebuildSystemProfiles();
     });
@@ -219,19 +219,19 @@ TroubleshootDialog::TroubleshootDialog()
 
     // LOG
     wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto logs_export_btn = create_btn("Export...", "Exports logs to selected folder as compressed file");
+    auto logs_export_btn = create_btn(_L("Export") + "...", _L("Exports logs to selected folder as compressed file"));
     logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip((data_dir / "log").string(), "OrcaSlicer_Logs");
     }); 
     log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
-    auto log_browse_btn = create_btn("Browse...", "Opens profiles folder");
+    auto log_browse_btn = create_btn(_L("Browse") + "...", _L("Opens profiles folder"));
     log_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) { 
         BrowseFolder((data_dir / "log").string());
     }); 
     log_btns->Add(log_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
 
-    auto log_clear_btn = create_btn("Clear", "");
+    auto log_clear_btn = create_btn(_L("Clear"), "");
     log_clear_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         ClearLogs();
     }); 
@@ -241,9 +241,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     // NETWORK
     wxBoxSizer* net_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto net_test_btn = new Button(this, "Test...");
-    net_test_btn->SetToolTip("Opens network test dialog");
-    net_test_btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    auto net_test_btn = create_btn(_L("Test") + "...", _L("Open Network Test"));
     net_test_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         EndModal(wxID_CLOSE);
         NetworkTestDialog dlg(wxGetApp().mainframe);
@@ -275,21 +273,21 @@ TroubleshootDialog::TroubleshootDialog()
     links_sizer->AddStretchSpacer();
     links_sizer->Add(link_wiki, 0);
 
-    right_sizer->Add(create_title("Configuration"), 0, wxEXPAND);
-    right_sizer->Add(cfg_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(create_title(_L("Configuration")), 0, wxEXPAND);
+    right_sizer->Add(cfg_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
 
-    right_sizer->Add(create_title("Profiles")     , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(prf_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
-    right_sizer->Add(profiles_loaded              , 0, wxEXPAND | wxTOP, FromDIP(10));
+    right_sizer->Add(create_title(_L("Profiles"))     , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(prf_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(profiles_loaded                  , 0, wxEXPAND | wxTOP, FromDIP(10));
     
-    right_sizer->Add(create_title("Logs")         , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(log_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
-    right_sizer->Add(log_info                     , 0, wxEXPAND | wxTOP, FromDIP(10));
+    right_sizer->Add(create_title(_L("Logs"))         , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(log_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(log_info                         , 0, wxEXPAND | wxTOP, FromDIP(10));
 
-    right_sizer->Add(create_title("Network")      , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(net_btns                     , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(create_title(_L("Network"))      , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(net_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
 
-    right_sizer->Add(links_sizer                  , 0, wxEXPAND | wxTOP, FromDIP(20));
+    right_sizer->Add(links_sizer                      , 0, wxEXPAND | wxTOP, FromDIP(20));
 
     wxBoxSizer *m_sizer = new wxBoxSizer(wxHORIZONTAL);
     m_sizer->Add(left_sizer , 0, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT , FromDIP(15));
