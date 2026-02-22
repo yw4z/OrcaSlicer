@@ -28,6 +28,7 @@ private:
     ScalableBitmap   m_logo;
     wxStaticBitmap*  m_header_logo;
     Label*           m_logs_storage;
+    bool             m_include_detailed_info = false;
 
 protected:
     wxFlexGridSizer* create_item_loaded_profiles();
@@ -37,7 +38,7 @@ protected:
 #ifdef __LINUX__
     wxString GetLinuxDistroName();
     wxString GetDisplayServer();
-    wxString GetPackageType()
+    wxString GetPackageType();
 #endif
 
     wxString GetCPUinfo();
