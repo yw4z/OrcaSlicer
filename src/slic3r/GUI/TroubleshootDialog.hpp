@@ -53,6 +53,7 @@ protected:
     void     BrowseFolder(std::string path);
 
 #ifdef _WIN32
+    wxString GetWindowsDisplayVersion();
     static std::map<std::string, std::string> get_cpu_info_from_registry();
 #else
     static std::map<std::string, std::string> parse_lscpu_etc(const std::string& name, char delimiter);

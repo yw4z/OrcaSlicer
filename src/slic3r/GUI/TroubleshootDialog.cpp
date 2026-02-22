@@ -377,6 +377,31 @@ TroubleshootDialog::TroubleshootDialog()
     wxGetApp().UpdateDlgDarkUI(this);
 }
 
+wxString TroubleshootDialog::GetWindowsDisplayVersion() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+        0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return wxString();
+
+    wchar_t buf[64] = {};
+    DWORD size = sizeof(buf);
+    DWORD type = 0;
+
+    // "DisplayVersion" exists on Windows 10 20H2+ and Windows 11
+    LONG res = RegQueryValueExW(hKey, L"DisplayVersion", nullptr, &type,
+                                reinterpret_cast<LPBYTE>(buf), &size);
+    if (res != ERROR_SUCCESS || type != REG_SZ) {
+        // Fallback: older builds use "ReleaseId" (e.g. "2004", "1909")
+        size = sizeof(buf);
+        RegQueryValueExW(hKey, L"ReleaseId", nullptr, &type,
+                         reinterpret_cast<LPBYTE>(buf), &size);
+    }
+
+    RegCloseKey(hKey);
+    return wxString(buf);
+}
+
 wxString TroubleshootDialog::GetOSinfo()
 {
     wxString result;
@@ -395,7 +420,13 @@ wxString TroubleshootDialog::GetOSinfo()
                              : (build >= 9200)  ? "8"
                              : (build >= 7601)  ? "7"
                              : "?";
-                result = wxString::Format("Windows %s [%d]", win, build);
+
+                wxString displayVer = GetWindowsDisplayVersion();
+
+                if (!displayVer.IsEmpty())
+                    result = wxString::Format("Windows %s %s [%d]", win, displayVer, build);
+                else
+                    result = wxString::Format("Windows %s [%d]", win, build);
             }
         }
     }
