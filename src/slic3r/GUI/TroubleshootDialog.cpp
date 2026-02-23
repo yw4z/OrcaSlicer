@@ -182,17 +182,21 @@ TroubleshootDialog::TroubleshootDialog()
     link_report->SetFont(Label::Head_16);
     link_report->Bind(wxEVT_LEFT_DOWN, [this, GetSysInfoAll](wxMouseEvent &e) {
         auto encodeStr = [](const wxString& text) {
-            wxString str = text;
             wxString out;
-            for (wxChar c : str) {
-                if (wxIsalnum(c) || c == wxT('-') || c == wxT('_') || c == wxT('.') || c == wxT('~'))
-                    out += c;
-                else if (c == wxT(' '))
-                    out += wxT("%20");
-                else {
-                    wxString hex = wxString::Format(wxT("%%%02X"), (unsigned char)c);
-                    out += hex;
+            const wxScopedCharBuffer utf8 = text.utf8_str();
+            const unsigned char* bytes = reinterpret_cast<const unsigned char*>(utf8.data());
+            for (size_t i = 0; i < strlen(reinterpret_cast<const char*>(bytes)); i++) {
+                unsigned char c = bytes[i];
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') ||
+                    c == '-' || c == '_' || c == '.' || c == '~')
+                {
+                    out += (wxChar)c;
                 }
+                else if (c == ' ')
+                    out += wxT("%20");
+                else
+                    out += wxString::Format(wxT("%%%02X"), c);
             }
             return out;
         };
@@ -201,9 +205,9 @@ TroubleshootDialog::TroubleshootDialog()
         #ifdef __WINDOWS__
             url += "&os_type=%22Windows%22";
         #elif defined(__LINUX__)
-            url += "&os_type=%Linux%22";
+            url += "&os_type=%22Linux%22";
         #elif defined(__APPLE__)
-            url += "&os_type=%macOS%22";
+            url += "&os_type=%22macOS%22";
         #endif
         url += "&version="     + encodeStr(wxString(SoftFever_VERSION));
         url += "&os_version="  + encodeStr(GetOSinfo());
@@ -393,9 +397,7 @@ wxString TroubleshootDialog::GetTimestamp()
 #ifdef _WIN32
 wxString TroubleshootDialog::GetWindowsDisplayVersion() {
     HKEY hKey;
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
-        0, KEY_READ, &hKey) != ERROR_SUCCESS)
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         return wxString();
 
     wchar_t buf[64] = {};
@@ -403,13 +405,10 @@ wxString TroubleshootDialog::GetWindowsDisplayVersion() {
     DWORD type = 0;
 
     // "DisplayVersion" exists on Windows 10 20H2+ and Windows 11
-    LONG res = RegQueryValueExW(hKey, L"DisplayVersion", nullptr, &type,
-                                reinterpret_cast<LPBYTE>(buf), &size);
-    if (res != ERROR_SUCCESS || type != REG_SZ) {
-        // Fallback: older builds use "ReleaseId" (e.g. "2004", "1909")
+    LONG res = RegQueryValueExW(hKey, L"DisplayVersion", nullptr, &type, reinterpret_cast<LPBYTE>(buf), &size);
+    if (res != ERROR_SUCCESS || type != REG_SZ) { // Fallback: older builds use "ReleaseId" (e.g. "2004", "1909")
         size = sizeof(buf);
-        RegQueryValueExW(hKey, L"ReleaseId", nullptr, &type,
-                         reinterpret_cast<LPBYTE>(buf), &size);
+        RegQueryValueExW(hKey, L"ReleaseId", nullptr, &type, reinterpret_cast<LPBYTE>(buf), &size);
     }
 
     RegCloseKey(hKey);
@@ -544,24 +543,21 @@ std::map<std::string, std::string> TroubleshootDialog::get_cpu_info_from_registr
 
     int idx = -1;
     constexpr DWORD bufsize_ = 500;
-    DWORD bufsize = bufsize_-1; // Ensure a terminating zero.
+    DWORD bufsize = bufsize_-1;
     char buf[bufsize_] = "";
     memset(buf, 0, bufsize_);
     const std::string reg_dir = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\";
     std::string reg_path = reg_dir;
 
     while (true) {
-        if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "ProcessorNameString",
-            RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS) {
+        if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "ProcessorNameString", RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS) {
             out["Model"] = buf;
             out["Cores"] = std::to_string(std::max(1, idx + 1));
-            if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(),
-                "VendorIdentifier", RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS)
+            if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "VendorIdentifier", RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS)
                 out["Vendor"] = buf;
         }
-        else {
-            if (idx >= 0)
-                break;
+        else if (idx >= 0) {
+            break;
         }
         ++idx;
         reg_path = reg_dir + std::to_string(idx) + "\\";
