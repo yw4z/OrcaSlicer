@@ -796,7 +796,13 @@ void TroubleshootDialog::BrowseFolder(std::string path)
 
 bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const wxString& export_name)
 {
-    wxDirDialog dialog(this, _L("Choose where to save the exported ZIP file"), wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+    wxString home = wxGetHomeDir();
+
+    wxFileName desktop(home, "");
+    desktop.AppendDir("Desktop");
+    wxString defaultPath = wxDirExists(desktop.GetPath()) ? desktop.GetPath() : home;
+
+    wxDirDialog dialog(this, _L("Choose where to save the exported ZIP file"), defaultPath, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
     wxString destDir = (dialog.ShowModal() == wxID_OK) ? dialog.GetPath() : "";
     if (destDir.IsEmpty())
         return false;
