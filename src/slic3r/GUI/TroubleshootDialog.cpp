@@ -348,14 +348,14 @@ TroubleshootDialog::TroubleshootDialog()
 
     // LAYOUT //////////////////////
     wxBoxSizer *left_sizer  = new wxBoxSizer(wxVERTICAL);
-    left_sizer->Add(m_header_logo                 , 0, wxEXPAND | wxALIGN_CENTER);
-    left_sizer->Add(logo_line                     , 0, wxEXPAND | wxTOP, FromDIP(12));
-    left_sizer->Add(version                       , 0, wxEXPAND | wxTOP, FromDIP(6));
-    left_sizer->Add(build                         , 0, wxEXPAND | wxTOP, FromDIP(0));
-    left_sizer->Add(info_panel                    , 0, wxEXPAND | wxTOP, FromDIP(15));
-    left_sizer->Add(info_copy_btn                 , 0, wxALIGN_CENTER | wxTOP, FromDIP(10));
+    left_sizer->Add(m_header_logo     , 0, wxEXPAND | wxALIGN_CENTER);
+    left_sizer->Add(logo_line         , 0, wxEXPAND | wxTOP, FromDIP(12));
+    left_sizer->Add(version           , 0, wxEXPAND | wxTOP, FromDIP(6));
+    left_sizer->Add(build             , 0, wxEXPAND | wxTOP, FromDIP(0));
+    left_sizer->Add(info_panel        , 0, wxEXPAND | wxTOP, FromDIP(15));
+    left_sizer->Add(info_copy_btn     , 0, wxALIGN_CENTER | wxTOP, FromDIP(10));
     left_sizer->AddStretchSpacer();
-    left_sizer->Add(link_wiki                     , 0, wxALIGN_CENTER | wxTOP, FromDIP(20));
+    left_sizer->Add(link_wiki         , 0, wxALIGN_CENTER | wxTOP, FromDIP(20));
     left_sizer->AddSpacer(FromDIP(5));
     
     wxBoxSizer *right_sizer  = new wxBoxSizer(wxVERTICAL);
@@ -455,9 +455,9 @@ wxString TroubleshootDialog::GetWinVersion()
                 wxString displayVer = GetWinDisplayVersion();
 
                 if (!displayVer.IsEmpty())
-                    return wxString::Format("Windows %s %s [%d]", win, displayVer, build);
+                    return wxString::Format("Windows %s %s %d", win, displayVer, build);
                 else
-                    return wxString::Format("Windows %s [%d]", win, build);
+                    return wxString::Format("Windows %s %d", win, build);
             }
         }
     }
@@ -537,7 +537,7 @@ wxString TroubleshootDialog::GetPackageType()
     wxString path = wxStandardPaths::Get().GetExecutablePath();
     if (path.Contains("OrcaSlicer/build")) return "Local Build";
     //if (path.StartsWith("/usr/local"))   return "Compiled (local)";
-    if (path.StartsWith("/opt"))           return "Third-party / manual";
+    if (path.StartsWith("/opt"))           return "Third-party";
 
     return "Native Package"; // (deb/rpm/etc)
 #elif defined(__APPLE__)
@@ -564,7 +564,7 @@ wxString TroubleshootDialog::GetPackageType()
 wxString TroubleshootDialog::GetCPUinfo()
 {
     wxString info;
-#ifdef _WIN32
+#ifdef __WINDOWS__
     std::map<std::string, std::string> cpu_info = get_cpu_info_from_registry();
     info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
 #elif __APPLE__
@@ -578,7 +578,7 @@ wxString TroubleshootDialog::GetCPUinfo()
     return info;
 }
 
-#ifdef _WIN32
+#ifdef __WINDOWS__
 std::map<std::string, std::string> TroubleshootDialog::get_cpu_info_from_registry()
 {
     std::map<std::string, std::string> out;
@@ -649,15 +649,70 @@ wxString TroubleshootDialog::GetGPUinfo()
 
 wxString TroubleshootDialog::GetMONinfo()
 {
-    wxString m_str, d_str;
+    wxString m_str;
     int m_count = wxDisplay::GetCount();
-    for (int i=0; i < m_count; ++i) {
-        wxDisplay display(i);
-        double scale = display.GetScaleFactor();
-        wxRect l_res = display.GetGeometry();
-        d_str = wxString::Format("%dx%d-%.0f%%", l_res.width,  l_res.height, scale * 100.00);
-        m_str += (i == 0 ? "" : "  ") + d_str;
+    double scale;
+
+    #if defined(__LINUX__)
+    double gdk_scale = 1.0;
+    const char* gdk = getenv("GDK_SCALE");
+    if (gdk) {
+        double val = atof(gdk);
+        if (val > 0.0) {
+            gdk_scale     = val;
+            scale         = val;
+        }
     }
+    double gdk_dpi_scale = 1.0;
+    const char* gdk_dpi = getenv("GDK_DPI_SCALE");
+    if (gdk_dpi) {
+        double val = atof(gdk_dpi);
+        if (val > 0.0) {
+            gdk_dpi_scale  = val;
+            scale         *= val;
+        }
+    }
+
+    for (int i = 0; i < m_count; ++i) {
+        wxDisplay display(i);
+        wxRect l_res = display.GetGeometry();
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", wxRound(l_res.width  * scale), wxRound(l_res.height * scale), scale * 100.0);
+        m_str += ((i > 0) ? "  " : "") + d_str;
+    }
+
+    if (gdk || gdk_dpi) { // Only add for Wayland
+        double final_scale = gdk_scale * gdk_dpi_scale;
+        double intpart;
+        bool is_fractional = modf(final_scale, &intpart) > 0.001;
+        m_str += "  " + wxString(is_fractional ? "Fractional" : "Integer") + " scaling";
+    }
+    return m_str;
+    #endif
+
+    for (int i = 0; i < m_count; ++i) {
+        wxDisplay display(i);
+        scale        = display.GetScaleFactor();
+        wxRect l_res = display.GetGeometry();
+        int phys_w = l_res.width;
+        int phys_h = l_res.height;
+
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", phys_w, phys_h, scale * 100.0);
+
+        m_str += ((i > 0) ? "  " : "") + d_str;
+    }
+
+    #if defined(__WINDOWS__)
+        UINT dpi = 96;
+        HMODULE hUser = GetModuleHandleW(L"user32.dll");
+        if (hUser) {
+            auto fn = reinterpret_cast<UINT(WINAPI*)()>(GetProcAddress(hUser, "GetDpiForSystem"));
+            if (fn)
+                dpi = fn();
+        }
+        double text_scale = dpi / 96.0;
+        m_str += wxString::Format("  TextScaling-%.0f%%", text_scale * 100.0);
+    #endif
+
     return m_str;
 }
 
