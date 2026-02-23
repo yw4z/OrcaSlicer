@@ -255,13 +255,13 @@ TroubleshootDialog::TroubleshootDialog()
     auto pack_btn = new Button(this, _L("Pack All") + "...");
     pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
-    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
         ExportAsZip({
             (data_dir / "OrcaSlicer.conf").string(),
             (data_dir / "user").string(),
-            (data_dir / "log").string()
+            (data_dir / "log").string(),
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
         }, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());;
-
     });
 
     auto create_btn = [this](wxString title, wxString tooltip) {
@@ -275,8 +275,11 @@ TroubleshootDialog::TroubleshootDialog()
     wxBoxSizer* cfg_btns = new wxBoxSizer(wxHORIZONTAL);
 
     auto cfg_export_btn = create_btn(_L("Export") + "...", _L("Exports configuration file to selected folder as compressed file"));
-    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({(data_dir / "OrcaSlicer.conf").string()}, "OrcaSlicer_Config_" + GetTimestamp());
+    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+        ExportAsZip({
+            (data_dir / "OrcaSlicer.conf").string(),
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+        }, "OrcaSlicer_Config_" + GetTimestamp());
     });
     cfg_btns->Add(cfg_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
@@ -289,8 +292,11 @@ TroubleshootDialog::TroubleshootDialog()
     // PROFILES
     wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
     auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports profiles to selected folder as compressed file"));
-    prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({(data_dir / "user").string()}, "OrcaSlicer_UserProfiles_" + GetTimestamp());
+    prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+        ExportAsZip({
+            (data_dir / "user").string(),
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+        }, "OrcaSlicer_UserProfiles_" + GetTimestamp());
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
@@ -311,8 +317,11 @@ TroubleshootDialog::TroubleshootDialog()
     // LOG
     wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
     auto logs_export_btn = create_btn(_L("Export") + "...", _L("Exports logs to selected folder as compressed file"));
-    logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({(data_dir / "log").string()}, "OrcaSlicer_Logs_" + GetTimestamp());
+    logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+        ExportAsZip({
+            (data_dir / "log").string(),
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+        }, "OrcaSlicer_Logs_" + GetTimestamp());
     }); 
     log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
@@ -926,13 +935,29 @@ bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const
     return true;
 }
 
-bool TroubleshootDialog::AddToZip(wxZipOutputStream& zip, const wxString& fullPath, const wxString& rootDir)
+bool TroubleshootDialog::AddToZip(wxZipOutputStream& zip, const wxString& fullPathOrTextData, const wxString& rootDir)
 {
-    wxString relPath = fullPath.Mid(rootDir.length());
+    if (fullPathOrTextData.StartsWith(wxT("TxtData:"))) { // add text to zip
+        // Format: "TxtData:<filename>|<content>"
+        wxString payload = fullPathOrTextData.Mid(8); // strip "TxtData:"
+        int sep = payload.Find('|');
+        if (sep == wxNOT_FOUND)
+            return false;
+        wxString entryName = payload.Left(sep);
+        wxString content   = payload.Mid(sep + 1);
+
+        if (!zip.PutNextEntry(entryName))
+            return false;
+        wxScopedCharBuffer buf = content.utf8_str();
+        zip.Write(buf.data(), buf.length());
+        return zip.CloseEntry();
+    }
+
+    wxString relPath = fullPathOrTextData.Mid(rootDir.length());
     if (relPath.StartsWith(wxFileName::GetPathSeparator()))
         relPath = relPath.Mid(1);
     relPath.Replace(wxFileName::GetPathSeparator(), wxT("/"));
-    if (wxDirExists(fullPath)) {
+    if (wxDirExists(fullPathOrTextData)) {
         if (!relPath.IsEmpty()) {
             if (!relPath.EndsWith(wxT("/")))
                 relPath += wxT("/");
@@ -940,14 +965,14 @@ bool TroubleshootDialog::AddToZip(wxZipOutputStream& zip, const wxString& fullPa
                 return false;
         }
 
-        wxDir dir(fullPath);
+        wxDir dir(fullPathOrTextData);
         if (!dir.IsOpened())
             return false;
 
         wxString filename;
         bool cont = dir.GetFirst(&filename, wxEmptyString, wxDIR_FILES | wxDIR_DIRS | wxDIR_HIDDEN);
         while (cont) {
-            wxString childPath = fullPath;
+            wxString childPath = fullPathOrTextData;
             if (!wxEndsWithPathSeparator(childPath))
                 childPath += wxFileName::GetPathSeparator();
             childPath += filename;
@@ -958,8 +983,8 @@ bool TroubleshootDialog::AddToZip(wxZipOutputStream& zip, const wxString& fullPa
             cont = dir.GetNext(&filename);
         }
     }
-    else if (wxFileExists(fullPath)) {
-        wxFileInputStream in(fullPath);
+    else if (wxFileExists(fullPathOrTextData)) {
+        wxFileInputStream in(fullPathOrTextData);
         if (!in.IsOk())
             return false;
         if (!zip.PutNextEntry(relPath))
@@ -986,6 +1011,14 @@ bool TroubleshootDialog::SaveAsZip(const std::vector<wxString>& sourcePaths, con
     }
     bool success = true;
     for (const auto& sourcePath : sourcePaths) {
+        if (sourcePath.StartsWith(wxT("TxtData:"))) {
+            wxString rootDir; // unused for virtual entries
+            if (!AddToZip(zip, sourcePath, rootDir)) {
+                success = false;
+                break;
+            }
+            continue;
+        }
         if (!wxDirExists(sourcePath) && !wxFileExists(sourcePath)) {
             success = false;
             break;
