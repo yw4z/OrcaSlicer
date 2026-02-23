@@ -138,7 +138,7 @@ TroubleshootDialog::TroubleshootDialog()
     // HEADER
     m_logo            = ScalableBitmap(this, is_dark ? "OrcaSlicer_horizontal_dark" : "OrcaSlicer_horizontal_light", 64);
     m_header_logo     = new wxStaticBitmap(this, wxID_ANY, m_logo.bmp());
-    auto logo_line    = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(3)));
+    auto logo_line    = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(2)));
     logo_line->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#009687")));
     auto version      = new Label(this, wxString(SoftFever_VERSION), wxALIGN_CENTRE_HORIZONTAL);
     wxFont version_font = GetFont();
@@ -166,7 +166,7 @@ TroubleshootDialog::TroubleshootDialog()
                       + "Package   :  " + GetPackageType() + "\n";
 
         if(user_copy || m_include_detailed_info)
-                info += "System    :  " + GetOSinfo()  + "\n"
+                info += "Platform  :  " + GetOSinfo()  + "\n"
                       + "Processor :  " + GetCPUinfo() + "\n"
                       + "Memory    :  " + GetRAMinfo() + "\n"
                       + "Renderer  :  " + GetGPUinfo() + "\n"
@@ -349,10 +349,10 @@ TroubleshootDialog::TroubleshootDialog()
     // LAYOUT //////////////////////
     wxBoxSizer *left_sizer  = new wxBoxSizer(wxVERTICAL);
     left_sizer->Add(m_header_logo                 , 0, wxEXPAND | wxALIGN_CENTER);
-    left_sizer->Add(logo_line                     , 0, wxEXPAND | wxTOP, FromDIP(15));
-    left_sizer->Add(version                       , 0, wxEXPAND | wxTOP, FromDIP(10));
-    left_sizer->Add(build                         , 0, wxEXPAND | wxTOP, FromDIP(3));
-    left_sizer->Add(info_panel                    , 0, wxEXPAND | wxTOP, FromDIP(20));
+    left_sizer->Add(logo_line                     , 0, wxEXPAND | wxTOP, FromDIP(12));
+    left_sizer->Add(version                       , 0, wxEXPAND | wxTOP, FromDIP(6));
+    left_sizer->Add(build                         , 0, wxEXPAND | wxTOP, FromDIP(0));
+    left_sizer->Add(info_panel                    , 0, wxEXPAND | wxTOP, FromDIP(15));
     left_sizer->Add(info_copy_btn                 , 0, wxALIGN_CENTER | wxTOP, FromDIP(10));
     left_sizer->AddStretchSpacer();
     left_sizer->Add(link_wiki                     , 0, wxALIGN_CENTER | wxTOP, FromDIP(20));

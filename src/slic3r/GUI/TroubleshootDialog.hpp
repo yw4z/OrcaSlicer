@@ -75,7 +75,7 @@ protected:
 
 class CenteredMultiLinePanel : public wxPanel
 {
-    static constexpr double m_block_gap = 0.5;
+    static constexpr double m_block_gap = 0.4;
     std::vector<wxString>   m_lines;
 
 public:
