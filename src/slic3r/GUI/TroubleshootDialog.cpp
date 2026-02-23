@@ -522,15 +522,10 @@ wxString TroubleshootDialog::GetCPUinfo()
     info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
 #elif __APPLE__
     std::map<std::string, std::string> cpu_info = parse_lscpu_etc("sysctl -a", ':');
-    info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
+    info = wxString(cpu_info["machdep.cpu.brand_string"]);
 #else // linux/BSD
     std::map<std::string, std::string> cpu_info = parse_lscpu_etc("cat /proc/cpuinfo", ':');
-    if (auto ncpu_it = cpu_info.find("processor"); ncpu_it != cpu_info.end()) {
-        std::string& ncpu = ncpu_it->second;
-        if (int num=0; std::from_chars(ncpu.data(), ncpu.data() + ncpu.size(), num).ec != std::errc::invalid_argument)
-            ncpu = std::to_string(num + 1);
-    }
-    info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
+    info = wxString(cpu_info["model name"]);
 #endif
     info.Trim();
     return info;
@@ -584,7 +579,7 @@ std::map<std::string, std::string> TroubleshootDialog::parse_lscpu_etc(const std
                 std::string value = line.substr(pos + 1);
                 boost::trim_all(key); // remove leading and trailing spaces
                 boost::trim_all(value);
-                out[key] = value;
+                out.emplace(key, value);
             }
         }
         pclose(fp);
