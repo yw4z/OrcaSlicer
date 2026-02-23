@@ -6,6 +6,9 @@
 #include "MainFrame.hpp"
 
 #include <wx/display.h>
+#include <wx/wfstream.h>
+#include "wx/clipbrd.h"
+#include <wx/dcbuffer.h>
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Utils.hpp"
@@ -215,10 +218,10 @@ TroubleshootDialog::TroubleshootDialog()
 
     auto issue_cb_label = new Label(this, _L("Include system information"));
     issue_cb_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
-    issue_cb_label->SetToolTip(
-        _L("Reporting issue with clicking \"Report issue\" link adds basic information (OrcaSlicer Version / Build, Operating system type / version) as default\n"
-           "and automatically fills related fields on Github with including them on URL.\n"
-           "Adds Processor, Memory, GPU and Monitor information to URL when this option selected"
+    issue_cb_label->SetToolTip(_L(
+        "Reporting issue with clicking \"Report issue\" link adds basic information (OrcaSlicer Version / Build, Operating system type / version) as default\n"
+        "and automatically fills related fields on Github with including them to URL.\n"
+        "Adds Processor, Memory, GPU and Monitor information to URL when this option enabled"
     ));
 
     issue_cb->Bind(wxEVT_TOGGLEBUTTON, [this, issue_cb](wxCommandEvent& e) {
@@ -818,7 +821,7 @@ bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const
     }
     if (!SaveAsZip(sources, zipPath)) {
         MessageDialog(this, _L("Export failed\nPlease check write permissions or file in use by another application"),
-             wxString(SLIC3R_APP_FULL_NAME), wxICON_ERROR | wxOK
+             wxString(SLIC3R_APP_FULL_NAME), wxICON_WARNING | wxOK
         ).ShowModal();
         return false;
     }
