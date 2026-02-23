@@ -39,6 +39,8 @@ protected:
 
     wxString GetTimestamp();
 
+    wxString GetProfileInfo();
+
     wxString GetOSinfo();
 #ifdef __WINDOWS__
     wxString GetWinVersion();

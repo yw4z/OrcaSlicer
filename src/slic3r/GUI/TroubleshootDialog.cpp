@@ -15,6 +15,8 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Preset.hpp"
 
+#include <nlohmann/json.hpp>
+
 #ifdef __WINDOWS__
 #include <windows.h>
 #include <VersionHelpers.h>
@@ -174,6 +176,33 @@ TroubleshootDialog::TroubleshootDialog()
         return info;
     };
 
+    // Excludes MD5 hash, recent_projects, recent, local_machines from config
+    auto GetConfigStr = [this]() -> std::string {
+        wxString config_path = wxGetApp().app_config->config_path();
+
+        std::ifstream file(config_path.ToUTF8().data());
+        if (!file.is_open())
+            return "{}";
+        nlohmann::json root;
+        try {
+            file >> root;
+        } catch (const nlohmann::json::exception&) {
+            return "{}";
+        }
+        root.erase("recent_projects");
+        root.erase("recent");
+        root.erase("custom_color_list");
+        root.erase("orca_presets");
+        if (root.contains("app")) {
+            auto& app = root["app"];
+            app.erase("last_backup_path");
+            app.erase("last_export_path");
+            app.erase("download_path");
+            app.erase("slicer_uuid");
+        }
+        return root.dump(4);
+    };
+
     auto info_copy_btn = new Button(this, _L("Copy"));
     info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
     info_copy_btn->Bind(wxEVT_BUTTON, [GetSysInfoAll](wxCommandEvent &e) {
@@ -255,9 +284,10 @@ TroubleshootDialog::TroubleshootDialog()
     auto pack_btn = new Button(this, _L("Pack All") + "...");
     pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
-    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll, GetConfigStr](wxCommandEvent &e) {
         ExportAsZip({
-            (data_dir / "OrcaSlicer.conf").string(),
+            //(data_dir / "OrcaSlicer.conf").string(),
+            wxString::Format("TxtData:%s|%s", "AppConfig.json", GetConfigStr()),
             (data_dir / "user").string(),
             (data_dir / "log").string(),
             wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
@@ -275,9 +305,10 @@ TroubleshootDialog::TroubleshootDialog()
     wxBoxSizer* cfg_btns = new wxBoxSizer(wxHORIZONTAL);
 
     auto cfg_export_btn = create_btn(_L("Export") + "...", _L("Exports configuration file to selected folder as compressed file"));
-    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll, GetConfigStr](wxCommandEvent &e) {
         ExportAsZip({
-            (data_dir / "OrcaSlicer.conf").string(),
+            //(data_dir / "OrcaSlicer.conf").string(),
+            wxString::Format("TxtData:%s|%s", "AppConfig.json", GetConfigStr()),
             wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
         }, "OrcaSlicer_Config_" + GetTimestamp());
     });
@@ -295,7 +326,8 @@ TroubleshootDialog::TroubleshootDialog()
     prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
         ExportAsZip({
             (data_dir / "user").string(),
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt" , GetSysInfoAll(true)),
+            wxString::Format("TxtData:%s|%s", "ProfileInfo.txt", GetProfileInfo())
         }, "OrcaSlicer_UserProfiles_" + GetTimestamp());
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
@@ -409,6 +441,50 @@ wxString TroubleshootDialog::GetTimestamp()
 {
     wxDateTime now = wxDateTime::Now();
     return now.Format("%Y%m%d_%H%M%S");
+}
+
+wxString TroubleshootDialog::GetProfileInfo()
+{
+    auto preset_bundle = wxGetApp().preset_bundle;
+    auto app_config    = wxGetApp().app_config;
+    auto vendors       = app_config->vendors();
+
+    //int enabled_filaments = app_config->has_section("filaments") ? app_config->get_section("filaments").size() : 0;
+
+    //int enabled_processes = preset_bundle->printers.num_visible();
+
+    wxString out;
+    PresetCollection* col;
+
+    col = &preset_bundle->printers;
+    out += "PRINTERS USER\n";
+    for (auto it = col->begin(); it != col->end(); it++) {
+        if (it->is_user())
+            out += it->name + "\n   inherits: " + (it->inherits()) + "\n";
+    }
+
+    out += "\n";
+    out += "PRINTERS ENABLED\n";
+    for (auto vendor_profile: vendors) {
+        auto models = vendor_profile.second;
+        for (auto model: models)
+            out += model.first + "\n";
+    }
+
+    out += "\n";
+    col = &preset_bundle->filaments;
+    out += "FILAMENTS USER\n";
+    for (auto it = col->begin(); it != col->end(); it++) {
+        if (it->is_user())
+            out += it->name + "\n   inherits: " + (it->inherits()) + "\n";
+    }
+
+    return out;
+    /*
+    add_sizer(&preset_bundle->printers , enabled_models);
+    add_sizer(&preset_bundle->filaments, enabled_filaments);
+    add_sizer(&preset_bundle->prints   , enabled_processes);
+    */
 }
 
 wxString TroubleshootDialog::GetOSinfo()
