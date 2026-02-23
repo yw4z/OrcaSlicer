@@ -8,7 +8,6 @@
 #include <wx/display.h>
 #include <wx/wfstream.h>
 #include "wx/clipbrd.h"
-#include <wx/dcbuffer.h>
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Utils.hpp"

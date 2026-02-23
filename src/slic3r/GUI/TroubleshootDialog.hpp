@@ -3,6 +3,8 @@
 
 #include <wx/wx.h>
 #include <wx/zipstrm.h>
+#include <wx/dir.h>
+#include <wx/dcbuffer.h>
 
 #include "GUI_Utils.hpp"
 #include "wxExtensions.hpp"
