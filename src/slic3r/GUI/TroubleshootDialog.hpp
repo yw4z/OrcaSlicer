@@ -40,11 +40,15 @@ protected:
     wxString GetTimestamp();
 
     wxString GetOSinfo();
-#ifdef __LINUX__
+#ifdef __WINDOWS__
+    wxString GetWinVersion();
+    wxString GetWinDisplayVersion();
+#elif defined(__LINUX__)
     wxString GetLinuxDistroName();
-    wxString GetDisplayServer();
-    wxString GetPackageType();
+    wxString GetLinuxDisplayServer();
 #endif
+
+    wxString GetPackageType();
 
     wxString GetCPUinfo();
     wxString GetGPUinfo();
@@ -56,8 +60,7 @@ protected:
 
     void     BrowseFolder(std::string path);
 
-#ifdef _WIN32
-    wxString GetWindowsDisplayVersion();
+#ifdef __WINDOWS__
     static std::map<std::string, std::string> get_cpu_info_from_registry();
 #else
     static std::map<std::string, std::string> parse_lscpu_etc(const std::string& name, char delimiter);

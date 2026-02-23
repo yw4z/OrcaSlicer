@@ -149,13 +149,21 @@ TroubleshootDialog::TroubleshootDialog()
     build->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
     // SYSTEM INFO
-    auto* info_panel = new CenteredMultiLinePanel(this, {GetOSinfo(), GetCPUinfo(), (GetRAMinfo() + " RAM"), GetGPUinfo(), GetMONinfo()});
+    auto* info_panel = new CenteredMultiLinePanel(this, {
+        GetOSinfo(),
+        GetPackageType(),
+        GetCPUinfo(),
+        GetRAMinfo() + " RAM",
+        GetGPUinfo(),
+        GetMONinfo()
+    });
     info_panel->SetBackgroundColour(*wxWHITE);
     info_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
     auto GetSysInfoAll = [this](bool user_copy) {
         wxString info = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
-                      + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n";
+                      + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n"
+                      + "Package   :  " + GetPackageType() + "\n";
 
         if(user_copy || m_include_detailed_info)
                 info += "System    :  " + GetOSinfo()  + "\n"
@@ -222,7 +230,7 @@ TroubleshootDialog::TroubleshootDialog()
     auto issue_cb_label = new Label(this, _L("Include system information"));
     issue_cb_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
     issue_cb_label->SetToolTip(_L(
-        "Reporting issue with clicking \"Report issue\" link adds basic information (OrcaSlicer Version / Build, Operating system type / version) as default\n"
+        "Reporting issue with clicking \"Report issue\" link adds basic information (OrcaSlicer Version / Build, Operating system type / version, Installation type) as default\n"
         "and automatically fills related fields on Github with including them to URL.\n"
         "Adds Processor, Memory, GPU and Monitor information to URL when this option enabled"
     ));
@@ -394,8 +402,21 @@ wxString TroubleshootDialog::GetTimestamp()
     return now.Format("%Y%m%d_%H%M%S");
 }
 
-#ifdef _WIN32
-wxString TroubleshootDialog::GetWindowsDisplayVersion() {
+wxString TroubleshootDialog::GetOSinfo()
+{
+    wxString result;
+#ifdef __WINDOWS__
+    result = GetWinVersion();
+#elif defined(__LINUX__)
+    result = GetLinuxDistroName() + " " + GetLinuxDisplayServer();
+#elif defined(__APPLE__)
+    result = wxGetOsDescription();
+#endif
+    return result;
+}
+
+#ifdef __WINDOWS__
+wxString TroubleshootDialog::GetWinDisplayVersion() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         return wxString();
@@ -414,12 +435,8 @@ wxString TroubleshootDialog::GetWindowsDisplayVersion() {
     RegCloseKey(hKey);
     return wxString(buf);
 }
-#endif
-
-wxString TroubleshootDialog::GetOSinfo()
+wxString TroubleshootDialog::GetWinVersion()
 {
-    wxString result;
-#ifdef __WINDOWS__
     typedef NTSTATUS(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
     HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
     if (hNtdll) {
@@ -435,27 +452,19 @@ wxString TroubleshootDialog::GetOSinfo()
                              : (build >= 7601)  ? "7"
                              : "?";
 
-                wxString displayVer = GetWindowsDisplayVersion();
+                wxString displayVer = GetWinDisplayVersion();
 
                 if (!displayVer.IsEmpty())
-                    result = wxString::Format("Windows %s %s [%d]", win, displayVer, build);
+                    return wxString::Format("Windows %s %s [%d]", win, displayVer, build);
                 else
-                    result = wxString::Format("Windows %s [%d]", win, build);
+                    return wxString::Format("Windows %s [%d]", win, build);
             }
         }
     }
-    else {
-        result = "Windows (unknown)";
-    }
-#elif defined(__LINUX__)
-    result = GetLinuxDistroName() + " " + GetDisplayServer() + " " + GetPackageType();
-#elif defined(__APPLE__)
-    result = wxGetOsDescription();
-#endif
-    return result;
+    else
+        return "Windows (unknown)";
 }
-
-#ifdef __LINUX__
+#elif defined(__LINUX__)
 wxString TroubleshootDialog::GetLinuxDistroName()
 {
     // Try host os-release first (works when running as Flatpak)
@@ -480,7 +489,7 @@ wxString TroubleshootDialog::GetLinuxDistroName()
     return "Linux";
 }
 
-wxString TroubleshootDialog::GetDisplayServer()
+wxString TroubleshootDialog::GetLinuxDisplayServer()
 {
     const char* wayland = getenv("WAYLAND_DISPLAY");
     if (wayland && wayland[0] != '\0') // WAYLAND_DISPLAY is set when running under Wayland
@@ -500,9 +509,23 @@ wxString TroubleshootDialog::GetDisplayServer()
 
     return "";
 }
+#endif
 
 wxString TroubleshootDialog::GetPackageType()
 {
+    wxString result;
+#ifdef __WINDOWS__
+    wxString path = wxStandardPaths::Get().GetExecutablePath();
+    wxString dir  = wxPathOnly(path);
+
+    if (path.Contains("OrcaSlicer\\build"))
+        return "Local Build";
+
+    if (wxFileExists(dir + "\\Uninstall.exe"))
+        return "Installed";
+
+    return "Portable";
+#elif defined(__LINUX__)
     if (wxGetEnv("APPIMAGE"  , nullptr))   return "AppImage";
     if (wxGetEnv("FLATPAK_ID", nullptr))   return "Flatpak";
     //if (wxGetEnv("SNAP"      , nullptr)) return "Snap";
@@ -512,13 +535,31 @@ wxString TroubleshootDialog::GetPackageType()
     //if (wxFileExists("/usr/bin/pacman")) return "Arch (pacman)";
 
     wxString path = wxStandardPaths::Get().GetExecutablePath();
-    if (path.Contains("OrcaSlicer/build")) return "Compiled  (local)";
+    if (path.Contains("OrcaSlicer/build")) return "Local Build";
     //if (path.StartsWith("/usr/local"))   return "Compiled (local)";
     if (path.StartsWith("/opt"))           return "Third-party / manual";
 
     return "Native Package"; // (deb/rpm/etc)
-}
+#elif defined(__APPLE__)
+    wxString path = wxStandardPaths::Get().GetExecutablePath();
+    wxString dir  = wxPathOnly(path);
+
+    if (path.Contains("OrcaSlicer/build"))
+        return "Local Build";
+
+    //if (wxDirExists(dir + "/../_MASReceipt"))
+    //  return "Mac App Store";
+
+    if (path.Contains("/Cellar/") || wxGetEnv("HOMEBREW_PREFIX", nullptr))
+        return "Homebrew";
+
+    if (path.StartsWith("/Applications"))
+        return "Installed";
+
+    return "Portable"; // running from Downloads, Desktop, mounted DMG, etc.
 #endif
+    return result;
+}
 
 wxString TroubleshootDialog::GetCPUinfo()
 {
