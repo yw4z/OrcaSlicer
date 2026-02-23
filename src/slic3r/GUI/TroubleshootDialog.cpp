@@ -458,18 +458,23 @@ wxString TroubleshootDialog::GetOSinfo()
 #ifdef __LINUX__
 wxString TroubleshootDialog::GetLinuxDistroName()
 {
-    wxTextFile file;
-    if (!file.Open("/etc/os-release"))
-        file.Open("/usr/lib/os-release");
+    // Try host os-release first (works when running as Flatpak)
+    wxArrayString candidates;
+    candidates.Add("/run/host/os-release");
+    candidates.Add("/run/host/etc/os-release");
+    candidates.Add("/etc/os-release");
+    candidates.Add("/usr/lib/os-release");
 
-    if (!file.IsOpened())
-        return "Linux";
-
-    for (wxString line = file.GetFirstLine(); !file.Eof(); line = file.GetNextLine()) {
-        if (line.StartsWith("PRETTY_NAME=")) {
-            wxString value = line.Mid(12); // skip "PRETTY_NAME="
-            value.Replace("\"", "");
-            return value;
+    for (const wxString& path : candidates) {
+        wxTextFile file;
+        if (!file.Open(path))
+            continue;
+        for (wxString line = file.GetFirstLine(); !file.Eof(); line = file.GetNextLine()) {
+            if (line.StartsWith("PRETTY_NAME=")) {
+                wxString value = line.Mid(12);
+                value.Replace("\"", "");
+                return value;
+            }
         }
     }
     return "Linux";
