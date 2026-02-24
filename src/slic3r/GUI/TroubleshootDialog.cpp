@@ -818,7 +818,7 @@ wxString TroubleshootDialog::GetMONinfo()
 {
     wxString m_str;
     int m_count = wxDisplay::GetCount();
-    double scale;
+    double scale = 1.0;
 
     #if defined(__LINUX__)
     double gdk_scale = 1.0;
@@ -843,7 +843,7 @@ wxString TroubleshootDialog::GetMONinfo()
     for (int i = 0; i < m_count; ++i) {
         wxDisplay display(i);
         wxRect l_res = display.GetGeometry();
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", wxRound(l_res.width  * scale), wxRound(l_res.height * scale), scale * 100.0);
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", wxRound(l_res.width * scale), wxRound(l_res.height * scale), scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 
