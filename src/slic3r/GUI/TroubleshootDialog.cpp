@@ -808,68 +808,76 @@ wxString TroubleshootDialog::GetGPUinfo()
 wxString TroubleshootDialog::GetMONinfo()
 {
     wxString m_str;
-    int m_count = wxDisplay::GetCount();
+    int d_count = wxDisplay::GetCount();
     double scale = 1.0;
 
-    #if defined(__LINUX__)
-    double gdk_scale = 1.0;
-    const char* gdk = getenv("GDK_SCALE");
-    if (gdk) {
-        double val = atof(gdk);
-        if (val > 0.0) {
-            gdk_scale     = val;
-            scale         = val;
-        }
-    }
-    double gdk_dpi_scale = 1.0;
-    const char* gdk_dpi = getenv("GDK_DPI_SCALE");
-    if (gdk_dpi) {
-        double val = atof(gdk_dpi);
-        if (val > 0.0) {
-            gdk_dpi_scale  = val;
-            scale         *= val;
-        }
-    }
-
-    for (int i = 0; i < m_count; ++i) {
+#if defined(__LINUX__)
+    bool is_fractional = false;
+    for (int i = 0; i < d_count; ++i) {
         wxDisplay display(i);
-        wxRect l_res = display.GetGeometry();
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", wxRound(l_res.width * scale), wxRound(l_res.height * scale), scale * 100.0);
+        if (!display.IsOk()) continue;
+
+        scale          = disp.GetScaleFactor(); // wxWidgets scaling factor (usually 1 on X11, sometimes logical scale on Wayland)
+        wxRect      rc = disp.GetGeometry();
+        wxVideoMode vm = disp.GetCurrentMode();
+        int physW = vm.w;
+        int physH = vm.h;
+
+        // Heuristic: if physical resolution > logical and likely scaled
+        double estScaleX = (physW > 0 && rc.width  > 0) ? static_cast<double>(physW) / rc.width  : 1.0;
+        double estScaleY = (physH > 0 && rc.height > 0) ? static_cast<double>(physH) / rc.height : 1.0;
+
+        double estScale  = (estScaleX + estScaleY) / 2.0; // Usually estScaleX  estScaleY — we take the average
+
+        double reportedScale = (scale > 1.1) ? scale : estScale; // Prefer wx scaling factor when it looks trustworthy (> 1.1)
+
+        is_fractional = (std::abs(reportedScale - std::round(reportedScale)) > 0.02);
+
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", physW, physH, scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 
-    if (gdk || gdk_dpi) { // Only add for Wayland
-        double final_scale = gdk_scale * gdk_dpi_scale;
-        double intpart;
-        bool is_fractional = modf(final_scale, &intpart) > 0.001;
-        m_str += "  " + wxString(is_fractional ? "Fractional" : "Integer") + " scaling";
-    }
-    return m_str;
-    #endif
+    m_str += "  " + wxString(is_fractional ? "Fractional" : "Integer") + "Scaling";
 
-    for (int i = 0; i < m_count; ++i) {
-        wxDisplay display(i);
-        scale        = display.GetScaleFactor();
-        wxRect l_res = display.GetGeometry();
-        int phys_w = l_res.width;
-        int phys_h = l_res.height;
+#elif defined(__APPLE__)
+    for (int i = 0; i < d_count; ++i) {
+        wxDisplay disp(i);
+        if (!disp.IsOk()) continue;
 
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", phys_w, phys_h, scale * 100.0);
+        scale     = disp.GetScaleFactor();
+        wxRect rc = disp.GetGeometry();
+
+        int physW = static_cast<int>(std::round(rc.width  * scale));
+        int physH = static_cast<int>(std::round(rc.height * scale));
+
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", physW, physH, scale * 100.0);
 
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 
-    #if defined(__WINDOWS__)
-        UINT dpi = 96;
-        HMODULE hUser = GetModuleHandleW(L"user32.dll");
-        if (hUser) {
-            auto fn = reinterpret_cast<UINT(WINAPI*)()>(GetProcAddress(hUser, "GetDpiForSystem"));
-            if (fn)
-                dpi = fn();
-        }
-        double text_scale = dpi / 96.0;
-        m_str += wxString::Format("  TextScaling-%.0f%%", text_scale * 100.0);
-    #endif
+#elif defined(__WINDOWS__)
+    for (int i = 0; i < d_count; ++i) {
+        wxDisplay disp(i);
+        if (!disp.IsOk()) continue;
+
+        scale     = disp.GetScaleFactor();
+        wxRect rc = disp.GetGeometry();
+
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", rc.width, rc.height, scale * 100.0);
+
+        m_str += ((i > 0) ? "  " : "") + d_str;
+    }
+
+    UINT dpi = 96;
+    HMODULE hUser = GetModuleHandleW(L"user32.dll");
+    if (hUser) {
+        auto fn = reinterpret_cast<UINT(WINAPI*)()>(GetProcAddress(hUser, "GetDpiForSystem"));
+        if (fn)
+            dpi = fn();
+    }
+    double text_scale = dpi / 96.0;
+    m_str += wxString::Format("  TextScaling-%.0f%%", text_scale * 100.0);
+#endif
 
     return m_str;
 }
