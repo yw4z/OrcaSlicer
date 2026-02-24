@@ -29,6 +29,10 @@
 #include <cstdlib>
 #endif
 
+#ifdef __APPLE_
+#include <wx/regex.h>
+#endif
+
 #include "NetworkTestDialog.hpp"
 
 #include "Widgets/StaticLine.hpp"
@@ -202,7 +206,7 @@ TroubleshootDialog::TroubleshootDialog()
         "Adds Processor, Memory, GPU and Monitor information to URL when this option enabled"
     ));
 
-    issue_cb->Bind(wxEVT_TOGGLEBUTTON, [this, issue_cb](wxCommandEvent& e) {
+    issue_cb->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent& e) {
         m_include_detailed_info = e.IsChecked();
         e.Skip();
     });
@@ -216,6 +220,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     issue_cb_label->Bind(wxEVT_LEFT_DCLICK,([this, issue_cb](wxMouseEvent& e) {
         issue_cb->SetValue(!issue_cb->GetValue());
+        m_include_detailed_info = issue_cb->GetValue();
         e.Skip();
     }));
 
