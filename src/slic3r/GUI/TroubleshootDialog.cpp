@@ -817,33 +817,16 @@ wxString TroubleshootDialog::GetMONinfo()
     double scale = 1.0;
 
 #if defined(__LINUX__)
-    bool is_fractional = false;
     for (int i = 0; i < d_count; ++i) {
         wxDisplay disp(i);
         if (!disp.IsOk()) continue;
 
-        scale          = disp.GetScaleFactor(); // wxWidgets scaling factor (usually 1 on X11, sometimes logical scale on Wayland)
-        wxRect      rc = disp.GetGeometry();
-        wxVideoMode vm = disp.GetCurrentMode();
-        int physW = vm.w;
-        int physH = vm.h;
+        scale     = disp.GetScaleFactor(); // wxWidgets scaling factor (usually 1 on X11, sometimes logical scale on Wayland)
+        wxRect rc = disp.GetGeometry();
 
-        // Heuristic: if physical resolution > logical and likely scaled
-        double estScaleX = (physW > 0 && rc.width  > 0) ? static_cast<double>(physW) / rc.width  : 1.0;
-        double estScaleY = (physH > 0 && rc.height > 0) ? static_cast<double>(physH) / rc.height : 1.0;
-
-        double estScale  = (estScaleX + estScaleY) / 2.0; // Usually estScaleX  estScaleY — we take the average
-
-        double reportedScale = (scale > 1.1) ? scale : estScale; // Prefer wx scaling factor when it looks trustworthy (> 1.1)
-
-        is_fractional = (std::abs(reportedScale - std::round(reportedScale)) > 0.02);
-
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", physW, physH, scale * 100.0);
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", rc.width, rc.width, scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
-
-    m_str += "  " + wxString(is_fractional ? "Fractional" : "Integer") + "Scaling";
-
 #elif defined(__APPLE__)
     for (int i = 0; i < d_count; ++i) {
         wxDisplay disp(i);
@@ -856,10 +839,8 @@ wxString TroubleshootDialog::GetMONinfo()
         int physH = static_cast<int>(std::round(rc.height * scale));
 
         wxString d_str = wxString::Format("%dx%d-%.0f%%", physW, physH, scale * 100.0);
-
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
-
 #elif defined(__WINDOWS__)
     for (int i = 0; i < d_count; ++i) {
         wxDisplay disp(i);
