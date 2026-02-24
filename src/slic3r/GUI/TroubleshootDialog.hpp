@@ -32,6 +32,12 @@ private:
     wxStaticBitmap*  m_header_logo;
     Label*           m_logs_storage;
     bool             m_include_detailed_info = false;
+    int              m_printers__act;
+    int              m_printers__usr;
+    int              m_filaments_act;
+    int              m_filaments_usr;
+    int              m_processes_act;
+    int              m_processes_usr;
 
 protected:
     wxFlexGridSizer* create_item_loaded_profiles();
@@ -39,7 +45,7 @@ protected:
 
     wxString GetTimestamp();
 
-    wxString GetProfileInfo();
+    wxString GetProfilesOverview();
 
     wxString GetOSinfo();
 #ifdef __WINDOWS__

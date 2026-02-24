@@ -52,28 +52,15 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
     g_sizer->AddSpacer(0);
     g_sizer->Add(new Label(this, Label::Body_12, "Usr"), 0, wxALIGN_CENTER);
 
-    auto preset_bundle = wxGetApp().preset_bundle;
-    auto app_config    = wxGetApp().app_config;
-    auto vendors       = app_config->vendors();
-
-    int enabled_models = 0;
-    for (auto vendor_profile: vendors) {
-        auto models = vendor_profile.second;
-        enabled_models += models.size();
-    }
-
-    int enabled_filaments = app_config->has_section("filaments") ? app_config->get_section("filaments").size() : 0;
-
-    int enabled_processes = preset_bundle->printers.num_visible();
-
-    auto add_sizer = [this, g_sizer](PresetCollection* col, int in_use) {
-        int sys = 0, user = 0, enabled = 0;
+    auto gen_stats = GetProfilesOverview();
+   
+    auto add_sizer = [this, g_sizer](PresetCollection* col, wxString label, int in_use, int user) {
+        int sys = 0;
         for (auto it = col->begin(); it != col->end(); it++) {
             if (it->is_system)
                 sys++;
-            else
-                user++;
         }
+        g_sizer->Add(new Label(this, _L("Printers")));
         g_sizer->Add(new Label(this, ": "));
         g_sizer->Add(new Label(this, wxString::Format("%d", in_use)), 0, wxALIGN_CENTER);
         g_sizer->Add(new Label(this, Label::Body_12, "/")           , 0, wxALIGN_CENTER);
@@ -82,12 +69,10 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
         g_sizer->Add(new Label(this, wxString::Format("%d", user  )), 0, wxALIGN_CENTER);
     };
 
-    g_sizer->Add(new Label(this, _L("Printers")));
-    add_sizer(&preset_bundle->printers , enabled_models);
-    g_sizer->Add(new Label(this, _L("Filaments")));
-    add_sizer(&preset_bundle->filaments, enabled_filaments);
-    g_sizer->Add(new Label(this, _L("Process")));
-    add_sizer(&preset_bundle->prints   , enabled_processes);
+    auto preset_bundle = wxGetApp().preset_bundle;
+    add_sizer(&preset_bundle->printers , _L("Printers") , m_printers__act, m_printers__usr);
+    add_sizer(&preset_bundle->filaments, _L("Filaments"), m_filaments_act, m_filaments_usr);
+    add_sizer(&preset_bundle->prints   , _L("Processes"), m_processes_act, m_processes_usr);
 
     return g_sizer;
 }
@@ -287,10 +272,11 @@ TroubleshootDialog::TroubleshootDialog()
     pack_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll, GetConfigStr](wxCommandEvent &e) {
         ExportAsZip({
             //(data_dir / "OrcaSlicer.conf").string(),
-            wxString::Format("TxtData:%s|%s", "AppConfig.json", GetConfigStr()),
+            wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()),
+            wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
             (data_dir / "user").string(),
-            (data_dir / "log").string(),
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+            (data_dir / "log").string()
         }, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());;
     });
 
@@ -326,8 +312,8 @@ TroubleshootDialog::TroubleshootDialog()
     prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
         ExportAsZip({
             (data_dir / "user").string(),
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt" , GetSysInfoAll(true)),
-            wxString::Format("TxtData:%s|%s", "ProfileInfo.txt", GetProfileInfo())
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
+            wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview())
         }, "OrcaSlicer_UserProfiles_" + GetTimestamp());
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
@@ -440,51 +426,147 @@ TroubleshootDialog::TroubleshootDialog()
 wxString TroubleshootDialog::GetTimestamp()
 {
     wxDateTime now = wxDateTime::Now();
-    return now.Format("%Y%m%d_%H%M%S");
+    return now.Format("%Y%m%d_%H%M"); // %S
 }
 
-wxString TroubleshootDialog::GetProfileInfo()
+wxString TroubleshootDialog::GetProfilesOverview()
 {
+    using ojson = nlohmann::ordered_json;
+
     auto preset_bundle = wxGetApp().preset_bundle;
     auto app_config    = wxGetApp().app_config;
     auto vendors       = app_config->vendors();
 
-    //int enabled_filaments = app_config->has_section("filaments") ? app_config->get_section("filaments").size() : 0;
+    ojson root = ojson::object();
 
-    //int enabled_processes = preset_bundle->printers.num_visible();
+    m_printers__act = 0; m_printers__usr = 0;
+    m_filaments_act = 0; m_filaments_usr = 0;
+    m_processes_act = 0; m_processes_usr = 0;
 
-    wxString out;
-    PresetCollection* col;
-
-    col = &preset_bundle->printers;
-    out += "PRINTERS USER\n";
-    for (auto it = col->begin(); it != col->end(); it++) {
-        if (it->is_user())
-            out += it->name + "\n   inherits: " + (it->inherits()) + "\n";
+    { // OVERVIEW
+        root["Overview"] = "";
     }
-
-    out += "\n";
-    out += "PRINTERS ENABLED\n";
-    for (auto vendor_profile: vendors) {
-        auto models = vendor_profile.second;
-        for (auto model: models)
-            out += model.first + "\n";
+    { // PRINTERS - enabled
+        ojson arr = ojson::array();
+        for (const auto& [vendor_name, models] : vendors)
+            for (const auto& [model_name, _] : models){
+                arr.push_back(model_name);
+                m_printers__act++;
+            }
+        root["printers_enabled"] = arr;
     }
-
-    out += "\n";
-    col = &preset_bundle->filaments;
-    out += "FILAMENTS USER\n";
-    for (auto it = col->begin(); it != col->end(); it++) {
-        if (it->is_user())
-            out += it->name + "\n   inherits: " + (it->inherits()) + "\n";
+    { // PRINTERS - user defined
+        ojson arr = ojson::array();
+        for (auto it = preset_bundle->printers.begin(); it != preset_bundle->printers.end(); ++it) {
+            if (!it->is_user()) continue;
+            ojson entry;
+            entry["name"]     = it->name;
+            entry["inherits"] = it->inherits();
+            arr.push_back(entry);
+            m_printers__usr++;
+        }
+        root["printers_user"] = arr;
     }
-
-    return out;
-    /*
-    add_sizer(&preset_bundle->printers , enabled_models);
-    add_sizer(&preset_bundle->filaments, enabled_filaments);
-    add_sizer(&preset_bundle->prints   , enabled_processes);
-    */
+    { // FILAMENTS - enabled
+        if(app_config->has_section("filaments")){
+            auto filaments = app_config->get_section("filaments");
+            if(!filaments.empty()){
+                ojson arr = ojson::array();
+                for (const auto& filament : app_config->get_section("filaments")){
+                    arr.push_back(filament.first);
+                    m_filaments_act++;
+                }
+                root["filaments_enabled"] = arr;
+            }
+        }
+    }
+    { // FILAMENTS - user defined
+        ojson arr = ojson::array();
+        for (auto it = preset_bundle->filaments.begin(); it != preset_bundle->filaments.end(); ++it) {
+            if (!it->is_user()) continue;
+            ojson entry;
+            entry["name"]        = it->name;
+            entry["inherits"]    = it->inherits();
+            auto *compatible_printers = dynamic_cast<const ConfigOptionStrings*>(it->config.option("compatible_printers"));
+            if(compatible_printers != nullptr && !compatible_printers->values.empty()){
+                ojson c_arr = ojson::array();
+                for (const auto&  c_item : compatible_printers->values)
+                    c_arr.push_back(c_item);
+                entry["compatible_printers"] = c_arr;
+            }
+            auto *compatible_processes = dynamic_cast<const ConfigOptionStrings*>(it->config.option("compatible_prints"));
+            if(compatible_processes != nullptr && !compatible_processes->values.empty()){
+                ojson c_arr = ojson::array();
+                for (const auto&  c_item : compatible_processes->values)
+                    c_arr.push_back(c_item);
+                entry["compatible_processes"] = c_arr;
+            }
+            arr.push_back(entry);
+            m_filaments_usr++;
+        }
+        root["filaments_user"] = arr;
+    }
+    { // PROCESSES - enabled, grouped by compatible printer
+        ojson obj = ojson::object();
+        for (auto it = preset_bundle->printers.begin(); it != preset_bundle->printers.end(); ++it) {
+            if (!it->is_visible || !it->is_compatible)
+                continue;
+            ojson arr = ojson::array();
+            for (auto jt = preset_bundle->prints.begin(); jt != preset_bundle->prints.end(); ++jt) {
+                if (!jt->is_visible || jt->is_user() || !jt->loaded) continue;
+                auto *compatible_printers = dynamic_cast<const ConfigOptionStrings*>(jt->config.option("compatible_printers"));
+                bool is_compatible = false;
+                if (compatible_printers == nullptr || compatible_printers->values.empty()) {
+                    is_compatible = true;
+                }
+                else {
+                    for (const auto& p : compatible_printers->values) {
+                        if (p == it->name) {
+                            is_compatible = true;
+                            break;
+                        }
+                    }
+                }
+                if (!is_compatible)
+                    continue;
+                arr.push_back(jt->name);
+                m_processes_act++;
+            }
+            if (!arr.empty())
+                obj[it->name] = arr;
+        }
+        root["processes_enabled"] = obj;
+    }
+    { // PROCESSES - user defined
+        ojson arr = ojson::array();
+        for (auto it = preset_bundle->prints.begin(); it != preset_bundle->prints.end(); ++it) {
+            if (!it->is_user()) continue;
+            ojson entry;
+            entry["name"]        = it->name;
+            entry["inherits"]    = it->inherits();
+            auto *compatible_printers = dynamic_cast<const ConfigOptionStrings*>(it->config.option("compatible_printers"));
+            if(compatible_printers != nullptr && !compatible_printers->values.empty()){
+                ojson c_arr = ojson::array();
+                for (const auto&  c_item : compatible_printers->values)
+                    c_arr.push_back(c_item);
+                entry["compatible_printers"] = c_arr;
+            }
+            arr.push_back(entry);
+            m_processes_usr++;
+        }
+        root["processes_user"] = arr;
+    }
+    { // OVERVIEW
+        ojson entry;
+        entry["printers__act"] = m_printers__act;
+        entry["printers__usr"] = m_printers__usr;
+        entry["filaments_act"] = m_filaments_act;
+        entry["filaments_usr"] = m_filaments_usr;
+        entry["processes_act"] = m_processes_act;
+        entry["processes_usr"] = m_processes_usr;
+        root["Overview"] = entry;
+    }
+    return wxString::FromUTF8(root.dump(4));
 }
 
 wxString TroubleshootDialog::GetOSinfo()
