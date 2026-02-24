@@ -814,8 +814,8 @@ wxString TroubleshootDialog::GetMONinfo()
 #if defined(__LINUX__)
     bool is_fractional = false;
     for (int i = 0; i < d_count; ++i) {
-        wxDisplay display(i);
-        if (!display.IsOk()) continue;
+        wxDisplay disp(i);
+        if (!disp.IsOk()) continue;
 
         scale          = disp.GetScaleFactor(); // wxWidgets scaling factor (usually 1 on X11, sometimes logical scale on Wayland)
         wxRect      rc = disp.GetGeometry();
