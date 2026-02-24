@@ -29,7 +29,7 @@
 #include <cstdlib>
 #endif
 
-#ifdef __APPLE_
+#ifdef __APPLE__
 #include <wx/regex.h>
 #endif
 
