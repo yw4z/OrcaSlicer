@@ -53,6 +53,7 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
     g_sizer->Add(new Label(this, Label::Body_12, "Usr"), 0, wxALIGN_CENTER);
 
     auto gen_stats = GetProfilesOverview();
+    gen_stats      = ""; // clear mem. not needed after generating m_..._act, m_..._usr variables
    
     auto add_sizer = [this, g_sizer](PresetCollection* col, wxString label, int in_use, int user) {
         int sys = 0;
@@ -147,50 +148,9 @@ TroubleshootDialog::TroubleshootDialog()
     info_panel->SetBackgroundColour(*wxWHITE);
     info_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
-    auto GetSysInfoAll = [this](bool user_copy) {
-        wxString info = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
-                      + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n"
-                      + "Package   :  " + GetPackageType() + "\n";
-
-        if(user_copy || m_include_detailed_info)
-                info += "Platform  :  " + GetOSinfo()  + "\n"
-                      + "Processor :  " + GetCPUinfo() + "\n"
-                      + "Memory    :  " + GetRAMinfo() + "\n"
-                      + "Renderer  :  " + GetGPUinfo() + "\n"
-                      + "Monitors  :  " + GetMONinfo() + "\n";
-        return info;
-    };
-
-    // Excludes MD5 hash, recent_projects, recent, local_machines from config
-    auto GetConfigStr = [this]() -> std::string {
-        wxString config_path = wxGetApp().app_config->config_path();
-
-        std::ifstream file(config_path.ToUTF8().data());
-        if (!file.is_open())
-            return "{}";
-        nlohmann::json root;
-        try {
-            file >> root;
-        } catch (const nlohmann::json::exception&) {
-            return "{}";
-        }
-        root.erase("recent_projects");
-        root.erase("recent");
-        root.erase("custom_color_list");
-        root.erase("orca_presets");
-        if (root.contains("app")) {
-            auto& app = root["app"];
-            app.erase("last_backup_path");
-            app.erase("last_export_path");
-            app.erase("download_path");
-            app.erase("slicer_uuid");
-        }
-        return root.dump(4);
-    };
-
     auto info_copy_btn = new Button(this, _L("Copy"));
     info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
-    info_copy_btn->Bind(wxEVT_BUTTON, [GetSysInfoAll](wxCommandEvent &e) {
+    info_copy_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         wxClipboardLocker lock;
         if (!lock)
             return false;
@@ -202,21 +162,14 @@ TroubleshootDialog::TroubleshootDialog()
     // RIGHT SIZER //////////////////////
     auto link_report  = new HyperLink(this, _L("Report issue") + " ");
     link_report->SetFont(Label::Head_16);
-    link_report->Bind(wxEVT_LEFT_DOWN, [this, GetSysInfoAll](wxMouseEvent &e) {
+    link_report->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &e) {
         auto encodeStr = [](const wxString& text) {
             wxString out;
             const wxScopedCharBuffer utf8 = text.utf8_str();
-            const unsigned char* bytes = reinterpret_cast<const unsigned char*>(utf8.data());
-            for (size_t i = 0; i < strlen(reinterpret_cast<const char*>(bytes)); i++) {
-                unsigned char c = bytes[i];
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                    (c >= '0' && c <= '9') ||
-                    c == '-' || c == '_' || c == '.' || c == '~')
-                {
+            for (const unsigned char* p = (const unsigned char*)utf8.data(); *p; ++p) {
+                unsigned char c = *p;
+                if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
                     out += (wxChar)c;
-                }
-                else if (c == ' ')
-                    out += wxT("%20");
                 else
                     out += wxString::Format(wxT("%%%02X"), c);
             }
@@ -233,7 +186,7 @@ TroubleshootDialog::TroubleshootDialog()
         #endif
         url += "&version="     + encodeStr(wxString(SoftFever_VERSION));
         url += "&os_version="  + encodeStr(GetOSinfo());
-        url += "&system_info=" + encodeStr(GetSysInfoAll(false));
+        url += "&system_info=" + encodeStr(GetSysInfoAll(m_include_detailed_info));
 
         wxLaunchDefaultBrowser(url);
     });
@@ -269,12 +222,11 @@ TroubleshootDialog::TroubleshootDialog()
     auto pack_btn = new Button(this, _L("Pack All") + "...");
     pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
-    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll, GetConfigStr](wxCommandEvent &e) {
+    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip({
-            //(data_dir / "OrcaSlicer.conf").string(),
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
             wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()),
             wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
             (data_dir / "user").string(),
             (data_dir / "log").string()
         }, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());;
@@ -291,11 +243,10 @@ TroubleshootDialog::TroubleshootDialog()
     wxBoxSizer* cfg_btns = new wxBoxSizer(wxHORIZONTAL);
 
     auto cfg_export_btn = create_btn(_L("Export") + "...", _L("Exports configuration file to selected folder as compressed file"));
-    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll, GetConfigStr](wxCommandEvent &e) {
+    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip({
-            //(data_dir / "OrcaSlicer.conf").string(),
-            wxString::Format("TxtData:%s|%s", "AppConfig.json", GetConfigStr()),
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true)),
+            wxString::Format("TxtData:%s|%s", "AppConfig.json", GetConfigStr())
         }, "OrcaSlicer_Config_" + GetTimestamp());
     });
     cfg_btns->Add(cfg_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
@@ -309,11 +260,11 @@ TroubleshootDialog::TroubleshootDialog()
     // PROFILES
     wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
     auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports profiles to selected folder as compressed file"));
-    prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+    prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip({
-            (data_dir / "user").string(),
             wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
-            wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview())
+            wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
+            (data_dir / "user").string()
         }, "OrcaSlicer_UserProfiles_" + GetTimestamp());
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
@@ -335,10 +286,10 @@ TroubleshootDialog::TroubleshootDialog()
     // LOG
     wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
     auto logs_export_btn = create_btn(_L("Export") + "...", _L("Exports logs to selected folder as compressed file"));
-    logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir, GetSysInfoAll](wxCommandEvent &e) {
+    logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip({
-            (data_dir / "log").string(),
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true))
+            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true)),
+            (data_dir / "log").string()
         }, "OrcaSlicer_Logs_" + GetTimestamp());
     }); 
     log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
@@ -428,6 +379,42 @@ wxString TroubleshootDialog::GetTimestamp()
     wxDateTime now = wxDateTime::Now();
     return now.Format("%Y%m%d_%H%M"); // %S
 }
+
+wxString TroubleshootDialog::GetSysInfoAll(bool include_all)
+{
+    wxString info = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
+                  + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n"
+                  + "Package   :  " + GetPackageType() + "\n";
+    if(include_all)
+            info += "Platform  :  " + GetOSinfo()  + "\n"
+                  + "Processor :  " + GetCPUinfo() + "\n"
+                  + "Memory    :  " + GetRAMinfo() + "\n"
+                  + "Renderer  :  " + GetGPUinfo() + "\n"
+                  + "Monitors  :  " + GetMONinfo() + "\n";
+    return info;
+};
+
+// Excludes MD5 hash and any user related info
+wxString TroubleshootDialog::GetConfigStr()
+{
+    wxString config_path = wxGetApp().app_config->config_path();
+    std::ifstream file(config_path.ToUTF8().data());
+    if (!file.is_open())
+        return "{}";
+    nlohmann::json root;
+    try {
+        file >> root;
+    } catch (const nlohmann::json::exception&) {
+        return "{}";
+    }
+    for (const auto& key : std::vector<std::string>{"recent_projects", "recent", "custom_color_list", "orca_presets"})
+        root.erase(key);
+    if (root.contains("app")) {
+        for (const auto& key : std::vector<std::string>{"last_backup_path", "last_export_path", "download_path", "slicer_uuid", "preset_folder"})
+            root["app"].erase(key);
+    }
+    return wxString::FromUTF8(root.dump(4));
+};
 
 wxString TroubleshootDialog::GetProfilesOverview()
 {
@@ -577,7 +564,28 @@ wxString TroubleshootDialog::GetOSinfo()
 #elif defined(__LINUX__)
     result = GetLinuxDistroName() + " " + GetLinuxDisplayServer();
 #elif defined(__APPLE__)
-    result = wxGetOsDescription();
+    result = wxGetOsDescription();      // returns "macOS Version 26.3 (Build 25D125)"
+    result.Replace("Version ", "");     // simplify naming
+    result.Replace("Build ", "Build-"); // dash for wrapping build info on next line
+
+    // No public API for naming
+    auto GetMacOSName = [](const wxString& ver) -> wxString {
+        if (ver.StartsWith("26")) return "Tahoe";
+        if (ver.StartsWith("15")) return "Sequoia";
+        if (ver.StartsWith("14")) return "Sonoma";
+        if (ver.StartsWith("13")) return "Ventura";
+        if (ver.StartsWith("12")) return "Monterey";
+        if (ver.StartsWith("11")) return "Big Sur";
+        return "";
+    };
+
+    wxRegEx reVer("([0-9]+\\.[0-9]+)");
+    if (reVer.Matches(result)) {
+        wxString ver  = reVer.GetMatch(result, 1);
+        wxString name = GetMacOSName(ver);
+        if (!name.IsEmpty())
+            result.Replace("(Build-", name + " (Build-");
+    }
 #endif
     return result;
 }
@@ -732,8 +740,7 @@ wxString TroubleshootDialog::GetCPUinfo()
 {
     wxString info;
 #ifdef __WINDOWS__
-    std::map<std::string, std::string> cpu_info = get_cpu_info_from_registry();
-    info = cpu_info["Model"]; // cpu_info["Cores"]) cpu_info["Vendor"]
+    info = get_cpu_info_from_registry();
 #elif __APPLE__
     std::map<std::string, std::string> cpu_info = parse_lscpu_etc("sysctl -a", ':');
     info = wxString(cpu_info["machdep.cpu.brand_string"]);
@@ -746,35 +753,19 @@ wxString TroubleshootDialog::GetCPUinfo()
 }
 
 #ifdef __WINDOWS__
-std::map<std::string, std::string> TroubleshootDialog::get_cpu_info_from_registry()
+wxString TroubleshootDialog::get_cpu_info_from_registry()
 {
-    std::map<std::string, std::string> out;
+    const std::string dir = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\";
+    char buf[500] = {};
+    DWORD bufsize = sizeof(buf) - 1;
 
-    int idx = -1;
-    constexpr DWORD bufsize_ = 500;
-    DWORD bufsize = bufsize_-1;
-    char buf[bufsize_] = "";
-    memset(buf, 0, bufsize_);
-    const std::string reg_dir = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\";
-    std::string reg_path = reg_dir;
+    for (const auto& path : { dir, dir + "0\\" })
+        if (RegGetValueA(HKEY_LOCAL_MACHINE, path.c_str(), "ProcessorNameString", RRF_RT_REG_SZ, NULL, buf, &bufsize) == ERROR_SUCCESS)
+            return buf;
 
-    while (true) {
-        if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "ProcessorNameString", RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS) {
-            out["Model"] = buf;
-            out["Cores"] = std::to_string(std::max(1, idx + 1));
-            if (RegGetValueA(HKEY_LOCAL_MACHINE, reg_path.c_str(), "VendorIdentifier", RRF_RT_REG_SZ, NULL, &buf, &bufsize) == ERROR_SUCCESS)
-                out["Vendor"] = buf;
-        }
-        else if (idx >= 0) {
-            break;
-        }
-        ++idx;
-        reg_path = reg_dir + std::to_string(idx) + "\\";
-        bufsize = bufsize_-1;
-    }
-    return out;
+    return "Unknown";
 }
-#else // macOS / linux / BSD
+#else // macOS / linux
 std::map<std::string, std::string> TroubleshootDialog::parse_lscpu_etc(const std::string& name, char delimiter)
 {
     std::map<std::string, std::string> out;
@@ -811,7 +802,7 @@ wxString TroubleshootDialog::GetRAMinfo()
 wxString TroubleshootDialog::GetGPUinfo()
 {
     auto gl_info = OpenGLManager::get_gl_info();
-    return  gl_info.get_renderer()+ "  GLSL:" +  gl_info.get_glsl_version();
+    return gl_info.get_renderer()+ "  GLSL:" +  gl_info.get_glsl_version();
 }
 
 wxString TroubleshootDialog::GetMONinfo()
@@ -988,12 +979,8 @@ void TroubleshootDialog::UpdateLogsStorage()
         }
     }
 
-    wxString label;
-    if (totalBytes >= 1024 * 1024)
-        label = wxString::Format("%.2f MB", totalBytes / (1024.0 * 1024.0));
-    else
-        label = wxString::Format("%.2f KB", totalBytes / 1024.0);
-
+    bool is_mb = totalBytes >= 1024 * 1024;
+    wxString label = totalBytes > 0 ? wxString::Format("%.2f %s", totalBytes / (1024.0 * (is_mb ? 1024.0 : 1.0)), is_mb ? "MB" : "KB") : "";
     m_logs_storage->SetLabel(label);
 }
 
@@ -1076,7 +1063,7 @@ bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const
     if (destDir.IsEmpty())
         return false;
     wxString baseName = export_name.IsEmpty() ? wxFileName(sources[0]).GetFullName() : export_name;
-    wxString zipPath = wxFileName(destDir, baseName + ".zip").GetFullPath();
+    wxString zipPath  = wxFileName(destDir, baseName + ".zip").GetFullPath();
     if (wxFileExists(zipPath)) {
         MessageDialog msg(this, _L("File already exists. Overwrite?"),
              wxString(SLIC3R_APP_FULL_NAME), wxICON_QUESTION | wxYES_NO

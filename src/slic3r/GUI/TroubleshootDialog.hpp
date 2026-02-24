@@ -45,8 +45,9 @@ protected:
 
     wxString GetTimestamp();
 
+    wxString GetSysInfoAll(bool include_all);
+    wxString GetConfigStr();
     wxString GetProfilesOverview();
-
     wxString GetOSinfo();
 #ifdef __WINDOWS__
     wxString GetWinVersion();
@@ -55,9 +56,7 @@ protected:
     wxString GetLinuxDistroName();
     wxString GetLinuxDisplayServer();
 #endif
-
     wxString GetPackageType();
-
     wxString GetCPUinfo();
     wxString GetGPUinfo();
     wxString GetRAMinfo();
@@ -69,7 +68,7 @@ protected:
     void     BrowseFolder(std::string path);
 
 #ifdef __WINDOWS__
-    static std::map<std::string, std::string> get_cpu_info_from_registry();
+    static wxString get_cpu_info_from_registry();
 #else
     static std::map<std::string, std::string> parse_lscpu_etc(const std::string& name, char delimiter);
 #endif
