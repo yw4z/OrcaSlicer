@@ -227,14 +227,8 @@ TroubleshootDialog::TroubleshootDialog()
     auto pack_btn = new Button(this, _L("Pack All") + "...");
     pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
-    pack_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
-            wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()),
-            wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
-            (data_dir / "user").string(),
-            (data_dir / "log").string()
-        }, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());;
+    pack_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        PackAll();
     });
 
     auto create_btn = [this](wxString title, wxString tooltip) {
@@ -868,14 +862,55 @@ wxString TroubleshootDialog::GetMONinfo()
     return m_str;
 }
 
+void TroubleshootDialog::PackAll()
+{
+    auto data_dir   = boost::filesystem::path(Slic3r::data_dir());
+    auto include_zip = std::vector<wxString>{
+        wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
+        wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()),
+        wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
+        wxString((data_dir / "user").string()),
+        wxString((data_dir / "log").string())
+    };
+
+    auto p = wxGetApp().mainframe->plater();
+    auto project_name = p->get_project_filename(".3mf");
+    if(!project_name.IsEmpty()){
+        if (wxGetApp().plater()->is_project_dirty()) {
+            auto res = MessageDialog(this, 
+                _L("The current project has unsaved changes, save it before continue?") +
+                "\n\n" +
+                _L("Select NO to close dialog and review project."),
+                wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Save"), wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxCENTRE
+            ).ShowModal();
+            if (res == wxID_YES)
+                wxGetApp().plater()->save_project();
+            else {
+                if (res == wxID_NO)
+                    EndModal(wxID_CLOSE);
+                return;
+            }
+        }
+        include_zip.emplace_back(project_name);
+    }
+
+    ExportAsZip(include_zip, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());
+}
+
 void TroubleshootDialog::RebuildSystemProfiles()
 {
     if (wxGetApp().plater()->is_project_dirty()) {
-        MessageDialog msg(this, _L("The current project has unsaved changes, save it before continue?"),
+        auto res = MessageDialog(this, 
+            _L("The current project has unsaved changes, save it before continue?") +
+            "\n\n" +
+            _L("Select NO to close dialog and review project."),
             wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Save"), wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxCENTRE
-        );
-        if (msg.ShowModal() == wxID_YES){
+        ).ShowModal();
+        if (res == wxID_YES)
             wxGetApp().plater()->save_project();
+        else {
+            if (res == wxID_NO)
+                EndModal(wxID_CLOSE);
             return;
         }
     }
@@ -1070,6 +1105,9 @@ bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const
              wxString(SLIC3R_APP_FULL_NAME), wxICON_WARNING | wxOK
         ).ShowModal();
         return false;
+    } 
+    else {
+        MessageDialog(this, _L("Export successful"), wxString(SLIC3R_APP_FULL_NAME), wxICON_INFORMATION | wxOK).ShowModal();
     }
     return true;
 }

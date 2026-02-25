@@ -61,6 +61,8 @@ protected:
     wxString GetGPUinfo();
     wxString GetRAMinfo();
     wxString GetMONinfo();
+
+    void     PackAll();
     void     RebuildSystemProfiles();
     void     ClearLogs();
     void     UpdateLogsStorage();
