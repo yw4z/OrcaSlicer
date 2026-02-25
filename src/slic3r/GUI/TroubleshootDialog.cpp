@@ -31,6 +31,7 @@
 
 #ifdef __APPLE__
 #include <wx/regex.h>
+#include <CoreGraphics/CoreGraphics.h>
 #endif
 
 #include "NetworkTestDialog.hpp"
@@ -822,6 +823,13 @@ wxString TroubleshootDialog::GetMONinfo()
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 #elif defined(__APPLE__)
+    std::vector<CGDirectDisplayID> cgDisplays;
+    uint32_t displayCount = 0;
+    CGGetActiveDisplayList(0, nullptr, &displayCount);
+    if (displayCount > 0) {
+        cgDisplays.resize(displayCount);
+        CGGetActiveDisplayList(displayCount, cgDisplays.data(), &displayCount);
+    }
     for (int i = 0; i < d_count; ++i) {
         wxDisplay disp(i);
         if (!disp.IsOk()) continue;
@@ -831,8 +839,24 @@ wxString TroubleshootDialog::GetMONinfo()
 
         int physW = static_cast<int>(std::round(rc.width  * scale));
         int physH = static_cast<int>(std::round(rc.height * scale));
+        const char* type = "L"; // Locical
 
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", physW, physH, scale * 100.0);
+        // try to get native resolution
+        CGDirectDisplayID cgDispID = (i < static_cast<int>(cgDisplays.size())) ? cgDisplays[i] : CGMainDisplayID();
+        CGDisplayModeRef mode = CGDisplayCopyDisplayMode(cgDispID);
+        if (mode) {
+            size_t pw = CGDisplayModeGetPixelWidth(mode);
+            size_t ph = CGDisplayModeGetPixelHeight(mode);
+            // Only trust it if it looks reasonable (avoid bogus 0 or huge values)
+            if (pw >= 800 && ph >= 600 && pw <= 16384 && ph <= 16384) {
+                physW = static_cast<int>(pw);
+                physH = static_cast<int>(ph);
+                type = "N"; // Native
+            }
+            CFRelease(mode);
+        }
+
+        wxString d_str = wxString::Format("%dx%d-%s-%.0f%%", physW, physH, type, scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 #elif defined(__WINDOWS__)
