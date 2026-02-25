@@ -31,7 +31,15 @@
 
 #ifdef __APPLE__
 #include <wx/regex.h>
+#define Rect     Mac_Rect
+#define Rect     Mac_RectPtr
+#define Point    Mac_Point
+#define Size     Mac_Size
 #include <CoreGraphics/CoreGraphics.h>
+#undef Rect
+#undef RectPtr
+#undef Point
+#undef Size
 #endif
 
 #include "NetworkTestDialog.hpp"
@@ -66,7 +74,7 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
             if (it->is_system)
                 sys++;
         }
-        g_sizer->Add(new Label(this, _L("Printers")));
+        g_sizer->Add(new Label(this, label));
         g_sizer->Add(new Label(this, ": "));
         g_sizer->Add(new Label(this, wxString::Format("%d", in_use)), 0, wxALIGN_CENTER);
         g_sizer->Add(new Label(this, Label::Body_12, "/")           , 0, wxALIGN_CENTER);
@@ -225,7 +233,31 @@ TroubleshootDialog::TroubleshootDialog()
         e.Skip();
     }));
 
-    auto pack_btn = new Button(this, _L("Pack All") + "...");
+    auto p = wxGetApp().mainframe->plater();
+    auto project_name = p->get_project_filename(".3mf");
+
+    m_pack_opt_menu = new wxMenu();
+    auto add_check_item = [this](wxString label, bool check, std::function<void(wxCommandEvent&)> function, bool enable = true) {
+        wxMenuItem* item = m_pack_opt_menu->AppendCheckItem(wxID_ANY, label);
+        item->Check(check);
+        item->Enable(enable);
+        m_pack_opt_menu->Bind(wxEVT_MENU, function, item->GetId());
+    };
+
+    add_check_item("Project file"      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, !project_name.IsEmpty());
+    add_check_item("System information", m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
+    add_check_item("Logs"              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
+    add_check_item("Profiles"          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
+    add_check_item("Profile overview"  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
+
+    auto pack_opt_btn = new Button(this, _L("⯆"));
+    pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
+    pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
+        auto rc = pack_opt_btn->GetRect();
+        PopupMenu(m_pack_opt_menu, wxPoint(rc.x, rc.y + rc.height + FromDIP(5)));
+    });
+
+    auto pack_btn = new Button(this, _L("Pack") + "...");
     pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
     pack_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
@@ -282,6 +314,15 @@ TroubleshootDialog::TroubleshootDialog()
     prf_btns->Add(prf_rebuild_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
 
     auto profiles_loaded = create_item_loaded_profiles();
+
+    auto prf_overview = create_btn(_L("Review"), _L("Opens profiles overview on browser as offline"));
+    prf_overview->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        //wxLaunchDefaultBrowser("data:application/json," +  GetProfilesOverview());
+        wxClipboardLocker lock;
+        if (!lock)
+            return false;
+        return wxTheClipboard->SetData(new wxTextDataObject(GetProfilesOverview()));
+    });
 
     // LOG
     wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
@@ -345,8 +386,12 @@ TroubleshootDialog::TroubleshootDialog()
         return line;
     };
 
+    wxBoxSizer *pack_btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+    pack_btn_sizer->Add(pack_opt_btn                  , 0, wxRIGHT, FromDIP(5));
+    pack_btn_sizer->Add(pack_btn                      , 1, wxEXPAND);
+
     right_sizer->Add(issue_cb_sizer                   , 0, wxEXPAND | wxTOP, FromDIP(5));
-    right_sizer->Add(pack_btn                         , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(pack_btn_sizer                   , 0, wxEXPAND | wxTOP, FromDIP(8));
 
     right_sizer->Add(create_title(_L("Configuration")), 0, wxEXPAND | wxTOP, FromDIP(15));
     right_sizer->Add(cfg_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
@@ -354,6 +399,7 @@ TroubleshootDialog::TroubleshootDialog()
     right_sizer->Add(create_title(_L("Profiles"))     , 0, wxEXPAND | wxTOP, FromDIP(12));
     right_sizer->Add(prf_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
     right_sizer->Add(profiles_loaded                  , 0, wxEXPAND | wxTOP, FromDIP(10));
+    right_sizer->Add(prf_overview                     , 0, wxEXPAND | wxTOP, FromDIP(10));
     
     right_sizer->Add(create_title(_L("Logs"))         , 0, wxEXPAND | wxTOP, FromDIP(12));
     right_sizer->Add(log_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
@@ -619,7 +665,7 @@ wxString TroubleshootDialog::GetWinVersion()
         if (RtlGetVersion) {
             RTL_OSVERSIONINFOW osvi = {};
             osvi.dwOSVersionInfoSize = sizeof(osvi);
-            if (RtlGetVersion(&osvi) == 0) { // STATUS_SUCCESS
+            if (RtlGetVersion(&osvi) == 0) {
                 int build = osvi.dwBuildNumber;
                 wxString win = (build >= 22000) ? "11" 
                              : (build >= 10240) ? "10"
@@ -636,8 +682,7 @@ wxString TroubleshootDialog::GetWinVersion()
             }
         }
     }
-    else
-        return "Windows (unknown)";
+    return "Windows (unknown)";
 }
 #elif defined(__LINUX__)
 wxString TroubleshootDialog::GetLinuxDistroName()
@@ -961,8 +1006,9 @@ void TroubleshootDialog::RebuildSystemProfiles()
                     }
                 }
             }
-            catch (const std::exception& ex) {
+            catch (const std::exception& e) {
                 is_deletable = false;
+                BOOST_LOG_TRIVIAL(warning) << e.what();
             }
             if (!is_deletable) {
                 MessageDialog(this, _L("System folder cannot be deleted because some files are in use by another application. Please close any applications using these files and try again."),
@@ -974,7 +1020,8 @@ void TroubleshootDialog::RebuildSystemProfiles()
                 boost::filesystem::remove_all(sys_folder);
                 EndModal(wxID_REMOVE);
             }
-            catch (const std::exception& ex) {
+            catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(warning) << "Failed to delete system folder..." << e.what();
                 MessageDialog(this, _L("Failed to delete system folder..."),
                     wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Error"), wxOK | wxICON_ERROR | wxCENTRE
                 ).ShowModal();

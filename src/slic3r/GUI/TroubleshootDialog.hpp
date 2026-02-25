@@ -39,6 +39,13 @@ private:
     int              m_processes_act;
     int              m_processes_usr;
 
+    wxMenu*          m_pack_opt_menu;
+    bool             m_pack_project  = true;
+    bool             m_pack_sys_info = true;
+    bool             m_pack_logs     = true;
+    bool             m_pack_profiles = true;
+    bool             m_pack_overview = true;
+
 protected:
     wxFlexGridSizer* create_item_loaded_profiles();
     wxBoxSizer*      create_item_log_info();
