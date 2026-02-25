@@ -32,7 +32,7 @@
 #ifdef __APPLE__
 #include <wx/regex.h>
 #define Rect     Mac_Rect
-#define Rect     Mac_RectPtr
+#define RectPtr  Mac_RectPtr
 #define Point    Mac_Point
 #define Size     Mac_Size
 #include <CoreGraphics/CoreGraphics.h>
@@ -55,9 +55,20 @@ namespace GUI {
 
 wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
 {
+
+    auto copy_btn = new Button(this, _L("Copy"));
+    copy_btn->SetToolTip( _L("Copies details in json format"));
+    copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    copy_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        wxClipboardLocker lock;
+        if (!lock)
+            return false;
+        return wxTheClipboard->SetData(new wxTextDataObject(GetProfilesOverview()));
+    });
+
     auto g_sizer = new wxFlexGridSizer(1, 7, FromDIP(3), FromDIP(15));
 
-    g_sizer->AddSpacer(0);
+    g_sizer->Add(copy_btn);
     g_sizer->AddSpacer(0);
     g_sizer->Add(new Label(this, Label::Body_12, "Act"), 0, wxALIGN_CENTER);
     g_sizer->AddSpacer(0);
@@ -244,14 +255,14 @@ TroubleshootDialog::TroubleshootDialog()
         m_pack_opt_menu->Bind(wxEVT_MENU, function, item->GetId());
     };
 
-    add_check_item("Project file"      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, !project_name.IsEmpty());
-    add_check_item("Configuration"     , m_pack_config  , [this](auto&){m_pack_config   = !m_pack_config  ;});
-    add_check_item("System information", m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
-    add_check_item("Logs"              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
-    add_check_item("Profiles"          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
-    add_check_item("Profile overview"  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
+    add_check_item(_L("Project file")      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, !project_name.IsEmpty());
+    add_check_item(_L("Configuration")     , m_pack_config  , [this](auto&){m_pack_config   = !m_pack_config  ;});
+    add_check_item(_L("System information"), m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
+    add_check_item(_L("Logs")              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
+    add_check_item(_L("Profiles")          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
+    add_check_item(_L("Profile overview")  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
 
-    auto pack_opt_btn = new Button(this, _L("⯆"));
+    auto pack_opt_btn = new Button(this, _L("⯆")); // will replace this one with icon when ButtonType::Icon merged
     pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_opt_btn->SetToolTip(_L("Select what to include package."));
     pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
@@ -316,15 +327,6 @@ TroubleshootDialog::TroubleshootDialog()
     prf_btns->Add(prf_rebuild_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
 
     auto profiles_loaded = create_item_loaded_profiles();
-
-    auto prf_overview = create_btn(_L("Review"), _L("Opens profiles overview on browser as offline"));
-    prf_overview->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
-        //wxLaunchDefaultBrowser("data:application/json," +  GetProfilesOverview());
-        wxClipboardLocker lock;
-        if (!lock)
-            return false;
-        return wxTheClipboard->SetData(new wxTextDataObject(GetProfilesOverview()));
-    });
 
     // LOG
     wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
@@ -400,8 +402,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     right_sizer->Add(create_title(_L("Profiles"))     , 0, wxEXPAND | wxTOP, FromDIP(12));
     right_sizer->Add(prf_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
-    right_sizer->Add(profiles_loaded                  , 0, wxEXPAND | wxTOP, FromDIP(10));
-    right_sizer->Add(prf_overview                     , 0, wxEXPAND | wxTOP, FromDIP(10));
+    right_sizer->Add(profiles_loaded                  , 0, wxEXPAND | wxTOP, FromDIP(12));
     
     right_sizer->Add(create_title(_L("Logs"))         , 0, wxEXPAND | wxTOP, FromDIP(12));
     right_sizer->Add(log_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
@@ -966,7 +967,7 @@ void TroubleshootDialog::PackAll()
     }
 
     if(include_zip.empty()){
-        MessageDialog(this, _L("No items to add package. Please select "),
+        MessageDialog(this, _L("No items to include package. Please choose at least one item."),
             wxString(SLIC3R_APP_FULL_NAME), wxOK | wxICON_WARNING | wxCENTRE
         ).ShowModal();
         return;
