@@ -245,6 +245,7 @@ TroubleshootDialog::TroubleshootDialog()
     };
 
     add_check_item("Project file"      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, !project_name.IsEmpty());
+    add_check_item("Configuration"     , m_pack_config  , [this](auto&){m_pack_config   = !m_pack_config  ;});
     add_check_item("System information", m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
     add_check_item("Logs"              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
     add_check_item("Profiles"          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
@@ -252,6 +253,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     auto pack_opt_btn = new Button(this, _L("⯆"));
     pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
+    pack_opt_btn->SetToolTip(_L("Select what to include package."));
     pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
         auto rc = pack_opt_btn->GetRect();
         PopupMenu(m_pack_opt_menu, wxPoint(rc.x, rc.y + rc.height + FromDIP(5)));
@@ -934,17 +936,17 @@ wxString TroubleshootDialog::GetMONinfo()
 void TroubleshootDialog::PackAll()
 {
     auto data_dir   = boost::filesystem::path(Slic3r::data_dir());
-    auto include_zip = std::vector<wxString>{
-        wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
-        wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()),
-        wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
-        wxString((data_dir / "user").string()),
-        wxString((data_dir / "log").string())
-    };
+    std::vector<wxString> include_zip;
 
+    if(m_pack_sys_info) include_zip.emplace_back(wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)));
+    if(m_pack_overview) include_zip.emplace_back(wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()));
+    if(m_pack_config)   include_zip.emplace_back(wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()));
+    if(m_pack_logs)     include_zip.emplace_back(wxString((data_dir / "log").string()));
+    if(m_pack_profiles) include_zip.emplace_back(wxString((data_dir / "user").string()));
+    
     auto p = wxGetApp().mainframe->plater();
     auto project_name = p->get_project_filename(".3mf");
-    if(!project_name.IsEmpty()){
+    if(!project_name.IsEmpty() && m_pack_project){
         if (wxGetApp().plater()->is_project_dirty()) {
             auto res = MessageDialog(this, 
                 _L("The current project has unsaved changes, save it before continue?") +
@@ -961,6 +963,13 @@ void TroubleshootDialog::PackAll()
             }
         }
         include_zip.emplace_back(project_name);
+    }
+
+    if(include_zip.empty()){
+        MessageDialog(this, _L("No items to add package. Please select "),
+            wxString(SLIC3R_APP_FULL_NAME), wxOK | wxICON_WARNING | wxCENTRE
+        ).ShowModal();
+        return;
     }
 
     ExportAsZip(include_zip, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());
@@ -1012,7 +1021,7 @@ void TroubleshootDialog::RebuildSystemProfiles()
             }
             if (!is_deletable) {
                 MessageDialog(this, _L("System folder cannot be deleted because some files are in use by another application. Please close any applications using these files and try again."),
-                    wxString(SLIC3R_APP_FULL_NAME), wxOK | wxICON_ERROR | wxCENTRE
+                    wxString(SLIC3R_APP_FULL_NAME), wxOK | wxICON_WARNING | wxCENTRE
                 ).ShowModal();
                 return;
             }
@@ -1023,7 +1032,7 @@ void TroubleshootDialog::RebuildSystemProfiles()
             catch (const std::exception& e) {
                 BOOST_LOG_TRIVIAL(warning) << "Failed to delete system folder..." << e.what();
                 MessageDialog(this, _L("Failed to delete system folder..."),
-                    wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Error"), wxOK | wxICON_ERROR | wxCENTRE
+                    wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Error"), wxOK | wxICON_WARNING | wxCENTRE
                 ).ShowModal();
             }
         }

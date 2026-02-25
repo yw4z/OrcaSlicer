@@ -45,6 +45,7 @@ private:
     bool             m_pack_logs     = true;
     bool             m_pack_profiles = true;
     bool             m_pack_overview = true;
+    bool             m_pack_config   = true;
 
 protected:
     wxFlexGridSizer* create_item_loaded_profiles();
