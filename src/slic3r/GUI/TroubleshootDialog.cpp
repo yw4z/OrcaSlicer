@@ -58,7 +58,7 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
 
     auto copy_btn = new Button(this, _L("Copy"));
     copy_btn->SetToolTip( _L("Copies details in json format"));
-    copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Compact);
     copy_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         wxClipboardLocker lock;
         if (!lock)
@@ -68,7 +68,7 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
 
     auto g_sizer = new wxFlexGridSizer(1, 7, FromDIP(3), FromDIP(15));
 
-    g_sizer->Add(copy_btn);
+    g_sizer->Add(copy_btn, 0, wxEXPAND);
     g_sizer->AddSpacer(0);
     g_sizer->Add(new Label(this, Label::Body_12, "Act"), 0, wxALIGN_CENTER);
     g_sizer->AddSpacer(0);
@@ -244,25 +244,31 @@ TroubleshootDialog::TroubleshootDialog()
         e.Skip();
     }));
 
-    auto p = wxGetApp().mainframe->plater();
-    auto project_name = p->get_project_filename(".3mf");
+    bool has_project = false;
+    auto plater = wxGetApp().plater();
+    if (plater) {
+        auto project_name = plater->get_project_filename(".3mf");
+        has_project = !project_name.IsEmpty();
+    }
 
     m_pack_opt_menu = new wxMenu();
-    auto add_check_item = [this](wxString label, bool check, std::function<void(wxCommandEvent&)> function, bool enable = true) {
-        wxMenuItem* item = m_pack_opt_menu->AppendCheckItem(wxID_ANY, label);
-        item->Check(check);
-        item->Enable(enable);
-        m_pack_opt_menu->Bind(wxEVT_MENU, function, item->GetId());
-    };
+    if (m_pack_opt_menu){
+        auto add_check_item = [this](wxString label, bool check, std::function<void(wxCommandEvent&)> function, bool enable = true) {
+            wxMenuItem* item = m_pack_opt_menu->AppendCheckItem(wxID_ANY, label);
+            item->Check(check);
+            item->Enable(enable);
+            Bind(wxEVT_MENU, function, item->GetId());
+        };
 
-    add_check_item(_L("Project file")      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, !project_name.IsEmpty());
-    add_check_item(_L("Configuration")     , m_pack_config  , [this](auto&){m_pack_config   = !m_pack_config  ;});
-    add_check_item(_L("System information"), m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
-    add_check_item(_L("Logs")              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
-    add_check_item(_L("Profiles")          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
-    add_check_item(_L("Profile overview")  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
+        add_check_item(_L("Project file")      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, has_project);
+        add_check_item(_L("Configuration")     , m_pack_config  , [this](auto&){m_pack_config   = !m_pack_config  ;});
+        add_check_item(_L("System information"), m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
+        add_check_item(_L("Logs")              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
+        add_check_item(_L("Profiles")          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
+        add_check_item(_L("Profile overview")  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
+    }
 
-    auto pack_opt_btn = new Button(this, _L("⯆")); // will replace this one with icon when ButtonType::Icon merged
+    auto pack_opt_btn = new Button(this, wxString::FromUTF8("▼")); // will replace this one with icon when ButtonType::Icon merged
     pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_opt_btn->SetToolTip(_L("Select what to include package."));
     pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
@@ -698,6 +704,8 @@ wxString TroubleshootDialog::GetLinuxDistroName()
     candidates.Add("/usr/lib/os-release");
 
     for (const wxString& path : candidates) {
+        if (!wxFileExists(path))
+            continue;
         wxTextFile file;
         if (!file.Open(path))
             continue;
@@ -857,6 +865,8 @@ wxString TroubleshootDialog::GetMONinfo()
 {
     wxString m_str;
     int d_count = wxDisplay::GetCount();
+    if (d_count <= 0)
+        return "Unknown";
     double scale = 1.0;
 
 #if defined(__LINUX__)
@@ -864,10 +874,11 @@ wxString TroubleshootDialog::GetMONinfo()
         wxDisplay disp(i);
         if (!disp.IsOk()) continue;
 
-        scale     = disp.GetScaleFactor(); // wxWidgets scaling factor (usually 1 on X11, sometimes logical scale on Wayland)
+        scale     = disp.GetScaleFactor();
         wxRect rc = disp.GetGeometry();
 
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", rc.width, rc.width, scale * 100.0);
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", rc.width, rc.height, scale * 100.0);
+
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 #elif defined(__APPLE__)
@@ -885,26 +896,17 @@ wxString TroubleshootDialog::GetMONinfo()
         scale     = disp.GetScaleFactor();
         wxRect rc = disp.GetGeometry();
 
-        int physW = static_cast<int>(std::round(rc.width  * scale));
-        int physH = static_cast<int>(std::round(rc.height * scale));
-        const char* type = "L"; // Locical
-
-        // try to get native resolution
         CGDirectDisplayID cgDispID = (i < static_cast<int>(cgDisplays.size())) ? cgDisplays[i] : CGMainDisplayID();
-        CGDisplayModeRef mode = CGDisplayCopyDisplayMode(cgDispID);
-        if (mode) {
-            size_t pw = CGDisplayModeGetPixelWidth(mode);
-            size_t ph = CGDisplayModeGetPixelHeight(mode);
-            // Only trust it if it looks reasonable (avoid bogus 0 or huge values)
-            if (pw >= 800 && ph >= 600 && pw <= 16384 && ph <= 16384) {
-                physW = static_cast<int>(pw);
-                physH = static_cast<int>(ph);
-                type = "N"; // Native
-            }
-            CFRelease(mode);
+
+        size_t pw = CGDisplayPixelsWide(cgDispID);
+        size_t ph = CGDisplayPixelsHigh(cgDispID);
+
+        if (pw < 800 || ph < 600) { // Fallback to logical * scale if CG returns something bogus
+            pw = static_cast<size_t>(std::round(rc.width  * scale));
+            ph = static_cast<size_t>(std::round(rc.height * scale));
         }
 
-        wxString d_str = wxString::Format("%dx%d-%s-%.0f%%", physW, physH, type, scale * 100.0);
+        wxString d_str = wxString::Format("%dx%d-%.0f%%", (int)pw, (int)ph, scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 #elif defined(__WINDOWS__)
@@ -930,7 +932,7 @@ wxString TroubleshootDialog::GetMONinfo()
     double text_scale = dpi / 96.0;
     m_str += wxString::Format("  TextScaling-%.0f%%", text_scale * 100.0);
 #endif
-
+    //BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << m_str;
     return m_str;
 }
 
@@ -945,8 +947,7 @@ void TroubleshootDialog::PackAll()
     if(m_pack_logs)     include_zip.emplace_back(wxString((data_dir / "log").string()));
     if(m_pack_profiles) include_zip.emplace_back(wxString((data_dir / "user").string()));
     
-    auto p = wxGetApp().mainframe->plater();
-    auto project_name = p->get_project_filename(".3mf");
+    auto project_name = wxGetApp().plater()->get_project_filename(".3mf");
     if(!project_name.IsEmpty() && m_pack_project){
         if (wxGetApp().plater()->is_project_dirty()) {
             auto res = MessageDialog(this, 
