@@ -154,7 +154,7 @@ TroubleshootDialog::TroubleshootDialog()
     logo_line->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#009687")));
     auto version      = new Label(this, wxString(SoftFever_VERSION), wxALIGN_CENTRE_HORIZONTAL);
     wxFont version_font = GetFont();
-    version_font.SetPointSize(18);
+    version_font = version_font.Scaled(1.65f); // SetPointSize(18) not works on macOS because it uses a 72 PPI reference
     version->SetFont(version_font);
     version->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
     auto build        = new Label(this, wxString(GIT_COMMIT_HASH), wxALIGN_CENTRE_HORIZONTAL);
@@ -270,7 +270,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     auto pack_opt_btn = new Button(this, wxString::FromUTF8("▼")); // will replace this one with icon when ButtonType::Icon merged
     pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
-    pack_opt_btn->SetToolTip(_L("Select what to include package."));
+    pack_opt_btn->SetToolTip(_L("Choose what to include package."));
     pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
         auto rc = pack_opt_btn->GetRect();
         PopupMenu(m_pack_opt_menu, wxPoint(rc.x, rc.y + rc.height + FromDIP(5)));
@@ -310,7 +310,7 @@ TroubleshootDialog::TroubleshootDialog()
 
     // PROFILES
     wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports profiles to selected folder as compressed file"));
+    auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports user profiles to selected folder as compressed file"));
     prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         ExportAsZip({
             wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
@@ -320,13 +320,13 @@ TroubleshootDialog::TroubleshootDialog()
     });
     prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
-    auto prf_browse_btn = create_btn(_L("Browse") + "...", _L("Opens profiles folder"));
+    auto prf_browse_btn = create_btn(_L("Browse") + "...", _L("Opens user profiles folder"));
     prf_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
         BrowseFolder((data_dir / "user").string());
     }); 
     prf_btns->Add(prf_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
 
-    auto prf_rebuild_btn = create_btn(_L("Rebuild"), _L("Cleans and rebuilds profiles cache on next launch"));
+    auto prf_rebuild_btn = create_btn(_L("Rebuild"), _L("Cleans and rebuilds system profiles cache on next launch"));
     prf_rebuild_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         RebuildSystemProfiles();
     });
@@ -345,7 +345,7 @@ TroubleshootDialog::TroubleshootDialog()
     }); 
     log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
 
-    auto log_browse_btn = create_btn(_L("Browse") + "...", _L("Opens profiles folder"));
+    auto log_browse_btn = create_btn(_L("Browse") + "...", _L("Opens logs folder"));
     log_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) { 
         BrowseFolder((data_dir / "log").string());
     }); 
@@ -784,10 +784,13 @@ wxString TroubleshootDialog::GetPackageType()
     if (path.Contains("/Cellar/") || wxGetEnv("HOMEBREW_PREFIX", nullptr))
         return "Homebrew";
 
-    if (path.StartsWith("/Applications"))
-        return "Installed";
+    if (path.StartsWith("/Volumes/OrcaSlicer")) // running from .dmg
+        return "Temporary";
 
-    return "Portable"; // running from Downloads, Desktop, mounted DMG, etc.
+    if (path.StartsWith("/Applications"))
+        return "Application";
+
+    return "Custom"; // running from Downloads, Desktop or custom folder
 #endif
     return result;
 }
@@ -892,21 +895,49 @@ wxString TroubleshootDialog::GetMONinfo()
     for (int i = 0; i < d_count; ++i) {
         wxDisplay disp(i);
         if (!disp.IsOk()) continue;
-
         scale     = disp.GetScaleFactor();
         wxRect rc = disp.GetGeometry();
+        int physW = static_cast<int>(std::round(rc.width  * scale));
+        int physH = static_cast<int>(std::round(rc.height * scale));
+        const char* type = "L"; // Logical fallback
 
         CGDirectDisplayID cgDispID = (i < static_cast<int>(cgDisplays.size())) ? cgDisplays[i] : CGMainDisplayID();
 
-        size_t pw = CGDisplayPixelsWide(cgDispID);
-        size_t ph = CGDisplayPixelsHigh(cgDispID);
+        // Iterate ALL modes to find the maximum native pixel resolution
+        CFArrayRef allModes = CGDisplayCopyAllDisplayModes(cgDispID, nullptr);
+        if (allModes) {
+            CFIndex count = CFArrayGetCount(allModes);
+            size_t maxW = 0, maxH = 0;
+            for (CFIndex m = 0; m < count; ++m) {
+                CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(allModes, m);
+                size_t pw = CGDisplayModeGetPixelWidth(mode);
+                size_t ph = CGDisplayModeGetPixelHeight(mode);
+                if (pw * ph > maxW * maxH) {
+                    maxW = pw;
+                    maxH = ph;
+                }
+            }
+            CFRelease(allModes);
 
-        if (pw < 800 || ph < 600) { // Fallback to logical * scale if CG returns something bogus
-            pw = static_cast<size_t>(std::round(rc.width  * scale));
-            ph = static_cast<size_t>(std::round(rc.height * scale));
+            // Sanity check: guard against inflated virtual modes on M-series
+            size_t logicalMax = static_cast<size_t>(rc.width * scale * 2);
+            if (maxW > logicalMax) {
+                CGDisplayModeRef curMode = CGDisplayCopyDisplayMode(cgDispID);
+                if (curMode) {
+                    maxW = CGDisplayModeGetPixelWidth(curMode);
+                    maxH = CGDisplayModeGetPixelHeight(curMode);
+                    CGDisplayModeRelease(curMode);
+                }
+            }
+
+            if (maxW >= 800 && maxH >= 600 && maxW <= 16384 && maxH <= 16384) {
+                physW = static_cast<int>(maxW);
+                physH = static_cast<int>(maxH);
+                type = "N"; // Native
+            }
         }
 
-        wxString d_str = wxString::Format("%dx%d-%.0f%%", (int)pw, (int)ph, scale * 100.0);
+        wxString d_str = wxString::Format("%dx%d-%s-%.0f%%", physW, physH, type, scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 #elif defined(__WINDOWS__)
