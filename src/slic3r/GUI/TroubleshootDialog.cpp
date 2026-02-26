@@ -789,7 +789,7 @@ wxString TroubleshootDialog::GetPackageType()
         return "Temporary";
 
     if (path.StartsWith("/Applications"))
-        return "Application";
+        return "Applications";
 
     return "Custom"; // running from Downloads, Desktop or custom folder
 #endif
