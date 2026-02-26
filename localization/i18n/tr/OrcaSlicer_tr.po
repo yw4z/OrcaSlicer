@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Orca Slicer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-09 03:48+0100\n"
+"POT-Creation-Date: 2026-02-12 08:42+0800\n"
 "PO-Revision-Date: 2025-09-30 09:12+0300\n"
 "Last-Translator: GlauTech\n"
 "Language-Team: \n"
@@ -1792,11 +1792,15 @@ msgid ""
 msgstr ""
 
 msgid ""
-"Bambu Lab has implemented a signature verification check in their network "
-"plugin that restricts third-party software from communicating with your "
-"printer.\n"
+"To use OrcaSlicer with Bambu Lab printers, you need to enable LAN mode and "
+"Developer mode on your printer.\n"
 "\n"
-"As a result, some printing functions are unavailable in OrcaSlicer."
+"Please go to your printer's settings and:\n"
+"1. Turn on LAN mode\n"
+"2. Enable Developer mode\n"
+"\n"
+"Developer mode allows the printer to work exclusively through local network "
+"access, enabling full functionality with OrcaSlicer."
 msgstr ""
 
 msgid "Network Plugin Restriction"
@@ -2306,6 +2310,12 @@ msgstr "Klon oluştur"
 msgid "Simplify Model"
 msgstr "Modeli basitleştir"
 
+msgid "Subdivision mesh"
+msgstr ""
+
+msgid "(Lost color)"
+msgstr ""
+
 msgid "Center"
 msgstr "Merkez"
 
@@ -2541,6 +2551,19 @@ msgstr[1] "Aşağıdaki model nesneleri onarılamadı"
 
 msgid "Repairing was canceled"
 msgstr "Onarım iptal edildi"
+
+#, c-format, boost-format
+msgid ""
+"\"%s\" will exceed 1 million faces after this subdivision, which may "
+"increase slicing time. Do you want to continue?"
+msgstr ""
+
+msgid "BambuStudio warning"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" part's mesh contains errors. Please repair it first."
+msgstr ""
 
 msgid "Additional process preset"
 msgstr "Ek işlem ön ayarı"
@@ -2816,7 +2839,7 @@ msgstr "Üst"
 
 msgid ""
 "The fan controls the temperature during printing to improve print "
-"quality.The system automatically adjusts the fan's switch and speed "
+"quality. The system automatically adjusts the fan's switch and speed "
 "according to different printing materials."
 msgstr ""
 
@@ -3671,7 +3694,7 @@ msgid "Please unload all filament before switching."
 msgstr ""
 
 msgid ""
-"AMS type switching needs firmware update, taking about 30s. Switch now ?"
+"AMS type switching needs firmware update, taking about 30s. Switch now?"
 msgstr ""
 
 msgid "Arrange AMS Order"
@@ -4852,7 +4875,7 @@ msgstr ""
 msgid "Fan Speed (%)"
 msgstr "Fan hızı (%)"
 
-msgid "Temperature (°C)"
+msgid "Temperature (℃)"
 msgstr "Sıcaklık (°C)"
 
 msgid "Volumetric flow rate (mm³/s)"
@@ -5221,6 +5244,11 @@ msgid ""
 msgstr ""
 
 msgid "The prime tower extends beyond the plate boundary."
+msgstr ""
+
+msgid ""
+"Prime tower position exceeded build plate boundaries and was repositioned to "
+"the nearest valid edge."
 msgstr ""
 
 msgid ""
@@ -6375,7 +6403,7 @@ msgid "Layer: %d/%d"
 msgstr "Katman: %d/%d"
 
 msgid ""
-"Please heat the nozzle to above 170°C before loading or unloading filament."
+"Please heat the nozzle to above 170℃ before loading or unloading filament."
 msgstr ""
 "Filamenti yüklemeden veya boşaltmadan önce lütfen nozulu 170 derecenin "
 "üzerine ısıtın."
@@ -7134,6 +7162,9 @@ msgid ""
 "update to system presets."
 msgstr ""
 
+msgid "Only filament color information has been synchronized from printer."
+msgstr ""
+
 msgid ""
 "Filament type and color information have been synchronized, but slot "
 "information is not included."
@@ -7505,7 +7536,7 @@ msgid ""
 "connected printer.\n"
 "After syncing, software can optimize printing time and filament usage when "
 "slicing.\n"
-"Would you like to sync now ?"
+"Would you like to sync now?"
 msgstr ""
 
 msgid "Sync now"
@@ -8238,6 +8269,22 @@ msgid ""
 "keychain. (Requires restart)"
 msgstr ""
 
+msgid "Filament Sync Options"
+msgstr ""
+
+msgid "Filament sync mode"
+msgstr ""
+
+msgid ""
+"Choose whether sync updates both filament preset and color, or only color."
+msgstr ""
+
+msgid "Filament & Color"
+msgstr ""
+
+msgid "Color only"
+msgstr ""
+
 msgid "Network plugin"
 msgstr "Ağ eklentisi"
 
@@ -8863,7 +8910,7 @@ msgstr ""
 
 #, c-format, boost-format
 msgid ""
-"[ %s ] requires printing in a high-temperature environment.Please close the "
+"[ %s ] requires printing in a high-temperature environment. Please close the "
 "door."
 msgstr ""
 
@@ -9289,7 +9336,7 @@ msgid ""
 "ensure proper printing and achieve their intended effects (e.g., Gyroid, "
 "Cubic). Rotating the current sparse infill pattern may lead to insufficient "
 "support. Please proceed with caution and thoroughly check for any potential "
-"printing issues.Are you sure you want to enable this option?"
+"printing issues. Are you sure you want to enable this option?"
 msgstr ""
 "Dolgu desenleri genellikle, doğru baskı alınmasını ve istenen etkilerin (ör. "
 "Gyroid, Kübik) elde edilmesini sağlamak için döndürme işlemini otomatik "
@@ -10329,6 +10376,9 @@ msgstr ""
 
 msgctxt "Sync_Nozzle_AMS"
 msgid "Cancel"
+msgstr ""
+
+msgid "Successfully synchronized filament color from printer."
 msgstr ""
 
 msgid "Successfully synchronized color and type of filament from printer."
@@ -14235,8 +14285,8 @@ msgstr ""
 "Duvara baskı yaparken rastgele titreme, böylece yüzeyin pürüzlü bir görünüme "
 "sahip olması. Bu ayar pütürlü konumu kontrol eder."
 
-msgid "None (allow paint)"
-msgstr ""
+msgid "Painted only"
+msgstr "Sadece boyalı"
 
 msgid "Contour"
 msgstr "Kontur"
@@ -19156,8 +19206,8 @@ msgstr "Sıcaklık adımı: "
 
 msgid ""
 "Please input valid values:\n"
-"Start temp: <= 350\n"
-"End temp: >= 170\n"
+"Start temp: <= 500\n"
+"End temp: >= 155\n"
 "Start temp >= End temp + 5"
 msgstr ""
 
@@ -19871,7 +19921,7 @@ msgstr ""
 "Lütfen kapatıp tekrar deneyin."
 
 msgid ""
-"Printer and all the filament&&process presets that belongs to the printer.\n"
+"Printer and all the filament and process presets that belongs to the printer.\n"
 "Can be shared with others."
 msgstr ""
 "Yazıcı ve yazıcıya ait tüm filament ve işlem ön ayarları.\n"
@@ -21590,8 +21640,8 @@ msgstr ""
 #~ "olarak güncellenecektir."
 
 #~ msgid ""
-#~ "The recommended minimum temperature is less than 190°C or the recommended "
-#~ "maximum temperature is greater than 300°C.\n"
+#~ "The recommended minimum temperature is less than 190℃ or the recommended "
+#~ "maximum temperature is greater than 300℃.\n"
 #~ msgstr ""
 #~ "Önerilen minimum sıcaklık 190 dereceden azdır veya önerilen maksimum "
 #~ "sıcaklık 300 dereceden yüksektir.\n"
@@ -23879,7 +23929,7 @@ msgstr ""
 #~ "Hayır - yoğunluğu otomatik olarak %100 olmayan varsayılan değere "
 #~ "sıfırlayın"
 
-#~ msgid "Please heat the nozzle to above 170°C before loading filament."
+#~ msgid "Please heat the nozzle to above 170℃ before loading filament."
 #~ msgstr ""
 #~ "Filamenti yüklemeden önce lütfen Nozulu 170 derecenin üzerine ısıtın."
 

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Orca Slicer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-09 03:48+0100\n"
+"POT-Creation-Date: 2026-02-12 08:42+0800\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1766,11 +1766,15 @@ msgid ""
 msgstr ""
 
 msgid ""
-"Bambu Lab has implemented a signature verification check in their network "
-"plugin that restricts third-party software from communicating with your "
-"printer.\n"
+"To use OrcaSlicer with Bambu Lab printers, you need to enable LAN mode and "
+"Developer mode on your printer.\n"
 "\n"
-"As a result, some printing functions are unavailable in OrcaSlicer."
+"Please go to your printer's settings and:\n"
+"1. Turn on LAN mode\n"
+"2. Enable Developer mode\n"
+"\n"
+"Developer mode allows the printer to work exclusively through local network "
+"access, enabling full functionality with OrcaSlicer."
 msgstr ""
 
 msgid "Network Plugin Restriction"
@@ -2276,6 +2280,12 @@ msgstr "Dupliceren"
 msgid "Simplify Model"
 msgstr "Model vereenvoudigen"
 
+msgid "Subdivision mesh"
+msgstr ""
+
+msgid "(Lost color)"
+msgstr ""
+
 msgid "Center"
 msgstr "Centreren"
 
@@ -2521,6 +2531,19 @@ msgstr[1] "Repareren van de volgende modellen is mislukt@"
 
 msgid "Repairing was canceled"
 msgstr "Repareren is geannuleerd"
+
+#, c-format, boost-format
+msgid ""
+"\"%s\" will exceed 1 million faces after this subdivision, which may "
+"increase slicing time. Do you want to continue?"
+msgstr ""
+
+msgid "BambuStudio warning"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" part's mesh contains errors. Please repair it first."
+msgstr ""
 
 msgid "Additional process preset"
 msgstr "Extra procesvoorinstelling"
@@ -2796,7 +2819,7 @@ msgstr "Bovenste"
 
 msgid ""
 "The fan controls the temperature during printing to improve print "
-"quality.The system automatically adjusts the fan's switch and speed "
+"quality. The system automatically adjusts the fan's switch and speed "
 "according to different printing materials."
 msgstr ""
 
@@ -3631,7 +3654,7 @@ msgid "Please unload all filament before switching."
 msgstr ""
 
 msgid ""
-"AMS type switching needs firmware update, taking about 30s. Switch now ?"
+"AMS type switching needs firmware update, taking about 30s. Switch now?"
 msgstr ""
 
 msgid "Arrange AMS Order"
@@ -4798,8 +4821,8 @@ msgstr ""
 msgid "Fan Speed (%)"
 msgstr "Ventilator snelheid (%)"
 
-msgid "Temperature (°C)"
-msgstr "Temperatuur (°C)"
+msgid "Temperature (℃)"
+msgstr "Temperatuur (℃)"
 
 msgid "Volumetric flow rate (mm³/s)"
 msgstr "Volumestroom (mm³/s)"
@@ -5161,6 +5184,11 @@ msgid ""
 msgstr ""
 
 msgid "The prime tower extends beyond the plate boundary."
+msgstr ""
+
+msgid ""
+"Prime tower position exceeded build plate boundaries and was repositioned to "
+"the nearest valid edge."
 msgstr ""
 
 msgid ""
@@ -6292,9 +6320,9 @@ msgid "Layer: %d/%d"
 msgstr ""
 
 msgid ""
-"Please heat the nozzle to above 170°C before loading or unloading filament."
+"Please heat the nozzle to above 170℃ before loading or unloading filament."
 msgstr ""
-"Verwarm het mondstuk tot boven de 170°C voordat u filament laadt of lost."
+"Verwarm het mondstuk tot boven de 170℃ voordat u filament laadt of lost."
 
 msgid "Chamber temperature cannot be changed in cooling mode while printing."
 msgstr ""
@@ -7044,6 +7072,9 @@ msgid ""
 "update to system presets."
 msgstr ""
 
+msgid "Only filament color information has been synchronized from printer."
+msgstr ""
+
 msgid ""
 "Filament type and color information have been synchronized, but slot "
 "information is not included."
@@ -7410,7 +7441,7 @@ msgid ""
 "connected printer.\n"
 "After syncing, software can optimize printing time and filament usage when "
 "slicing.\n"
-"Would you like to sync now ?"
+"Would you like to sync now?"
 msgstr ""
 
 msgid "Sync now"
@@ -8138,6 +8169,22 @@ msgid ""
 "keychain. (Requires restart)"
 msgstr ""
 
+msgid "Filament Sync Options"
+msgstr ""
+
+msgid "Filament sync mode"
+msgstr ""
+
+msgid ""
+"Choose whether sync updates both filament preset and color, or only color."
+msgstr ""
+
+msgid "Filament & Color"
+msgstr ""
+
+msgid "Color only"
+msgstr ""
+
 msgid "Network plugin"
 msgstr ""
 
@@ -8764,7 +8811,7 @@ msgstr ""
 
 #, c-format, boost-format
 msgid ""
-"[ %s ] requires printing in a high-temperature environment.Please close the "
+"[ %s ] requires printing in a high-temperature environment. Please close the "
 "door."
 msgstr ""
 
@@ -9172,7 +9219,7 @@ msgid ""
 "ensure proper printing and achieve their intended effects (e.g., Gyroid, "
 "Cubic). Rotating the current sparse infill pattern may lead to insufficient "
 "support. Please proceed with caution and thoroughly check for any potential "
-"printing issues.Are you sure you want to enable this option?"
+"printing issues. Are you sure you want to enable this option?"
 msgstr ""
 
 msgid ""
@@ -10197,6 +10244,9 @@ msgstr ""
 
 msgctxt "Sync_Nozzle_AMS"
 msgid "Cancel"
+msgstr ""
+
+msgid "Successfully synchronized filament color from printer."
 msgstr ""
 
 msgid "Successfully synchronized color and type of filament from printer."
@@ -13594,14 +13644,14 @@ msgstr ""
 "printen van muren, zodat het oppervlak er ruw uitziet. Deze instelling "
 "regelt de \"fuzzy\" positie."
 
-msgid "None (allow paint)"
-msgstr ""
+msgid "Painted only"
+msgstr "Alleen geverfd"
 
 msgid "Contour"
 msgstr ""
 
 msgid "Contour and hole"
-msgstr ""
+msgstr "Contour en gat"
 
 msgid "All walls"
 msgstr "Alle wanden"
@@ -17923,8 +17973,8 @@ msgstr "Temp stap:"
 
 msgid ""
 "Please input valid values:\n"
-"Start temp: <= 350\n"
-"End temp: >= 170\n"
+"Start temp: <= 500\n"
+"End temp: >= 155\n"
 "Start temp >= End temp + 5"
 msgstr ""
 
@@ -18621,7 +18671,7 @@ msgid ""
 msgstr ""
 
 msgid ""
-"Printer and all the filament&&process presets that belongs to the printer.\n"
+"Printer and all the filament and process presets that belongs to the printer.\n"
 "Can be shared with others."
 msgstr ""
 
@@ -20140,11 +20190,11 @@ msgstr ""
 #~ "wordt de resterende capaciteit automatisch bijgewerkt."
 
 #~ msgid ""
-#~ "The recommended minimum temperature is less than 190°C or the recommended "
-#~ "maximum temperature is greater than 300°C.\n"
+#~ "The recommended minimum temperature is less than 190℃ or the recommended "
+#~ "maximum temperature is greater than 300℃.\n"
 #~ msgstr ""
-#~ "De aanbevolen minimumtemperatuur is lager dan 190°C of de aanbevolen "
-#~ "maximumtemperatuur is hoger dan 300°C.\n"
+#~ "De aanbevolen minimumtemperatuur is lager dan 190℃ of de aanbevolen "
+#~ "maximumtemperatuur is hoger dan 300℃.\n"
 
 #~ msgid "Paused due to filament runout"
 #~ msgstr "De printtaak is gepauzeerd omdat het filament op is"
