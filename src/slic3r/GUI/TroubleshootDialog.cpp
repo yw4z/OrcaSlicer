@@ -268,7 +268,8 @@ TroubleshootDialog::TroubleshootDialog()
         add_check_item(_L("Profile overview")  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
     }
 
-    auto pack_opt_btn = new Button(this, wxString::FromUTF8("▼")); // will replace this one with icon when ButtonType::Icon merged
+    auto pack_opt_btn = new Button(this, "", "sidebutton_dropdown", 0, 14);
+    pack_opt_btn->SetCenter(true);
     pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
     pack_opt_btn->SetToolTip(_L("Choose what to include package."));
     pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
@@ -899,45 +900,30 @@ wxString TroubleshootDialog::GetMONinfo()
         wxRect rc = disp.GetGeometry();
         int physW = static_cast<int>(std::round(rc.width  * scale));
         int physH = static_cast<int>(std::round(rc.height * scale));
-        const char* type = "L"; // Logical fallback
+        const char* type = "L-"; // Logical fallback. only visible when cant get native res
 
         CGDirectDisplayID cgDispID = (i < static_cast<int>(cgDisplays.size())) ? cgDisplays[i] : CGMainDisplayID();
 
-        // Iterate ALL modes to find the maximum native pixel resolution
         CFArrayRef allModes = CGDisplayCopyAllDisplayModes(cgDispID, nullptr);
         if (allModes) {
             CFIndex count = CFArrayGetCount(allModes);
-            size_t maxW = 0, maxH = 0;
             for (CFIndex m = 0; m < count; ++m) {
                 CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(allModes, m);
-                size_t pw = CGDisplayModeGetPixelWidth(mode);
-                size_t ph = CGDisplayModeGetPixelHeight(mode);
-                if (pw * ph > maxW * maxH) {
-                    maxW = pw;
-                    maxH = ph;
+                if (CGDisplayModeGetIOFlags(mode) & kDisplayModeNativeFlag) {
+                    size_t pw = CGDisplayModeGetPixelWidth(mode);
+                    size_t ph = CGDisplayModeGetPixelHeight(mode);
+                    if (pw >= 800 && ph >= 600 && pw <= 16384 && ph <= 16384) {
+                        physW = static_cast<int>(pw);
+                        physH = static_cast<int>(ph);
+                        type = ""; // Native
+                    }
+                    break;
                 }
             }
             CFRelease(allModes);
-
-            // Sanity check: guard against inflated virtual modes on M-series
-            size_t logicalMax = static_cast<size_t>(rc.width * scale * 2);
-            if (maxW > logicalMax) {
-                CGDisplayModeRef curMode = CGDisplayCopyDisplayMode(cgDispID);
-                if (curMode) {
-                    maxW = CGDisplayModeGetPixelWidth(curMode);
-                    maxH = CGDisplayModeGetPixelHeight(curMode);
-                    CGDisplayModeRelease(curMode);
-                }
-            }
-
-            if (maxW >= 800 && maxH >= 600 && maxW <= 16384 && maxH <= 16384) {
-                physW = static_cast<int>(maxW);
-                physH = static_cast<int>(maxH);
-                type = "N"; // Native
-            }
         }
 
-        wxString d_str = wxString::Format("%dx%d-%s-%.0f%%", physW, physH, type, scale * 100.0);
+        wxString d_str = wxString::Format("%dx%d-%s%.0f%%", physW, physH, type, scale * 100.0);
         m_str += ((i > 0) ? "  " : "") + d_str;
     }
 #elif defined(__WINDOWS__)
