@@ -277,20 +277,6 @@ img.ModelThumbnail
 	margin-bottom: 0px;
 }
 
-/* SNAPPY SCROLLING */
-#Content {
-	scroll-snap-type: y mandatory;
-}
-
-.PrinterBlock,
-.OneVendorBlock {
-	scroll-snap-align: start;
-	scroll-margin-bottom: 9999px; /* disables bottom snapping */
-}
-
-.OneVendorBlock {scroll-margin-top: 0px}
-.PrinterBlock   {scroll-margin-top: 38px}/* should match with titlebar height + margin */
-
 /*-----Notice-----*/
 #NoticeMask
 {

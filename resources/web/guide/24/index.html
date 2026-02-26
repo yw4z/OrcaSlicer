@@ -158,8 +158,10 @@
 		FilterModelList(obj.value);
 	}
 
+	const $content  = $('#Content');
+
 	// ORCA unfocus search bar while scrolling and its content empty
-	document.getElementById("Content").addEventListener("scroll", () => {
+	$content[0].addEventListener("scroll", () => {
 		if (document.activeElement === SearchBox && SearchBox.value == "")
 			SearchBox.blur();
 	});
@@ -171,9 +173,160 @@
 	function LayoutMode(value) {
 		LayoutBtns.forEach(el=>el.classList.remove('selected'));
 		LayoutBtns[LayoutTypes.indexOf(value)].classList.add('selected');
-		document.getElementById("Content").setAttribute("layout", value);
+		$content[0].setAttribute("layout", value);
 	}
 
 	LayoutMode("large-cover");
+
+	// SNAPPY SCROLLING WITHOUT LAGS
+	const SNAP_DELAY			= 600;
+	const SNAP_DURATION			= 200;
+
+	let scrollTimer				= null;
+	let lastScrollTop			= 0;
+	let scrollDir				= 'down';
+	let isSnapping				= false;
+	let snapRafId				= null;
+	let lastSnapTarget			= null;
+	let waitingForUserScroll	= false;
+
+	function snapTopOf(el, contentTop, bannerH, cardGap) {
+		if (el.classList.contains('BlockBanner')) {
+			return Math.round(el.closest('.OneVendorBlock').getBoundingClientRect().top - contentTop);
+		} else {
+			const cardTop = el.getBoundingClientRect().top - contentTop;
+			return Math.round(Math.max(0, cardTop - bannerH - cardGap));
+		}
+	}
+
+	function findSnap(cur, dir) {
+		if (lastSnapTarget !== null && Math.abs(cur - lastSnapTarget) < 8) return null;
+
+		const savedScroll = $content[0].scrollTop;
+		const EPS         = 8; // error correction
+
+		$content[0].scrollTop = 0; // Temporarily scroll to 0 so getBoundingClientRect returns absolute positions
+
+		const contentTop = $content[0].getBoundingClientRect().top;
+		const bannerH    = ($content.find('.BlockBanner')[0] || {}).offsetHeight || 0;
+
+		const firstCard = $content.find('.PrinterBlock')[0];
+		const firstArea = $content.find('.PrinterArea')[0];
+		let cardGap = 0;
+		if (firstCard && firstArea)
+			cardGap = firstCard.getBoundingClientRect().top - firstArea.getBoundingClientRect().top;
+
+		const candidates = $content.find('.BlockBanner, .PrinterBlock').get();
+		if (dir === 'up') candidates.reverse();
+
+		let result   = null;
+		let lastSeen = null;
+
+		for (const el of candidates) {
+			const snapTo = snapTopOf(el, contentTop, bannerH, cardGap);
+
+			if (snapTo === lastSeen) continue;
+			lastSeen = snapTo;
+
+			if (dir === 'down' && snapTo > cur + EPS) { result = snapTo; break; }
+			if (dir === 'up'   && snapTo < cur - EPS) { result = snapTo; break; }
+		}
+
+		$content[0].scrollTop = savedScroll; // Restore scroll position
+
+		return result;
+	}
+
+	function smoothScrollTo(target) {
+		if (snapRafId) {
+			cancelAnimationFrame(snapRafId);
+			snapRafId = null;
+		}
+
+		const el   = $content[0];
+		const from = el.scrollTop;
+		const dist = target - from;
+
+		if (Math.abs(dist) < 2) {
+			lastScrollTop        = target;
+			lastSnapTarget       = target;
+			waitingForUserScroll = true;
+			clearTimeout(scrollTimer); scrollTimer = null;
+			isSnapping = false;
+			return;
+		}
+
+		const t0   = performance.now();
+		const ease = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
+
+		function step(now) {
+			const p = Math.min((now - t0) / SNAP_DURATION, 1);
+			el.scrollTop = from + dist * ease(p);
+			if (p < 1) {
+				snapRafId = requestAnimationFrame(step);
+			} else {
+				el.scrollTop         = target;
+				snapRafId            = null;
+				lastScrollTop        = target;
+				lastSnapTarget       = target;
+				waitingForUserScroll = true;
+				clearTimeout(scrollTimer); scrollTimer = null;
+				isSnapping = false;
+			}
+		}
+		snapRafId = requestAnimationFrame(step);
+	}
+
+	function triggerSnap() {
+		if (isSnapping) return;
+
+		const cur    = $content[0].scrollTop;
+		const target = findSnap(cur, scrollDir);
+
+		if (target === null) return;
+
+		isSnapping = true;
+		smoothScrollTo(target);
+	}
+
+	// only from genuine user input events.
+	function armSnap() {
+		waitingForUserScroll = false;
+		lastSnapTarget       = null;
+	}
+
+	$content.on('scroll', function() {
+		if (isSnapping) return;
+
+		const cur = this.scrollTop;
+		if      (cur > lastScrollTop + 1) scrollDir = 'down';
+		else if (cur < lastScrollTop - 1) scrollDir = 'up';
+		lastScrollTop = cur;
+
+		if (waitingForUserScroll) return;
+
+		clearTimeout(scrollTimer);
+		scrollTimer = setTimeout(triggerSnap, SNAP_DELAY);
+	});
+
+	// Re-arm snap system on user scroll
+	$content[0].addEventListener('wheel', armSnap, { passive: true });
+
+	let touchY = 0;
+	$content[0].addEventListener('touchstart', e => {
+		touchY = e.touches[0].clientY;
+		armSnap();
+	}, { passive: true });
+
+	$content[0].addEventListener('touchmove', e => {
+		const dy = touchY - e.touches[0].clientY;
+		if (Math.abs(dy) > 3) scrollDir = dy > 0 ? 'down' : 'up';
+	}, { passive: true });
+
+	// Re-arm on keyboard scroll
+	document.addEventListener('keydown', e => {
+		if (document.activeElement != SearchBox && ['ArrowUp','ArrowDown','PageUp','PageDown',' '].includes(e.key))
+			armSnap();
+	});
 </script>
 </html>
