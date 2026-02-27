@@ -93,26 +93,29 @@
 	height:120px;	  /* ORCA fit image to fill frame */
 }
 
-.PrinterInfo {
-	--card-animation-delay: .8s; /* open info with delay on list / compact view to prevent them appear while mouse movements */
-	--card-info-height: fit-content;
+.PrinterInfo,
+.PrinterInfoMark {
 	position: absolute;
-	width: 20px;
-	height: 20px;
 	right: 4px;
 	top: 4px;
 	opacity: 0;
-	background: var(--main-color);
 	border-radius: 11px;
-	border: 1px solid transparent;
-	line-height: 18px;
+	line-height: 19px;
 	font-size: 14px;
-	overflow: hidden;
-	z-index: 9999;
 }
 
-.PrinterBlock:hover .PrinterInfo {
-	opacity: 1;
+.PrinterInfo {
+	--card-animation-delay: .8s; /* open info with delay on list / compact view to prevent them appear while mouse movements */
+	--card-info-height: fit-content;
+	left: 4px;
+	width: auto;
+	z-index: 9998;
+	height: var(--card-info-height);
+	border-color: var(--border-color);
+	background: var(--bg-color);
+	padding: 10px;
+	text-align: left;
+	color: var(--fg-color-text);
 }
 
 #Content[layout="2"] .PrinterInfo {
@@ -120,39 +123,35 @@
 	--card-info-height: 116px;
 }
 
-@keyframes cardInfo { 100% {
-	height: var(--card-info-height);
-	left: 4px;
-	width: auto;
-	border-color: var(--border-color);
-	color: var(--fg-color-text);
-	background: var(--bg-color);
-	padding: 10px;
-	text-align: left;
+.PrinterInfo .title {font-weight: 700}
+.PrinterInfo .value {font-weight: 400}
+
+.PrinterInfoMark:hover + .PrinterInfo {
+	animation: infoCard 0s forwards var(--card-animation-delay);
+}
+
+@keyframes infoCard {100% {
+	opacity: 1;
 	box-shadow: 0 5px 10px rgba(0,0,0,.2);
 }}
 
-.PrinterInfo:hover {	
-	background: var(--main-color-hover);
-	animation: cardInfo 0s forwards var(--card-animation-delay);
-}
-
-.PrinterInfo .dots {
+.PrinterInfoMark {
+	width: 20px;
+	height: 20px;
+	background: var(--main-color);
+	border: 1px solid var(--main-color);
+	z-index: 9999;
 	color: #FFF;
-	line-height: 19px;
 	text-align: center;
 }
 
-.PrinterInfo:hover .dots {
-	animation: markHide 0s forwards var(--card-animation-delay);
+.PrinterBlock:hover .PrinterInfoMark {
+	opacity: 1;
 }
 
-@keyframes markHide {100% {
-	display: none
-}}
-
-.PrinterInfo .title {font-weight: 700}
-.PrinterInfo .value {font-weight: 400}
+.PrinterBlock:hover .PrinterInfoMark:hover {
+	background: var(--main-color-hover);
+}
 
 .ModelCheckBox
 {

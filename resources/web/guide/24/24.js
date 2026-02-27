@@ -329,8 +329,8 @@ function CreatePrinterBlock(OneModel)
 	'<div class="PImg">'+
 	'<img class="ModelThumbnail" src="' + OneModel['cover'] + '" />'+
 	'</div>'+
+	'<div class="PrinterInfoMark">?</div>'+
 	'<div class="PrinterInfo">'+
-	'	<div class="dots">?</div>'+
 	//'	<div class="title trans">Print volume</div>'+
 	//'	<div class="value">' + OneModel['printable_height'] + '</div>'+
 	'	<div class="title trans">Nozzle</div>'+
