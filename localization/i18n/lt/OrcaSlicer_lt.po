@@ -438,7 +438,7 @@ msgstr "Detalės koordinatės"
 msgid "Size"
 msgstr "Dydis"
 
-msgid "uniform scale"
+msgid "Uniform scale"
 msgstr "vienoda skalė"
 
 msgid "Planar"
@@ -700,7 +700,7 @@ msgstr "Jungtis"
 msgid "Cut by Plane"
 msgstr "Iškirpti su plokštuma"
 
-msgid "non-manifold edges be caused by cut tool, do you want to fix it now?"
+msgid "Non-manifold edges be caused by cut tool, do you want to fix it now?"
 msgstr ""
 "netinkami kraštai atsirado dėl pjovimo įrankio. Ar norite sutvarkyti dabar?"
 
@@ -921,7 +921,7 @@ msgstr "Grąžinti šriftą į pradinę būseną."
 
 #, boost-format
 msgid "Font \"%1%\" can't be selected."
-msgstr "Nepavyksta pasirinkti \"%1%\" šrifto ."
+msgstr "Nepavyksta pasirinkti \"%1%\" šrifto."
 
 msgid "Operation"
 msgstr "Operacija"
@@ -2256,31 +2256,31 @@ msgstr ""
 msgid "Select All"
 msgstr "Pasirinkti viską"
 
-msgid "select all objects on current plate"
+msgid "Select all objects on the current plate"
 msgstr "pasirinkti visus objektus pasirinktoje plokštėje"
 
 msgid "Delete All"
 msgstr "Ištrinti visus"
 
-msgid "delete all objects on current plate"
+msgid "Delete all objects on the current plate"
 msgstr "ištrinti visus objektus pasirinktoje plokštėje"
 
 msgid "Arrange"
 msgstr "Išdėstyti"
 
-msgid "arrange current plate"
+msgid "Arrange current plate"
 msgstr "išdėstyti dabartinės plokštės objektus"
 
 msgid "Reload All"
 msgstr "Pakartotinai užkrauti viską"
 
-msgid "reload all from disk"
+msgid "Reload all from disk"
 msgstr "dar kartą užkrauti viską iš disko"
 
 msgid "Auto Rotate"
 msgstr "Automatinis pasukimas"
 
-msgid "auto rotate current plate"
+msgid "Auto rotate current plate"
 msgstr "utomatiškai pasukti dabartinę plokštę"
 
 msgid "Delete Plate"
@@ -2608,7 +2608,8 @@ msgstr "Pridėti aukščio ribas"
 msgid "Invalid numeric."
 msgstr "Netinkamas skaičius."
 
-msgid "one cell can only be copied to one or multiple cells in the same column"
+#, fuzzy
+msgid "One cell can only be copied to one or more cells in the same column."
 msgstr ""
 "vieną langelį galima nukopijuoti tik į vieną ar daugiau to paties stulpelio "
 "langelių"
@@ -2865,7 +2866,7 @@ msgstr "Viršutinis"
 
 msgid ""
 "The fan controls the temperature during printing to improve print "
-"quality.The system automatically adjusts the fan's switch and speed "
+"quality. The system automatically adjusts the fan's switch and speed "
 "according to different printing materials."
 msgstr ""
 
@@ -3716,7 +3717,7 @@ msgid "Please unload all filament before switching."
 msgstr ""
 
 msgid ""
-"AMS type switching needs firmware update, taking about 30s. Switch now ?"
+"AMS type switching needs firmware update, taking about 30s. Switch now?"
 msgstr ""
 
 msgid "Arrange AMS Order"
@@ -3747,7 +3748,7 @@ msgstr ""
 "Nepavyko įdiegti papildinio. Patikrinkite, ar jo neblokuoja arba neištrina "
 "antivirusinė programinė įranga."
 
-msgid "click here to see more info"
+msgid "Click here to see more info"
 msgstr "spustelėkite norėdami gauti daugiau informacijos"
 
 msgid ""
@@ -4293,7 +4294,7 @@ msgstr ""
 msgid "Nozzle offset calibration"
 msgstr ""
 
-msgid "high temperature auto bed leveling"
+msgid "High temperature auto bed leveling"
 msgstr ""
 
 msgid "Auto Check: Quick Release Lever"
@@ -4650,7 +4651,7 @@ msgid "Line Width"
 msgstr "Linijos plotis"
 
 msgid "Actual Speed"
-msgstr ""
+msgstr "Faktinis greitis"
 
 msgid "Fan Speed"
 msgstr "Ventiliatoriaus greitis"
@@ -4659,7 +4660,7 @@ msgid "Flow"
 msgstr "Srautas"
 
 msgid "Actual Flow"
-msgstr ""
+msgstr "Faktinis srautas"
 
 msgid "Tool"
 msgstr "Įrankis"
@@ -4794,7 +4795,7 @@ msgid "Color: "
 msgstr ""
 
 msgid "Actual Speed: "
-msgstr ""
+msgstr "Faktinis greitis: "
 
 msgid "Statistics of All Plates"
 msgstr "Visų plokščių statistika"
@@ -4908,13 +4909,13 @@ msgid "Speed (mm/s)"
 msgstr "Greitis (mm/s)"
 
 msgid "Actual Speed (mm/s)"
-msgstr ""
+msgstr "Faktinis greitis (mm/s)"
 
 msgid "Fan Speed (%)"
 msgstr "Ventiliatoriaus greitis (%)"
 
-msgid "Temperature (°C)"
-msgstr "Temperatūra (°C)"
+msgid "Temperature (℃)"
+msgstr "Temperatūra (℃)"
 
 msgid "Volumetric flow rate (mm³/s)"
 msgstr "Tūrinis srautas (mm³/s)"
@@ -5031,7 +5032,7 @@ msgstr "Padidinti / sumažinti redagavimo sritį"
 msgid "Sequence"
 msgstr "Seka"
 
-msgid "object selection"
+msgid "Object selection"
 msgstr "objekto pasirinkimas"
 
 msgid "part selection"
@@ -5040,7 +5041,7 @@ msgstr "detalės pasirinkimas"
 msgid "number keys"
 msgstr "skaičių klavišai"
 
-msgid "number keys can quickly change the color of objects"
+msgid "Number keys can quickly change the color of objects"
 msgstr "skaičių klavišais galima greitai pakeisti objektų spalvą"
 
 msgid ""
@@ -5272,7 +5273,7 @@ msgid "Only the object being edited is visible."
 msgstr "Matomas tik redaguojamas objektas."
 
 #, c-format, boost-format
-msgid "filaments %s cannot be printed directly on the surface of this plate."
+msgid "Filaments %s cannot be printed directly on the surface of this plate."
 msgstr ""
 
 msgid ""
@@ -6442,7 +6443,7 @@ msgstr "Sluoksnis: %d/%d"
 
 #, fuzzy
 msgid ""
-"Please heat the nozzle to above 170°C before loading or unloading filament."
+"Please heat the nozzle to above 170℃ before loading or unloading filament."
 msgstr ""
 "Prašome prieš įtraukiant ar išstumiant giją įkaitinti purkštuką virš 170 "
 "laipsnių."
@@ -6555,7 +6556,7 @@ msgstr ""
 msgid "Upload failed\n"
 msgstr "Įkėlimas nepavyko\n"
 
-msgid "obtaining instance_id failed\n"
+msgid "Obtaining instance_id failed\n"
 msgstr "nepavyko gauti instance_id\n"
 
 msgid ""
@@ -7569,7 +7570,7 @@ msgid ""
 "connected printer.\n"
 "After syncing, software can optimize printing time and filament usage when "
 "slicing.\n"
-"Would you like to sync now ?"
+"Would you like to sync now?"
 msgstr ""
 
 msgid "Sync now"
@@ -7600,13 +7601,14 @@ msgstr "Išsaugoti projektą"
 msgid "Importing Model"
 msgstr "Importuojamas modelis"
 
-msgid "prepare 3MF file..."
+#, fuzzy
+msgid "Preparing 3MF file..."
 msgstr "paruošti 3MF failą..."
 
 msgid "Download failed, unknown file format."
 msgstr "Atsisuntimas nepavyko, nežinomas failo tipas."
 
-msgid "downloading project..."
+msgid "Downloading project..."
 msgstr "projektas atsisiunčiamas..."
 
 msgid "Download failed, File size exception."
@@ -8512,10 +8514,10 @@ msgstr "PRE hostas: api-pre.bambu-lab.com/v1"
 msgid "Product host"
 msgstr "Produkto hostas"
 
-msgid "debug save button"
+msgid "Debug save button"
 msgstr "derinimo išsaugojimo mygtukas"
 
-msgid "save debug settings"
+msgid "Save debug settings"
 msgstr "išsaugoti testavimo nuostatas"
 
 msgid "DEBUG settings have been saved successfully!"
@@ -8808,7 +8810,7 @@ msgid ""
 "*Automatic mode: Check for calibration before printing. Skip if unnecessary."
 msgstr ""
 
-msgid "send completed"
+msgid "Send complete"
 msgstr "siuntimas baigtas"
 
 msgid "Error code"
@@ -8954,7 +8956,7 @@ msgstr ""
 
 #, c-format, boost-format
 msgid ""
-"[ %s ] requires printing in a high-temperature environment.Please close the "
+"[ %s ] requires printing in a high-temperature environment. Please close the "
 "door."
 msgstr ""
 
@@ -9386,7 +9388,7 @@ msgid ""
 "ensure proper printing and achieve their intended effects (e.g., Gyroid, "
 "Cubic). Rotating the current sparse infill pattern may lead to insufficient "
 "support. Please proceed with caution and thoroughly check for any potential "
-"printing issues.Are you sure you want to enable this option?"
+"printing issues. Are you sure you want to enable this option?"
 msgstr ""
 "Užpildymo modeliai paprastai yra suprojektuoti taip, kad automatiškai "
 "tvarkytų sukimąsi, siekiant užtikrinti tinkamą spausdinimą ir pasiekti "
@@ -10677,7 +10679,7 @@ msgstr "Perkelti pasirinktą10 mm teigiama X kryptimi"
 msgid "Movement step set to 1 mm"
 msgstr "Judėjimo žingsnis nustatytas į 1 mm"
 
-msgid "keyboard 1-9: set filament for object/part"
+msgid "Keyboard 1-9: set filament for object/part"
 msgstr "klaviatūra 1-9: nustatyti objekto/dalies giją"
 
 msgid "Camera view - Default"
@@ -14387,8 +14389,8 @@ msgstr ""
 "todėl paviršius atrodo grublėtas. Šiuo nustatymu kontroliuojama grublėtumo "
 "padėtis."
 
-msgid "None (allow paint)"
-msgstr ""
+msgid "Painted only"
+msgstr "Tik dažytas"
 
 msgid "Contour"
 msgstr "Kontūras"
@@ -19055,7 +19057,7 @@ msgstr ""
 msgid "Plate Type"
 msgstr "Plokštės tipas"
 
-msgid "filament position"
+msgid "Filament position"
 msgstr "gijos padėtis"
 
 msgid "Filament For Calibration"
@@ -20020,7 +20022,7 @@ msgstr ""
 "Uždarykite jį ir bandykite dar kartą."
 
 msgid ""
-"Printer and all the filament&&process presets that belongs to the printer.\n"
+"Printer and all the filament and process presets that belongs to the printer.\n"
 "Can be shared with others."
 msgstr ""
 "Spausdintuvo ir visų spausdintuvui priklausančių gijų ir procesų išankstinės "
@@ -20923,7 +20925,7 @@ msgstr "Be istorinių užduočių!"
 msgid "Upgrading"
 msgstr "Atnaujinama"
 
-msgid "syncing"
+msgid "Syncing"
 msgstr "sinchronizuojama"
 
 msgid "Printing Finish"
@@ -21742,8 +21744,8 @@ msgstr ""
 
 #, fuzzy
 #~ msgid ""
-#~ "The recommended minimum temperature is less than 190°C or the recommended "
-#~ "maximum temperature is greater than 300°C.\n"
+#~ "The recommended minimum temperature is less than 190℃ or the recommended "
+#~ "maximum temperature is greater than 300℃.\n"
 #~ msgstr ""
 #~ "Rekomenduojama minimali temperatūra yra žemesnė nei 190 laipsnių arba "
 #~ "maksimali temperatūra aukštesnė nei 300 laipsnių.\n"
