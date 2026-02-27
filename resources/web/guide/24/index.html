@@ -160,24 +160,6 @@
 
 	const $content  = $('#Content');
 
-	// ORCA unfocus search bar while scrolling and its content empty
-	$content[0].addEventListener("scroll", () => {
-		if (document.activeElement === SearchBox && SearchBox.value == "")
-			SearchBox.blur();
-	});
-
-	const LayoutSelector = document.querySelector('.LayoutSelector > .TabGroup');
-	const LayoutBtns     = Array.from(LayoutSelector.children);
-	const LayoutTypes    = ["compact-list","compact-cover","large-cover"];
-
-	function LayoutMode(value) {
-		LayoutBtns.forEach(el=>el.classList.remove('selected'));
-		LayoutBtns[LayoutTypes.indexOf(value)].classList.add('selected');
-		$content[0].setAttribute("layout", value);
-	}
-
-	LayoutMode("large-cover");
-
 	// SNAPPY SCROLLING WITHOUT LAGS
 	const SNAP_DELAY			= 600;
 	const SNAP_DURATION			= 200;
@@ -313,5 +295,35 @@
 		if (document.activeElement != SearchBox && ['ArrowUp','ArrowDown','PageUp','PageDown',' '].includes(e.key))
 			armSnap();
 	});
+
+	// ORCA unfocus search bar while scrolling and its content empty
+	$content[0].addEventListener("scroll", () => {
+		if (document.activeElement === SearchBox && SearchBox.value == "")
+			SearchBox.blur();
+	});
+
+	// LAYOUT SELECTOR
+	const LayoutSelector = document.querySelector('.LayoutSelector > .TabGroup');
+	const LayoutBtns     = Array.from(LayoutSelector.children);
+	const LayoutTypes    = ["compact-list","compact-cover","large-cover"];
+
+	function LayoutMode(value) {
+		// find current visible vendor and scroll to it after layout change
+		let target = null;
+		for (const el of $content.find('.OneVendorBlock')) {
+			if (el.getBoundingClientRect().bottom - $content[0].getBoundingClientRect().top >= -1) {
+				target = el.getAttribute("vendor");
+				break;
+			}
+		}
+
+		LayoutBtns.forEach(el => el.classList.remove('selected'));
+		LayoutBtns[LayoutTypes.indexOf(value)].classList.add('selected');
+		$content[0].setAttribute("layout", value);
+
+		if (target) scrollToVendor(target);
+	}
+
+	LayoutMode("large-cover");
 </script>
 </html>

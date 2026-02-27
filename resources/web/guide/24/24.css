@@ -116,6 +116,7 @@
 	padding: 10px;
 	text-align: left;
 	color: var(--fg-color-text);
+	pointer-events: none;
 }
 
 #Content[layout="2"] .PrinterInfo {
