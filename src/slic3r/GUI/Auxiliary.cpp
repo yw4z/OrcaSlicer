@@ -1102,6 +1102,9 @@ void AuxiliaryPanel::update_all_cover()
      m_sizer_description->Add(m_text_description, 0, wxALIGN_TOP | wxRIGHT, FromDIP(10));
      m_input_description = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, 
                                           wxSize(FromDIP(450), FromDIP(300)), wxTE_MULTILINE | wxTE_PROCESS_ENTER);
+     #ifdef _WIN32
+     m_input_description->SetWindowStyleFlag(m_input_description->GetWindowStyle() | wxSIMPLE_BORDER);
+     #endif
      m_input_description->SetFont(::Label::Body_14);
      m_sizer_description->Add(m_input_description, 0, wxALIGN_CENTER, 0);
 
