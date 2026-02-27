@@ -290,10 +290,20 @@
 			scrollDir = dy > 0 ? 'down' : 'up';
 	}, { passive: true });
 
-	// Re-arm on keyboard scroll
-	document.addEventListener('keydown', e => {
-		if (document.activeElement != SearchBox && ['ArrowUp','ArrowDown','PageUp','PageDown',' '].includes(e.key))
+	// Re-arm on after scrollbar usage
+	$content[0].addEventListener('pointerdown', e => {
+		if (e.target === $content[0])
 			armSnap();
+	});
+
+	// Re-arm on keyboard scroll or focus changes
+	document.addEventListener('keydown', e => {
+		if (document.activeElement != SearchBox){
+			let scrollKeys = ['ArrowUp','ArrowDown','PageUp','PageDown',' '];
+			let hasFocus    = $content[0].contains(document.activeElement);
+			if(scrollKeys.includes(e.key) || (hasFocus && e.which == 9))
+				armSnap();
+		}
 	});
 
 	// ORCA unfocus search bar while scrolling and its content empty
