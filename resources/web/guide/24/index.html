@@ -178,16 +178,16 @@
 
 		const savedScroll = cur;
 
-		$content[0].scrollTop = 0; // Temporarily scroll to 0 so getBoundingClientRect returns absolute positions
+		$content[0].scrollTop = 0; // Temporarily scroll to 0 so getBoundingClientRect can get absolute positions
 
 		let bcTop = el=>(el.getBoundingClientRect().top);
 
 		const contentTop = bcTop($content[0]);
 		const bannerH    = ($content.find('.BlockBanner')[0] || {}).offsetHeight || 0;
 
-		const firstCard = $content.find('.PrinterBlock')[0];
-		const firstArea = $content.find('.PrinterArea')[0];
-		const cardGap   = (firstCard && firstArea) ? (bcTop(firstCard) - bcTop(firstArea)) : 0;
+		const firstCard  = $content.find('.PrinterBlock')[0];
+		const firstArea  = $content.find('.PrinterArea')[0];
+		const cardGap    = (firstCard && firstArea) ? (bcTop(firstCard) - bcTop(firstArea)) : 0;
 
 		const candidates = $content.find('.BlockBanner, .PrinterBlock').get();
 		if (dir === 'up') candidates.reverse();
@@ -247,16 +247,6 @@
 		});
 	}
 
-	function triggerSnap() {
-		if (isSnapping) return;
-
-		const target = findSnap($content[0].scrollTop, scrollDir);
-		if (target){
-			isSnapping = true;
-			smoothScrollTo(target);
-		}
-	}
-
 	function armSnap() {
 		waitingForUserScroll = false;
 		lastSnapTarget       = null;
@@ -272,11 +262,16 @@
 		if (waitingForUserScroll) return;
 
 		clearTimeout(scrollTimer);
-		scrollTimer = setTimeout(triggerSnap, SNAP_DELAY);
-	});
+		scrollTimer = setTimeout(()=>{
+			if (isSnapping) return;
 
-	// Re-arm snap system on user scroll
-	$content[0].addEventListener('wheel', armSnap, { passive: true });
+			const target = findSnap($content[0].scrollTop, scrollDir);
+			if (target){
+				isSnapping = true;
+				smoothScrollTo(target);
+			}
+		}, SNAP_DELAY);
+	});
 
 	let touchY = 0;
 	$content[0].addEventListener('touchstart', e => {
@@ -289,6 +284,9 @@
 		if (Math.abs(dy) > 3)
 			scrollDir = dy > 0 ? 'down' : 'up';
 	}, { passive: true });
+
+	// Re-arm snap system on user scroll
+	$content[0].addEventListener('wheel', armSnap, { passive: true });
 
 	// Re-arm on after scrollbar usage
 	$content[0].addEventListener('pointerdown', e => {
@@ -318,6 +316,9 @@
 	const LayoutTypes    = ["compact-list","compact-cover","large-cover"];
 
 	function LayoutMode(value) {
+		if($content[0].getAttribute("layout") === value)
+			return;
+
 		// find current visible vendor and scroll to it after layout change
 		let target = null;
 		for (const el of $content.find('.OneVendorBlock')) {
