@@ -33,6 +33,10 @@ HyperLink::HyperLink(wxWindow* parent, const wxString& label, const wxString& ur
         SetForegroundColour(m_normalColor);
         Refresh();
     }));
+
+    Bind(wxEVT_SET_CURSOR, [this](wxSetCursorEvent& e) {
+        e.SetCursor(wxCursor(wxCURSOR_HAND));
+    });
 }
 
 bool HyperLink::SetFont(const wxFont& font)
