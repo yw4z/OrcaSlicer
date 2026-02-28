@@ -9,6 +9,8 @@ HyperLink::HyperLink(wxWindow* parent, const wxString& label, const wxString& ur
     , m_normalColor(wxColour("#009687")) // used slightly different color otherwise automatically uses ColorForDark that not visible enough
     , m_hoverColor(wxColour("#26A69A"))
 {
+    SetBackgroundStyle(wxBG_STYLE_PAINT);
+
     SetForegroundColour(m_normalColor);
     HyperLink::SetFont(Label::Head_14);
 
@@ -25,12 +27,14 @@ HyperLink::HyperLink(wxWindow* parent, const wxString& label, const wxString& ur
     Bind(wxEVT_ENTER_WINDOW, ([this](wxMouseEvent& e) {
         SetCursor(wxCursor(wxCURSOR_HAND));
         SetForegroundColour(m_hoverColor);
+        SetOwnForegroundColour(m_hoverColor);
         Refresh();
     }));
 
     Bind(wxEVT_LEAVE_WINDOW, ([this](wxMouseEvent& e) {
         SetCursor(wxNullCursor); // revert
         SetForegroundColour(m_normalColor);
+        SetOwnForegroundColour(m_normalColor);
         Refresh();
     }));
 
