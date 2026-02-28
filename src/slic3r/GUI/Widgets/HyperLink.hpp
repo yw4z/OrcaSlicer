@@ -20,6 +20,10 @@ private:
     wxString m_url;
     wxColour m_normalColor;
     wxColour m_hoverColor;
+
+#ifdef __WXGTK__
+    void SetLabelColor(wxStaticText* label, const wxColour& color);
+#endif
 };
 
 }} // namespace Slic3r::GUI
