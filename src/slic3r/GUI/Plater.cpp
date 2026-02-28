@@ -13597,11 +13597,11 @@ ProjectDropDialog::ProjectDropDialog(const std::string &filename)
 
     // ORCA use file name on new line to create room for longer names
     m_fname_title = new wxStaticText(this, wxID_ANY, _L("Please select an action"), wxDefaultPosition, wxDefaultSize, 0);
-    m_fname_title->SetFont(::Label::Head_14);
+    m_fname_title->SetFont(::Label::Body_14);
     m_fname_title->SetForegroundColour(wxColour("#363636"));
 
     m_fname_f = new wxStaticText(this, wxID_ANY, filename);
-    m_fname_f->SetFont(::Label::Body_14);
+    m_fname_f->SetFont(::Label::Head_14);
     m_fname_f->SetMaxSize(wxSize(FromDIP(300),-1));
     m_fname_f->Wrap(FromDIP(300));
     m_fname_f->SetForegroundColour(wxColour("#363636"));
