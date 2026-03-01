@@ -20,7 +20,6 @@ private:
     wxString m_url;
     wxColour m_normalColor;
     wxColour m_hoverColor;
-
 };
 
 }} // namespace Slic3r::GUI
