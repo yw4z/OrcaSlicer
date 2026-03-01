@@ -181,9 +181,6 @@ wxBoxSizer* NetworkTestDialog::create_result_sizer(wxWindow* parent)
 	sizer->Add(text_result, 0, wxALL, 5);
 
 	txt_log = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE);
-    #ifdef _WIN32
-    txt_log->SetWindowStyleFlag(txt_log->GetWindowStyle() | wxSIMPLE_BORDER);
-    #endif
 	sizer->Add(txt_log, 1, wxALL | wxEXPAND, 5);
 	return sizer;
 }

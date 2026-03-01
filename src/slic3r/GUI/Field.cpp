@@ -803,11 +803,6 @@ void TextCtrl::BUILD() {
     temp->SetForegroundColour(StateColor::darkModeColorFor(*wxBLACK));
 	wxGetApp().UpdateDarkUI(temp);
 
-    #ifdef _WIN32
-	    if (m_opt.multiline)
-		    temp->SetWindowStyleFlag(temp->GetWindowStyle() | wxSIMPLE_BORDER);
-    #endif
-
     if (! m_opt.multiline && !wxOSX)
 		// Only disable background refresh for single line input fields, as they are completely painted over by the edit control.
 		// This does not apply to the multi-line edit field, where the last line and a narrow frame around the text is not cleared.
