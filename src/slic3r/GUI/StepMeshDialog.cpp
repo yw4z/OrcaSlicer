@@ -20,9 +20,9 @@ using namespace Slic3r::GUI;
 static int _scale(const int val) { return val * Slic3r::GUI::wxGetApp().em_unit() / 10; }
 static int _ITEM_WIDTH() { return _scale(30); }
 #define MIN_DIALOG_WIDTH        FromDIP(400)
-#define SLIDER_WIDTH            FromDIP(200)
+#define SLIDER_WIDTH            FromDIP(220)
 #define SLIDER_HEIGHT           FromDIP(25)
-#define TEXT_CTRL_WIDTH         FromDIP(70)
+#define TEXT_CTRL_WIDTH         FromDIP(100)
 #define BUTTON_SIZE             wxSize(FromDIP(58), FromDIP(24))
 #define BUTTON_BORDER           FromDIP(int(400 - 58 * 2) / 8)
 #define SLIDER_SCALE(val)       ((val) / 0.001)
