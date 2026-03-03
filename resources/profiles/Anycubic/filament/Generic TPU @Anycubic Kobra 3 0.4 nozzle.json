@@ -6,9 +6,6 @@
     "setting_id": "GFSA04",
     "filament_id": "GFU99",
     "instantiation": "true",
-    "filament_vendor": [
-        "Generic"
-    ],
     "filament_settings_id": [
         "Generic TPU @Anycubic Kobra 3 0.4 nozzle"
     ],

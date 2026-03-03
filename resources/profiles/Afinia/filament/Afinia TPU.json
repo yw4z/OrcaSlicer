@@ -5,9 +5,6 @@
     "from": "system",
     "filament_id": "GFU01",
     "instantiation": "true",
-    "filament_vendor": [
-        "Afinia"
-    ],
     "filament_density": [
         "1.22"
     ],
