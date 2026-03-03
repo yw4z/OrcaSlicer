@@ -281,8 +281,8 @@ bool is_associate_files(std::wstring extend)
 class SplashScreen : public wxSplashScreen
 {
 public:
-    SplashScreen(const wxBitmap& bitmap, long splashStyle, int milliseconds, wxPoint pos = wxDefaultPosition)
-        : wxSplashScreen(bitmap, splashStyle, milliseconds, static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, wxDefaultPosition, wxDefaultSize,
+    SplashScreen(wxWindow* parent, wxPoint pos = wxDefaultPosition)
+        : wxSplashScreen(wxBitmap(parent->FromDIP(wxSize(480,480))), wxSPLASH_CENTRE_ON_SCREEN | wxSPLASH_TIMEOUT, 1500, parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
 #ifdef __APPLE__
             wxBORDER_NONE | wxFRAME_NO_TASKBAR | wxSTAY_ON_TOP
 #else
@@ -290,137 +290,63 @@ public:
 #endif // !__APPLE__
         )
     {
-        int init_dpi = get_dpi_for_window(this);
         this->SetPosition(pos);
         this->CenterOnScreen();
-        int new_dpi = get_dpi_for_window(this);
 
-        m_scale = (float)(new_dpi) / (float)(init_dpi);
+        scale_font(m_font_version, 1.65f); // only scale this one since it hasnt a preloaded font like Label::Body_24;
 
-        m_main_bitmap = bitmap;
-
-        scale_bitmap(m_main_bitmap, m_scale);
-
-        // init constant texts and scale fonts
-        m_constant_text.init(Label::Body_16);
-
-		// ORCA scale all fonts with monitor scale
-        scale_font(m_constant_text.version_font,	m_scale * 2);
-        scale_font(m_constant_text.based_on_font,	m_scale * 1.5f);
-        scale_font(m_constant_text.credits_font,	m_scale * 2);
-
-        // this font will be used for the action string
-        m_action_font = m_constant_text.credits_font;
-
-        // draw logo and constant info text
-        Decorate(m_main_bitmap);
-        wxGetApp().UpdateFrameDarkUI(this);
-    }
-
-    void SetText(const wxString& text)
-    {
-        set_bitmap(m_main_bitmap);
-        if (!text.empty()) {
-            wxBitmap bitmap(m_main_bitmap);
-
-            wxMemoryDC memDC;
-            memDC.SelectObject(bitmap);
-            memDC.SetFont(m_action_font);
-            memDC.SetTextForeground(StateColor::darkModeColorFor(wxColour(144, 144, 144)));
-            int width = bitmap.GetWidth();
-            int text_height = memDC.GetTextExtent(text).GetHeight();
-            int text_width = memDC.GetTextExtent(text).GetWidth();
-            wxRect text_rect(wxPoint(0, m_action_line_y_position), wxPoint(width, m_action_line_y_position + text_height));
-            memDC.DrawLabel(text, text_rect, wxALIGN_CENTER);
-
-            memDC.SelectObject(wxNullBitmap);
-            set_bitmap(bitmap);
-#ifdef __WXOSX__
-            // without this code splash screen wouldn't be updated under OSX
-            wxYield();
-#endif
-        }
-    }
-
-    void Decorate(wxBitmap& bmp)
-    {
-        if (!bmp.IsOk())
-            return;
-
-		bool is_dark = wxGetApp().app_config->get("dark_color_mode") == "1";
-
-        // use a memory DC to draw directly onto the bitmap
-        wxMemoryDC memDc(bmp);
-        
-        int width = bmp.GetWidth();
-		int height = bmp.GetHeight();
-
-		// Logo
+        m_bg_color = StateColor::darkModeColorFor(wxColour("#FFFFFF"));
+        m_fg_color = StateColor::darkModeColorFor(wxColour("#6B6A6A"));
+        bool dark_mode = m_fg_color != wxColour("#6B6A6A");
+        wxSize sz  = m_window->GetClientSize();
         BitmapCache bmp_cache;
-        wxBitmap logo_bmp = *bmp_cache.load_svg(is_dark ? "splash_logo_dark" : "splash_logo", width, height);  // use with full width & height
-        memDc.DrawBitmap(logo_bmp, 0, 0, true);
+        m_logo_bmp = *bmp_cache.load_svg(dark_mode ? "splash_logo_dark" : "splash_logo", sz.GetWidth(), sz.GetHeight());
 
-        // Version
-        memDc.SetFont(m_constant_text.version_font);
-        memDc.SetTextForeground(StateColor::darkModeColorFor(wxColor(134, 134, 134)));
-        wxSize version_ext = memDc.GetTextExtent(m_constant_text.version);
-        wxRect version_rect(
-			wxPoint(0, int(height * 0.70)),
-			wxPoint(width, int(height * 0.70) + version_ext.GetHeight())
-		);
-        memDc.DrawLabel(m_constant_text.version, version_rect, wxALIGN_CENTER);
-
-        // Dynamic Text
-        m_action_line_y_position = int(height * 0.83);
-
-		// Based on Text
-        memDc.SetFont(m_constant_text.based_on_font);
-        auto bs_version = wxString::Format(_L("Based on PrusaSlicer and BambuStudio")).ToStdString();
-        wxSize based_on_ext = memDc.GetTextExtent(bs_version);
-        wxRect based_on_rect(
-			wxPoint(0, height - based_on_ext.GetHeight() * 2),
-            wxPoint(width, height - based_on_ext.GetHeight())
-		);
-        memDc.DrawLabel(bs_version, based_on_rect, wxALIGN_CENTER);
-    }
-
-    static wxBitmap MakeBitmap()
-    {
-        int width = FromDIP(480, nullptr);
-        int height = FromDIP(480, nullptr);
-
-        wxImage image(width, height);
-        wxBitmap new_bmp(image);
-
-        wxMemoryDC memDC;
-        memDC.SelectObject(new_bmp);
-        memDC.SetBrush(StateColor::darkModeColorFor(*wxWHITE));
-        memDC.DrawRectangle(-1, -1, width + 2, height + 2);
-        memDC.DrawBitmap(new_bmp, 0, 0, true);
-        return new_bmp;
-    }
-
-    void set_bitmap(wxBitmap& bmp)
-    {
-        m_window->SetBitmap(bmp);
+        m_window->Bind(wxEVT_PAINT, &SplashScreen::OnPaint, this);
         m_window->Refresh();
         m_window->Update();
     }
 
-    void scale_bitmap(wxBitmap& bmp, float scale)
+    void OnPaint(wxPaintEvent& evt)
     {
-        if (scale == 1.0)
-            return;
+        wxPaintDC dc(m_window);
+        wxSize c_sz = m_window->GetClientSize();
 
-        wxImage image = bmp.ConvertToImage();
-        if (!image.IsOk() || image.GetWidth() == 0 || image.GetHeight() == 0)
-            return;
+        dc.SetBackground(wxBrush(m_bg_color));
+        dc.Clear();
+        if (m_logo_bmp.IsOk())
+            dc.DrawBitmap(m_logo_bmp, 0, 0, true);
 
-        int width   = int(scale * image.GetWidth());
-        int height  = int(scale * image.GetHeight());
-        image.Rescale(width, height, wxIMAGE_QUALITY_BILINEAR);
+        wxRect rc = wxRect(0, 0, c_sz.GetWidth(), 0);
+        dc.SetTextForeground(m_fg_color);
 
-        bmp = wxBitmap(std::move(image));
+        dc.SetFont(m_font_version);
+        rc.y      = c_sz.GetHeight() * 0.70;
+        rc.height = dc.GetTextExtent(m_text_version).GetHeight();
+        dc.DrawLabel(m_text_version, rc, wxALIGN_CENTER);
+
+        dc.SetFont(m_font_action);
+        rc.y      = c_sz.GetHeight() * 0.83;
+        rc.height = dc.GetTextExtent(m_text_action).GetHeight();
+        dc.DrawLabel(m_text_action, rc, wxALIGN_CENTER);
+
+        dc.SetFont(m_font_credits);
+        wxSize be = dc.GetTextExtent(m_text_credits);
+        rc.y      = c_sz.GetHeight() - be.GetHeight() * 2;
+        rc.height = be.GetHeight();
+        dc.DrawLabel(m_text_credits, rc, wxALIGN_CENTER);
+    }
+
+    void SetText(const wxString& text)
+    {
+        if (!text.empty()) {
+            m_text_action = text;
+            m_window->Refresh();
+            m_window->Update();
+#ifdef __WXOSX__
+            wxYield();
+#endif
+        }
     }
 
     void scale_font(wxFont& font, float scale)
@@ -440,47 +366,18 @@ public:
 #endif //__WXMSW__
     }
 
-
 private:
-    wxStaticText* m_staticText_slicer_name;
-    wxStaticText* m_staticText_slicer_version;
-    wxStaticBitmap* m_bitmap;
-    wxStaticText* m_staticText_loading;
+    wxBitmap m_logo_bmp;
+    wxColour m_fg_color;
+    wxColour m_bg_color;
 
-    wxBitmap    m_main_bitmap;
-    wxFont      m_action_font;
-    int         m_action_line_y_position;
-    float       m_scale {1.0};
+    wxString m_text_version = GUI_App::format_display_version();
+    wxString m_text_action  = _L("Loading configuration") + dots;
+    wxString m_text_credits = _L("Based on PrusaSlicer and BambuStudio");
 
-    struct ConstantText
-    {
-        wxString title;
-        wxString version;
-        wxString credits;
-
-        wxFont   title_font;
-        wxFont   version_font;
-        wxFont   credits_font;
-        wxFont   based_on_font;
-
-        void init(wxFont init_font)
-        {
-            // title
-            //title = wxGetApp().is_editor() ? SLIC3R_APP_FULL_NAME : GCODEVIEWER_APP_NAME;
-
-            // dynamically get the version to display
-            version = GUI_App::format_display_version();
-
-            // credits infornation
-            credits = "";
-
-            //title_font    = Label::Head_16;
-            version_font  = Label::Body_13;
-            based_on_font = Label::Body_8;
-            credits_font  = Label::Body_8;
-        }
-    }
-    m_constant_text;
+    wxFont m_font_version = Label::Body_16;
+    wxFont m_font_action  = Label::Body_16;
+    wxFont m_font_credits = Label::Body_13;
 };
 
 #ifdef __linux__
@@ -2866,9 +2763,6 @@ bool GUI_App::on_init_inner()
 
     SplashScreen * scrn = nullptr;
     if (app_config->get("show_splash_screen") == "true") {
-        // make a bitmap with dark grey banner on the left side
-        //BBS make BBL splash screen bitmap
-        wxBitmap bmp = SplashScreen::MakeBitmap();
         // Detect position (display) to show the splash screen
         // Now this position is equal to the mainframe position
         wxPoint splashscreen_pos = wxDefaultPosition;
@@ -2880,9 +2774,9 @@ bool GUI_App::on_init_inner()
 
         BOOST_LOG_TRIVIAL(info) << "begin to show the splash screen...";
         //BBS use BBL splashScreen
-        scrn = new SplashScreen(bmp, wxSPLASH_CENTRE_ON_SCREEN | wxSPLASH_TIMEOUT, 1500, splashscreen_pos);
+        scrn = new SplashScreen(static_cast<wxWindow*>(wxGetApp().mainframe), splashscreen_pos);
         wxYield();
-        scrn->SetText(_L("Loading configuration")+ dots);
+        //scrn->SetText(_L("Loading configuration")+ dots);
     }
 
     BOOST_LOG_TRIVIAL(info) << "loading systen presets...";
