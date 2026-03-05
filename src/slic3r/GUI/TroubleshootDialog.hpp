@@ -10,6 +10,7 @@
 #include "wxExtensions.hpp"
 
 #include "Widgets/Label.hpp"
+#include "Widgets/ComboBox.hpp"
 
 #include <vector>
 #include <list>
@@ -31,31 +32,24 @@ private:
     ScalableBitmap   m_logo;
     wxStaticBitmap*  m_header_logo;
     Label*           m_logs_storage;
-    bool             m_include_detailed_info = false;
     int              m_printers__act;
     int              m_printers__usr;
     int              m_filaments_act;
     int              m_filaments_usr;
     int              m_processes_act;
     int              m_processes_usr;
-
-    wxMenu*          m_pack_opt_menu;
-    bool             m_pack_project  = true;
-    bool             m_pack_sys_info = true;
-    bool             m_pack_logs     = true;
-    bool             m_pack_profiles = true;
-    bool             m_pack_overview = true;
-    bool             m_pack_config   = true;
+    bool             m_sys_panel_mode = true;
 
 protected:
     wxFlexGridSizer* create_item_loaded_profiles();
-    wxBoxSizer*      create_item_log_info();
+    ComboBox*        create_item_log_level_combo();
 
     wxString GetTimestamp();
 
-    wxString GetSysInfoAll(bool include_all);
-    wxString GetConfigStr();
+    wxString GetSysInfoAll();
+    //wxString GetConfigStr();
     wxString GetProfilesOverview();
+    wxString GetOStype();
     wxString GetOSinfo();
 #ifdef __WINDOWS__
     wxString GetWinVersion();
@@ -98,14 +92,23 @@ class CenteredMultiLinePanel : public wxPanel
 public:
     CenteredMultiLinePanel(wxWindow* parent, const std::vector<wxString>& lines = {})
       : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxFULL_REPAINT_ON_RESIZE)
-      , m_lines(lines)
     {
         SetFont(Label::Body_14);
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         Bind(wxEVT_PAINT, &CenteredMultiLinePanel::OnPaint, this);
         Bind(wxEVT_SIZE,  &CenteredMultiLinePanel::OnSize,  this);
-    }
 
+        SetText(lines);
+    }
+    
+    void SetText(const std::vector<wxString>& lines)
+    {
+        if(!lines.empty()){
+            m_lines = lines;
+            Refresh();
+            UpdateMinSize();
+        }
+    }
 private:
     std::vector<wxString> Wrap(wxDC& dc, const wxString& text, int maxW)
     {
@@ -174,7 +177,11 @@ private:
                 y += static_cast<int>(th * m_block_gap);
         }
 
-        SetMinSize(wxSize(-1, y));
+        if(GetMinSize().GetHeight() != y){
+            SetMinSize(wxSize(-1, y));
+            if(GetParent())
+                GetParent()->Layout();
+        }
     }
 
     void OnSize(wxSizeEvent& e)

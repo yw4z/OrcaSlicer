@@ -47,51 +47,42 @@
 #include "Widgets/StaticLine.hpp"
 #include "Widgets/HyperLink.hpp"
 #include "Widgets/Button.hpp"
-#include "Widgets/ComboBox.hpp"
-#include "Widgets/CheckBox.hpp"
 
 namespace Slic3r {
 namespace GUI {
 
 wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
 {
+    auto create_label = [this](wxString title, wxFont font = Label::Body_14) {
+        auto label = new Label(this, font, title);
+        label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+        return label;
+    };
 
-    auto copy_btn = new Button(this, _L("Copy"));
-    copy_btn->SetToolTip( _L("Copies details in json format"));
-    copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Compact);
-    copy_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
-        wxClipboardLocker lock;
-        if (!lock)
-            return false;
-        return wxTheClipboard->SetData(new wxTextDataObject(GetProfilesOverview()));
-    });
+    auto g_sizer = new wxFlexGridSizer(1, 6, FromDIP(3), FromDIP(15));
 
-    auto g_sizer = new wxFlexGridSizer(1, 7, FromDIP(3), FromDIP(15));
-
-    g_sizer->Add(copy_btn, 0, wxEXPAND);
     g_sizer->AddSpacer(0);
-    g_sizer->Add(new Label(this, Label::Body_12, "Act"), 0, wxALIGN_CENTER);
+    g_sizer->Add(create_label(_L("Active"), Label::Body_12), 0, wxALIGN_CENTER);
     g_sizer->AddSpacer(0);
-    g_sizer->Add(new Label(this, Label::Body_12, "Sys"), 0, wxALIGN_CENTER);
+    g_sizer->Add(create_label(_L("System"), Label::Body_12), 0, wxALIGN_CENTER);
     g_sizer->AddSpacer(0);
-    g_sizer->Add(new Label(this, Label::Body_12, "Usr"), 0, wxALIGN_CENTER);
+    g_sizer->Add(create_label(_L("User"), Label::Body_12)  , 0, wxALIGN_CENTER);
 
     auto gen_stats = GetProfilesOverview();
     gen_stats      = ""; // clear mem. not needed after generating m_..._act, m_..._usr variables
    
-    auto add_sizer = [this, g_sizer](PresetCollection* col, wxString label, int in_use, int user) {
+    auto add_sizer = [this, g_sizer, create_label](PresetCollection* col, wxString label, int in_use, int user) {
         int sys = 0;
         for (auto it = col->begin(); it != col->end(); it++) {
             if (it->is_system)
                 sys++;
         }
-        g_sizer->Add(new Label(this, label));
-        g_sizer->Add(new Label(this, ": "));
-        g_sizer->Add(new Label(this, wxString::Format("%d", in_use)), 0, wxALIGN_CENTER);
-        g_sizer->Add(new Label(this, Label::Body_12, "/")           , 0, wxALIGN_CENTER);
-        g_sizer->Add(new Label(this, wxString::Format("%d", sys   )), 0, wxALIGN_CENTER);
-        g_sizer->Add(new Label(this, Label::Body_12, "+")           , 0, wxALIGN_CENTER);
-        g_sizer->Add(new Label(this, wxString::Format("%d", user  )), 0, wxALIGN_CENTER);
+        g_sizer->Add(create_label(label));
+        g_sizer->Add(create_label(wxString::Format("%d", in_use)), 0, wxALIGN_CENTER);
+        g_sizer->Add(create_label("/", Label::Body_12)           , 0, wxALIGN_CENTER);
+        g_sizer->Add(create_label(wxString::Format("%d", sys   )), 0, wxALIGN_CENTER);
+        g_sizer->Add(create_label("+", Label::Body_12)           , 0, wxALIGN_CENTER);
+        g_sizer->Add(create_label(wxString::Format("%d", user  )), 0, wxALIGN_CENTER);
     };
 
     auto preset_bundle = wxGetApp().preset_bundle;
@@ -102,10 +93,8 @@ wxFlexGridSizer* TroubleshootDialog::create_item_loaded_profiles()
     return g_sizer;
 }
 
-wxBoxSizer *TroubleshootDialog::create_item_log_info()
+ComboBox *TroubleshootDialog::create_item_log_level_combo()
 {
-    auto title = new Label(this, _L("Log Level"));
-
     auto combobox = new ComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, DESIGN_COMBOBOX_SIZE, 0, nullptr, wxCB_READONLY);
 
     for (const auto& item : std::vector<wxString>{_L("fatal"), _L("error"), _L("warning"), _L("info"), _L("debug"), _L("trace")})
@@ -121,17 +110,7 @@ wxBoxSizer *TroubleshootDialog::create_item_log_info()
         e.Skip();
      });
 
-    m_logs_storage = new Label(this, "");
-
-    wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
-    sizer->Add(title         , 0, wxALIGN_CENTER);
-    sizer->Add(combobox      , 0, wxALIGN_CENTER | wxLEFT, FromDIP(15));
-    sizer->AddStretchSpacer();
-    sizer->Add(m_logs_storage, 0, wxALIGN_CENTER);
-
-    UpdateLogsStorage();
-
-    return sizer;
+    return combobox;
 }
 
 TroubleshootDialog::TroubleshootDialog()
@@ -161,31 +140,94 @@ TroubleshootDialog::TroubleshootDialog()
     build->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
     // SYSTEM INFO
-    auto* info_panel = new CenteredMultiLinePanel(this, {
-        GetOSinfo(),
-        GetPackageType(),
-        GetCPUinfo(),
-        GetRAMinfo() + " RAM",
-        GetGPUinfo(),
-        GetMONinfo()
-    });
-    info_panel->SetBackgroundColour(*wxWHITE);
-    info_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+    auto sys_info_lines = [this](bool show_sys) {
+        if(!show_sys)
+            return std::vector<wxString>{GetOStype()};
+        return std::vector<wxString>{
+            GetOSinfo(),
+            GetPackageType(),
+            GetCPUinfo(),
+            GetRAMinfo() + " RAM",
+            GetGPUinfo(),
+            GetMONinfo()
+        };
+    };
 
-    auto info_copy_btn = new Button(this, _L("Copy"));
-    info_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
-    info_copy_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+    auto* sys_panel = new CenteredMultiLinePanel(this, sys_info_lines(true));
+    sys_panel->SetBackgroundColour(*wxWHITE);
+    sys_panel->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+
+    auto sys_less_btn = new Button(this, _L("Hide"));
+    sys_less_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    sys_less_btn->SetToolTip(_L("Show/Hide system information"));
+
+    auto sys_copy_btn = new Button(this, _L("Copy"));
+    sys_copy_btn->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    sys_copy_btn->SetToolTip(_L("Copy system information to clipboard"));
+
+    sys_copy_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         wxClipboardLocker lock;
         if (!lock)
             return false;
-        return wxTheClipboard->SetData(new wxTextDataObject(GetSysInfoAll(true)));
+        return wxTheClipboard->SetData(new wxTextDataObject(GetSysInfoAll()));
     });
 
-    auto link_wiki    = new HyperLink(this, _L("Wiki Guide"));
+    sys_less_btn->Bind(wxEVT_BUTTON, [this, sys_panel, sys_less_btn, sys_info_lines, sys_copy_btn](wxCommandEvent &e) {
+        m_sys_panel_mode = !m_sys_panel_mode;
+        sys_panel->SetText(sys_info_lines(m_sys_panel_mode));
+        sys_less_btn->SetLabel(m_sys_panel_mode ? _L("Hide") : _L("Show"));
+        Layout();
+        Fit();
+    });
+
+    auto link_wiki = new HyperLink(this, _L("Wiki Guide"));
 
     // RIGHT SIZER //////////////////////
+
+    auto create_title = [this](wxString title) {
+        auto line = new StaticLine(this, false, title);
+        line->SetFont(Label::Head_16);
+        line->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+        return line;
+    };
+
+    auto create_label = [this](wxString title, wxString tooltip, Label** label_out = nullptr) {
+        wxBoxSizer *sizer = new wxBoxSizer(wxHORIZONTAL);
+        auto label = new Label(this, title, LB_AUTO_WRAP, wxSize(FromDIP(275),-1)); // 400 - 120 - 5
+        label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+        label->SetToolTip(tooltip);
+        sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(15));
+
+        if (label_out) *label_out = label;
+
+        return sizer;
+    };
+
+    auto create_btn = [this](wxString title, wxString tooltip) {
+        auto btn = new Button(this, title);
+        btn->SetToolTip(tooltip);
+        btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+        return btn;
+    };
+
+    // INFORMATION
+    auto create_info_line = [this](wxString title) {
+        auto info = new Label(this, title);
+        info->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+        info->SetMaxSize(wxSize(FromDIP(400),-1));
+        info->Wrap(FromDIP(400));
+        return info;
+    };
+
+    auto info_desc_1 = create_info_line(_L("We need information for diagnosing source of the issue. Check wiki page for detailed guide."));
+    auto info_desc_2 = create_info_line(_L("Pack button collects project file and logs of current session onto a zip file."));
+    auto info_desc_3 = create_info_line(_L("Any additional visual examples like images or screen recordings might be helpful while reporting the issue."));
+    wxBoxSizer *info_desc_sizer = new wxBoxSizer(wxVERTICAL);
+    info_desc_sizer->Add(info_desc_1, 0, wxEXPAND | wxBOTTOM, FromDIP(8));
+    info_desc_sizer->Add(info_desc_2, 0, wxEXPAND | wxBOTTOM, FromDIP(8));
+    info_desc_sizer->Add(info_desc_3, 0, wxEXPAND);
+
     auto link_report  = new HyperLink(this, _L("Report issue") + " ");
-    link_report->SetFont(Label::Head_16);
     link_report->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &e) {
         auto encodeStr = [](const wxString& text) {
             wxString out;
@@ -201,222 +243,108 @@ TroubleshootDialog::TroubleshootDialog()
         };
 
         wxString url = "https://github.com/OrcaSlicer/OrcaSlicer/issues/new?template=bug_report.yml";
-        #ifdef __WINDOWS__
-            url += "&os_type=%22Windows%22";
-        #elif defined(__LINUX__)
-            url += "&os_type=%22Linux%22";
-        #elif defined(__APPLE__)
-            url += "&os_type=%22macOS%22";
-        #endif
+        wxString os = GetOStype();
+        if(!os.IsEmpty())
+            url += "&os_type=%22" + os +"%22";
         url += "&version="     + encodeStr(wxString(SoftFever_VERSION));
         url += "&os_version="  + encodeStr(GetOSinfo());
-        url += "&system_info=" + encodeStr(GetSysInfoAll(m_include_detailed_info));
-
         wxLaunchDefaultBrowser(url);
     });
 
-    auto issue_cb = new CheckBox(this);
-    issue_cb->SetValue(m_include_detailed_info);
-
-    auto issue_cb_label = new Label(this, _L("Include system information"));
-    issue_cb_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
-    issue_cb_label->SetToolTip(_L(
-        "Reporting issue with clicking \"Report issue\" link adds basic information (OrcaSlicer Version / Build, Operating system type / version, Installation type) as default\n"
-        "and automatically fills related fields on Github with including them to URL.\n"
-        "Adds Processor, Memory, GPU and Monitor information to URL when this option enabled"
-    ));
-
-    issue_cb->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent& e) {
-        m_include_detailed_info = e.IsChecked();
-        e.Skip();
-    });
-
-    issue_cb_label->Bind(wxEVT_LEFT_DOWN,([this, issue_cb](wxMouseEvent& e) {
-        if (e.LeftDClick()) return;
-        issue_cb->SetValue(!issue_cb->GetValue());
-        m_include_detailed_info = issue_cb->GetValue();
-        e.Skip();
-    }));
-
-    issue_cb_label->Bind(wxEVT_LEFT_DCLICK,([this, issue_cb](wxMouseEvent& e) {
-        issue_cb->SetValue(!issue_cb->GetValue());
-        m_include_detailed_info = issue_cb->GetValue();
-        e.Skip();
-    }));
-
-    bool has_project = false;
-    auto plater = wxGetApp().plater();
-    if (plater) {
-        auto project_name = plater->get_project_filename(".3mf");
-        has_project = !project_name.IsEmpty();
-    }
-
-    m_pack_opt_menu = new wxMenu();
-    if (m_pack_opt_menu){
-        auto add_check_item = [this](wxString label, bool check, std::function<void(wxCommandEvent&)> function, bool enable = true) {
-            wxMenuItem* item = m_pack_opt_menu->AppendCheckItem(wxID_ANY, label);
-            item->Check(check);
-            item->Enable(enable);
-            Bind(wxEVT_MENU, function, item->GetId());
-        };
-
-        add_check_item(_L("Project file")      , m_pack_project , [this](auto&){m_pack_project  = !m_pack_project ;}, has_project);
-        add_check_item(_L("Configuration")     , m_pack_config  , [this](auto&){m_pack_config   = !m_pack_config  ;});
-        add_check_item(_L("System information"), m_pack_sys_info, [this](auto&){m_pack_sys_info = !m_pack_sys_info;});
-        add_check_item(_L("Logs")              , m_pack_logs    , [this](auto&){m_pack_logs     = !m_pack_logs    ;});
-        add_check_item(_L("Profiles")          , m_pack_profiles, [this](auto&){m_pack_profiles = !m_pack_profiles;});
-        add_check_item(_L("Profile overview")  , m_pack_overview, [this](auto&){m_pack_overview = !m_pack_overview;});
-    }
-
-    auto pack_opt_btn = new Button(this, "", "sidebutton_dropdown", 0, 14);
-    pack_opt_btn->SetCenter(true);
-    pack_opt_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
-    pack_opt_btn->SetToolTip(_L("Choose what to include package."));
-    pack_opt_btn->Bind(wxEVT_BUTTON, [this, pack_opt_btn](wxCommandEvent &e) {
-        auto rc = pack_opt_btn->GetRect();
-        PopupMenu(m_pack_opt_menu, wxPoint(rc.x, rc.y + rc.height + FromDIP(5)));
-    });
-
     auto pack_btn = new Button(this, _L("Pack") + "...");
-    pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Expanded);
-    pack_btn->SetToolTip(_L("Packs all required files into zip file. Adds project file (if exist), system information, configuration, user profiles and logs."));
+    pack_btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
     pack_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         PackAll();
     });
 
-    auto create_btn = [this](wxString title, wxString tooltip) {
-        auto btn = new Button(this, title);
-        btn->SetToolTip(tooltip);
-        btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
-        return btn;
-    };
-
-    // CONFIGURATION
-    wxBoxSizer* cfg_btns = new wxBoxSizer(wxHORIZONTAL);
-
-    auto cfg_export_btn = create_btn(_L("Export") + "...", _L("Exports configuration file to selected folder as compressed file"));
-    cfg_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true)),
-            wxString::Format("TxtData:%s|%s", "AppConfig.json", GetConfigStr())
-        }, "OrcaSlicer_Config_" + GetTimestamp());
-    });
-    cfg_btns->Add(cfg_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
-
-    auto cfg_browse_btn = create_btn(_L("Browse") + "...", _L("Opens configurations folder"));
-    cfg_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        BrowseFolder(data_dir.string());
-    }); 
-    cfg_btns->Add(cfg_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
-
     // PROFILES
-    wxBoxSizer* prf_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto prf_export_btn = create_btn(_L("Export") + "...", _L("Exports user profiles to selected folder as compressed file"));
-    prf_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)),
-            wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()),
-            (data_dir / "user").string()
-        }, "OrcaSlicer_UserProfiles_" + GetTimestamp());
-    });
-    prf_btns->Add(prf_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
-
-    auto prf_browse_btn = create_btn(_L("Browse") + "...", _L("Opens user profiles folder"));
-    prf_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        BrowseFolder((data_dir / "user").string());
-    }); 
-    prf_btns->Add(prf_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
-
-    auto prf_rebuild_btn = create_btn(_L("Rebuild"), _L("Cleans and rebuilds system profiles cache on next launch"));
-    prf_rebuild_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+    auto prf_sys_cache_tip = _L("Cleans and rebuilds system profiles cache on next launch");
+    auto prf_sys_cache_szr = create_label(_L("Clean system profiles cache"), prf_sys_cache_tip);
+    auto prf_sys_cache_btn = create_btn(_L("Clean"), prf_sys_cache_tip);
+    prf_sys_cache_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         RebuildSystemProfiles();
     });
-    prf_btns->Add(prf_rebuild_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+    prf_sys_cache_szr->Add(prf_sys_cache_btn, 0, wxALIGN_CENTER_VERTICAL);
+
+    auto prf_loaded_szr = create_label(_L("Loaded profiles overview"), _L("This section shows information for loaded profiles"));
+    auto prf_loaded_btn = create_btn(_L("Copy"), _L("Copies detailed overview of loaded profiles in json format to clipboard"));
+    prf_loaded_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        wxClipboardLocker lock;
+        if (!lock)
+            return false;
+        return wxTheClipboard->SetData(new wxTextDataObject(GetProfilesOverview()));
+    });
+    prf_loaded_szr->Add(prf_loaded_btn, 0, wxALIGN_CENTER_VERTICAL);
 
     auto profiles_loaded = create_item_loaded_profiles();
 
-    // LOG
-    wxBoxSizer* log_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto logs_export_btn = create_btn(_L("Export") + "...", _L("Exports logs to selected folder as compressed file"));
-    logs_export_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
-        ExportAsZip({
-            wxString::Format("TxtData:%s|%s", "SystemInfo.txt", GetSysInfoAll(true)),
-            (data_dir / "log").string()
-        }, "OrcaSlicer_Logs_" + GetTimestamp());
-    }); 
-    log_btns->Add(logs_export_btn  , 0, wxALIGN_CENTER_VERTICAL);
+    // MORE
+    auto cfg_folder_szr = create_label(_L("Configurations folder"), "");
+    auto cfg_folder_btn = create_btn(_L("Browse") + "...", _L("Opens configurations folder"));
+    cfg_folder_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) {
+        BrowseFolder(data_dir.string());
+    });
+    cfg_folder_szr->Add(cfg_folder_btn, 0, wxALIGN_CENTER_VERTICAL);
 
-    auto log_browse_btn = create_btn(_L("Browse") + "...", _L("Opens logs folder"));
-    log_browse_btn->Bind(wxEVT_BUTTON, [this, data_dir](wxCommandEvent &e) { 
-        BrowseFolder((data_dir / "log").string());
-    }); 
-    log_btns->Add(log_browse_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+    auto log_level_szr = create_label(_L("Log level"), "");
+    log_level_szr->Add(create_item_log_level_combo(), 0, wxALIGN_CENTER_VERTICAL);
 
+    auto log_pack_szr = create_label(_L("Stored logs"), _L("Packs all stored logs onto a zip file."));
+    auto log_pack_btn = create_btn(_L("Pack") + "...", "");
+    log_pack_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        auto data_dir   = boost::filesystem::path(Slic3r::data_dir());
+        ExportAsZip({wxString((data_dir / "log").string())}, "OrcaSlicer_Logs_" + GetTimestamp());
+    });
+    log_pack_szr->Add(log_pack_btn, 0, wxALIGN_CENTER_VERTICAL);
+
+    auto log_clear_szr = create_label("-", "", &m_logs_storage);
     auto log_clear_btn = create_btn(_L("Clear"), "");
     log_clear_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         ClearLogs();
-    }); 
-    log_btns->Add(log_clear_btn  , 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+    });
+    log_clear_szr->Add(log_clear_btn, 0, wxALIGN_CENTER_VERTICAL);
 
-    auto log_info   = create_item_log_info();
-
-    // NETWORK
-    wxBoxSizer* net_btns = new wxBoxSizer(wxHORIZONTAL);
-    auto net_test_btn = create_btn(_L("Test") + "...", _L("Open Network Test"));
-    net_test_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
-        EndModal(wxID_CLOSE);
-        NetworkTestDialog dlg(wxGetApp().mainframe);
-        dlg.ShowModal();
-    }); 
-    net_btns->Add(net_test_btn  , 0, wxALIGN_CENTER_VERTICAL);
-
-    wxBoxSizer *issue_cb_sizer = new wxBoxSizer(wxHORIZONTAL);
-    issue_cb_sizer->Add(link_report   , 0, wxALIGN_CENTER_VERTICAL);
-    issue_cb_sizer->AddStretchSpacer();
-    issue_cb_sizer->Add(issue_cb      , 0, wxALIGN_CENTER_VERTICAL);
-    issue_cb_sizer->Add(issue_cb_label, 0,  wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(5));
+    UpdateLogsStorage();
 
     // LAYOUT //////////////////////
     wxBoxSizer *left_sizer  = new wxBoxSizer(wxVERTICAL);
+
+    wxBoxSizer *sys_btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+    sys_btn_sizer->Add(sys_less_btn, 0, wxLEFT | wxRIGHT, FromDIP(5));
+    sys_btn_sizer->AddStretchSpacer();
+    sys_btn_sizer->Add(sys_copy_btn, 0, wxLEFT | wxRIGHT, FromDIP(5));
+
     left_sizer->Add(m_header_logo     , 0, wxEXPAND | wxALIGN_CENTER);
-    left_sizer->Add(logo_line         , 0, wxEXPAND | wxTOP, FromDIP(12));
-    left_sizer->Add(version           , 0, wxEXPAND | wxTOP, FromDIP(6));
-    left_sizer->Add(build             , 0, wxEXPAND | wxTOP, FromDIP(0));
-    left_sizer->Add(info_panel        , 0, wxEXPAND | wxTOP, FromDIP(15));
-    left_sizer->Add(info_copy_btn     , 0, wxALIGN_CENTER | wxTOP, FromDIP(10));
+    left_sizer->Add(logo_line         , 0, wxEXPAND       | wxTOP, FromDIP(12));
+    left_sizer->Add(version           , 0, wxEXPAND       | wxTOP, FromDIP(6));
+    left_sizer->Add(build             , 0, wxEXPAND       | wxTOP, FromDIP(0));
+    left_sizer->Add(sys_panel         , 0, wxEXPAND       | wxTOP, FromDIP(15));
     left_sizer->AddStretchSpacer();
-    left_sizer->Add(link_wiki         , 0, wxALIGN_CENTER | wxTOP, FromDIP(20));
+    left_sizer->Add(sys_btn_sizer     , 0, wxEXPAND       | wxTOP, FromDIP(15));
+    left_sizer->Add(link_wiki         , 0, wxALIGN_CENTER | wxTOP, FromDIP(15));
     left_sizer->AddSpacer(FromDIP(5));
     
     wxBoxSizer *right_sizer  = new wxBoxSizer(wxVERTICAL);
 
-    auto create_title = [this](wxString title) {
-        auto line = new StaticLine(this, false, title);
-        line->SetFont(Label::Head_16);
-        line->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
-        return line;
-    };
-
     wxBoxSizer *pack_btn_sizer = new wxBoxSizer(wxHORIZONTAL);
-    pack_btn_sizer->Add(pack_opt_btn                  , 0, wxRIGHT, FromDIP(5));
-    pack_btn_sizer->Add(pack_btn                      , 1, wxEXPAND);
+    pack_btn_sizer->Add(link_report                   , 0, wxRIGHT, FromDIP(5));
+    pack_btn_sizer->AddStretchSpacer();
+    pack_btn_sizer->Add(pack_btn);
 
-    right_sizer->Add(issue_cb_sizer                   , 0, wxEXPAND | wxTOP, FromDIP(5));
-    right_sizer->Add(pack_btn_sizer                   , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(create_title(_L("Information")), 0, wxEXPAND);
+    right_sizer->Add(info_desc_sizer                , 0, wxEXPAND | wxTOP, FromDIP(5));
+    right_sizer->Add(pack_btn_sizer                 , 0, wxEXPAND | wxTOP, FromDIP(12));
 
-    right_sizer->Add(create_title(_L("Configuration")), 0, wxEXPAND | wxTOP, FromDIP(15));
-    right_sizer->Add(cfg_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
-
-    right_sizer->Add(create_title(_L("Profiles"))     , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(prf_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
-    right_sizer->Add(profiles_loaded                  , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(create_title(_L("Profiles"))   , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(prf_sys_cache_szr              , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(prf_loaded_szr                 , 0, wxEXPAND | wxTOP, FromDIP(5));
+    right_sizer->Add(profiles_loaded                , 0, wxEXPAND | wxTOP, FromDIP(5));
     
-    right_sizer->Add(create_title(_L("Logs"))         , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(log_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
-    right_sizer->Add(log_info                         , 0, wxEXPAND | wxTOP, FromDIP(10));
-
-    right_sizer->Add(create_title(_L("Network"))      , 0, wxEXPAND | wxTOP, FromDIP(12));
-    right_sizer->Add(net_btns                         , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(create_title(_L("More"))       , 0, wxEXPAND | wxTOP, FromDIP(12));
+    right_sizer->Add(cfg_folder_szr                 , 0, wxEXPAND | wxTOP, FromDIP(8));
+    right_sizer->Add(log_level_szr                  , 0, wxEXPAND | wxTOP, FromDIP(5));
+    right_sizer->Add(log_pack_szr                   , 0, wxEXPAND | wxTOP, FromDIP(5));
+    right_sizer->Add(log_clear_szr                  , 0, wxEXPAND | wxTOP, FromDIP(5));
 
     wxBoxSizer *m_sizer = new wxBoxSizer(wxHORIZONTAL);
     m_sizer->Add(left_sizer , 0, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT , FromDIP(15));
@@ -436,21 +364,21 @@ wxString TroubleshootDialog::GetTimestamp()
     return now.Format("%Y%m%d_%H%M"); // %S
 }
 
-wxString TroubleshootDialog::GetSysInfoAll(bool include_all)
+wxString TroubleshootDialog::GetSysInfoAll()
 {
-    wxString info = "Version   :  " + wxString(SoftFever_VERSION) + "\n"
-                  + "Build     :  " + wxString(GIT_COMMIT_HASH) + "\n"
-                  + "Package   :  " + GetPackageType() + "\n";
-    if(include_all)
-            info += "Platform  :  " + GetOSinfo()  + "\n"
-                  + "Processor :  " + GetCPUinfo() + "\n"
-                  + "Memory    :  " + GetRAMinfo() + "\n"
-                  + "Renderer  :  " + GetGPUinfo() + "\n"
-                  + "Monitors  :  " + GetMONinfo() + "\n";
+    wxString info;
+    info += "Version   :  " + wxString(SoftFever_VERSION) + "\n"
+          + "Build     :  " + wxString(GIT_COMMIT_HASH)   + "\n"
+          + "Package   :  " + GetPackageType() + "\n"
+          + "Platform  :  " + GetOSinfo()      + "\n"
+          + "Processor :  " + GetCPUinfo() + "\n"
+          + "Memory    :  " + GetRAMinfo() + "RAM" + "\n"
+          + "Renderer  :  " + GetGPUinfo() + "\n"
+          + "Monitors  :  " + GetMONinfo();
     return info;
 };
 
-// Excludes MD5 hash and any user related info
+/*
 wxString TroubleshootDialog::GetConfigStr()
 {
     wxString config_path = wxGetApp().app_config->config_path();
@@ -471,6 +399,7 @@ wxString TroubleshootDialog::GetConfigStr()
     }
     return wxString::FromUTF8(root.dump(4));
 };
+*/
 
 wxString TroubleshootDialog::GetProfilesOverview()
 {
@@ -610,6 +539,19 @@ wxString TroubleshootDialog::GetProfilesOverview()
         root["Overview"] = entry;
     }
     return wxString::FromUTF8(root.dump(4));
+}
+
+wxString TroubleshootDialog::GetOStype()
+{
+    wxString os = "";
+    #ifdef __WINDOWS__
+        os = "Windows";
+    #elif defined(__LINUX__)
+        os = "Linux";
+    #elif defined(__APPLE__)
+        os = "macOS";
+    #endif
+    return os;
 }
 
 wxString TroubleshootDialog::GetOSinfo()
@@ -949,28 +891,35 @@ wxString TroubleshootDialog::GetMONinfo()
     double text_scale = dpi / 96.0;
     m_str += wxString::Format("  TextScaling-%.0f%%", text_scale * 100.0);
 #endif
-    //BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << m_str;
     return m_str;
 }
 
 void TroubleshootDialog::PackAll()
 {
-    auto data_dir   = boost::filesystem::path(Slic3r::data_dir());
     std::vector<wxString> include_zip;
+    //auto data_dir   = boost::filesystem::path(Slic3r::data_dir());
+    //include_zip.emplace_back(wxString((data_dir / "log").string()));
 
-    if(m_pack_sys_info) include_zip.emplace_back(wxString::Format("TxtData:%s|%s", "SystemInfo.txt"       , GetSysInfoAll(true)));
-    if(m_pack_overview) include_zip.emplace_back(wxString::Format("TxtData:%s|%s", "ProfilesOverview.json", GetProfilesOverview()));
-    if(m_pack_config)   include_zip.emplace_back(wxString::Format("TxtData:%s|%s", "AppConfig.json"       , GetConfigStr()));
-    if(m_pack_logs)     include_zip.emplace_back(wxString((data_dir / "log").string()));
-    if(m_pack_profiles) include_zip.emplace_back(wxString((data_dir / "user").string()));
-    
+    // Collect logs for current session. does not includes debug_network_...
+    boost::filesystem::path current_log = get_log_file_name();
+    if (!current_log.empty()){
+        boost::filesystem::path base = current_log.parent_path() / current_log.stem(); // removes ".0"
+        std::vector<boost::filesystem::path> result;
+        for (int n = 0; ; ++n) {
+            auto candidate = boost::filesystem::path(base.string() + "." + std::to_string(n));
+            if (!boost::filesystem::exists(candidate))
+                break;
+            include_zip.emplace_back(wxString(candidate.string()));
+        }
+    }
+
     auto project_name = wxGetApp().plater()->get_project_filename(".3mf");
-    if(!project_name.IsEmpty() && m_pack_project){
+    if(!project_name.IsEmpty()){
         if (wxGetApp().plater()->is_project_dirty()) {
             auto res = MessageDialog(this, 
                 _L("The current project has unsaved changes, save it before continue?") +
                 "\n\n" +
-                _L("Select NO to close dialog and review project."),
+                _L("Select NO to close dialog and review project"),
                 wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Save"), wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxCENTRE
             ).ShowModal();
             if (res == wxID_YES)
@@ -984,11 +933,10 @@ void TroubleshootDialog::PackAll()
         include_zip.emplace_back(project_name);
     }
 
-    if(include_zip.empty()){
-        MessageDialog(this, _L("No items to include package. Please choose at least one item."),
+    if (project_name.IsEmpty()){
+        MessageDialog(this, _L("No project file on current session. Only logs will be included to package"),
             wxString(SLIC3R_APP_FULL_NAME), wxOK | wxICON_WARNING | wxCENTRE
         ).ShowModal();
-        return;
     }
 
     ExportAsZip(include_zip, "OrcaSlicer_PackedDebugInfo_" + GetTimestamp());
@@ -1097,18 +1045,21 @@ void TroubleshootDialog::ClearLogs()
 
 void TroubleshootDialog::UpdateLogsStorage()
 {
-    boost::filesystem::path logsPath = boost::filesystem::path(Slic3r::data_dir()) / "log";
+    boost::filesystem::path logs_path = boost::filesystem::path(Slic3r::data_dir()) / "log";
     
-    uintmax_t totalBytes = 0;
-    if (boost::filesystem::exists(logsPath) && boost::filesystem::is_directory(logsPath)) {
-        for (const auto& entry : boost::filesystem::recursive_directory_iterator(logsPath)) {
-            if (boost::filesystem::is_regular_file(entry.path()))
-                totalBytes += boost::filesystem::file_size(entry.path());
+    uintmax_t total_bytes = 0;
+    int file_count = 0;
+    if (boost::filesystem::exists(logs_path) && boost::filesystem::is_directory(logs_path)) {
+        for (const auto& entry : boost::filesystem::recursive_directory_iterator(logs_path)) {
+            if (boost::filesystem::is_regular_file(entry.path())){
+                total_bytes += boost::filesystem::file_size(entry.path());
+                file_count++;
+            }
         }
     }
 
-    bool is_mb = totalBytes >= 1024 * 1024;
-    wxString label = totalBytes > 0 ? wxString::Format("%.2f %s", totalBytes / (1024.0 * (is_mb ? 1024.0 : 1.0)), is_mb ? "MB" : "KB") : "";
+    bool is_mb = total_bytes >= 1024 * 1024;
+    wxString label = total_bytes > 0 ? wxString::Format("%d %s (%.2f %s)", file_count, _L("log(s)"), total_bytes / (1024.0 * (is_mb ? 1024.0 : 1.0)), is_mb ? "MB" : "KB") : "";
     m_logs_storage->SetLabel(label);
 }
 
