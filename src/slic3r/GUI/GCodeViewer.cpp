@@ -320,10 +320,10 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         // ImGui::SameLine();
         libvgcode::PathVertex vertex = viewer->get_current_vertex();
         size_t vertex_id = viewer->get_current_vertex_id();
-        //if (vertex.type == libvgcode::EMoveType::Seam) {
-        //    vertex_id = static_cast<size_t>(viewer->get_view_visible_range()[1]) - 1;
-        //    vertex = viewer->get_vertex_at(vertex_id);
-        //}
+        if (view_type != libvgcode::EViewType::FeatureType && vertex.type == libvgcode::EMoveType::Seam) { // exclude FeatureType for proper type readings
+            vertex_id = static_cast<size_t>(viewer->get_view_visible_range()[1]) - 1;
+            vertex = viewer->get_vertex_at(vertex_id);
+        }
 
         // ORCA Moved position and information to bottom
 
