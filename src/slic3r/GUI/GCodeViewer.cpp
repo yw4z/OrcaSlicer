@@ -319,11 +319,11 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         // ImGuiWrapper::text_colored(ImGuiWrapper::COL_ORCA, _u8L("Position") + ":");
         // ImGui::SameLine();
         libvgcode::PathVertex vertex = viewer->get_current_vertex();
-        size_t vertex_id = viewer->get_current_vertex_id();
-        if (vertex.type == libvgcode::EMoveType::Seam) {
-            vertex_id = static_cast<size_t>(viewer->get_view_visible_range()[1]) - 1;
-            vertex = viewer->get_vertex_at(vertex_id);
-        }
+        //size_t vertex_id = viewer->get_current_vertex_id();
+        //if (vertex.type == libvgcode::EMoveType::Seam) {
+        //    vertex_id = static_cast<size_t>(viewer->get_view_visible_range()[1]) - 1;
+        //    vertex = viewer->get_vertex_at(vertex_id);
+        //}
 
         // ORCA Moved position and information to bottom
 
@@ -560,6 +560,15 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         const float speed_width = ImGui::CalcTextSize((_u8L("Speed: ") + "9999  ").c_str()).x;
         ImGuiWrapper::text(std::string(spdBuf)); // render Speed as differrent item to keep next item in same place
         switch (view_type) {
+                case libvgcode::EViewType::FeatureType: {
+                    if (is_extrusion && !vertex.is_option()) // ORCA shor more types on FeatureType
+                        sprintf(buf, "%s", to_string(vertex.role).c_str());
+                    else if(vertex.is_travel() || vertex.is_option() || vertex.is_wipe()) 
+                        sprintf(buf, "%s", to_string(vertex.type).c_str());
+                    else
+                        sprintf(buf, "%s", NA_CSTR);
+                    break;
+                }
                 case libvgcode::EViewType::Height: {
                     if (is_extrusion)
                         sprintf(valBuf, "%.2f", vertex.height);
@@ -606,16 +615,15 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     break;
                 }
                 case libvgcode::EViewType::ActualVolumetricFlowRate: {
-                    // Don't display the actual flow, since it only gives data for the end of a segment
-                    // sprintf(buf, "%s %s%.2f", buf, _u8L("Actual Flow: ").c_str(), vertex.actual_volumetric_rate());
-                    sprintf(buf, " ");
+                    // This only gives data for the end of a segment
+                    sprintf(buf, "%s%.2f", _u8L("Actual Flow: ").c_str(), vertex.actual_volumetric_rate());
                     break;
                 }
                 case libvgcode::EViewType::ActualSpeed: {
                     sprintf(buf, "%s%.1f", _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
                     break;
                 }
-// ORCA: Add Pressure Advance visualization support
+                // ORCA: Add Pressure Advance visualization support
                 case libvgcode::EViewType::PressureAdvance: {
                     sprintf(buf, "%s%.4f", _u8L("PA: ").c_str(), vertex.pressure_advance);
                     break;
@@ -624,12 +632,9 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                 default:
                     break;
         }
-
-        ImGui::SameLine(speed_width);
-        if (view_type == libvgcode::EViewType::FeatureType) {
-            ImGuiWrapper::text(vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
-        }
-        else {
+        
+        if (buf[0] == '\0') { // dont render if buffer empty
+            ImGui::SameLine(speed_width);
             ImGuiWrapper::text(std::string(buf));
         }
 
