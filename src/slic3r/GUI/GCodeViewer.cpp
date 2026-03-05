@@ -555,7 +555,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::Dummy({0,0});
 
         const bool is_extrusion = vertex.is_extrusion();
-        char buf[1024]; char valBuf[32]; char spdBuf[128];
+        char buf[1024] = ""; char valBuf[32]; char spdBuf[128];
         sprintf(spdBuf, "%s%.0f ", _u8L("Speed: ").c_str(), vertex.feedrate);
         const float speed_width = ImGui::CalcTextSize((_u8L("Speed: ") + "9999  ").c_str()).x;
         ImGuiWrapper::text(std::string(spdBuf)); // render Speed as differrent item to keep next item in same place
@@ -565,7 +565,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         sprintf(valBuf, "%.2f", vertex.height);
                     else
                         sprintf(valBuf, "%s", NA_CSTR);
-                    sprintf(buf, "%s %s%s", buf, _u8L("Height: ").c_str(), valBuf);
+                    sprintf(buf, "%s%s", _u8L("Height: ").c_str(), valBuf);
                     break;
                 }
                 case libvgcode::EViewType::Width: {
@@ -573,7 +573,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         sprintf(valBuf, "%.2f", vertex.width);
                     else
                         sprintf(valBuf, "%s", NA_CSTR);
-                    sprintf(buf, "%s %s%s", buf, _u8L("Width: ").c_str(), valBuf);
+                    sprintf(buf, "%s%s", _u8L("Width: ").c_str(), valBuf);
                     break;
                 }
                 case libvgcode::EViewType::VolumetricFlowRate: {
@@ -581,50 +581,50 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         sprintf(valBuf, "%.2f", vertex.volumetric_rate());
                     else
                         sprintf(valBuf, "%s", NA_CSTR);
-                    sprintf(buf, "%s %s%s", buf, _u8L("Flow: ").c_str(), valBuf);
+                    sprintf(buf, "%s%s", _u8L("Flow: ").c_str(), valBuf);
                     break;
                 }
                 case libvgcode::EViewType::FanSpeed: {
-                    sprintf(buf, "%s %s%.0f", buf, _u8L("Fan: ").c_str(), vertex.fan_speed);
+                    sprintf(buf, "%s%.0f", _u8L("Fan: ").c_str(), vertex.fan_speed);
                     break;
                 }
                 case libvgcode::EViewType::Temperature: {
-                    sprintf(buf, "%s %s%.0f", buf, _u8L("Temperature: ").c_str(), vertex.temperature);
+                    sprintf(buf, "%s%.0f", _u8L("Temperature: ").c_str(), vertex.temperature);
                     break;
                 }
                 case libvgcode::EViewType::LayerTimeLinear:
                 case libvgcode::EViewType::LayerTimeLogarithmic: {
-                    sprintf(buf, "%s %s%.1f", buf, _u8L("Layer Time: ").c_str(), vertex.layer_duration);
+                    sprintf(buf, "%s%.1f", _u8L("Layer Time: ").c_str(), vertex.layer_duration);
                     break;
                 }
                 case libvgcode::EViewType::Tool: {
-                    sprintf(buf, "%s %s%d", buf, _u8L("Tool: ").c_str(), vertex.extruder_id + 1);
+                    sprintf(buf, "%s%d", _u8L("Tool: ").c_str(), vertex.extruder_id + 1);
                     break;
                 }
                 case libvgcode::EViewType::ColorPrint: {
-                    sprintf(buf, "%s %s%d", buf, _u8L("Color: ").c_str(), vertex.color_id + 1);
+                    sprintf(buf, "%s%d", _u8L("Color: ").c_str(), vertex.color_id + 1);
                     break;
                 }
                 case libvgcode::EViewType::ActualVolumetricFlowRate: {
                     // Don't display the actual flow, since it only gives data for the end of a segment
                     // sprintf(buf, "%s %s%.2f", buf, _u8L("Actual Flow: ").c_str(), vertex.actual_volumetric_rate());
-                    sprintf(buf, "%s %s", buf, " ");
+                    sprintf(buf, " ");
                     break;
                 }
                 case libvgcode::EViewType::ActualSpeed: {
-                    sprintf(buf, "%s %s%.1f", buf, _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
+                    sprintf(buf, "%s%.1f", _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
                     break;
                 }
 // ORCA: Add Pressure Advance visualization support
                 case libvgcode::EViewType::PressureAdvance: {
-                    sprintf(buf, "%s %s%.4f", buf, _u8L("PA: ").c_str(), vertex.pressure_advance);
+                    sprintf(buf, "%s%.4f", _u8L("PA: ").c_str(), vertex.pressure_advance);
                     break;
                 }
 
                 default:
                     break;
-                }
-        
+        }
+
         ImGui::SameLine(speed_width);
         if (view_type == libvgcode::EViewType::FeatureType) {
             ImGuiWrapper::text(vertex.is_extrusion() ? to_string(vertex.role).c_str() : NA_CSTR);
