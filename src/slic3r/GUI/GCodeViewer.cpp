@@ -633,7 +633,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     break;
         }
         
-        if (buf[0] == '\0') { // dont render if buffer empty
+        if (buf[0] != '\0') { // dont render if buffer empty
             ImGui::SameLine(speed_width);
             ImGuiWrapper::text(std::string(buf));
         }
