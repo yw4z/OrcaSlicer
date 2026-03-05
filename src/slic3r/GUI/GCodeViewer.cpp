@@ -319,7 +319,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         // ImGuiWrapper::text_colored(ImGuiWrapper::COL_ORCA, _u8L("Position") + ":");
         // ImGui::SameLine();
         libvgcode::PathVertex vertex = viewer->get_current_vertex();
-        //size_t vertex_id = viewer->get_current_vertex_id();
+        size_t vertex_id = viewer->get_current_vertex_id();
         //if (vertex.type == libvgcode::EMoveType::Seam) {
         //    vertex_id = static_cast<size_t>(viewer->get_view_visible_range()[1]) - 1;
         //    vertex = viewer->get_vertex_at(vertex_id);
