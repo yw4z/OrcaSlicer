@@ -86,7 +86,8 @@ protected:
 
 class CenteredMultiLinePanel : public wxPanel
 {
-    static constexpr double m_block_gap = 0.4;
+    static constexpr double m_block_gap   = 0.55;
+    static constexpr double m_line_height = 1.15;
     std::vector<wxString>   m_lines;
 
 public:
@@ -150,7 +151,7 @@ private:
                 line.Trim(false);
                 dc.GetTextExtent(line, &tw, &th);
                 dc.DrawText(line, (cWidth - tw) / 2, y);
-                y += th;
+                y += static_cast<int>(th * m_line_height);
             }
             if (i < m_lines.size() - 1)
                 y += static_cast<int>(th * m_block_gap);
@@ -171,7 +172,7 @@ private:
             wxCoord th;
             for (auto& line : Wrap(dc, m_lines[i], cWidth)) {
                 dc.GetTextExtent(line, nullptr, &th);
-                y += th;
+                y += static_cast<int>(th * m_line_height);
             }
             if (i < m_lines.size() - 1)
                 y += static_cast<int>(th * m_block_gap);

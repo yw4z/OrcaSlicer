@@ -2310,9 +2310,13 @@ static wxMenu* generate_help_menu()
 {
     wxMenu* helpMenu = new wxMenu();
 
-    // Troubleshoot center
-    append_menu_item(helpMenu, wxID_ANY, _L("Troubleshoot Center"), "",
-        [](wxCommandEvent&) { wxGetApp().troubleshoot(); });
+    // shortcut key
+    append_menu_item(helpMenu, wxID_ANY, _L("Keyboard Shortcuts") + sep + "&?", _L("Show the list of the keyboard shortcuts"),
+        [](wxCommandEvent&) { wxGetApp().keyboard_shortcuts(); });
+    // Show Beginner's Tutorial
+    append_menu_item(helpMenu, wxID_ANY, _L("Setup Wizard"), _L("Setup Wizard"), [](wxCommandEvent &) {wxGetApp().ShowUserGuide();});
+
+    helpMenu->AppendSeparator();
 
     // Open Config Folder
     append_menu_item(helpMenu, wxID_ANY, _L("Show Configuration Folder"), _L("Show Configuration Folder"),
@@ -2320,11 +2324,14 @@ static wxMenu* generate_help_menu()
 
     helpMenu->AppendSeparator();
 
-    // shortcut key
-    append_menu_item(helpMenu, wxID_ANY, _L("Keyboard Shortcuts") + sep + "&?", _L("Show the list of the keyboard shortcuts"),
-        [](wxCommandEvent&) { wxGetApp().keyboard_shortcuts(); });
-    // Show Beginner's Tutorial
-    append_menu_item(helpMenu, wxID_ANY, _L("Setup Wizard"), _L("Setup Wizard"), [](wxCommandEvent &) {wxGetApp().ShowUserGuide();});
+    // Troubleshoot center
+    append_menu_item(helpMenu, wxID_ANY, _L("Troubleshoot Center"), "",
+        [](wxCommandEvent&) { wxGetApp().troubleshoot(); });
+
+    append_menu_item(helpMenu, wxID_ANY, _L("Open Network Test"), _L("Open Network Test"), [](wxCommandEvent&) {
+            NetworkTestDialog dlg(wxGetApp().mainframe);
+            dlg.ShowModal();
+        });
 
     helpMenu->AppendSeparator();
 
@@ -2345,11 +2352,6 @@ static wxMenu* generate_help_menu()
         }, "", nullptr, []() {
             return true;
         });
-
-    //append_menu_item(helpMenu, wxID_ANY, _L("Open Network Test"), _L("Open Network Test"), [](wxCommandEvent&) {
-    //        NetworkTestDialog dlg(wxGetApp().mainframe);
-    //        dlg.ShowModal();
-    //    });
 
     // About
 #ifndef __APPLE__
