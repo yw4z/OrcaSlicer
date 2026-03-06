@@ -1,9 +1,19 @@
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "4.0")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+endif()
+
 cmake_minimum_required(VERSION 3.13)
 
 # Verify that your CMake version is exactly 3.5 series or higher on windows
 if ( (MSVC OR WIN32) AND (${CMAKE_VERSION} VERSION_LESS "3.5") )
     message(FATAL_ERROR "CMake current version ${CMAKE_VERSION} is too old. Minimum required is 3.5.")
 endif()
+
+# The following line used to be in tests/CMakeLists.txt
+# Having it there causes rebuilds of all targets on any CMakeLists.txt change under tests/
+# It has no effect on how code is compiled or linked.
+# It just lets you later do `set_property(TARGET foo PROPERTY FOLDER "bar")`
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 if (WIN32)
     # Detect known CI environments
@@ -119,7 +129,7 @@ option(SLIC3R_MSVC_COMPILE_PARALLEL "Compile on Visual Studio in parallel" 1)
 option(SLIC3R_MSVC_PDB          "Generate PDB files on MSVC in Release mode" 1)
 option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
 # If SLIC3R_FHS is 1 -> SLIC3R_DESKTOP_INTEGRATION is always 0, othrewise variable.
-CMAKE_DEPENDENT_OPTION(SLIC3R_DESKTOP_INTEGRATION "Allow perfoming desktop integration during runtime" 1 "NOT SLIC3R_FHS" 0)
+CMAKE_DEPENDENT_OPTION(SLIC3R_DESKTOP_INTEGRATION "Allow performing desktop integration during runtime" 1 "NOT SLIC3R_FHS" 0)
 
 set(OPENVDB_FIND_MODULE_PATH "" CACHE PATH "Path to OpenVDB installation's find modules.")
 
@@ -340,7 +350,7 @@ if(WIN32)
         if (DEFINED ENV{WindowsSdkDir} AND DEFINED ENV{WindowsSDKVersion})
             set(WIN10SDK_INCLUDE_PATH "$ENV{WindowsSdkDir}/Include/$ENV{WindowsSDKVersion}")
         else ()
-            set(WIN10SDK_INCLUDE_PATH "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22000.0")
+            set(WIN10SDK_INCLUDE_PATH "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0")
         endif ()
         if (NOT EXISTS "${WIN10SDK_INCLUDE_PATH}/winrt/windows.graphics.printing3d.h")
             message("${WIN10SDK_INCLUDE_PATH}/winrt/windows.graphics.printing3d.h was not found")
@@ -426,7 +436,11 @@ if (NOT MSVC AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMP
     endif()
 
     if((${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang") AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 15)
-        add_compile_options(-Wno-error=enum-constexpr-conversion)
+        include(CheckCXXCompilerFlag)
+        check_cxx_compiler_flag(-Wno-error=enum-constexpr-conversion HAS_WNO_ERROR_ENUM_CONSTEXPR_CONV)
+        if(HAS_WNO_ERROR_ENUM_CONSTEXPR_CONV)
+            add_compile_options(-Wno-error=enum-constexpr-conversion)
+        endif()
     endif()
 
     #GCC generates loads of -Wunknown-pragmas when compiling igl. The fix is not easy due to a bug in gcc, see
@@ -565,6 +579,7 @@ endif()
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
+set(Boost_NO_SYSTEM_PATHS TRUE)
 find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
 
 add_library(boost_libs INTERFACE)
@@ -682,6 +697,10 @@ find_package(PNG REQUIRED)
 set(OpenGL_GL_PREFERENCE "LEGACY")
 find_package(OpenGL REQUIRED)
 
+if(APPLE AND CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    set(OPENGL_LIBRARIES "-framework OpenGL" CACHE STRING "OpenGL framework" FORCE)
+endif()
+
 set(GLEW_ROOT "${CMAKE_PREFIX_PATH}")
 message("GLEW_ROOT: ${GLEW_ROOT}")
 # Find glew or use bundled version
@@ -716,7 +735,7 @@ add_custom_target(gettext_make_pot
 )
 add_custom_target(gettext_merge_po_with_pot
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Merge localization po with new generted pot file"
+    COMMENT "Merge localization po with new generated pot file"
 )
 file(GLOB BBL_L10N_PO_FILES "${BBL_L18N_DIR}/*/OrcaSlicer*.po")
 foreach(po_file ${BBL_L10N_PO_FILES})
