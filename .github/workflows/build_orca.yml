@@ -2,10 +2,10 @@ on:
     workflow_call:
       inputs:
         cache-key:
-          required: true
+          required: false
           type: string
         cache-path:
-          required: true
+          required: false
           type: string
         os:
           required: true
@@ -13,6 +13,10 @@ on:
         arch:
           required: false
           type: string
+        macos-combine-only:
+          required: false
+          type: boolean
+          default: false
 
 jobs:
   build_orca:
@@ -26,12 +30,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           lfs: 'true'
 
       - name: load cached deps
-        uses: actions/cache@v4
+        if: ${{ !(contains(inputs.os, 'macos') && inputs.macos-combine-only) }}
+        uses: actions/cache@v5
         with:
           path: ${{ inputs.cache-path }}
           key: ${{ inputs.cache-key }}
@@ -86,14 +91,16 @@ jobs:
 
 #   Mac
       - name: Install tools mac
-        if: inputs.os == 'macos-14'
+        if: contains(inputs.os, 'macos') && !inputs.macos-combine-only
         run: |
-          brew install libtool
-          brew list
-          mkdir -p ${{ github.workspace }}/deps/build
+          if [ -z "${{ vars.SELF_HOSTED }}" ]; then
+            brew install libtool
+            brew list
+          fi
+          mkdir -p ${{ github.workspace }}/deps/build/${{ inputs.arch }}
 
       - name: Free disk space
-        if: inputs.os == 'macos-14'
+        if: contains(inputs.os, 'macos') && !inputs.macos-combine-only && !vars.SELF_HOSTED
         run: |
           df -hI /dev/disk3s1s1
           sudo find /Applications -maxdepth 1 -type d -name "Xcode_*.app" ! -name "Xcode_15.4.app" -exec rm -rf {} +
@@ -101,14 +108,65 @@ jobs:
           df -hI /dev/disk3s1s1
 
       - name: Build slicer mac
-        if: inputs.os == 'macos-14'
+        if: contains(inputs.os, 'macos') && !inputs.macos-combine-only
         working-directory: ${{ github.workspace }}
         run: |
-          ./build_release_macos.sh -s -n -x -a universal -t 10.15 -1
+          ./build_release_macos.sh -s -n -x ${{ !vars.SELF_HOSTED && '-1' || '' }} -a ${{ inputs.arch }} -t 10.15
+
+      - name: Pack macOS app bundle ${{ inputs.arch }}
+        if: contains(inputs.os, 'macos') && !inputs.macos-combine-only
+        working-directory: ${{ github.workspace }}
+        run: |
+          tar -czvf OrcaSlicer_Mac_bundle_${{ inputs.arch }}_${{ github.sha }}.tar.gz -C build/${{ inputs.arch }} OrcaSlicer
+
+      - name: Upload macOS app bundle ${{ inputs.arch }}
+        if: contains(inputs.os, 'macos') && !inputs.macos-combine-only
+        uses: actions/upload-artifact@v6
+        with:
+          name: OrcaSlicer_Mac_bundle_${{ inputs.arch }}_${{ github.sha }}
+          path: ${{ github.workspace }}/OrcaSlicer_Mac_bundle_${{ inputs.arch }}_${{ github.sha }}.tar.gz
+
+      - name: Download macOS arm64 app bundle
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        uses: actions/download-artifact@v7
+        with:
+          name: OrcaSlicer_Mac_bundle_arm64_${{ github.sha }}
+          path: ${{ github.workspace }}/mac_bundles/arm64
+
+      - name: Download macOS x86_64 app bundle
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        uses: actions/download-artifact@v7
+        with:
+          name: OrcaSlicer_Mac_bundle_x86_64_${{ github.sha }}
+          path: ${{ github.workspace }}/mac_bundles/x86_64
+
+      - name: Extract macOS app bundles
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p build/arm64 build/x86_64
+          arm_bundle=$(find "${{ github.workspace }}/mac_bundles/arm64" -name '*.tar.gz' -print -quit)
+          x86_bundle=$(find "${{ github.workspace }}/mac_bundles/x86_64" -name '*.tar.gz' -print -quit)
+          tar -xzvf "$arm_bundle" -C "${{ github.workspace }}/build/arm64"
+          tar -xzvf "$x86_bundle" -C "${{ github.workspace }}/build/x86_64"
+
+      - name: Build universal mac app bundle
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        working-directory: ${{ github.workspace }}
+        run: |
+          ./build_release_macos.sh -u -x ${{ !vars.SELF_HOSTED && '-1' || '' }} -a universal -t 10.15
+
+      - name: Delete intermediate per-arch artifacts
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: |
+            OrcaSlicer_Mac_bundle_arm64_${{ github.sha }}
+            OrcaSlicer_Mac_bundle_x86_64_${{ github.sha }}
 
  # Thanks to RaySajuuk, it's working now
       - name: Sign app and notary
-        if: github.repository == 'OrcaSlicer/OrcaSlicer' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && inputs.os == 'macos-14'
+        if: github.repository == 'OrcaSlicer/OrcaSlicer' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && contains(inputs.os, 'macos') && inputs.macos-combine-only
         working-directory: ${{ github.workspace }}
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -122,6 +180,8 @@ jobs:
           security create-keychain -p $KEYCHAIN_PASSWORD $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p $KEYCHAIN_PASSWORD $KEYCHAIN_PATH
+          # Set the temporary keychain as the default to prevent codesign from accessing the locked login keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
           security import $CERTIFICATE_PATH -P $P12_PASSWORD -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $P12_PASSWORD $KEYCHAIN_PATH
@@ -150,18 +210,17 @@ jobs:
           fi
           
           # Notarize main DMG
-          xcrun notarytool store-credentials "notarytool-profile" --apple-id "${{ secrets.APPLE_DEV_ACCOUNT }}" --team-id "${{ secrets.TEAM_ID }}" --password "${{ secrets.APP_PWD }}"
-          xcrun notarytool submit "OrcaSlicer_Mac_universal_${{ env.ver }}.dmg" --keychain-profile "notarytool-profile" --wait
+          xcrun notarytool submit "OrcaSlicer_Mac_universal_${{ env.ver }}.dmg" --apple-id "${{ secrets.APPLE_DEV_ACCOUNT }}" --team-id "${{ secrets.TEAM_ID }}" --password "${{ secrets.APP_PWD }}" --wait
           xcrun stapler staple OrcaSlicer_Mac_universal_${{ env.ver }}.dmg
-          
+
           # Notarize profile validator DMG if it exists
           if [ -f "OrcaSlicer_profile_validator_Mac_universal_${{ env.ver }}.dmg" ]; then
-            xcrun notarytool submit "OrcaSlicer_profile_validator_Mac_universal_${{ env.ver }}.dmg" --keychain-profile "notarytool-profile" --wait
+            xcrun notarytool submit "OrcaSlicer_profile_validator_Mac_universal_${{ env.ver }}.dmg" --apple-id "${{ secrets.APPLE_DEV_ACCOUNT }}" --team-id "${{ secrets.TEAM_ID }}" --password "${{ secrets.APP_PWD }}" --wait
             xcrun stapler staple OrcaSlicer_profile_validator_Mac_universal_${{ env.ver }}.dmg
           fi
 
       - name: Create DMG without notary
-        if: github.ref != 'refs/heads/main' && inputs.os == 'macos-14'
+        if: github.ref != 'refs/heads/main' && contains(inputs.os, 'macos') && inputs.macos-combine-only
         working-directory: ${{ github.workspace }}
         run: |
           mkdir -p ${{ github.workspace }}/build/universal/OrcaSlicer_dmg
@@ -180,22 +239,22 @@ jobs:
           fi
 
       - name: Upload artifacts mac
-        if: inputs.os == 'macos-14'
-        uses: actions/upload-artifact@v5
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_Mac_universal_${{ env.ver }}
           path: ${{ github.workspace }}/OrcaSlicer_Mac_universal_${{ env.ver }}.dmg
 
       - name: Upload OrcaSlicer_profile_validator DMG mac
-        if: inputs.os == 'macos-14'
-        uses: actions/upload-artifact@v5
+        if: contains(inputs.os, 'macos') && inputs.macos-combine-only
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_profile_validator_Mac_universal_DMG_${{ env.ver }}
           path: ${{ github.workspace }}/OrcaSlicer_profile_validator_Mac_universal_${{ env.ver }}.dmg
           if-no-files-found: ignore
 
       - name: Deploy Mac release
-        if: github.repository == 'OrcaSlicer/OrcaSlicer' && github.ref == 'refs/heads/main' && inputs.os == 'macos-14'
+        if: github.repository == 'OrcaSlicer/OrcaSlicer' && github.ref == 'refs/heads/main' && contains(inputs.os, 'macos') && inputs.macos-combine-only
         uses: WebFreak001/deploy-nightly@v3.2.0
         with:
           upload_url: https://uploads.github.com/repos/OrcaSlicer/OrcaSlicer/releases/137995723/assets{?name,label}
@@ -206,7 +265,7 @@ jobs:
           max_releases: 1 # optional, if there are more releases than this matching the asset_name, the oldest ones are going to be deleted
 
       - name: Deploy Mac OrcaSlicer_profile_validator DMG release
-        if: github.repository == 'OrcaSlicer/OrcaSlicer' && github.ref == 'refs/heads/main' && inputs.os == 'macos-14'
+        if: github.repository == 'OrcaSlicer/OrcaSlicer' && github.ref == 'refs/heads/main' && contains(inputs.os, 'macos') && inputs.macos-combine-only
         uses: WebFreak001/deploy-nightly@v3.2.0
         with:
           upload_url: https://uploads.github.com/repos/OrcaSlicer/OrcaSlicer/releases/137995723/assets{?name,label}
@@ -255,28 +314,28 @@ jobs:
 
       - name: Upload artifacts Win zip
         if: inputs.os == 'windows-latest'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_Windows_${{ env.ver }}_portable
           path: ${{ github.workspace }}/build/OrcaSlicer
 
       - name: Upload artifacts Win installer
         if: inputs.os == 'windows-latest'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_Windows_${{ env.ver }}
           path: ${{ github.workspace }}/build/OrcaSlicer*.exe
 
       - name: Upload artifacts Win PDB
         if: inputs.os == 'windows-latest'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: PDB
           path: ${{ github.workspace }}/build/src/Release/Debug_PDB_${{ env.ver }}_for_developers_only.7z
 
       - name: Upload OrcaSlicer_profile_validator Win
         if: inputs.os == 'windows-latest'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_profile_validator_Windows_${{ env.ver }}
           path: ${{ github.workspace }}/build/src/Release/OrcaSlicer_profile_validator.exe
@@ -336,7 +395,7 @@ jobs:
         # and doesn't preserve file permissions
       - name: Upload Test Artifact
         if: inputs.os == 'ubuntu-24.04'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ github.sha }}-tests
           overwrite: true
@@ -358,7 +417,7 @@ jobs:
         env:
           ubuntu-ver: ${{ (inputs.os == 'ubuntu-20.04' && '2004') || (inputs.os == 'ubuntu-24.04' && '2404') || '' }}
           ubuntu-ver-str: ${{ (inputs.os == 'ubuntu-24.04' && '_Ubuntu2404') || '' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_Linux_ubuntu_${{ env.ubuntu-ver }}_${{ env.ver }}
           path: './build/OrcaSlicer_Linux_AppImage${{ env.ubuntu-ver-str }}_${{ env.ver }}.AppImage'
@@ -367,7 +426,7 @@ jobs:
         if: ${{ ! env.ACT && inputs.os == 'ubuntu-20.04' || inputs.os == 'ubuntu-24.04' }}
         env:
           ubuntu-ver: ${{ (inputs.os == 'ubuntu-20.04' && '2004') || (inputs.os == 'ubuntu-24.04' && '2404') || '' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: OrcaSlicer_profile_validator_Linux_ubuntu_${{ env.ubuntu-ver }}_${{ env.ver }}
           path: './build/src/Release/OrcaSlicer_profile_validator'
