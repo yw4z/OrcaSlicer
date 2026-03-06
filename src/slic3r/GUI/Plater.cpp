@@ -2328,8 +2328,8 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
     edit_btn->Bind(wxEVT_BUTTON, [this, edit_btn, combobox, filament_idx](wxCommandEvent) {
         bool single_or_bbl     = should_show_SEMM_buttons();
         bool is_multi_material = p->combos_filament.size() > 1;
-        if(single_or_bbl && is_multi_material)
-        {   // MULTI MATERIAL Show menu
+        if(single_or_bbl && is_multi_material) {
+           // MULTI MATERIAL Show menu
             auto menu = p->plater->filament_action_menu(filament_idx);
             wxPoint pt { 0, edit_btn->GetSize().GetHeight() + FromDIP(2) };
             pt = edit_btn->ClientToScreen(pt);
@@ -2337,8 +2337,8 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
             p->m_menu_filament_id = filament_idx;
             p->plater->PopupMenu(menu, (int) pt.x, pt.y);
         }
-        else
-        { // SINGLE MATERIAL / MULTI EXTRUDER / TOOLCHANGER / IDEX Opens Dialog directly
+        else {
+            // SINGLE MATERIAL / MULTI EXTRUDER / TOOLCHANGER / IDEX Opens Dialog directly
             p->editing_filament = filament_idx;
             combobox->switch_to_tab();
         }
@@ -3644,24 +3644,29 @@ void Sidebar::show_SEMM_buttons()
     bool is_multi_material = p->combos_filament.size() > 1;
     bool single_or_bbl     = should_show_SEMM_buttons();
 
-    p->m_bpButton_add_filament->Show(single_or_bbl);
-    p->m_bpButton_del_filament->Show(single_or_bbl && is_multi_material); // Show only when multiple materials exist
-    p->m_flushing_volume_btn->Show(  single_or_bbl && is_multi_material); // Show only when multiple materials exist
+    if(p->m_bpButton_add_filament)
+        p->m_bpButton_add_filament->Show(single_or_bbl);
+    if(p->m_bpButton_del_filament)
+        p->m_bpButton_del_filament->Show(single_or_bbl && is_multi_material); // Show only when multiple materials exist
+    if(p->m_flushing_volume_btn)
+        p->m_flushing_volume_btn->Show(  single_or_bbl && is_multi_material); // Show only when multiple materials exist
 
-    // Dont show menu if there is multi material support for extruder
-    if (single_or_bbl && is_multi_material)
-    {   // SINGLE EXTRUDER / BBL with 1 material
-        for (auto &c : p->combos_filament)
-            c->edit_btn->SetBitmap_("menu_filament");
-    }
-    else if (single_or_bbl && !is_multi_material)
-    {   // SINGLE EXTRUDER / BBL with 1 material
-        p->combos_filament[0]->edit_btn->SetBitmap_("edit");
-    }
-    else 
-    {   // MULTI EXTRUDER / TOOLCHANGER / IDEX
-        for (auto &c : p->combos_filament)
-            c->edit_btn->SetBitmap_("edit");
+    if(p->combos_filament){
+        // Dont show menu if there is multi material support for extruder
+        if (single_or_bbl && is_multi_material) {
+            // SINGLE EXTRUDER / BBL with 1 material
+            for (auto &c : p->combos_filament)
+                c->edit_btn->SetBitmap_("menu_filament");
+        }
+        else if (single_or_bbl && !is_multi_material) {
+            // SINGLE EXTRUDER / BBL with 1 material
+            p->combos_filament[0]->edit_btn->SetBitmap_("edit");
+        }
+        else {
+            // MULTI EXTRUDER / TOOLCHANGER / IDEX
+            for (auto &c : p->combos_filament)
+                c->edit_btn->SetBitmap_("edit");
+        }
     }
     Layout();
 }
