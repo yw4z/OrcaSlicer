@@ -3641,33 +3641,28 @@ bool Sidebar::should_show_SEMM_buttons()
 void Sidebar::show_SEMM_buttons()
 {
     // ORCA
+    if (!p || p->combos_filament.empty() || !p->m_bpButton_add_filament || !p->m_bpButton_del_filament || !p->m_flushing_volume_btn)
+        return;
+    
     bool is_multi_material = p->combos_filament.size() > 1;
     bool single_or_bbl     = should_show_SEMM_buttons();
+    bool is_single = single_or_bbl && !is_multi_material; // SINGLE EXTRUDER / BBL WITH 1 MATERIAL
+    bool is_multi  = single_or_bbl && is_multi_material;  // MULTI MATERIAL WITH SINGLE EXTRUDER
+    bool is_fixed  = !is_single && !is_multi;             // MULTI EXTRUDER / TOOLCHANGER / IDEX WITH FIXED MATERIAL
 
-    if(p->m_bpButton_add_filament)
-        p->m_bpButton_add_filament->Show(single_or_bbl);
-    if(p->m_bpButton_del_filament)
-        p->m_bpButton_del_filament->Show(single_or_bbl && is_multi_material); // Show only when multiple materials exist
-    if(p->m_flushing_volume_btn)
-        p->m_flushing_volume_btn->Show(  single_or_bbl && is_multi_material); // Show only when multiple materials exist
+    p->m_bpButton_add_filament->Show(single_or_bbl);
+    p->m_bpButton_del_filament->Show(is_multi);
+    p->m_flushing_volume_btn->Show(  is_multi);
 
-    if(p->combos_filament){
-        // Dont show menu if there is multi material support for extruder
-        if (single_or_bbl && is_multi_material) {
-            // SINGLE EXTRUDER / BBL with 1 material
-            for (auto &c : p->combos_filament)
-                c->edit_btn->SetBitmap_("menu_filament");
-        }
-        else if (single_or_bbl && !is_multi_material) {
-            // SINGLE EXTRUDER / BBL with 1 material
-            p->combos_filament[0]->edit_btn->SetBitmap_("edit");
-        }
-        else {
-            // MULTI EXTRUDER / TOOLCHANGER / IDEX
-            for (auto &c : p->combos_filament)
-                c->edit_btn->SetBitmap_("edit");
-        }
+    if (is_multi) {
+        for (auto &c : p->combos_filament)
+            c->edit_btn->SetBitmap_("menu_filament");
     }
+    else if (is_single || is_fixed) {
+        for (auto &c : p->combos_filament)
+            c->edit_btn->SetBitmap_("edit");
+    }
+
     Layout();
 }
 
