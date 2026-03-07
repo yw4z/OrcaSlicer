@@ -4183,6 +4183,45 @@ enum ExportingStatus{
     EXPORTING_TO_LOCAL
 };
 
+class CustomDockArt : public wxAuiDefaultDockArt
+{
+public:
+    void DrawSash(wxDC& dc, wxWindow* window, int orientation, const wxRect& rect) override
+    {
+        wxAuiDefaultDockArt::DrawSash(dc, window, orientation, rect);
+
+        dc.SetBrush(wxBrush(wxColour(120, 120, 120)));
+        dc.SetPen(*wxTRANSPARENT_PEN);
+
+        const int radius  = 2;
+        const int gap = 8;
+        const int cx = rect.x + rect.width  / 2;
+        const int cy = rect.y + rect.height / 2;
+
+        for (int i = -2; i <= 2; i++){
+            if (orientation == wxVERTICAL)
+                dc.DrawCircle(cx, cy + i * gap, radius);
+            else
+                dc.DrawCircle(cx + i * gap, cy, radius);
+        }
+    }
+
+    void DrawCaption(wxDC& dc, wxWindow* window, const wxString& text, const wxRect& rect, wxAuiPaneInfo& pane) override
+    {
+        wxAuiDefaultDockArt::DrawCaption(dc, window, text, rect, pane);
+
+        dc.SetBrush(wxBrush(wxColour(200, 200, 200)));
+        dc.SetPen(*wxTRANSPARENT_PEN);
+
+        const int r   = 2;
+        const int gap = 8;
+        const int cx = rect.x + rect.width  / 2;
+        const int cy = rect.y + rect.height / 2;
+
+        for (int i = -1; i <= 1; i++)
+             dc.DrawCircle(cx + i * gap, cy, r);
+    }
+};
 
 // TODO: listen on dark ui change
 class FloatFrame : public wxAuiFloatingFrame
@@ -4197,7 +4236,10 @@ public:
 class AuiMgr : public wxAuiManager
 {
 public:
-    AuiMgr() : wxAuiManager(){}
+    AuiMgr() : wxAuiManager()
+    {
+        SetArtProvider(new CustomDockArt());
+    }
 
     virtual wxAuiFloatingFrame* CreateFloatingFrame(wxWindow* parent, const wxAuiPaneInfo& p) override
     {
@@ -4833,8 +4875,8 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     m_aui_mgr.SetManagedWindow(q);
     m_aui_mgr.SetDockSizeConstraint(1, 1);
     m_aui_mgr.GetArtProvider()->SetMetric(wxAUI_DOCKART_PANE_BORDER_SIZE, 0); // remove frame border from sidebar
-    //m_aui_mgr.GetArtProvider()->SetMetric(wxAUI_DOCKART_SASH_SIZE, 2);
-    m_aui_mgr.GetArtProvider()->SetMetric(wxAUI_DOCKART_CAPTION_SIZE, 18);
+    m_aui_mgr.GetArtProvider()->SetMetric(wxAUI_DOCKART_SASH_SIZE, 6);
+    m_aui_mgr.GetArtProvider()->SetMetric(wxAUI_DOCKART_CAPTION_SIZE, 16);
     m_aui_mgr.GetArtProvider()->SetMetric(wxAUI_DOCKART_GRADIENT_TYPE, wxAUI_GRADIENT_NONE);
 
     this->q->SetFont(Slic3r::GUI::wxGetApp().normal_font());
@@ -4937,25 +4979,6 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
 
     {
         auto& sidebar = m_aui_mgr.GetPane(this->sidebar);
-        
-        auto sbwin = m_aui_mgr.GetManagedWindow();
-        sbwin->Bind(wxEVT_PAINT, [&sbwin](wxPaintEvent& e) {
-            wxAutoBufferedPaintDC dc(sbwin);
-            wxRect sashRect(sbwin->GetPosition().x, sbwin->GetPosition().x, sbwin->GetSize().x, sbwin->GetSize().y);
-            dc.SetBrush(wxBrush(wxColour(255, 0, 0)));
-            dc.SetPen(wxPen(wxColour(255, 0, 0), 1));
-            dc.DrawRectangle(sashRect);
-            dc.SetPen(wxPen(wxColour(255, 0, 0), 1));
-            for (int x = sashRect.x; x < sashRect.x + sashRect.width; x += 4)
-                dc.DrawLine(x, sashRect.y, x + 2, sashRect.y + sashRect.height);
-        });
-        //m_aui_mgr.GetPane(this->sidebar).GripperTop(true);
-        //wxDC dc = main_frame->PrepareDC();
-        //dc.SetPen(wxPen(wxColour("#242427"),2)); // 2px line below titlebar titlebar
-        //dc.DrawLine(sidebar.rect.x, sidebar.rect.y, sidebar.rect.width, sidebar.rect.width);
-
-        //wxBitmap save_bitmap = create_scaled_bitmap("topbar_save", nullptr, TOPBAR_ICON_SIZE);
-        //wxAuiToolBarItem* save_btn = sidebar.AddTool(wxID_SAVE, "", save_bitmap);
 
         // Load previous window layout
         const auto cfg    = wxGetApp().app_config;
@@ -10150,13 +10173,12 @@ void Plater::priv::on_change_color_mode(SimpleEvent& evt) {
 void Plater::priv::apply_color_mode()
 {
     const bool is_dark         = wxGetApp().dark_mode();
-    wxColour   orca_color      = wxColour(59, 68, 70);//wxColour(ColorRGBA::ORCA().r_uchar(), ColorRGBA::ORCA().g_uchar(), ColorRGBA::ORCA().b_uchar());
-    orca_color                 = is_dark ? StateColor::darkModeColorFor(orca_color) : StateColor::lightModeColorFor(orca_color);
-    wxColour sash_color = is_dark ? wxColour(38, 46, 48) : wxColour(206, 206, 206);
+    //wxColour   orca_color      = wxColour(59, 68, 70);//wxColour(ColorRGBA::ORCA().r_uchar(), ColorRGBA::ORCA().g_uchar(), ColorRGBA::ORCA().b_uchar());
+    //orca_color                 = is_dark ? StateColor::darkModeColorFor(orca_color) : StateColor::lightModeColorFor(orca_color);
     m_aui_mgr.GetArtProvider()->SetColour(wxAUI_DOCKART_INACTIVE_CAPTION_COLOUR,      is_dark ? wxColour("#2D2D31") : wxColour("#FFFFFF")); // Titlebar
     m_aui_mgr.GetArtProvider()->SetColour(wxAUI_DOCKART_INACTIVE_CAPTION_TEXT_COLOUR, *wxWHITE);
-    m_aui_mgr.GetArtProvider()->SetColour(wxAUI_DOCKART_SASH_COLOUR,                  is_dark ? wxColour("#181822") : wxColour("#DBDBDB")); // Vertical resize line
-    m_aui_mgr.GetArtProvider()->SetColour(wxAUI_DOCKART_BORDER_COLOUR,                is_dark ? wxColour("#2D2D31") : wxColour(165, 165, 165)); // Sidebar frame color
+    m_aui_mgr.GetArtProvider()->SetColour(wxAUI_DOCKART_SASH_COLOUR,                  is_dark ? wxColour("#242428") : wxColour("#DBDBDB")); // Vertical resize line
+    //m_aui_mgr.GetArtProvider()->SetColour(wxAUI_DOCKART_BORDER_COLOUR,                is_dark ? wxColour("#2D2D31") : wxColour(165, 165, 165)); // Sidebar frame color
 }
 
 static void get_position(wxWindowBase* child, wxWindowBase* until_parent, int& x, int& y) {

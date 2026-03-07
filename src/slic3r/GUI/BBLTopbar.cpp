@@ -83,7 +83,7 @@ void BBLTopbarArt::DrawBackground(wxDC& dc, wxWindow* wnd, const wxRect& rect)
     clipRect.height += 8;
     dc.SetClippingRegion(clipRect);
     dc.DrawRectangle(rect);
-    dc.SetPen(wxPen(wxColour(is_dark ? "#181822" : "#262E2F"),1)); // 2px line below titlebar titlebar
+    dc.SetPen(wxPen(wxColour(is_dark ? "#181822" : "#262E2F"),1)); // 1px line below titlebar titlebar
     dc.DrawLine(rect.x, rect.height - 1, rect.width, rect.height - 1);
     dc.DestroyClippingRegion();
 }

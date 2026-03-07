@@ -36,14 +36,16 @@ ButtonsListCtrl::ButtonsListCtrl(wxWindow *parent, wxBoxSizer* side_tools) :
     m_btn_margin = 0; // std::lround(0.3 * em);
     m_line_margin = std::lround(0.1 * em);
 
-    m_sizer = new wxBoxSizer(wxHORIZONTAL);
+    m_sizer = new wxBoxSizer(wxVERTICAL);
     this->SetSizer(m_sizer);
 
+    auto h_sizer = new wxBoxSizer(wxHORIZONTAL);
+    
     m_buttons_sizer = new wxFlexGridSizer(1, m_btn_margin, m_btn_margin);
-    m_sizer->Add(m_buttons_sizer, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxBOTTOM, m_btn_margin);
+    h_sizer->Add(m_buttons_sizer, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxBOTTOM, m_btn_margin);
 
     if (side_tools != NULL) {
-        m_sizer->AddStretchSpacer(1);
+        h_sizer->AddStretchSpacer(1);
         for (size_t idx = 0; idx < side_tools->GetItemCount(); idx++) {
             wxSizerItem* item = side_tools->GetItem(idx);
             wxWindow* item_win = item->GetWindow();
@@ -51,8 +53,14 @@ ButtonsListCtrl::ButtonsListCtrl(wxWindow *parent, wxBoxSizer* side_tools) :
                 item_win->Reparent(this);
             }
         }
-        m_sizer->Add(side_tools, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT | wxBOTTOM, m_btn_margin);
+        h_sizer->Add(side_tools, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT | wxBOTTOM, m_btn_margin);
     }
+
+    auto bottom_border = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1,1));
+    bottom_border->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#262E2F")));
+
+    m_sizer->Add(h_sizer      , 0, wxEXPAND);
+    m_sizer->Add(bottom_border, 0, wxEXPAND);
 
     // BBS: disable custom paint
     //this->Bind(wxEVT_PAINT, &ButtonsListCtrl::OnPaint, this);
@@ -173,7 +181,7 @@ void ButtonsListCtrl::SetSelection(int sel)
 bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, const std::string &inactive_bmp_name)
 {
     Button * btn = new Button(this, text.empty() ? text : " " + text, bmp_name, wxNO_BORDER);
-    btn->SetCornerRadius(6);
+    btn->SetCornerRadius(4);
 
     int em = em_unit(this);
     //BBS set size for button
