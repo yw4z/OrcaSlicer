@@ -4185,41 +4185,40 @@ enum ExportingStatus{
 
 class CustomDockArt : public wxAuiDefaultDockArt
 {
+private:
+    const int  gap    = 8;
+    const int  radius = 2;
+
 public:
     void DrawSash(wxDC& dc, wxWindow* window, int orientation, const wxRect& rect) override
     {
         wxAuiDefaultDockArt::DrawSash(dc, window, orientation, rect);
 
-        dc.SetBrush(wxBrush(wxColour(120, 120, 120)));
+        const bool is_dark = wxGetApp().dark_mode();
+        dc.SetBrush(wxBrush(wxColour(is_dark ? "#848484" : "#999999")));
         dc.SetPen(*wxTRANSPARENT_PEN);
 
-        const int radius  = 2;
-        const int gap = 8;
-        const int cx = rect.x + rect.width  / 2;
-        const int cy = rect.y + rect.height / 2;
+        const int  cx  = rect.x + rect.width  / 2;
+        const int  cy  = rect.y + rect.height / 2;
+        const bool dir = orientation == wxVERTICAL;
 
-        for (int i = -2; i <= 2; i++){
-            if (orientation == wxVERTICAL)
-                dc.DrawCircle(cx, cy + i * gap, radius);
-            else
-                dc.DrawCircle(cx + i * gap, cy, radius);
-        }
+        for (int i = -2; i <= 2; i++)
+            dc.DrawCircle(cx + !dir * i * gap, cx + dir * i * gap, radius);
     }
 
     void DrawCaption(wxDC& dc, wxWindow* window, const wxString& text, const wxRect& rect, wxAuiPaneInfo& pane) override
     {
         wxAuiDefaultDockArt::DrawCaption(dc, window, text, rect, pane);
 
-        dc.SetBrush(wxBrush(wxColour(200, 200, 200)));
+        const bool is_dark = wxGetApp().dark_mode();
+        dc.SetBrush(wxBrush(wxColour(is_dark ? "#B8B8B8" : "#848484")));
         dc.SetPen(*wxTRANSPARENT_PEN);
 
-        const int r   = 2;
-        const int gap = 8;
-        const int cx = rect.x + rect.width  / 2;
-        const int cy = rect.y + rect.height / 2;
+        const int cx  = rect.x + rect.width  / 2;
+        const int cy  = rect.y + rect.height / 2;
 
         for (int i = -1; i <= 1; i++)
-             dc.DrawCircle(cx + i * gap, cy, r);
+             dc.DrawCircle(cx + i * gap, cy, radius);
     }
 };
 
