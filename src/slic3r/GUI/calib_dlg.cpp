@@ -102,7 +102,7 @@ PA_Calibration_Dlg::PA_Calibration_Dlg(wxWindow* parent, wxWindowID id, Plater* 
 
     int text_max = GetTextMax(this, std::vector<wxString>{start_pa_str, end_pa_str, PA_step_str, sp_accel_str, sp_speed_str, cb_print_no_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Settings"));
@@ -351,7 +351,7 @@ Temp_Calibration_Dlg::Temp_Calibration_Dlg(wxWindow* parent, wxWindowID id, Plat
     wxString temp_step_str  = _L("Temp step: ");
     int text_max = GetTextMax(this, std::vector<wxString>{start_temp_str, end_temp_str, temp_step_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Settings"));
@@ -533,7 +533,7 @@ MaxVolumetricSpeed_Test_Dlg::MaxVolumetricSpeed_Test_Dlg(wxWindow* parent, wxWin
     wxString vol_step_str  = _L("Step") + ": ";
     int text_max = GetTextMax(this, std::vector<wxString>{start_vol_str, end_vol_str, vol_step_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Settings"));
@@ -638,7 +638,7 @@ VFA_Test_Dlg::VFA_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* plater)
     wxString vol_step_str = _L("Step") + ": ";
     int text_max = GetTextMax(this, std::vector<wxString>{start_str, end_vol_str, vol_step_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Settings"));
@@ -746,7 +746,7 @@ Retraction_Test_Dlg::Retraction_Test_Dlg(wxWindow* parent, wxWindowID id, Plater
     wxString length_step_str  = _L("Step") + ": ";
     int text_max = GetTextMax(this, std::vector<wxString>{start_length_str, end_length_str, length_step_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Settings"));
@@ -897,7 +897,7 @@ Input_Shaping_Freq_Test_Dlg::Input_Shaping_Freq_Test_Dlg(wxWindow* parent, wxWin
     wxString y_axis_str = "Y " + _L("Start / End") + ": ";
     int text_max = GetTextMax(this, std::vector<wxString>{x_axis_str, y_axis_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Frequency settings"));
@@ -1113,7 +1113,7 @@ Input_Shaping_Damp_Test_Dlg::Input_Shaping_Damp_Test_Dlg(wxWindow* parent, wxWin
     wxString damp_str = _L("Damp") + " " + _L("Start / End") + ": ";
     int text_max = GetTextMax(this, std::vector<wxString>{freq_str, damp_str});
 
-    auto st_size = FromDIP(wxSize(text_max, -1));
+    auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
 
     LabeledStaticBox* stb = new LabeledStaticBox(this, _L("Frequency settings"));
