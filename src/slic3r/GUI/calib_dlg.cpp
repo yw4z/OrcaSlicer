@@ -1324,31 +1324,37 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
 
     // Add note about cornering based on GCode Flavor
     wxString note_msg = _L("Note: Lower values = sharper corners but slower speeds.");
+    auto note_text = new wxStaticText(this, wxID_ANY, note_msg, wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
+    note_text->SetForegroundColour(wxColour(128, 128, 128));
+    note_text->Wrap(FromDIP(300));
+    settings_sizer->Add(note_text, 0, wxALL, FromDIP(5));
+
     if (gcode_flavor_option) {
+        wxString note_msg_2;
         switch (gcode_flavor_option->value) {
             case GCodeFlavor::gcfMarlinFirmware: {
                 // Check if machine_max_junction_deviation is set and > 0
                 const auto* max_jd_option = preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation");
                 if (max_jd_option && !max_jd_option->values.empty() && max_jd_option->values[0] > 0) {
-                    note_msg += "\n" + _L("Marlin 2 Junction Deviation detected:\nTo test Classic Jerk, set 'Maximum Junction Deviation' in Motion ability to 0.");
+                    note_msg_2 += _L("Marlin 2 Junction Deviation detected:\nTo test Classic Jerk, set 'Maximum Junction Deviation' in Motion ability to 0.");
                 } else {
-                    note_msg += "\n" + _L("Marlin 2 Classic Jerk detected:\nTo test Junction Deviation, set 'Maximum Junction Deviation' in Motion ability to a value > 0.");
+                    note_msg_2 += _L("Marlin 2 Classic Jerk detected:\nTo test Junction Deviation, set 'Maximum Junction Deviation' in Motion ability to a value > 0.");
                 }
                 break;
             }
             case GCodeFlavor::gcfRepRapFirmware:
-                note_msg += "\n" + _L("RepRap detected: Jerk in mm/s.\nOrcaSlicer will convert the values to mm/min when necessary.");
+                note_msg_2 += _L("RepRap detected: Jerk in mm/s.\nOrcaSlicer will convert the values to mm/min when necessary.");
                 break;
             default:
                 break;
         }
+        if(!note_msg_2.empty()){
+            auto note_text_2 = new wxStaticText(this, wxID_ANY, note_msg_2, wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
+            note_text_2->SetForegroundColour(wxColour(128, 128, 128));
+            note_text_2->Wrap(FromDIP(300));
+            settings_sizer->Add(note_text_2, 0, wxALL, FromDIP(5));
+        }
     }
-
-    auto note_text = new wxStaticText(this, wxID_ANY, note_msg,
-                                    wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
-    note_text->SetForegroundColour(wxColour(128, 128, 128));
-    note_text->Wrap(FromDIP(300));
-    settings_sizer->Add(note_text, 0, wxALL, FromDIP(5));
 
     v_sizer->Add(settings_sizer, 0, wxTOP | wxRIGHT | wxLEFT | wxEXPAND, FromDIP(10));
     v_sizer->AddSpacer(FromDIP(5));
