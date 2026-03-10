@@ -145,40 +145,18 @@ int GCodeViewer::SequentialView::ActualSpeedImguiWidget::plot(const char* label,
 
     ImGui::RenderFrame(frame_bb.Min, frame_bb.Max, ImGui::GetColorU32(ImGuiCol_FrameBg), true, style.FrameRounding);
 
-
-    // ORCA Compress consecutive duplicate speeds with 0.1 precision
-    auto sameSpeed = [](float a, float b) {
-        return static_cast<int>(std::roundf(a * 10.0f)) == static_cast<int>(std::roundf(b * 10.0f));
-    };
-    compressed_data.clear();
-    if (!data.empty()) {
-        compressed_data.push_back(data[0]);
-        for (int i = 1; i < (int)data.size(); ++i) {
-            const bool same_as_prev = sameSpeed(data[i].speed, data[i - 1].speed);
-            const bool same_as_next = (i + 1 < (int)data.size()) && sameSpeed(data[i].speed, data[i + 1].speed);
-            if (!same_as_prev) {
-                if (!sameSpeed(compressed_data.back().speed, data[i - 1].speed))
-                    compressed_data.push_back(data[i - 1]);
-                compressed_data.push_back(data[i]);
-            } else if (!same_as_next)
-                compressed_data.push_back(data[i]);
-        }
-        if (compressed_data.back().pos != data.back().pos)
-            compressed_data.push_back(data.back());
-    }
-
     static const int values_count_min = 2;
-    const int values_count = static_cast<int>(compressed_data.size());
+    const int values_count = static_cast<int>(data.size());
     int idx_hovered = -1;
 
     const ImVec2 offset(10.0f, 0.0f);
 
     const float size_y = y_range.second - y_range.first;
-    const float size_x = compressed_data.back().pos - compressed_data.front().pos;
+    const float size_x = data.back().pos - data.front().pos;
     if (size_x > 0.0f && values_count >= values_count_min) {
         const float inv_scale_y = (size_y == 0.0f) ? 0.0f : 1.0f / size_y;
         const float inv_scale_x = 1.0f / size_x;
-        const float x0 = compressed_data.front().pos;
+        const float x0 = data.front().pos;
         const float y0 = y_range.first;
 
         const ImU32 grid_main_color = ImGui::GetColorU32(ImVec4(0.5f, 0.5f, 0.5f, 0.5f));
@@ -193,9 +171,9 @@ int GCodeViewer::SequentialView::ActualSpeedImguiWidget::plot(const char* label,
 
         // vertical positions
         for (int n = 0; n < values_count - 1; ++n) {
-            const float x = ImSaturate((compressed_data[n].pos - x0) * inv_scale_x);
+            const float x = ImSaturate((data[n].pos - x0) * inv_scale_x);
             window->DrawList->AddLine(ImLerp(inner_bb.Min + offset, inner_bb.Max, ImVec2(x, 0.0f)),
-                ImLerp(inner_bb.Min + offset, inner_bb.Max, ImVec2(x, 1.0f)), compressed_data[n].internal ? grid_secondary_color : grid_main_color);
+                ImLerp(inner_bb.Min + offset, inner_bb.Max, ImVec2(x, 1.0f)), data[n].internal ? grid_secondary_color : grid_main_color);
         }
         window->DrawList->AddLine(ImLerp(inner_bb.Min + offset, inner_bb.Max, ImVec2(1.0f, 0.0f)),
             ImLerp(inner_bb.Min + offset, inner_bb.Max, ImVec2(1.0f, 1.0f)), grid_main_color);
@@ -204,8 +182,8 @@ int GCodeViewer::SequentialView::ActualSpeedImguiWidget::plot(const char* label,
         const ImU32 col_base = ImGui::GetColorU32(ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
         const ImU32 col_hovered = ImGui::GetColorU32(ImVec4(0.0f, 150.f / 255.0f, 136.0f / 255.f, 1.0f)); // ORCA color
         for (int n = 0; n < values_count - 1; ++n) {
-            const ImVec2 tp1(ImSaturate((compressed_data[n].pos - x0) * inv_scale_x), 1.0f - ImSaturate((compressed_data[n].speed - y0) * inv_scale_y));
-            const ImVec2 tp2(ImSaturate((compressed_data[n + 1].pos - x0) * inv_scale_x), 1.0f - ImSaturate((compressed_data[n + 1].speed - y0) * inv_scale_y));
+            const ImVec2 tp1(ImSaturate((data[n].pos - x0) * inv_scale_x), 1.0f - ImSaturate((data[n].speed - y0) * inv_scale_y));
+            const ImVec2 tp2(ImSaturate((data[n + 1].pos - x0) * inv_scale_x), 1.0f - ImSaturate((data[n + 1].speed - y0) * inv_scale_y));
             // Tooltip on hover
             if (hovered && inner_bb.Contains(io.MousePos)) {
                 const float t = ImClamp((io.MousePos.x - inner_bb.Min.x - offset.x) / (inner_bb.Max.x - inner_bb.Min.x - offset.x), 0.0f, 0.9999f);
@@ -478,7 +456,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                         ImGui::TableSetupColumn((_u8L("Speed")    + " (" + _u8L("mm/s") + ")").c_str());
                         ImGui::TableHeadersRow();
                         int counter = 0;
-                        for (const ActualSpeedImguiWidget::Item& item : m_actual_speed_imgui_widget.compressed_data) {
+                        for (const ActualSpeedImguiWidget::Item& item : m_actual_speed_imgui_widget.data) {
                             const bool highlight = hover_id >= 0 && (counter == hover_id || counter == hover_id + 1);
                             //if (highlight && counter == hover_id)
                             //    ImGui::SetScrollHereY();
@@ -1651,7 +1629,29 @@ void GCodeViewer::update_sequential_view_current(unsigned int first, unsigned in
                 levels.push_back(std::make_pair(value, libvgcode::convert(color_range.get_color_at(value))));
                 levels.back().second.a(0.5f);
             }
-            m_sequential_view.marker.set_actual_speed_data(actual_speed_data);
+
+            // ORCA Compress consecutive duplicate speeds with 0.1 precision
+            auto sameSpeed = [](float a, float b) {
+                return static_cast<int>(std::roundf(a * 10.0f)) == static_cast<int>(std::roundf(b * 10.0f));
+            };
+            std::vector<SequentialView::ActualSpeedImguiWidget::Item> compressed;
+            if (!actual_speed_data.empty()) {
+                compressed.push_back(actual_speed_data[0]);
+                for (int i = 1; i < (int)actual_speed_data.size(); ++i) {
+                    const bool same_as_prev = sameSpeed(actual_speed_data[i].speed, actual_speed_data[i - 1].speed);
+                    const bool same_as_next = (i + 1 < (int)actual_speed_data.size()) && sameSpeed(actual_speed_data[i].speed, actual_speed_data[i + 1].speed);
+                    if (!same_as_prev) {
+                        if (!sameSpeed(compressed.back().speed, actual_speed_data[i - 1].speed))
+                            compressed.push_back(actual_speed_data[i - 1]);
+                        compressed.push_back(actual_speed_data[i]);
+                    } else if (!same_as_next)
+                        compressed.push_back(actual_speed_data[i]);
+                }
+                if (compressed.back().pos != actual_speed_data.back().pos)
+                    compressed.push_back(actual_speed_data.back());
+            }
+
+            m_sequential_view.marker.set_actual_speed_data(compressed);
             m_sequential_view.marker.set_actual_speed_y_range(std::make_pair(interval[0], interval[1]));
             m_sequential_view.marker.set_actual_speed_levels(levels);
         }

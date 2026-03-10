@@ -53,7 +53,6 @@ public:
               bool internal{ false };
             };
             std::vector<Item> data;
-            std::vector<Item> compressed_data;
             int plot(const char* label, const std::array<float, 2>& frame_size = { 0.0f, 0.0f });
         };
 #endif // ENABLE_ACTUAL_SPEED_DEBUG
