@@ -304,7 +304,19 @@ void Button::render(wxDC& dc)
             textSize = dc.GetMultiLineTextExtent(text);
         }
     }
+
+    // ORCA Compute accurate text block height using font metrics
+    // GetTextExtent and GetMultiLineTextExtent returns a height that includes external leading 
+    // On Mac, external leading value is significantly larger than on Windows/Linux due to how CoreText reports font metrics.
+    wxFontMetrics fm = dc.GetFontMetrics();
+    int lineHeight = fm.ascent + fm.descent;
+    int lineCount = text.IsEmpty() ? 0 : (text.Freq('\n') + 1);
+    int textBlockHeight = lineCount > 0 ? lineHeight * lineCount + fm.externalLeading * (lineCount - 1) : 0;
+
     auto szContent = textSize;
+    if (!text.IsEmpty())
+        szContent.y = textBlockHeight;
+
     if (icon.bmp().IsOk()) {
         if (szContent.y > 0) {
             //BBS norrow size between text and icon
@@ -357,22 +369,9 @@ void Button::render(wxDC& dc)
         } else {
             if (pt.x + textSize.x > size.x)
                 text = wxControl::Ellipsize(text, dc, wxELLIPSIZE_END, size.x - pt.x);
-            pt.y += (rcContent.height - textSize.y) / 2;
+            pt.y += (rcContent.height - textBlockHeight) / 2;
         }
         dc.SetTextForeground(text_color.colorForStates(states));
-#if 0
-        dc.SetBrush(*wxLIGHT_GREY);
-        dc.SetPen(wxPen(*wxLIGHT_GREY));
-        dc.DrawRectangle(pt, textSize.GetSize());
-#endif
-#ifdef __WXOSX__
-        pt.y -= this->textSize.x / 2;
-#endif
-#ifdef __APPLE__
-        if (Slic3r::is_mac_version_15()) {
-        pt.y -= FromDIP(1);
-    }
-#endif
         dc.DrawText(text, pt);
     }
 }
@@ -381,7 +380,20 @@ void Button::messureSize()
 {
     wxClientDC dc(this);
     dc.GetTextExtent(GetLabel(), &textSize.width, &textSize.height, &textSize.x, &textSize.y);
+
+    // ORCA Use font metrics for consistent height measurement matching render()
+    wxFontMetrics fm = dc.GetFontMetrics();
+    int lineHeight = fm.ascent + fm.descent;
+    const wxString label = GetLabel();
+    int lineCount = label.IsEmpty() ? 0 : (label.Freq('\n') + 1);
+    int textBlockHeight = lineCount > 0
+        ? lineHeight * lineCount + fm.externalLeading * (lineCount - 1)
+        : 0;
+
     wxSize szContent = textSize.GetSize();
+    if (!label.IsEmpty())
+        szContent.y = textBlockHeight;
+
     if (this->active_icon.bmp().IsOk()) {
         if (szContent.y > 0) {
             //BBS norrow size between text and icon
