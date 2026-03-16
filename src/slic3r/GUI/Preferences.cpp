@@ -1328,6 +1328,69 @@ void PreferencesDialog::create_items()
     g_sizer = f_sizers.back();
     g_sizer->AddGrowableCol(0, 1);
 
+    wxBoxSizer*test_sizer_1 = new wxBoxSizer(wxHORIZONTAL);
+    auto test_btn_1 = new Button(m_parent, _L("Regular"));
+    test_btn_1->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_sizer_1->Add(test_btn_1);
+
+    auto test_btn_2 = new Button(m_parent, _L("Test ÜÇĞ with long text"));
+    test_btn_2->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_sizer_1->Add(test_btn_2, 0, wxLEFT, FromDIP(10));
+
+    auto test_btn_3 = new Button(m_parent, _L("IconTest"), "add", 0, 16);
+    test_btn_3->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_sizer_1->Add(test_btn_3, 0, wxLEFT, FromDIP(10));
+
+    auto test_btn_4 = new Button(m_parent, _L("LeftTest"), "add", 0, 16);
+    test_btn_4->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_btn_4->SetCenter(false);
+    test_sizer_1->Add(test_btn_4, 0, wxLEFT, FromDIP(10));
+
+    g_sizer->Add(test_sizer_1, 0, wxALL, FromDIP(10));
+
+    wxBoxSizer*test_sizer_3 = new wxBoxSizer(wxHORIZONTAL);
+    auto test_btn_11 = new Button(m_parent, _L("Regular with long text"));
+    test_btn_11->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_sizer_3->Add(test_btn_11);
+
+    auto test_btn_21 = new Button(m_parent, _L("Test ÜÇĞ with long text"));
+    test_btn_21->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_sizer_3->Add(test_btn_21, 0, wxLEFT, FromDIP(10));
+
+    auto test_btn_31 = new Button(m_parent, _L("IconTest with long text"), "add", 0, 16);
+    test_btn_31->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_sizer_3->Add(test_btn_31, 0, wxLEFT, FromDIP(10));
+
+    auto test_btn_41 = new Button(m_parent, _L("LeftTest with long text"), "add", 0, 16);
+    test_btn_41->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_btn_41->SetCenter(false);
+    test_sizer_3->Add(test_btn_41, 0, wxLEFT, FromDIP(10));
+
+    g_sizer->Add(test_sizer_3, 0, wxALL, FromDIP(10));
+
+    wxBoxSizer*test_sizer_2 = new wxBoxSizer(wxHORIZONTAL);
+
+    auto test_btn_5 = new Button(m_parent, _L("NonVertical\nNonIcon"));
+    test_btn_5->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_btn_5->SetMinSize(FromDIP(wxSize(120,90)));
+    test_btn_5->SetSize(FromDIP(wxSize(120,90)));
+    test_sizer_2->Add(test_btn_5);
+
+    auto test_btn_6 = new Button(m_parent, _L("Vertical\n& Icon"), "add", 0, 16);
+    test_btn_6->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_btn_6->SetMinSize(FromDIP(wxSize(120,90)));
+    test_btn_6->SetSize(FromDIP(wxSize(120,90)));
+    test_btn_6->SetVertical(true);
+    test_sizer_2->Add(test_btn_6, 0, wxLEFT, FromDIP(10));
+
+    auto test_btn_7 = new Button(m_parent, _L("NonVertical\n& Icon"), "add", 0, 16);
+    test_btn_7->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    test_btn_7->SetMinSize(FromDIP(wxSize(120,90)));
+    test_btn_7->SetSize(FromDIP(wxSize(120,90)));
+    test_sizer_2->Add(test_btn_7, 0, wxLEFT, FromDIP(10));
+
+    g_sizer->Add(test_sizer_2, 0, wxALL, FromDIP(10));
+
     //// GENERAL > Settings
     g_sizer->Add(create_item_title(_L("Settings")), 1, wxEXPAND);
 
