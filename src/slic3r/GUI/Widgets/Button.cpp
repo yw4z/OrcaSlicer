@@ -304,7 +304,6 @@ void Button::render(wxDC& dc)
             textSize = dc.GetMultiLineTextExtent(text);
         }
     }
-
     auto szContent = textSize;
     if (icon.bmp().IsOk()) {
         if (szContent.y > 0) {
@@ -380,9 +379,7 @@ void Button::messureSize()
 {
     wxClientDC dc(this);
     dc.GetTextExtent(GetLabel(), &textSize.width, &textSize.height, &textSize.x, &textSize.y);
-
     wxSize szContent = textSize.GetSize();
-
     if (this->active_icon.bmp().IsOk()) {
         if (szContent.y > 0) {
             //BBS norrow size between text and icon
