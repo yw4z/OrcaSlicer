@@ -357,11 +357,7 @@ void Button::render(wxDC& dc)
         } else {
             if (pt.x + textSize.x > size.x)
                 text = wxControl::Ellipsize(text, dc, wxELLIPSIZE_END, size.x - pt.x);
-            pt.y += (rcContent.height - textSize.y) / 2;
-        }
-        dc.SetTextForeground(text_color.colorForStates(states));
 
-        #ifdef __WXOSX__
             // ORCA Compute accurate text block height using font metrics
             // GetTextExtent and GetMultiLineTextExtent returns a height that includes external leading 
             // On Mac, external leading value is significantly larger than on Windows/Linux due to how CoreText reports font metrics.
@@ -369,8 +365,9 @@ void Button::render(wxDC& dc)
             int lineHeight = fm.ascent + fm.descent;
             int lineCount = text.IsEmpty() ? 0 : (text.Freq('\n') + 1);
             int textBlockHeight = lineCount > 0 ? lineHeight * lineCount + fm.externalLeading * (lineCount - 1) : 0;
-            pt.y = (rcContent.height - textBlockHeight) / 2;
-        #endif
+            pt.y += (rcContent.height - textBlockHeight) / 2;
+        }
+        dc.SetTextForeground(text_color.colorForStates(states));
         dc.DrawText(text, pt);
     }
 }
