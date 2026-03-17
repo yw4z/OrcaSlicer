@@ -362,10 +362,11 @@ void Button::render(wxDC& dc)
             // GetTextExtent and GetMultiLineTextExtent returns a height that includes external leading 
             // On Mac, external leading value is significantly larger than on Windows/Linux due to how CoreText reports font metrics.
             wxFontMetrics fm = dc.GetFontMetrics();
-            int lineHeight = fm.ascent + fm.descent;
-            int lineCount = text.IsEmpty() ? 0 : (text.Freq('\n') + 1);
-            int textBlockHeight = lineCount > 0 ? lineHeight * lineCount + fm.externalLeading * (lineCount - 1) : 0;
-            pt.y += (rcContent.height - textBlockHeight) / 2;
+            int lineHeight   = fm.ascent + fm.descent;
+            int lineCount    = text.IsEmpty() ? 0 : (text.Freq('\n') + 1);
+            int blockHeight  = lineCount > 0 ? lineHeight * lineCount + fm.externalLeading * (lineCount - 1) : 0;
+            pt.y += (rcContent.height - blockHeight) / 2;
+            pt.y -= fm.externalLeading;
         }
         dc.SetTextForeground(text_color.colorForStates(states));
         dc.DrawText(text, pt);
@@ -375,7 +376,26 @@ void Button::render(wxDC& dc)
 void Button::messureSize()
 {
     wxClientDC dc(this);
-    dc.GetTextExtent(GetLabel(), &textSize.width, &textSize.height, &textSize.x, &textSize.y);
+    const wxString text = GetLabel();
+
+    dc.GetTextExtent(text, &textSize.width, &textSize.height, &textSize.x, &textSize.y);
+
+    wxFontMetrics fm = dc.GetFontMetrics();
+    int lineHeight   = fm.ascent + fm.descent;
+    int lineCount    = text.IsEmpty() ? 0 : (text.Freq('\n') + 1);
+    int blockHeight  = lineCount > 0 ? lineHeight * lineCount + fm.externalLeading * (lineCount - 1) : 0;
+    textSize.SetHeight(blockHeight);
+
+    if(lineCount > 1) {
+        int ml_width = 0;
+        for (const wxString& line : wxSplit(text, '\n')) {
+            int lineWidth = 0;
+            dc.GetTextExtent(line, &lineWidth, nullptr);
+            ml_width = wxMax(lineWidth, ml_width);
+        }
+        textSize.SetWidth(ml_width);
+    }
+
     wxSize szContent = textSize.GetSize();
     if (this->active_icon.bmp().IsOk()) {
         if (szContent.y > 0) {
