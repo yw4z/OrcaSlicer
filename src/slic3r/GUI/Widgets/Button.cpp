@@ -293,9 +293,11 @@ void Button::render(wxDC& dc)
     else
         icon = inactive_icon;
     wxSize padding = this->paddingSize;
-    int spacing = 5;
+
     // Wrap text
     auto text = GetLabel();
+    int spacing = text.IsEmpty() ? 0 : 5;
+
     if (vertical && textSize.x + padding.x * 2 > size.x) {
         Label::split_lines(dc, size.x - padding.x * 2, text, text, 2);
         textSize = dc.GetMultiLineTextExtent(text);
@@ -377,9 +379,11 @@ void Button::messureSize()
 {
     wxClientDC dc(this);
     const wxString text = GetLabel();
+    int spacing = text.IsEmpty() ? 0 : 5;
 
     dc.GetTextExtent(text, &textSize.width, &textSize.height, &textSize.x, &textSize.y);
 
+    // ORCA exclude external leading from calculations
     wxFontMetrics fm = dc.GetFontMetrics();
     int lineHeight   = fm.ascent + fm.descent;
     int lineCount    = text.IsEmpty() ? 0 : (text.Freq('\n') + 1);
@@ -401,9 +405,9 @@ void Button::messureSize()
         if (szContent.y > 0) {
             //BBS norrow size between text and icon
             if (vertical)
-                szContent.y += 5;
+                szContent.y += spacing;
             else
-                szContent.x += 5;
+                szContent.x += spacing;
         }
         wxSize szIcon = this->active_icon.GetBmpSize();
         if (vertical) {

@@ -277,11 +277,14 @@ void SideButton::dorender(wxDC& dc, wxDC& text_dc)
 
     auto text = GetLabel();
     if (!text.IsEmpty()) {
-        pt.y += (rcContent.height - textSize.y) / 2;
-#ifdef __APPLE__
-        pt.y -= FromDIP(2);
-#endif
+        // ORCA Compute accurate text block height using font metrics
+        // GetTextExtent and GetMultiLineTextExtent returns a height that includes external leading 
+        // On Mac, external leading value is significantly larger than on Windows/Linux due to how CoreText reports font metrics.
         text_dc.SetFont(GetFont());
+        wxFontMetrics fm = text_dc.GetFontMetrics();
+        int textBlockHeight = fm.ascent + fm.descent;
+        pt.y += (rcContent.height - textBlockHeight) / 2;
+        pt.y -= fm.externalLeading;
         text_dc.SetTextForeground(text_color.colorForStates(states));
         text_dc.DrawText(text, pt);
     }
@@ -289,7 +292,13 @@ void SideButton::dorender(wxDC& dc, wxDC& text_dc)
 
 void SideButton::messureSize()
 {
+    wxClientDC dc(this);
     textSize = GetTextExtent(GetLabel());
+
+    // ORCA exclude external leading from calculations
+    wxFontMetrics fm = dc.GetFontMetrics();
+    textSize.SetHeight(fm.ascent + fm.descent);
+
     if (minSize.GetWidth() > 0) {
         wxWindow::SetMinSize(minSize);
         return;
