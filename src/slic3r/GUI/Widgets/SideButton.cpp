@@ -283,8 +283,7 @@ void SideButton::dorender(wxDC& dc, wxDC& text_dc)
         text_dc.SetFont(GetFont());
         wxFontMetrics fm = text_dc.GetFontMetrics();
         int textBlockHeight = fm.ascent + fm.descent;
-        pt.y += (rcContent.height - textBlockHeight) / 2;
-        pt.y -= fm.externalLeading;
+        pt.y += (rcContent.height - textBlockHeight) / 2 - fm.externalLeading;
         text_dc.SetTextForeground(text_color.colorForStates(states));
         text_dc.DrawText(text, pt);
     }
@@ -296,8 +295,10 @@ void SideButton::messureSize()
     textSize = GetTextExtent(GetLabel());
 
     // ORCA exclude external leading from calculations
-    wxFontMetrics fm = dc.GetFontMetrics();
-    textSize.SetHeight(fm.ascent + fm.descent);
+    if(!GetLabel().IsEmpty()){
+        wxFontMetrics fm = dc.GetFontMetrics();
+        textSize.SetHeight(fm.ascent + fm.descent);
+    }
 
     if (minSize.GetWidth() > 0) {
         wxWindow::SetMinSize(minSize);
