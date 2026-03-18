@@ -200,6 +200,7 @@ void Button::SetStyle(const ButtonStyle style, const ButtonType type)
     else if (type == ButtonType::Parameter) {
         this->SetMinSize(FromDIP(wxSize(120,26)));
         this->SetSize(FromDIP(wxSize(120,26)));
+        this->SetMaxSize(FromDIP(wxSize(120,26)));
         this->SetCornerRadius(this->FromDIP(4));
         this->SetFont(Label::Body_14);
     }
