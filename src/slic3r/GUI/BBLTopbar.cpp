@@ -48,7 +48,6 @@ CenteredTitle::CenteredTitle(wxWindow* parent)
 
         dc.SetTextForeground(*wxWHITE);
 
-        dc.SetFont(m_font);
         wxFontMetrics fm = dc.GetFontMetrics();
         int textHeight = fm.ascent + fm.descent;
 
@@ -286,6 +285,7 @@ void BBLTopbar::Init(wxFrame* parent)
     //this->AddStretchSpacer(1);
 
     m_title_ctrl = new CenteredTitle(this);
+    m_title_ctrl->SetFont(Label::Body_12);
     wxAuiToolBarItem* title_item = this->AddControl(m_title_ctrl, "");
     title_item->SetProportion(1); 
 
