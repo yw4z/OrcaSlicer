@@ -4203,7 +4203,7 @@ public:
         const bool dir = orientation == wxVERTICAL;
 
         for (int i = -2; i <= 2; i++)
-            dc.DrawCircle(cx + !dir * i * gap, cx + dir * i * gap, radius);
+            dc.DrawCircle(cx + !dir * i * gap, cy + dir * i * gap, radius);
     }
 
     void DrawCaption(wxDC& dc, wxWindow* window, const wxString& text, const wxRect& rect, wxAuiPaneInfo& pane) override
