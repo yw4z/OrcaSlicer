@@ -68,6 +68,7 @@ unsigned char *utf8_check(unsigned char *s)
     return NULL;
 }
 
+// ORCA
 bool check_file(const char* target, const char* filename)
 {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
@@ -77,14 +78,28 @@ bool check_file(const char* target, const char* filename)
         return false;
     }
 
-    const auto size = file.tellg();
+    const std::streampos pos = file.tellg();
+
+    // Fix: tellg() returns -1 (cast to streampos) on failure.
+    // Also guard against implausibly large files before casting to size_t.
+    if (pos < 0) {
+        std::cerr << "\n\tError: Could not determine file size: " << filename
+                  << "\n\tTarget: " << target << "\n" << std::endl;
+        return false;
+    }
+
+    const auto size = static_cast<std::size_t>(pos);
+
     if (size == 0)
         return true;
 
     file.seekg(0, std::ios::beg);
     std::vector<char> buffer(size);
 
-    if (!file.read(buffer.data(), size)) {
+    // Fix: cast size to streamsize explicitly — streampos and streamsize are
+    // distinct types and passing streampos where streamsize is expected is
+    // implementation-defined behaviour on some platforms.
+    if (!file.read(buffer.data(), static_cast<std::streamsize>(size))) {
         std::cerr << "\n\tError: Could not read source file: " << filename
                   << "\n\tTarget: " << target << "\n" << std::endl;
         return false;
