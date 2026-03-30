@@ -9,6 +9,7 @@
 
 #include "GUI.hpp"
 #include "GUI_App.hpp"
+#include "MainFrame.hpp"
 #include "GUI_ObjectList.hpp"
 #include "I18N.hpp"
 #include "GUI_Utils.hpp"
@@ -468,7 +469,12 @@ wxBitmap create_scaled_bitmap(  const std::string& bmp_name_in,
         throw Slic3r::RuntimeError("Could not load bitmap: " + bmp_name);
     }
 
-    return *bmp;
+    wxBitmap bmp_out = *bmp;
+#ifndef __APPLE__
+    double scale = win ? win->GetDPIScaleFactor() : (wxWindow::FromDIP(100, nullptr) / 100.0);
+    bmp_out.SetScaleFactor(scale);
+#endif
+    return bmp_out;
 }
 
 wxBitmap create_scaled_bitmap2(const std::string& bmp_name_in, Slic3r::GUI::BitmapCache& cache, wxWindow* win/* = nullptr*/ ,
@@ -487,7 +493,13 @@ wxBitmap create_scaled_bitmap2(const std::string& bmp_name_in, Slic3r::GUI::Bitm
         BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Could not load bitmap: " << bmp_name;
         throw Slic3r::RuntimeError("Could not load bitmap: " + bmp_name);
     }
-    return *bmp;
+
+    wxBitmap bmp_out = *bmp;
+#ifndef __APPLE__
+    double scale = win ? win->GetDPIScaleFactor() : (wxWindow::FromDIP(100, nullptr) / 100.0);
+    bmp_out.SetScaleFactor(scale);
+#endif
+    return bmp_out;
 }
 
 
@@ -500,8 +512,7 @@ wxBitmap* get_default_extruder_color_icon(bool thin_icon/* = false*/)
     const int icon_height = lround(2 * em);
     bool dark_mode = Slic3r::GUI::wxGetApp().dark_mode();
 
-    wxClientDC cdc((wxWindow*)Slic3r::GUI::wxGetApp().mainframe);
-    wxMemoryDC dc(&cdc);
+    wxMemoryDC dc;
     dc.SetFont(::Label::Body_12);
 
     wxString label = _L("default");
@@ -656,7 +667,7 @@ wxBitmap *get_extruder_color_icon(std::vector<std::string> colors, bool is_gradi
 #ifndef __WXMSW__
             wxMemoryDC dc(base_bitmap);
 #else
-            wxClientDC cdc((wxWindow *) Slic3r::GUI::wxGetApp().mainframe);
+            wxClientDC cdc((wxWindow*) Slic3r::GUI::wxGetApp().mainframe);
             wxMemoryDC dc(&cdc);
             dc.SelectObject(base_bitmap);
 #endif
@@ -666,7 +677,11 @@ wxBitmap *get_extruder_color_icon(std::vector<std::string> colors, bool is_gradi
             dc.SetPen(*wxTRANSPARENT_PEN);
 
             dc.SetFont(::Label::Body_12);
-            Slic3r::GUI::WxFontUtils::get_suitable_font_size(icon_height - 2, dc);
+            int text_max_height = icon_height - 2;
+#ifdef __WXMSW__
+            text_max_height = std::max(1, icon_height / 2 - 1);
+#endif
+            Slic3r::GUI::WxFontUtils::get_suitable_font_size(text_max_height, dc);
 
             auto size = dc.GetTextExtent(wxString(label));
 
@@ -714,7 +729,7 @@ wxBitmap *get_extruder_color_icon(std::string color, std::string label, int icon
         bitmap->UseAlpha();
         wxMemoryDC dc(*bitmap);
 #elif defined(__WXMSW__)
-        wxClientDC cdc((wxWindow *) Slic3r::GUI::wxGetApp().mainframe);
+        wxClientDC cdc((wxWindow*) Slic3r::GUI::wxGetApp().mainframe);
         wxMemoryDC dc(&cdc);
         dc.SelectObject(*bitmap);
 #else
@@ -722,7 +737,11 @@ wxBitmap *get_extruder_color_icon(std::string color, std::string label, int icon
         dc.SelectObject(*bitmap);
 #endif
         dc.SetFont(::Label::Body_12);
-        Slic3r::GUI::WxFontUtils::get_suitable_font_size(icon_height - 2, dc);
+        int text_max_height = icon_height - 2;
+#ifdef __WXMSW__
+        text_max_height = std::max(1, icon_height / 2 - 1);
+#endif
+        Slic3r::GUI::WxFontUtils::get_suitable_font_size(text_max_height, dc);
         if (clr.Alpha() == 0) {
             int             size        = icon_height * 2;
             static wxBitmap transparent = *Slic3r::GUI::BitmapCache().load_svg("transparent", size, size);

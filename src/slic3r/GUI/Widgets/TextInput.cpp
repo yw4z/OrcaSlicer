@@ -320,7 +320,10 @@ void TextInput::messureSize()
     else
         dc.SetFont(Label::Body_12);
     labelSize = dc.GetTextExtent(wxWindow::GetLabel());
-    wxSize textSize = text_ctrl->GetSize();
+    wxSize textSize = text_ctrl ? text_ctrl->GetBestSize() : wxSize();
+    if (text_ctrl && text_ctrl->GetSize().y > textSize.y)
+        textSize.y = text_ctrl->GetSize().y;
+    textSize.y = std::max(textSize.y, dc.GetTextExtent("Hg").y + FromDIP(6));
 
     if (!static_tips.empty()) {
         static_tips_size = dc.GetTextExtent(static_tips);

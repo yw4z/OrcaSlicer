@@ -126,11 +126,10 @@ void BBLTopbarArt::DrawButton(wxDC& dc, wxWindow* wnd, const wxAuiToolBarItem& i
     int bmpX = 0, bmpY = 0;
     int textX = 0, textY = 0;
 
-    const wxBitmap& bmp = item.GetState() & wxAUI_BUTTON_STATE_DISABLED
-        ? item.GetDisabledBitmap()
-        : item.GetBitmap();
+    const wxBitmap bmp = item.GetCurrentBitmapFor(wnd);
 
-    const wxSize bmpSize = bmp.IsOk() ? bmp.GetScaledSize() : wxSize(0, 0);
+    const wxBitmap& draw_bmp = bmp;
+    const wxSize bmpSize = draw_bmp.IsOk() ? draw_bmp.GetScaledSize() : wxSize(0, 0);
 
     if (m_textOrientation == wxAUI_TBTOOL_TEXT_BOTTOM)
     {
@@ -190,8 +189,8 @@ void BBLTopbarArt::DrawButton(wxDC& dc, wxWindow* wnd, const wxAuiToolBarItem& i
         }
     }
 
-    if (bmp.IsOk())
-        dc.DrawBitmap(bmp, bmpX, bmpY, true);
+    if (draw_bmp.IsOk())
+        dc.DrawBitmap(draw_bmp, bmpX, bmpY, true);
 
     // set the item's text color based on if it is disabled
 #ifdef __WINDOWS__
@@ -225,6 +224,7 @@ BBLTopbar::BBLTopbar(wxWindow* pwin, wxFrame* parent)
 void BBLTopbar::Init(wxFrame* parent) 
 {
     SetArtProvider(new BBLTopbarArt());
+    SetToolBitmapSize(wxSize(TOPBAR_ICON_SIZE, TOPBAR_ICON_SIZE));
     m_frame = parent;
     m_skip_popup_file_menu = false;
     m_skip_popup_dropdown_menu = false;
@@ -239,14 +239,14 @@ void BBLTopbar::Init(wxFrame* parent)
     logo_item->SetHoverBitmap(logo_bitmap);
     logo_item->SetActive(false);*/
 
-    wxBitmap file_bitmap = create_scaled_bitmap("topbar_file", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap file_bitmap = create_scaled_bitmap("topbar_file", this, TOPBAR_ICON_SIZE);
     m_file_menu_item = this->AddTool(ID_TOP_FILE_MENU, _L("File"), file_bitmap, wxEmptyString, wxITEM_NORMAL);
 
     this->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHTTEXT));
 
     this->AddSpacer(FromDIP(5));
 
-    wxBitmap dropdown_bitmap = create_scaled_bitmap("topbar_dropdown", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap dropdown_bitmap = create_scaled_bitmap("topbar_dropdown", this, TOPBAR_ICON_SIZE);
     m_dropdown_menu_item = this->AddTool(ID_TOP_DROPDOWN_MENU, "",
         dropdown_bitmap, wxEmptyString);
 
@@ -259,27 +259,27 @@ void BBLTopbar::Init(wxFrame* parent)
 
     this->AddSpacer(FromDIP(10));
 
-    wxBitmap save_bitmap = create_scaled_bitmap("topbar_save", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap save_bitmap = create_scaled_bitmap("topbar_save", this, TOPBAR_ICON_SIZE);
     wxAuiToolBarItem* save_btn = this->AddTool(wxID_SAVE, "", save_bitmap);
 
     this->AddSpacer(FromDIP(10));
 
-    wxBitmap undo_bitmap = create_scaled_bitmap("topbar_undo", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap undo_bitmap = create_scaled_bitmap("topbar_undo", this, TOPBAR_ICON_SIZE);
     m_undo_item = this->AddTool(wxID_UNDO, "", undo_bitmap);
-    wxBitmap undo_inactive_bitmap = create_scaled_bitmap("topbar_undo_inactive", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap undo_inactive_bitmap = create_scaled_bitmap("topbar_undo_inactive", this, TOPBAR_ICON_SIZE);
     m_undo_item->SetDisabledBitmap(undo_inactive_bitmap);
 
     this->AddSpacer(FromDIP(10));
 
-    wxBitmap redo_bitmap = create_scaled_bitmap("topbar_redo", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap redo_bitmap = create_scaled_bitmap("topbar_redo", this, TOPBAR_ICON_SIZE);
     m_redo_item = this->AddTool(wxID_REDO, "", redo_bitmap);
-    wxBitmap redo_inactive_bitmap = create_scaled_bitmap("topbar_redo_inactive", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap redo_inactive_bitmap = create_scaled_bitmap("topbar_redo_inactive", this, TOPBAR_ICON_SIZE);
     m_redo_item->SetDisabledBitmap(redo_inactive_bitmap);
 
     this->AddSpacer(FromDIP(10));
 
-    wxBitmap calib_bitmap          = create_scaled_bitmap("calib_sf", nullptr, TOPBAR_ICON_SIZE);
-    wxBitmap calib_bitmap_inactive = create_scaled_bitmap("calib_sf_inactive", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap calib_bitmap          = create_scaled_bitmap("calib_sf", this, TOPBAR_ICON_SIZE);
+    wxBitmap calib_bitmap_inactive = create_scaled_bitmap("calib_sf_inactive", this, TOPBAR_ICON_SIZE);
     m_calib_item                   = this->AddTool(ID_CALIB, _L("Calibration"), calib_bitmap);
     m_calib_item->SetDisabledBitmap(calib_bitmap_inactive);
 
@@ -308,13 +308,13 @@ void BBLTopbar::Init(wxFrame* parent)
     //this->AddSeparator();
     //this->AddSpacer(FromDIP(4));
 
-    wxBitmap iconize_bitmap = create_scaled_bitmap("topbar_min", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap iconize_bitmap = create_scaled_bitmap("topbar_min", this, TOPBAR_ICON_SIZE);
     wxAuiToolBarItem* iconize_btn = this->AddTool(wxID_ICONIZE_FRAME, "", iconize_bitmap);
 
     this->AddSpacer(FromDIP(4));
 
-    maximize_bitmap = create_scaled_bitmap("topbar_max", nullptr, TOPBAR_ICON_SIZE);
-    window_bitmap = create_scaled_bitmap("topbar_win", nullptr, TOPBAR_ICON_SIZE);
+    maximize_bitmap = create_scaled_bitmap("topbar_max", this, TOPBAR_ICON_SIZE);
+    window_bitmap = create_scaled_bitmap("topbar_win", this, TOPBAR_ICON_SIZE);
     if (m_frame->IsMaximized()) {
         maximize_btn = this->AddTool(wxID_MAXIMIZE_FRAME, "", window_bitmap);
     }
@@ -324,7 +324,7 @@ void BBLTopbar::Init(wxFrame* parent)
 
     this->AddSpacer(FromDIP(4));
 
-    wxBitmap close_bitmap = create_scaled_bitmap("topbar_close", nullptr, TOPBAR_ICON_SIZE);
+    wxBitmap close_bitmap = create_scaled_bitmap("topbar_close", this, TOPBAR_ICON_SIZE);
     wxAuiToolBarItem* close_btn = this->AddTool(wxID_CLOSE_FRAME, "", close_bitmap);
 
     Realize();
@@ -496,6 +496,10 @@ void BBLTopbar::UpdateToolbarWidth(int width)
 void BBLTopbar::Rescale() {
     int em = em_unit(this);
     wxAuiToolBarItem* item;
+
+    SetToolBitmapSize(wxSize(TOPBAR_ICON_SIZE, TOPBAR_ICON_SIZE));
+
+    SetToolBitmapSize(wxSize(TOPBAR_ICON_SIZE, TOPBAR_ICON_SIZE));
 
     /*item = this->FindTool(ID_LOGO);
     item->SetBitmap(create_scaled_bitmap("topbar_logo", nullptr, TOPBAR_ICON_SIZE));*/

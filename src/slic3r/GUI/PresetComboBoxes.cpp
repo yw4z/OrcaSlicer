@@ -80,7 +80,7 @@ PresetComboBox::PresetComboBox(wxWindow* parent, Preset::Type preset_type, const
     ::ComboBox(parent, wxID_ANY, wxEmptyString, wxDefaultPosition, size, 0, nullptr, wxCB_READONLY),
     m_type(preset_type),
     m_last_selected(wxNOT_FOUND),
-    m_em_unit(em_unit(this)),
+    m_em_unit(em_unit(parent)),
     m_preset_bundle(preset_bundle ? preset_bundle : wxGetApp().preset_bundle)
 {
 #ifdef __WXMSW__
@@ -832,8 +832,10 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
     // BBS
     if (m_type == Preset::TYPE_FILAMENT) {
         int em = wxGetApp().em_unit();
-        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(FromDIP(20), FromDIP(20)), wxBU_EXACTFIT | wxBU_AUTODRAW | wxBORDER_NONE);
+        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(FromDIP(20), FromDIP(20)), wxBU_EXACTFIT | wxBORDER_NONE);
         clr_picker->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
+        clr_picker->SetMinSize(wxSize(FromDIP(20), FromDIP(20)));
+        clr_picker->SetMaxSize(wxSize(FromDIP(20), FromDIP(20)));
         clr_picker->SetToolTip(_L("Click to select filament color"));
         clr_picker->Bind(wxEVT_BUTTON, [this](wxCommandEvent& e) {
             // Check if it's an official filament
@@ -1425,8 +1427,12 @@ void PlaterPresetComboBox::msw_rescale()
     PresetComboBox::msw_rescale();
     SetMinSize({-1, 30 * m_em_unit / 10});
 
-    if (clr_picker)
-        clr_picker->SetSize(20 * m_em_unit / 10, 20 * m_em_unit / 10);
+    if (clr_picker) {
+        const wxSize clr_sz(20 * m_em_unit / 10, 20 * m_em_unit / 10);
+        clr_picker->SetMinSize(clr_sz);
+        clr_picker->SetMaxSize(clr_sz);
+        clr_picker->SetSize(clr_sz);
+    }
     // BBS
     if (edit_btn != nullptr)
         edit_btn->msw_rescale();
@@ -1524,8 +1530,18 @@ void PlaterPresetComboBox::sync_colour_config(const std::vector<std::string> &cl
 
 TabPresetComboBox::TabPresetComboBox(wxWindow* parent, Preset::Type preset_type) :
     // BBS: new layout
-    PresetComboBox(parent, preset_type, wxSize(20 * wxGetApp().em_unit(), 30 * wxGetApp().em_unit() / 10))
+    PresetComboBox(parent, preset_type, wxSize(20 * em_unit(parent), -1))
 {
+#ifdef __WXMSW__
+    wxSize sz = wxSize(20 * m_em_unit, GetBestSize().y);
+    SetMinSize(sz);
+    SetSize(sz);
+    wxTheApp->CallAfter([this]() {
+        if (!this)
+            return;
+        this->msw_rescale();
+    });
+#endif
 }
 
 void TabPresetComboBox::OnSelect(wxCommandEvent &evt)
@@ -1740,7 +1756,7 @@ void TabPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
     // BBS: new layout
-    wxSize sz = wxSize(20 * m_em_unit, 30 * m_em_unit / 10);
+    wxSize sz = wxSize(20 * m_em_unit, GetBestSize().y);
     SetMinSize(sz);
     SetSize(sz);
 }
