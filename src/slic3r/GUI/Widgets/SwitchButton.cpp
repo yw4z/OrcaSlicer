@@ -89,7 +89,7 @@ void SwitchButton::Rescale()
 #ifdef __WXOSX__
         auto scale = Slic3r::GUI::mac_max_scaling_factor();
         int BS = (int) scale;
-#elif defined(__WXMSW__)
+#elif defined(__WXMSW__) //ORCA
         const double scale = GetDPIScaleFactor();
         constexpr int BS = 1;
 #else
@@ -99,7 +99,7 @@ void SwitchButton::Rescale()
 		wxSize trackSize;
 		wxClientDC dc(this);
 #ifdef __WXOSX__
-        dc.SetFont(GetFont().Scaled(scale));
+        dc.SetFont(dc.GetFont().Scaled(scale));
 #endif
         wxSize textSize[2];
 		{
@@ -127,14 +127,13 @@ void SwitchButton::Rescale()
 			}
 		}
 		for (int i = 0; i < 2; ++i) {
+            wxMemoryDC memdc(&dc);
 #ifdef __WXMSW__
-         wxMemoryDC memdc;
 			wxBitmap bmp(trackSize.x, trackSize.y);
 			memdc.SelectObject(bmp);
 			memdc.SetBackground(wxBrush(GetBackgroundColour()));
 			memdc.Clear();
 #else
-           wxMemoryDC memdc(&dc);
             wxImage image(trackSize);
             image.InitAlpha();
             memset(image.GetAlpha(), 0, trackSize.GetWidth() * trackSize.GetHeight());
@@ -142,7 +141,7 @@ void SwitchButton::Rescale()
             memdc.SelectObject(bmp);
 #endif
             memdc.SetFont(dc.GetFont());
-#ifdef __WXMSW__
+#ifdef __WXMSW__ // ORCA 
             memdc.SetFont(GetFont().Scaled(scale));
             textSize[0] = memdc.GetTextExtent(labels[0]);
             textSize[1] = memdc.GetTextExtent(labels[1]);
@@ -186,7 +185,7 @@ void SwitchButton::Rescale()
 #ifdef __WXOSX__
             bmp = wxBitmap(bmp.ConvertToImage(), -1, scale);
 #elif defined(__WXMSW__)
-            bmp.SetScaleFactor(scale);
+            bmp.SetScaleFactor(scale); // ORCA
 #endif
 			(i == 0 ? m_off : m_on).bmp() = bmp;
 		}
@@ -198,7 +197,7 @@ void SwitchButton::Rescale()
 	SetSize(bestSize);
 	SetMinSize(bestSize);
 #else
-  SetSize(m_on.GetBmpSize());
+	SetSize(m_on.GetBmpSize());
 #endif
 }
 

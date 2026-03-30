@@ -80,7 +80,7 @@ PresetComboBox::PresetComboBox(wxWindow* parent, Preset::Type preset_type, const
     ::ComboBox(parent, wxID_ANY, wxEmptyString, wxDefaultPosition, size, 0, nullptr, wxCB_READONLY),
     m_type(preset_type),
     m_last_selected(wxNOT_FOUND),
-    m_em_unit(em_unit(parent)),
+    m_em_unit(em_unit(this)),
     m_preset_bundle(preset_bundle ? preset_bundle : wxGetApp().preset_bundle)
 {
 #ifdef __WXMSW__
@@ -1524,18 +1524,8 @@ void PlaterPresetComboBox::sync_colour_config(const std::vector<std::string> &cl
 
 TabPresetComboBox::TabPresetComboBox(wxWindow* parent, Preset::Type preset_type) :
     // BBS: new layout
-    PresetComboBox(parent, preset_type, wxSize(20 * em_unit(parent), -1))
+    PresetComboBox(parent, preset_type, wxSize(20 * wxGetApp().em_unit(), 30 * wxGetApp().em_unit() / 10))
 {
-#ifdef __WXMSW__
-    wxSize sz = wxSize(20 * m_em_unit, GetBestSize().y);
-    SetMinSize(sz);
-    SetSize(sz);
-    wxTheApp->CallAfter([this]() {
-        if (!this)
-            return;
-        this->msw_rescale();
-    });
-#endif
 }
 
 void TabPresetComboBox::OnSelect(wxCommandEvent &evt)
@@ -1750,7 +1740,7 @@ void TabPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
     // BBS: new layout
-    wxSize sz = wxSize(20 * m_em_unit, GetBestSize().y);
+    wxSize sz = wxSize(20 * m_em_unit, 30 * m_em_unit / 10);
     SetMinSize(sz);
     SetSize(sz);
 }
