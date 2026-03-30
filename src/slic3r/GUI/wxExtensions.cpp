@@ -9,7 +9,6 @@
 
 #include "GUI.hpp"
 #include "GUI_App.hpp"
-#include "MainFrame.hpp"
 #include "GUI_ObjectList.hpp"
 #include "I18N.hpp"
 #include "GUI_Utils.hpp"
@@ -512,7 +511,8 @@ wxBitmap* get_default_extruder_color_icon(bool thin_icon/* = false*/)
     const int icon_height = lround(2 * em);
     bool dark_mode = Slic3r::GUI::wxGetApp().dark_mode();
 
-    wxMemoryDC dc;
+    wxClientDC cdc((wxWindow*)Slic3r::GUI::wxGetApp().mainframe);
+    wxMemoryDC dc(&cdc);
     dc.SetFont(::Label::Body_12);
 
     wxString label = _L("default");
@@ -667,7 +667,7 @@ wxBitmap *get_extruder_color_icon(std::vector<std::string> colors, bool is_gradi
 #ifndef __WXMSW__
             wxMemoryDC dc(base_bitmap);
 #else
-            wxClientDC cdc((wxWindow*) Slic3r::GUI::wxGetApp().mainframe);
+            wxClientDC cdc((wxWindow *) Slic3r::GUI::wxGetApp().mainframe);
             wxMemoryDC dc(&cdc);
             dc.SelectObject(base_bitmap);
 #endif
@@ -729,7 +729,7 @@ wxBitmap *get_extruder_color_icon(std::string color, std::string label, int icon
         bitmap->UseAlpha();
         wxMemoryDC dc(*bitmap);
 #elif defined(__WXMSW__)
-        wxClientDC cdc((wxWindow*) Slic3r::GUI::wxGetApp().mainframe);
+        wxClientDC cdc((wxWindow *) Slic3r::GUI::wxGetApp().mainframe);
         wxMemoryDC dc(&cdc);
         dc.SelectObject(*bitmap);
 #else

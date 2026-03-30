@@ -127,7 +127,7 @@ void SwitchButton::Rescale()
 			}
 		}
 		for (int i = 0; i < 2; ++i) {
-            wxMemoryDC memdc(&dc);
+			wxMemoryDC memdc(&dc);
 #ifdef __WXMSW__
 			wxBitmap bmp(trackSize.x, trackSize.y);
 			memdc.SelectObject(bmp);
