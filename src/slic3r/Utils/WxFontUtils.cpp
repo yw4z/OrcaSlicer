@@ -302,8 +302,6 @@ void Slic3r::GUI::WxFontUtils::get_suitable_font_size(int max_height, wxDC &dc)
     wxFont font = dc.GetFont();
     if (!font.IsOk()) return;
 
-    max_height = std::max(1, max_height - 2);
-
     int font_size = font.GetPointSize();
     int height  = dc.GetFontMetrics().height;
     if (height < max_height) /*go smaller*/
