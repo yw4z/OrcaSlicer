@@ -832,10 +832,8 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
     // BBS
     if (m_type == Preset::TYPE_FILAMENT) {
         int em = wxGetApp().em_unit();
-        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(FromDIP(20), FromDIP(20)), wxBU_EXACTFIT | wxBORDER_NONE);
+        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(FromDIP(20), FromDIP(20)), wxBU_EXACTFIT | wxBU_AUTODRAW | wxBORDER_NONE);
         clr_picker->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
-        clr_picker->SetMinSize(wxSize(FromDIP(20), FromDIP(20)));
-        clr_picker->SetMaxSize(wxSize(FromDIP(20), FromDIP(20)));
         clr_picker->SetToolTip(_L("Click to select filament color"));
         clr_picker->Bind(wxEVT_BUTTON, [this](wxCommandEvent& e) {
             // Check if it's an official filament
@@ -1427,12 +1425,8 @@ void PlaterPresetComboBox::msw_rescale()
     PresetComboBox::msw_rescale();
     SetMinSize({-1, 30 * m_em_unit / 10});
 
-    if (clr_picker) {
-        const wxSize clr_sz(20 * m_em_unit / 10, 20 * m_em_unit / 10);
-        clr_picker->SetMinSize(clr_sz);
-        clr_picker->SetMaxSize(clr_sz);
-        clr_picker->SetSize(clr_sz);
-    }
+    if (clr_picker)
+        clr_picker->SetSize(20 * m_em_unit / 10, 20 * m_em_unit / 10);
     // BBS
     if (edit_btn != nullptr)
         edit_btn->msw_rescale();

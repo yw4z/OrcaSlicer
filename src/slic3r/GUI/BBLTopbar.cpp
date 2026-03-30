@@ -498,10 +498,6 @@ void BBLTopbar::Rescale() {
     int em = em_unit(this);
     wxAuiToolBarItem* item;
 
-    SetToolBitmapSize(wxSize(TOPBAR_ICON_SIZE, TOPBAR_ICON_SIZE));
-
-    SetToolBitmapSize(wxSize(TOPBAR_ICON_SIZE, TOPBAR_ICON_SIZE));
-
     /*item = this->FindTool(ID_LOGO);
     item->SetBitmap(create_scaled_bitmap("topbar_logo", nullptr, TOPBAR_ICON_SIZE));*/
 
