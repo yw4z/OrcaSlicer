@@ -540,7 +540,7 @@ wxBitmap* get_default_extruder_color_icon(bool thin_icon/* = false*/)
     return bitmap;
 }
 
-std::vector<wxBitmap*> get_extruder_color_icons(bool thin_icon/* = false*/)
+std::vector<wxBitmap*> get_extruder_color_icons(bool thin_icon/* = false*/, bool scaled /* = true*/) // ORCA non scaled icons required since some controls are DPI aware
 {
     // Create the bitmap with color bars.
     std::vector<wxBitmap*> bmps;
@@ -553,7 +553,7 @@ std::vector<wxBitmap*> get_extruder_color_icons(bool thin_icon/* = false*/)
          * So set sizes for solid_colored icons used for filament preset
          * and scale them in respect to em_unit value
          */
-        const double em          = Slic3r::GUI::wxGetApp().em_unit();
+        const double em          = scaled ? Slic3r::GUI::wxGetApp().em_unit() : 10;
         const int    icon_width  = lround((thin_icon ? 2 : 4.4) * em);
         const int    icon_height = lround(2 * em);
 
@@ -677,11 +677,7 @@ wxBitmap *get_extruder_color_icon(std::vector<std::string> colors, bool is_gradi
             dc.SetPen(*wxTRANSPARENT_PEN);
 
             dc.SetFont(::Label::Body_12);
-            int text_max_height = icon_height - 2;
-#ifdef __WXMSW__
-            text_max_height = std::max(1, icon_height / 2 - 1);
-#endif
-            Slic3r::GUI::WxFontUtils::get_suitable_font_size(text_max_height, dc);
+            Slic3r::GUI::WxFontUtils::get_suitable_font_size(icon_height * 0.8, dc); // ORCA limit font size to prevent oversized font on hi dpi screens
 
             auto size = dc.GetTextExtent(wxString(label));
 
@@ -737,11 +733,7 @@ wxBitmap *get_extruder_color_icon(std::string color, std::string label, int icon
         dc.SelectObject(*bitmap);
 #endif
         dc.SetFont(::Label::Body_12);
-        int text_max_height = icon_height - 2;
-#ifdef __WXMSW__
-        text_max_height = std::max(1, icon_height / 2 - 1);
-#endif
-        Slic3r::GUI::WxFontUtils::get_suitable_font_size(text_max_height, dc);
+        Slic3r::GUI::WxFontUtils::get_suitable_font_size(icon_height * 0.8, dc); // ORCA limit font size to prevent oversized font on hi dpi screens
         if (clr.Alpha() == 0) {
             int             size        = icon_height * 2;
             static wxBitmap transparent = *Slic3r::GUI::BitmapCache().load_svg("transparent", size, size);

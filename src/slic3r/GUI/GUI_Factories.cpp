@@ -925,7 +925,7 @@ void MenuFactory::append_menu_item_change_extruder(wxMenu* menu)
     if (sels.IsEmpty())
         return;
 
-    std::vector<wxBitmap*> icons = get_extruder_color_icons(true);
+    std::vector<wxBitmap*> icons = get_extruder_color_icons(true, false); // control is DPI aware now
     wxMenu* extruder_selection_menu = new wxMenu();
     const wxString& name = sels.Count() == 1 ? names[0] : names[1];
 
@@ -1550,7 +1550,7 @@ void MenuFactory::create_filament_action_menu(bool init, int active_filament_men
         menu->Destroy(item_id);
 
     wxMenu* sub_menu = new wxMenu();
-    std::vector<wxBitmap*> icons = get_extruder_color_icons(true);
+    std::vector<wxBitmap*> icons = get_extruder_color_icons(true, false); // control is DPI aware now
     int filaments_cnt = Sidebar::should_show_SEMM_buttons() ? icons.size() : 0;
     for (int i = 0; i < filaments_cnt; i++) {
         if (i == active_filament_menu_id)
@@ -2089,7 +2089,7 @@ void MenuFactory::append_menu_item_change_filament(wxMenu* menu)
             return;
     }
 
-    std::vector<wxBitmap*> icons = get_extruder_color_icons(true);
+    std::vector<wxBitmap*> icons = get_extruder_color_icons(true, false); // control is DPI aware now
     if (icons.size() < filaments_cnt) {
         BOOST_LOG_TRIVIAL(warning) << boost::format("Warning: icons size %1%, filaments_cnt=%2%")%icons.size()%filaments_cnt;
         if (icons.size() <= 1)

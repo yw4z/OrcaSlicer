@@ -74,7 +74,7 @@ wxBitmap create_scaled_bitmap(const std::string& bmp_name, wxWindow *win = nullp
 #endif
 
 wxBitmap* get_default_extruder_color_icon(bool thin_icon = false);
-std::vector<wxBitmap *> get_extruder_color_icons(bool thin_icon = false);
+std::vector<wxBitmap *> get_extruder_color_icons(bool thin_icon = false, bool scaled = true);
 wxBitmap * get_extruder_color_icon(std::string color, std::string label, int icon_width, int icon_height);
 wxBitmap * get_extruder_color_icon(std::vector<std::string> colors, bool is_gradient, std::string label, int icon_width, int icon_height);
 std::vector<std::vector<std::string>> read_color_pack(std::vector<std::string> color_pack);

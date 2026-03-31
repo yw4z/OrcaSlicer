@@ -402,7 +402,7 @@ ObjColorPanel::~ObjColorPanel() {
 void ObjColorPanel::msw_rescale()
 {
     for (unsigned int i = 0; i < m_extruder_icon_list.size(); ++i) {
-        auto bitmap = *get_extruder_color_icon(m_colours[i].GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), std::to_string(i + 1), FromDIP(16), FromDIP(16));
+        auto bitmap = *get_extruder_color_icon(m_colours[i].GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), std::to_string(i + 1), 20, 20); // control is DPI aware now
         m_extruder_icon_list[i]->SetBitmap(bitmap);
     }
    /* for (unsigned int i = 0; i < m_color_cluster_icon_list.size(); ++i) {
@@ -522,8 +522,8 @@ wxBoxSizer *ObjColorPanel::create_reset_btn_sizer(wxWindow *parent)
 wxBoxSizer *ObjColorPanel::create_extruder_icon_and_rgba_sizer(wxWindow *parent, int id, const wxColour &color)
 {
     auto icon_sizer = new wxBoxSizer(wxHORIZONTAL);
-    wxButton *icon       = new wxButton(parent, wxID_ANY, {}, wxDefaultPosition, ICON_SIZE, wxBORDER_NONE | wxBU_AUTODRAW);
-    icon->SetBitmap(*get_extruder_color_icon(color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), std::to_string(id + 1), FromDIP(16), FromDIP(16)));
+    wxButton *icon       = new wxButton(parent, wxID_ANY, {}, wxDefaultPosition, FromDIP(wxSize(20,20)), wxBORDER_NONE | wxBU_AUTODRAW);
+    icon->SetBitmap(*get_extruder_color_icon(color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), std::to_string(id + 1), 20, 20)); // control is DPI aware now
     icon->SetCanFocus(false);
     m_extruder_icon_list.emplace_back(icon);
     icon_sizer->Add(icon, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL, 0); // wxALIGN_CENTER_VERTICAL | wxTOP | wxBOTTOM
@@ -654,7 +654,7 @@ void ObjColorPanel::draw_new_table()
                     break;
                 }
                 auto color = m_cluster_colours[id];
-                m_color_cluster_icon_list[id]->SetBitmap(*get_extruder_color_icon(color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), "", FromDIP(16), FromDIP(16)));
+                m_color_cluster_icon_list[id]->SetBitmap(*get_extruder_color_icon(color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), "", 20, 20)); // control is DPI aware now
             }
         }
     }
@@ -810,7 +810,7 @@ void ObjColorPanel::generate_thumbnail()
                         image.SetAlpha((int) c, (int) r, px[3]);
                     }
                 }
-                image = image.Rescale(FromDIP(IMAGE_SIZE_WIDTH), FromDIP(IMAGE_SIZE_WIDTH));
+                image = image.Scale(IMAGE_SIZE_WIDTH, IMAGE_SIZE_WIDTH); // ORCA control bitmap is DPI aware now
                 m_image_button->SetBitmap(image);
             }
 
@@ -910,8 +910,8 @@ wxBoxSizer *ObjColorPanel::create_color_icon_map_rgba_sizer(wxWindow *parent, in
 {
     auto icon_sizer = new wxBoxSizer(wxHORIZONTAL);
     //icon_sizer->AddSpacer(FromDIP(40));
-    wxButton *icon = new wxButton(parent, wxID_ANY, {}, wxDefaultPosition, ICON_SIZE, wxBORDER_NONE | wxBU_AUTODRAW);
-    icon->SetBitmap(*get_extruder_color_icon(color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), "", FromDIP(16), FromDIP(16)));
+    wxButton *icon = new wxButton(parent, wxID_ANY, {}, wxDefaultPosition, FromDIP(wxSize(20,20)), wxBORDER_NONE | wxBU_AUTODRAW);
+    icon->SetBitmap(*get_extruder_color_icon(color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString(), "", 20, 20)); // control is DPI aware now
     icon->SetCanFocus(false);
     m_color_cluster_icon_list.emplace_back(icon);
     icon_sizer->Add(icon, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL, 0); // wxALIGN_CENTER_VERTICAL | wxTOP | wxBOTTOM
