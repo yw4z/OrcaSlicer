@@ -2158,9 +2158,8 @@ Sidebar::Sidebar(Plater *parent)
     p->m_search_bar->SetCornerRadius(0);
     p->m_search_bar->SetBorderColor(wxColour("#CECECE"));
 
-    p->m_search_item = new TextInput(p->m_search_bar, wxEmptyString, wxEmptyString, "", wxDefaultPosition, wxDefaultSize, 0 | wxBORDER_NONE);
-    p->m_search_item->SetIcon(*BitmapCache().load_svg("search", FromDIP(16), FromDIP(16))); // ORCA: Add search icon to search box
-
+    p->m_search_item = new TextInput(p->m_search_bar, wxEmptyString, wxEmptyString, "search", wxDefaultPosition, wxDefaultSize, 0 | wxBORDER_NONE);
+  
     wxTextCtrl* text_ctrl = p->m_search_item->GetTextCtrl();
     text_ctrl->SetHint(_L("Search plate, object and part."));
     text_ctrl->SetForegroundColour(wxColour("#262E30"));
@@ -2185,7 +2184,6 @@ Sidebar::Sidebar(Plater *parent)
     });
 
     auto search_sizer = new wxBoxSizer(wxHORIZONTAL);
-    search_sizer->Add(new wxWindow(p->m_search_bar, wxID_ANY, wxDefaultPosition, wxSize(0, 0)), 0, wxEXPAND|wxLEFT|wxRIGHT, FromDIP(1));
     search_sizer->Add(p->m_search_item, 1, wxEXPAND | wxALL, FromDIP(2));
     p->m_search_bar->SetSizer(search_sizer);
     p->m_search_bar->Layout();
