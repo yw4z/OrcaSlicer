@@ -2148,18 +2148,30 @@ void PointCtrl::BUILD()
 void PointCtrl::msw_rescale()
 {
     Field::msw_rescale();
+    // same method with TextInput
+    auto size = wxSize(def_width_wider() * m_em_unit, wxDefaultCoord);
 
-    //wxSize field_size(4 * m_em_unit, -1);
-    wxSize  field_size((m_opt.width >= 0 ? m_opt.width : def_width_wider()) * m_em_unit, -1); // ORCA match width with other components
+    if (m_opt.height >= 0)
+        size.SetHeight(m_opt.height*m_em_unit);
+    else if (parent_is_custom_ctrl && opt_height > 0)
+        size.SetHeight(lround(opt_height*m_em_unit));
+    if (m_opt.width >= 0) size.SetWidth(m_opt.width*m_em_unit);
 
-    if (parent_is_custom_ctrl) {
-        field_size.SetHeight(lround(opt_height * m_em_unit));
-        x_input->SetSize(field_size);
-        y_input->SetSize(field_size);
-    }
-    else {
-        x_input->SetMinSize(field_size);
-        y_input->SetMinSize(field_size);
+    if (size != wxDefaultSize) {
+        if (parent_is_custom_ctrl){
+            x_textctrl->SetSize(size);
+            y_textctrl->SetSize(size);
+        }
+        else {
+            x_textctrl->SetMinSize(size);
+            y_textctrl->SetMinSize(size);
+        }
+        x_input->SetSize(size);
+        x_input->SetMinSize(size);
+        x_input->Rescale();
+        y_input->SetSize(size);
+        y_input->SetMinSize(size);
+        y_input->Rescale();
     }
 }
 
