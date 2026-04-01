@@ -64,12 +64,15 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
     m_file_path = file_path;
     m_file_name = file_name;
 
-    wxSize panel_size = m_type == MODEL_PICTURE ? AUFILE_PICTURES_PANEL_SIZE : AUFILE_PANEL_SIZE;
+    wxSize panel_size = parent->FromDIP(m_type == MODEL_PICTURE ? AUFILE_PICTURES_PANEL_SIZE : AUFILE_PANEL_SIZE);
+    SetMinSize(panel_size);
+    SetMaxSize(panel_size);
+    SetInitialSize(panel_size);
+    SetSize(panel_size); // ORCA call sizing before create to avoid wxEVT_SIZE event with wrong size
+
     wxPanel::Create(parent, id, pos, panel_size, style);
     SetBackgroundColour(StateColor::darkModeColorFor(AUFILE_GREY300));
     wxBoxSizer *sizer_body = new wxBoxSizer(wxVERTICAL);
-
-   SetSize(panel_size);
 
     if (m_type == MODEL_PICTURE) {
         if (m_file_path.empty()) { return; }
@@ -77,15 +80,16 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
 
         //constrain
         auto size = wxSize(0, 0);
+        auto  pic_size   = FromDIP(AUFILE_PICTURES_SIZE);
         float proportion = float(image->GetSize().x) / float(image->GetSize().y);
         if (proportion >= 1) { 
-            size.x = AUFILE_PICTURES_SIZE.x;
-            size.y = AUFILE_PICTURES_SIZE.x / proportion;
+            size.x = pic_size.x;
+            size.y = pic_size.x / proportion;
         } else {
-            size.y = AUFILE_PICTURES_SIZE.y;
-            size.x = AUFILE_PICTURES_SIZE.y * proportion;
+            size.y = pic_size.y;
+            size.x = pic_size.y * proportion;
         }
-
+        size -= FromDIP(wxSize(6,6));// ORCA draw inside borders
         image->Rescale(size.x, size.y);
         m_file_bitmap.bmp() = wxBitmap(*image);
     } else {
@@ -115,7 +119,7 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
     m_file_delete    = ScalableBitmap(this, "auxiliary_delete", 20);
     
 
-    auto m_text_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(panel_size.x, AUFILE_TEXT_HEIGHT), wxTAB_TRAVERSAL);
+    auto m_text_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(panel_size.x, FromDIP(AUFILE_TEXT_HEIGHT)), wxTAB_TRAVERSAL);
     m_text_panel->SetBackgroundColour(StateColor::darkModeColorFor(AUFILE_GREY300));
     
 
@@ -145,7 +149,7 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
 
     m_text_panel->SetSizer(m_text_sizer);
     m_text_panel->Layout();
-    sizer_body->Add(0, 0, 0, wxTOP, panel_size.y - AUFILE_TEXT_HEIGHT);
+    sizer_body->Add(0, 0, 0, wxTOP, panel_size.y - FromDIP(AUFILE_TEXT_HEIGHT));
     sizer_body->Add(m_text_panel, 0, wxALIGN_CENTER, 0);
 
     SetSizer(sizer_body);
@@ -215,14 +219,14 @@ void AuFile::PaintBackground(wxDC &dc)
     dc.DrawRectangle(windowRect);
 
 
-    wxSize size = m_type == MODEL_PICTURE ? AUFILE_PICTURES_SIZE : AUFILE_SIZE;
+    wxSize size = FromDIP(m_type == MODEL_PICTURE ? AUFILE_PICTURES_SIZE : AUFILE_SIZE);
 
     if (m_type == AddFileButton)
     {
         auto pen_width = FromDIP(2);
         dc.SetPen(wxPen(AUFILE_GREY500, pen_width));
         dc.SetBrush(StateColor::darkModeColorFor(AUFILE_GREY200));
-        dc.DrawRoundedRectangle(pen_width / 2, pen_width / 2, size.x - pen_width / 2, size.y - pen_width / 2, AUFILE_ROUNDING);
+        dc.DrawRoundedRectangle(pen_width / 2, pen_width / 2, size.x - pen_width / 2, size.y - pen_width / 2, FromDIP(AUFILE_ROUNDING));
 
         auto line_length = FromDIP(50);
         dc.DrawLine(wxPoint((size.x - line_length) / 2, size.y / 2), wxPoint((size.x + line_length) / 2, size.y / 2));
@@ -241,7 +245,7 @@ void AuFile::PaintBackground(wxDC &dc)
         auto pen_width = FromDIP(2);
         dc.SetPen(wxPen(AUFILE_GREY500, pen_width));
         dc.SetBrush(StateColor::darkModeColorFor(AUFILE_GREY200));
-        dc.DrawRoundedRectangle(pen_width / 2, pen_width / 2, size.x - pen_width / 2, size.y - pen_width / 2, AUFILE_ROUNDING);
+        dc.DrawRoundedRectangle(pen_width / 2, pen_width / 2, size.x - pen_width / 2, size.y - pen_width / 2, FromDIP(AUFILE_ROUNDING));
         dc.DrawBitmap(m_file_bitmap.bmp(), (size.x - m_file_bitmap.GetBmpWidth()) / 2, (size.y - m_file_bitmap.GetBmpHeight()) / 2);
     }
 }
@@ -250,7 +254,7 @@ void AuFile::OnEraseBackground(wxEraseEvent &evt) {}
 
 void AuFile::PaintForeground(wxDC &dc)
 {
-    wxSize size = m_type == MODEL_PICTURE ? AUFILE_PICTURES_SIZE : AUFILE_SIZE;
+    wxSize size = FromDIP(m_type == MODEL_PICTURE ? AUFILE_PICTURES_SIZE : AUFILE_SIZE);
 
     if (m_hover) {
 
@@ -259,7 +263,7 @@ void AuFile::PaintForeground(wxDC &dc)
             auto pen_width = FromDIP(2);
             dc.SetPen(wxPen(AUFILE_BRAND, pen_width));
             dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            dc.DrawRoundedRectangle(pen_width / 2, pen_width / 2, size.x - pen_width / 2, size.y - pen_width / 2, AUFILE_ROUNDING);
+            dc.DrawRoundedRectangle(pen_width / 2, pen_width / 2, size.x - pen_width / 2, size.y - pen_width / 2, FromDIP(AUFILE_ROUNDING));
         }
 
         if (m_type == AddFileButton) {
@@ -437,7 +441,7 @@ void AuFile::on_mouse_left_up(wxMouseEvent &evt)
         return;
     }
 
-    wxSize size = m_type == MODEL_PICTURE ? AUFILE_PICTURES_SIZE : AUFILE_SIZE;
+    wxSize size = FromDIP(m_type == MODEL_PICTURE ? AUFILE_PICTURES_SIZE : AUFILE_SIZE);
 
     auto pos = evt.GetPosition();
     // set cover
@@ -566,24 +570,36 @@ AuFile::~AuFile() {}
 
 void AuFile::msw_rescale() 
 { 
+    wxSize size = FromDIP(m_type == MODEL_PICTURE ? AUFILE_PICTURES_PANEL_SIZE : AUFILE_PANEL_SIZE);
+    SetMinSize(size);
+    SetMaxSize(size);
+    SetInitialSize(size);
+    SetSize(size);
+
     m_file_cover     = ScalableBitmap(this, "auxiliary_cover", 40);
-    m_file_edit_mask = ScalableBitmap(this, "auxiliary_edit_mask", FromDIP(30));
+    m_file_edit_mask = ScalableBitmap(this, "auxiliary_edit_mask", 30);
     m_file_delete    = ScalableBitmap(this, "auxiliary_delete", 20);
+    m_text_name->SetMinSize(wxSize(size.x, -1));
+    m_text_name->SetMaxSize(wxSize(size.x, -1));
+    m_text_name->Wrap(size.x - FromDIP(10));
+    m_input_name->SetMinSize(wxSize(size.x - FromDIP(28), FromDIP(32)));
+    m_input_name->SetSize(   wxSize(size.x - FromDIP(28), FromDIP(32)));
 
     if (m_type == MODEL_PICTURE) {
         if (m_file_path.empty()) { return;}
         auto image = new wxImage(encode_path(m_file_path.string().c_str()));
         // constrain
         auto  size       = wxSize(0, 0);
+        auto  pic_size   = FromDIP(AUFILE_PICTURES_SIZE);
         float proportion = float(image->GetSize().x) / float(image->GetSize().y);
         if (proportion >= 1) {
-            size.x = FromDIP(300);
-            size.y = FromDIP(300) / proportion;
+            size.x = pic_size.x;
+            size.y = pic_size.x / proportion;
         } else {
-            size.y = FromDIP(300);
-            size.x = FromDIP(300) * proportion;
+            size.y = pic_size.y;
+            size.x = pic_size.y * proportion;
         }
-
+        size -= FromDIP(wxSize(6,6));// ORCA draw inside borders
         image->Rescale(size.x, size.y);
         m_file_bitmap.bmp() = wxBitmap(*image);
     } else {
@@ -595,6 +611,8 @@ void AuFile::msw_rescale()
         if (m_type == BILL_OF_MATERIALS) { m_file_bitmap = m_bitmap_excel; }
         if (m_type == ASSEMBLY_GUIDE) { m_file_bitmap = m_bitmap_pdf; }
     }
+
+    Layout();
     Refresh();
 }
 
@@ -695,11 +713,14 @@ void AuFolderPanel::update(std::vector<fs::path> paths)
 
 void AuFolderPanel::msw_rescale() 
 {
-    //m_button_add->SetMinSize(wxSize(-1, FromDIP(24)));
+    m_big_button_add->msw_rescale();
     for (auto i = 0; i < m_aufiles_list.GetCount(); i++) {
         AuFiles *aufile = m_aufiles_list[i];
         aufile->file->msw_rescale();
     }
+    m_gsizer_content->Layout();
+    m_scrolledWindow->Layout();
+    Layout();
 }
 
 void AuFolderPanel::on_add(wxMouseEvent& event)
@@ -846,7 +867,7 @@ void AuxiliaryPanel::init_tabpanel()
                             std::pair<wxColour, int>(wxColour(0, 137, 123), StateColor::Pressed),
                             std::pair<wxColour, int>(wxColour(38, 166, 154), StateColor::Hovered),
                             std::pair<wxColour, int>(wxColour(0, 150, 136), StateColor::Normal));
-    auto back_btn = new Button(this, _L("Return"), "assemble_return", wxBORDER_NONE | wxBU_LEFT | wxBU_EXACTFIT);
+    back_btn = new Button(this, _L("Return"), "assemble_return", wxBORDER_NONE | wxBU_LEFT | wxBU_EXACTFIT);
     back_btn->SetSize(wxSize(FromDIP(220), FromDIP(18)));
     back_btn->SetBackgroundColor(btn_bg_green);
     back_btn->SetTextColor(StateColor (std::pair<wxColour, int>(wxColour("#FDFFFD"), StateColor::Normal))); // ORCA fixes color change on text. icon stays white color but text changes to black without this
@@ -888,6 +909,8 @@ wxWindow *AuxiliaryPanel::create_side_tools()
 }
 
 void AuxiliaryPanel::msw_rescale() { 
+    back_btn ->Rescale();
+    m_tabpanel->Rescale();
     m_pictures_panel->msw_rescale();
     m_bill_of_materials_panel->msw_rescale();
     m_assembly_panel->msw_rescale();

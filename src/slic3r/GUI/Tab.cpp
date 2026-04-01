@@ -1314,6 +1314,11 @@ void Tab::msw_rescale()
     for (const auto bmp : m_scaled_bitmaps)
         bmp->msw_rescale();
 
+    if (dynamic_cast<TabPrint*>(this) == nullptr){
+            if (m_mode_icon)
+        m_mode_icon->msw_rescale();
+    }
+
     if (m_mode_view)
         m_mode_view->Rescale();
 

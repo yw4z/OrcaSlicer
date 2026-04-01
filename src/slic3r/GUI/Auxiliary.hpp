@@ -55,12 +55,12 @@
 #define AUFILE_BRAND_TRANSPARENT wxColour("#E5F0EE") // ORCA color with %10 opacity
 //#define AUFILE_PICTURES_SIZE wxSize(FromDIP(300), FromDIP(300))
 //#define AUFILE_PICTURES_PANEL_SIZE wxSize(FromDIP(300), FromDIP(340))
-#define AUFILE_PICTURES_SIZE wxSize(FromDIP(168), FromDIP(168))
-#define AUFILE_PICTURES_PANEL_SIZE wxSize(FromDIP(168), FromDIP(208))
-#define AUFILE_SIZE wxSize(FromDIP(168), FromDIP(168))
-#define AUFILE_PANEL_SIZE wxSize(FromDIP(168), FromDIP(208))
-#define AUFILE_TEXT_HEIGHT FromDIP(40)
-#define AUFILE_ROUNDING FromDIP(5)
+#define AUFILE_PICTURES_SIZE       wxSize(168, 168)
+#define AUFILE_PICTURES_PANEL_SIZE wxSize(168, 208)
+#define AUFILE_SIZE                wxSize(168, 168) // ORCA dont use FromDIP on define makes values raw constant expression
+#define AUFILE_PANEL_SIZE          wxSize(168, 208)
+#define AUFILE_TEXT_HEIGHT         40
+#define AUFILE_ROUNDING            5
 
 enum AuxiliaryFolderType {
     MODEL_PICTURE,
@@ -197,6 +197,8 @@ public:
 class AuxiliaryPanel : public wxPanel
 {
 private:
+    Button * back_btn = {nullptr};
+
     Tabbook *m_tabpanel = {nullptr};
     wxSizer *m_main_sizer = {nullptr};
 
