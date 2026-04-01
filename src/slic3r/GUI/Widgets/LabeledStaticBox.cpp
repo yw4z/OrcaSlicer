@@ -181,7 +181,7 @@ void LabeledStaticBox::DrawBorderAndLabel(wxDC& dc)
     if (!m_label.IsEmpty()) {
         #ifdef __WXMSW__ 
             dc.SetFont(m_font.Scaled(m_scale));
-        #elif
+        #else
             dc.SetFont(m_font);
         #endif
         dc.SetPen(*wxTRANSPARENT_PEN);
