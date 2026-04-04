@@ -469,7 +469,7 @@ wxBitmap create_scaled_bitmap(  const std::string& bmp_name_in,
     }
 
     wxBitmap bmp_out = *bmp;
-#ifndef __APPLE__
+#ifdef __WXMSW__
     double scale = win ? win->GetDPIScaleFactor() : (wxWindow::FromDIP(100, nullptr) / 100.0);
     bmp_out.SetScaleFactor(scale);
 #endif
@@ -494,7 +494,7 @@ wxBitmap create_scaled_bitmap2(const std::string& bmp_name_in, Slic3r::GUI::Bitm
     }
 
     wxBitmap bmp_out = *bmp;
-#ifndef __APPLE__
+#ifdef __WXMSW__
     double scale = win ? win->GetDPIScaleFactor() : (wxWindow::FromDIP(100, nullptr) / 100.0);
     bmp_out.SetScaleFactor(scale);
 #endif
