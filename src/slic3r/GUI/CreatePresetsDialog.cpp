@@ -1648,16 +1648,16 @@ wxBoxSizer *CreatePrinterPresetDialog::create_step_switch_item()
     step_switch_panel->SetBackgroundColour(*wxWHITE);
     horizontal_sizer->Add(0, 0, 1, wxEXPAND,0);
     m_step_1 = new wxStaticBitmap(step_switch_panel, wxID_ANY, create_scaled_bitmap("step_1", nullptr, FromDIP(20)), wxDefaultPosition, wxDefaultSize);
-    horizontal_sizer->Add(m_step_1, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(3));
+    horizontal_sizer->Add(m_step_1, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(3));
     wxStaticText *static_create_printer_text = new wxStaticText(step_switch_panel, wxID_ANY, m_create_type.create_printer, wxDefaultPosition, wxDefaultSize);
-    horizontal_sizer->Add(static_create_printer_text, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(3));
+    horizontal_sizer->Add(static_create_printer_text, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(3));
     auto divider_line = new wxPanel(step_switch_panel, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(50), 1));
     divider_line->SetBackgroundColour(PRINTER_LIST_COLOUR);
     horizontal_sizer->Add(divider_line, 0, wxLEFT | wxRIGHT | wxALIGN_CENTER_VERTICAL, FromDIP(3));
     m_step_2 = new wxStaticBitmap(step_switch_panel, wxID_ANY, create_scaled_bitmap("step_2_ready", nullptr, FromDIP(20)), wxDefaultPosition, wxDefaultSize);
-    horizontal_sizer->Add(m_step_2, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(3));
+    horizontal_sizer->Add(m_step_2, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(3));
     wxStaticText *static_import_presets_text = new wxStaticText(step_switch_panel, wxID_ANY, _L("Import Preset"), wxDefaultPosition, wxDefaultSize);
-    horizontal_sizer->Add(static_import_presets_text, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(3));
+    horizontal_sizer->Add(static_import_presets_text, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(3));
     horizontal_sizer->Add(0, 0, 1, wxEXPAND, 0);
 
     step_switch_panel->SetSizer(horizontal_sizer);
