@@ -469,7 +469,9 @@ bool is_debugger_present();
 /// </summary>
 void fit_in_display(wxTopLevelWindow& window, wxSize desired_size);
 
-
+#ifdef __WXGTK3__
+void RemoveButtonBorder(wxWindow* win);
+#endif
 }}
 
 #endif

@@ -3,7 +3,7 @@
 #include "../wxExtensions.hpp"
 
 #ifdef __WXGTK3__
-#include <gtk/gtk.h>
+#include "../GUI_Utils.hpp"
 #endif
 
 CheckBox::CheckBox(wxWindow *parent, int id)
@@ -30,11 +30,7 @@ CheckBox::CheckBox(wxWindow *parent, int id)
 #endif
 
     #ifdef __WXGTK3__
-        GtkCssProvider* provider = gtk_css_provider_new();
-        gtk_css_provider_load_from_data(provider, "button {border: none;outline: none;padding:0px; min-height:0px; min-width:0px;}", -1, nullptr);
-        GtkStyleContext* ctx = gtk_widget_get_style_context(GetHandle());
-        gtk_style_context_add_provider(ctx, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        g_object_unref(provider);
+    Slic3r::GUI::RemoveButtonBorder(this);
     #endif
 
     Rescale();
