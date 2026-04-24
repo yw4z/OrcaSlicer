@@ -35,7 +35,6 @@
 #include "Tab.hpp"
 #include "ConfigWizard.hpp"
 #include "../Utils/ASCIIFolding.hpp"
-#include "../Utils/FixModelByWin10.hpp"
 #include "../Utils/UndoRedo.hpp"
 #include "../Utils/ColorSpaceConvert.hpp"
 #include "BitmapCache.hpp"
@@ -202,20 +201,28 @@ void PresetComboBox::update_selection()
 
 // A workaround for a set of issues related to text fitting into gtk widgets:
 #if defined(__WXGTK20__) || defined(__WXGTK3__)
-    GList* cells = gtk_cell_layout_get_cells(GTK_CELL_LAYOUT(m_widget));
-
-    // 'cells' contains the GtkCellRendererPixBuf for the icon,
-    // 'cells->next' contains GtkCellRendererText for the text we need to ellipsize
-    if (!cells || !cells->next) return;
-
-    auto cell = static_cast<GtkCellRendererText *>(cells->next->data);
-
-    if (!cell) return;
-
-    g_object_set(G_OBJECT(cell), "ellipsize", PANGO_ELLIPSIZE_END, (char*)NULL);
-
-    // Only the list of cells must be freed, the renderer isn't ours to free
-    g_list_free(cells);
+  GtkWidget* widget = m_widget;
+    if (GTK_IS_CONTAINER(widget)) {
+        GList* children = gtk_container_get_children(GTK_CONTAINER(widget));
+        if (children) {
+            widget = GTK_WIDGET(children->data);
+            g_list_free(children);
+        }
+    }
+    if (GTK_IS_ENTRY(widget)) {
+        // Set ellipsization for the entry
+        gtk_entry_set_width_chars(GTK_ENTRY(widget), 20);  // Adjust this value as needed
+        gtk_entry_set_max_width_chars(GTK_ENTRY(widget), 20);  // Adjust this value as needed
+        // Create a PangoLayout for the entry and set ellipsization
+        PangoLayout* layout = gtk_entry_get_layout(GTK_ENTRY(widget));
+        if (layout) { 
+            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        } else {
+            g_warning("Unable to get PangoLayout from GtkEntry");
+        }
+    } else {
+        g_warning("Expected GtkEntry, but got %s", G_OBJECT_TYPE_NAME(widget));
+    }
 #endif
 }
 
@@ -1202,14 +1209,24 @@ void PlaterPresetComboBox::update()
             //BBS: move system to the end
             if (m_type == Preset::TYPE_PRINTER) {
                 auto printer_model = preset.config.opt_string("printer_model");
-                name = from_u8(printer_model);
+
+                // ORCA: Make system printer presets display the dirty "*" prefix when edited.
+                name = from_u8(is_selected && preset.is_dirty ? Preset::suffix_modified() + printer_model : printer_model);
+
                 if (system_printer_models.count(printer_model) == 0) {
                     system_presets.emplace(name, bmp);
                     system_printer_models.insert(printer_model);
                 }
+                else if (is_selected) {
+                    const wxString alternate_name = from_u8(preset.is_dirty ? printer_model : Preset::suffix_modified() + printer_model);
+                    // Remove the old preset name if exists, and add the new one with the same name but with modified suffix if needed.
+                    if (system_presets.erase(alternate_name))
+                        system_presets.emplace(name, bmp);
+                }
             } else {
                 system_presets.emplace(name, bmp);
             }
+
             if (is_selected) {
                 tooltip = get_tooltip(preset);
                 selected_system_preset = name;
