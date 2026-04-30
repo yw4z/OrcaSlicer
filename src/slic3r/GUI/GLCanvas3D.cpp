@@ -3897,7 +3897,7 @@ void GLCanvas3D::on_mouse_wheel(wxMouseEvent& evt)
     if (m_gizmos.on_mouse_wheel(evt))
         return;
 
-    if (m_canvas_type == CanvasAssembleView && (evt.AltDown() || evt.CmdDown())) {
+    if (m_canvas_type == CanvasAssembleView && (evt.AltDown() || evt.CmdDown()) && m_gizmos.m_assemble_view_data != nullptr) {
         float rotation = (float)evt.GetWheelRotation() / (float)evt.GetWheelDelta();
         if (evt.AltDown()) {
             auto clp_dist = m_gizmos.m_assemble_view_data->model_objects_clipper()->get_position();
@@ -8915,6 +8915,8 @@ float GLCanvas3D::_render_assembly_tooltip_button(ImGuiWrapper* imgui_wrapper) c
 //BBS
 void GLCanvas3D::_render_assemble_control()
 {
+    if(m_gizmos.m_assemble_view_data == nullptr)
+        return;
     if (m_canvas_type != ECanvasType::CanvasAssembleView) {
         GLVolume::explosion_ratio = m_explosion_ratio = 1.0;
         return;
