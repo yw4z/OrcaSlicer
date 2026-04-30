@@ -8927,6 +8927,7 @@ void GLCanvas3D::_render_assemble_control()
 {
     if(m_gizmos.m_assemble_view_data == nullptr)
         return;
+
     if (m_canvas_type != ECanvasType::CanvasAssembleView) {
         GLVolume::explosion_ratio = m_explosion_ratio = 1.0;
         return;
