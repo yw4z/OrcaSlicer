@@ -2465,6 +2465,10 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
     auto model_volume_state_lower = [](const ModelVolumeState& m1, const ModelVolumeState& m2) { return m1.geometry_id < m2.geometry_id; };
 
     m_reload_delayed = !m_canvas->IsShown() && !refresh_immediately && !force_full_scene_refresh;
+    if (m_reload_delayed) {
+        set_as_dirty();
+        return;
+    }
 
     PrinterTechnology printer_technology = current_printer_technology();
 
@@ -2625,9 +2629,6 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
 
     //BBS clean hover_volume_idxs
     m_hover_volume_idxs.clear();
-
-    if (m_reload_delayed)
-        return;
 
     // BBS: do not check wipe tower changes
     bool update_object_list = false;
