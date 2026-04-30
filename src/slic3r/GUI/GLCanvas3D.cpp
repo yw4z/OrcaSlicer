@@ -1920,6 +1920,14 @@ void GLCanvas3D::render(bool only_init)
 
     if (!is_initialized() && !init())
         return;
+
+    // If a scene reload was postponed while the canvas was hidden, consume it on first visible render.
+    if (m_reload_delayed) {
+        reload_scene(true);
+        if (m_reload_delayed)
+            return;
+    }
+
     if (m_canvas_type == ECanvasType::CanvasView3D  && m_gizmos.get_current_type() == GLGizmosManager::Undefined) {
         enable_return_toolbar(false);
     }
@@ -2398,10 +2406,11 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
     if (m_canvas == nullptr || m_config == nullptr || m_model == nullptr)
         return;
 
-    if (!m_initialized)
+    if (!m_initialized || !_set_current()) {
+        m_reload_delayed = true;
+        set_as_dirty();
         return;
-
-    _set_current();
+    }
 
     m_hover_volume_idxs.clear();
 
