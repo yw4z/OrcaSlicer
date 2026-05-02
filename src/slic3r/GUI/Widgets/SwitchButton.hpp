@@ -67,13 +67,14 @@ private:
     void mouseReleased(wxMouseEvent& event);
     void mouseCaptureLost(wxMouseCaptureLostEvent& event);
     int  hit_test_selection(const wxPoint& point) const;
-    wxRect thumb_rect_for(int selection) const;
     void update_tooltip();
 
 private:
     int      m_selection { 0 };
     bool     m_pressed   { false };
     wxString m_tooltips[3];
+	StateColor dot_active;
+	StateColor dot_dimmed;
 };
 
 class SwitchBoard : public wxWindow
