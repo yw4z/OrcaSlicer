@@ -207,12 +207,12 @@ void SwitchButton::update()
 ModeSwitchButton::ModeSwitchButton(wxWindow* parent, wxWindowID id)
 {
     background_color = StateColor(
-        std::make_pair(wxColour("#D0D0D4"), (int) StateColor::Disabled),
+        std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Disabled),
         std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Normal)
     );
     border_color = StateColor(
-        std::make_pair(wxColour("#D0D0D4"), (int) StateColor::Disabled),
-        std::make_pair(wxColour("#D0D0D4"), (int) StateColor::Hovered | ~StateColor::Focused),
+        std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Disabled),
+        std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Hovered | ~StateColor::Focused),
         std::make_pair(wxColour("#009688"), (int) StateColor::Focused),
         std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Normal)
     );
@@ -225,6 +225,9 @@ ModeSwitchButton::ModeSwitchButton(wxWindow* parent, wxWindowID id)
         std::make_pair(wxColour("#ACACAC"), (int) StateColor::Disabled),
         std::make_pair(wxColour("#ACACAC"), (int) StateColor::Normal)
     );
+
+    state_handler.attach(std::vector<StateColor const*>{&dot_active, &dot_dimmed});
+    state_handler.update_binds();
 
     StaticBox::Create(parent, id, wxDefaultPosition, wxDefaultSize, 0);
     SetBackgroundColour(StaticBox::GetParentBackgroundColor(parent));
@@ -283,8 +286,12 @@ void ModeSwitchButton::Rescale()
 bool ModeSwitchButton::Enable(bool enable /* = true */)
 {
     const bool changed = StaticBox::Enable(enable);
-    if (changed)
+    if (changed){
+        wxCommandEvent e(EVT_ENABLE_CHANGED);
+        e.SetEventObject(this);
+        GetEventHandler()->ProcessEvent(e);
         Refresh();
+    }
     return changed;
 }
 
@@ -308,7 +315,7 @@ void ModeSwitchButton::doRender(wxDC& dc)
 
     dc.SetPen(*wxTRANSPARENT_PEN);
     for (int idx = 0; idx < 3; ++idx) {
-        dc.SetBrush(wxBrush(idx <= m_selection ? dot_active.colorForStates(states) : dot_dimmed.colorForStates(states)));
+        dc.SetBrush(wxBrush((idx <= m_selection ? dot_active : dot_dimmed).colorForStates(states)));
         dc.DrawCircle(wxPoint(half_height + dot_dist * idx, half_height), bounds.height * (double)(idx == m_selection ? 0.35 : 0.20));
     }
 }
