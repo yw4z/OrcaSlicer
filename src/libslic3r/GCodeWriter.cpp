@@ -30,7 +30,21 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     m_single_extruder_multi_material = print_config.single_extruder_multi_material.value;
     bool use_mach_limits = print_config.gcode_flavor.value == gcfMarlinLegacy || print_config.gcode_flavor.value == gcfMarlinFirmware ||
                            print_config.gcode_flavor.value == gcfKlipper || print_config.gcode_flavor.value == gcfRepRapFirmware;
-    m_max_acceleration = std::lrint(use_mach_limits ? print_config.machine_max_acceleration_extruding.values.front() : 0);
+    if (use_mach_limits) {
+        // For Klipper, SET_VELOCITY_LIMIT ACCEL= applies to all moves, so the effective cap
+        // is the minimum of the extruding limit and the per-axis X/Y limits.
+        // This ensures user-configured Motion Ability limits are honoured (#12244).
+        unsigned int extruding_limit = std::lrint(print_config.machine_max_acceleration_extruding.values.front());
+        if (print_config.gcode_flavor.value == gcfKlipper) {
+            unsigned int x_limit = std::lrint(print_config.machine_max_acceleration_x.values.front());
+            unsigned int y_limit = std::lrint(print_config.machine_max_acceleration_y.values.front());
+            if (x_limit > 0) extruding_limit = std::min(extruding_limit, x_limit);
+            if (y_limit > 0) extruding_limit = std::min(extruding_limit, y_limit);
+        }
+        m_max_acceleration = extruding_limit;
+    } else {
+        m_max_acceleration = 0;
+    }
     m_max_travel_acceleration = static_cast<unsigned int>(
         std::round((use_mach_limits && supports_separate_travel_acceleration(print_config.gcode_flavor.value)) ?
                        print_config.machine_max_acceleration_travel.values.front() :
@@ -492,9 +506,20 @@ std::string GCodeWriter::update_progress(unsigned int num, unsigned int tot, boo
 
 std::string GCodeWriter::toolchange_prefix() const
 {
-    return config.manual_filament_change ? ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Manual_Tool_Change) + "T":
-           FLAVOR_IS(gcfMakerWare) ? "M135 T" :
-           FLAVOR_IS(gcfSailfish)  ? "M108 T" : "T";
+    std::string gcode = "T";
+    if (config.manual_filament_change)
+        gcode = ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Manual_Tool_Change) + "T";
+    else {
+        if (m_is_bbl_printers)
+            gcode = "M1020 S";
+        else {
+            if (FLAVOR_IS(gcfMakerWare))
+                gcode = "M135 T";
+            else if (FLAVOR_IS(gcfSailfish))
+                gcode = "M108 T";
+        }
+    }
+    return gcode;
 }
 
 std::string GCodeWriter::toolchange(unsigned int filament_id)
@@ -509,12 +534,8 @@ std::string GCodeWriter::toolchange(unsigned int filament_id)
     // if we are running a single-extruder setup, just set the extruder and return nothing
     std::ostringstream gcode;
     if (this->multiple_extruders || (this->config.filament_diameter.values.size() > 1 && !is_bbl_printers())) {
-        // BBS
-        if (this->m_is_bbl_printers)
-            gcode << "M1020 S" << filament_id;
-        else
-            gcode << this->toolchange_prefix() << filament_id;
-        //BBS
+        // Orca: call toolchange_prefix() to get the correct command prefix based on the configuration and flavor.
+        gcode << this->toolchange_prefix() << filament_id;
         if (GCodeWriter::full_gcode_comment)
             gcode << " ; change extruder";
         gcode << "\n";
@@ -915,6 +936,11 @@ std::string GCodeWriter::extrude_arc_to_xy(const Vec2d& point, const Vec2d& cent
 
 std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion)
 {
+    // Check if Z actually changes (at export precision) before emitting it.
+    // ZAA sloped extrusions call this for every segment, but many consecutive
+    // segments share the same quantized Z — emitting it every time is redundant.
+    bool z_changed = (GCodeG1Formatter::quantize_xyzf(point(2)) != GCodeG1Formatter::quantize_xyzf(m_pos(2)));
+
     m_pos = point;
     m_lifted = 0;
     if (!force_no_extrusion)
@@ -924,7 +950,10 @@ std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std
     Vec3d point_on_plate = { point(0) - m_x_offset, point(1) - m_y_offset, point(2) };
 
     GCodeG1Formatter w;
-    w.emit_xyz(point_on_plate);
+    if (z_changed)
+        w.emit_xyz(point_on_plate);
+    else
+        w.emit_xy(Vec2d(point_on_plate.x(), point_on_plate.y()));
     if (!force_no_extrusion)
         w.emit_e(filament()->E());
     //BBS
