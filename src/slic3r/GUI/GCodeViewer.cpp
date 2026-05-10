@@ -580,7 +580,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGuiWrapper::text(std::string(spdBuf)); // render Speed as differrent item to keep next item in same place
         switch (view_type) {
                 case libvgcode::EViewType::FeatureType: {
-                    if (is_extrusion && !vertex.is_option()) // ORCA shor more types on FeatureType
+                    if (is_extrusion && !vertex.is_option()) // ORCA show more types on FeatureType
                         sprintf(buf, "%s", to_string(vertex.role).c_str());
                     else if(vertex.is_travel() || vertex.is_option() || vertex.is_wipe()) 
                         sprintf(buf, "%s", to_string(vertex.type).c_str());
