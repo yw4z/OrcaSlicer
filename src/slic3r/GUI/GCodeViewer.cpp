@@ -634,12 +634,17 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
                     break;
                 }
                 case libvgcode::EViewType::ActualVolumetricFlowRate: {
-                    // This only gives data for the end of a segment
-                    sprintf(buf, "%s%.2f", _u8L("Actual Flow: ").c_str(), vertex.actual_volumetric_rate());
+                    // Don't display the actual flow, since it only gives data for the end of a segment
+                    //if (is_extrusion)
+                    //    sprintf(valBuf, "%.2f", vertex.actual_volumetric_rate());
+                    //else
+                    //    sprintf(valBuf, "%s", NA_CSTR);
+                    //sprintf(buf, "%s%s", _u8L("Actual Flow: ").c_str(), valBuf);
                     break;
                 }
                 case libvgcode::EViewType::ActualSpeed: {
-                    sprintf(buf, "%s%.1f", _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
+                    // Don't display the actual flow, since it only gives data for the end of a segment
+                    //sprintf(buf, "%s%.1f", _u8L("Actual Speed: ").c_str(), vertex.actual_feedrate);
                     break;
                 }
                 case libvgcode::EViewType::Acceleration: {
