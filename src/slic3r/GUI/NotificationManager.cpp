@@ -239,6 +239,8 @@ void NotificationManager::PopNotification::use_bbl_theme()
 	m_WindowBkgColor = m_is_dark ? ImVec4(45 / 255.f, 45 / 255.f, 49 / 255.f, 1.f) : ImVec4(1, 1, 1, 1);
 	m_TextColor = m_is_dark ? ImVec4(224 / 255.f, 224 / 255.f, 224 / 255.f, 1.f) : ImVec4(.2f, .2f, .2f, 1.0f);
 	m_HyperTextColor = m_is_dark ? ImVec4(0, 0.588, 0.533, 1) : ImVec4(0, 0.588, 0.533, 1);
+	m_HyperTextColorHover = m_is_dark ? ImVec4(38.f / 255.f, 166.f / 255.f, 154.f / 255.f, 1) : ImVec4(0.f, 129.f / 255.f, 114.f / 255.f, 1); //#26A69A / #008172;
+
 	m_is_dark ? push_style_color(ImGuiCol_Border, {62 / 255.f, 62 / 255.f, 69 / 255.f, 1.f}, true, m_current_fade_opacity) : push_style_color(ImGuiCol_Border, m_CurrentColor, true, m_current_fade_opacity);
     push_style_color(ImGuiCol_WindowBg, m_WindowBkgColor, true, m_current_fade_opacity);
     push_style_color(ImGuiCol_Text, m_TextColor, true, m_current_fade_opacity);
@@ -759,9 +761,16 @@ void NotificationManager::PopNotification::render_hypertext(ImGuiWrapper& imgui,
 		HyperColor = ImVec4(135.f / 255.f, 43 / 255.f, 43 / 255.f, 1); 
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly)) 
 	{ 
-		HyperColor.y += 0.1f; 
-		if (m_data.level == NotificationLevel::SeriousWarningNotificationLevel || m_data.level == NotificationLevel::SeriousWarningNotificationLevel) 
+		if (m_data.level == NotificationLevel::SeriousWarningNotificationLevel || m_data.level == NotificationLevel::SeriousWarningNotificationLevel){
+			HyperColor.y += 0.1f; 
 			HyperColor.x += 0.2f; 
+		}
+		else if(m_data.level == NotificationLevel::ErrorNotificationLevel){
+			HyperColor.y += 0.1f; 
+		}
+		else {
+			HyperColor = m_HyperTextColorHover;
+		}
 	}
 		
 
@@ -2308,7 +2317,7 @@ void NotificationManager::SharedProfilesNotification::render_text(ImGuiWrapper& 
 		// Hover color
 		ImVec4 color = m_HyperTextColor;
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly))
-			color.y += 0.1f;
+			color = m_HyperTextColorHover;
 
 		// Text
 		push_style_color(ImGuiCol_Text, color, m_state == EState::FadingOut, m_current_fade_opacity);
@@ -2354,7 +2363,7 @@ void NotificationManager::SharedProfilesNotification::render_hypertext(ImGuiWrap
 	// Hover color
 	ImVec4 HyperColor = m_HyperTextColor;
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly))
-		HyperColor.y += 0.1f;
+		HyperColor = m_HyperTextColorHover;
 
 	// Text
 	push_style_color(ImGuiCol_Text, HyperColor, m_state == EState::FadingOut, m_current_fade_opacity);
