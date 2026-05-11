@@ -102,11 +102,10 @@
 
 .PrinterInfo {
 	--card-animation-delay: .8s; /* open info with delay on list / compact view to prevent them appear while mouse movements */
-	--card-info-height: fit-content;
 	left: 4px;
 	width: auto;
 	z-index: 9998;
-	height: var(--card-info-height);
+	height: fit-content;
 	border-color: var(--border-color);
 	background: var(--bg-color);
 	padding: 10px;
@@ -115,9 +114,8 @@
 	pointer-events: none;
 }
 
-#Content[layout="2"] .PrinterInfo {
+#Content[layout="large-cover"] .PrinterInfo {
 	--card-animation-delay: .3s;
-	--card-info-height: 116px;
 }
 
 .PrinterInfo .title {font-weight: 700}
@@ -174,19 +172,6 @@ img.ModelThumbnail {
 	text-align: center;
 	width: 100%;
 	color: var(--fg-color-text);
-}
-
-.pNozzel {
-	display: none;
-	align-items: center;
-	justify-content:flex-start;
-	color: #5A5A5A;	
-	padding-left: 0px; /* ORCA Align checkboxes with with model text */
-}
-
-.pNozzel input {
-	vertical-align: middle;
-	margin-right: 5px;
 }
 
 /* LAYOUT SELECTOR */

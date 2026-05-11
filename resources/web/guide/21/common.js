@@ -62,7 +62,7 @@ function HandleModelList( pVal )
 	if( !pVal.hasOwnProperty("model") )
 		return;
 
-    pModel=pVal['model'];
+	pModel=pVal['model'];
 
 	// ORCA ensure list correctly ordered
 	pModel = pModel.sort((a, b)=>(a["vendor"].localeCompare(b["vendor"])))
@@ -101,7 +101,6 @@ function HandleModelList( pVal )
 		$(".OneVendorBlock[vendor='"+key+"'] .PrinterArea").append( ModelHtml[key] );
 	}
 	
-	
 	//Update Checkbox
 	for(let m=0;m<nTotal;m++)
 	{
@@ -112,7 +111,7 @@ function HandleModelList( pVal )
 		{
 			ChooseModel(OneModel['vendor'], OneModel['model']);
 		}
-	}	
+	}
 
 	const $SidebarVendors = $('#SidebarVendors');
 	let SidebarHTML = "";
@@ -262,71 +261,70 @@ function textInput(obj) {
 	FilterModelList(obj.value);
 }
 
-function CreateVendorBlock(strVendor)
+function CreateVendorBlock(vendorName)
 {
-	let sVV=strVendor;
-	if( sVV=="BBL" )
-		sVV="Bambu Lab";
-	if( sVV=="Custom")
-		sVV="Custom Printer";
-	if( sVV=="Other")
-		sVV="Orca colosseum";
+	let alt = vendorName;
+	if( alt == "BBL" )
+		alt = "Bambu Lab";
+	if( alt == "Custom")
+		alt = "Custom Printer";
+	if( alt == "Other")
+		alt = "Orca colosseum";
 	
-	return 	'<div class="OneVendorBlock" Vendor="' + strVendor + '">' +
-				'<div class="BlockBanner">' +
-				'	<a>' + sVV + '</a>' +
-				'	<div class="BannerBtns" onClick="ChooseVendor('+"\'"+strVendor+"\'"+')">'+
-				'		<div class="modelCount"></div>' +
-				'		<input type="checkbox" class="VendorCheckbox"/>'+
-				'	</div>'+	
-				'</div>' +
-				'<div class="PrinterArea">	' +
-				'</div>' +
+	return 	'<div class="OneVendorBlock" Vendor="' + vendorName + '">' +
+			'	<div class="BlockBanner">' +
+			'		<a>' + alt + '</a>' +
+			'		<div class="BannerBtns" onClick="ChooseVendor('+"\'"+vendorName+"\'"+')">'+
+			'			<div class="modelCount"></div>' +
+			'			<input type="checkbox" class="VendorCheckbox"/>'+
+			'		</div>'+	
+			'	</div>' +
+			'	<div class="PrinterArea">	' +
+			'	</div>' +
 			'</div>';
 }
 
 function CreatePrinterBlock(OneModel)
 {
-	// ORCA use single functuon to create blocks to simplify code
 	let vendor = OneModel['vendor']
-	vendorName = vendor=="BBL" ? "Bambu Lab" : vendor=="Custom" ? "Generic Printer" : vendor;
+	let vendorName = vendor=="BBL" ? "Bambu Lab" : vendor=="Custom" ? "Generic Printer" : vendor;
+	let modelName  = OneModel['name'];
 
-	let modelName = OneModel['name'];
 	// Most of it unneeded. this can be applied in profiles
 	if( vendor=="Custom")					
-	modelName = modelName.split(" ")[1];
+		modelName = modelName.split(" ")[1];
 	// these uses different case in name; seckit, ratrig, blocks
 	else if (modelName.toLowerCase().startsWith(vendorName.toLowerCase()))  
-	modelName = modelName.slice(vendorName.length);
+		modelName = modelName.slice(vendorName.length);
 	// these not matches. have to fix in profiles to reduce conditions in here;
 	else if (vendor == "MagicMaker" && modelName.startsWith("MM"))
-	modelName = modelName.slice(("MM").length);
+		modelName = modelName.slice(("MM").length);
 	else if (vendor == "OrcaArena")
-	modelName = modelName.slice(("Orca Arena").length);
+		modelName = modelName.slice(("Orca Arena").length);
 	else if (vendor == "RolohaunDesign" && modelName.startsWith("Rolohaun"))
-	modelName = modelName.slice(("Rolohaun").length);
+		modelName = modelName.slice(("Rolohaun").length);
 
-	return '<div class="PrinterBlock" onClick="ChooseModel(\''+vendor+'\',\''+OneModel['model']+'\')">'+
-	'<div class="PImg">'+
-	'<img class="ModelThumbnail" src="' + OneModel['cover'] + '" />'+
-	'</div>'+
-	'<div class="PrinterInfoMark">?</div>'+
-	'<div class="PrinterInfo">'+
-	'	<div class="title trans">Nozzle</div>'+
-	'	<div class="value">' + OneModel['nozzle_diameter'].replaceAll(";", " · ") + '</div>'+
-	'</div>'+
-	'<div style="display: flex;">'+
-	'	<div class="ModelCheckBox" vendor="' +vendor+ '" model="'+OneModel['model']+'"></div>'+
-	'	<div class="PName">'+ modelName +'</div>'+ // ><p>'+ vendorName +'</p>
-	'</div>'+
-	'</div>';
+	return	'<div class="PrinterBlock" onClick="ChooseModel(\''+vendor+'\',\''+OneModel['model']+'\')">'+
+			'	<div class="PImg">'+
+			'		<img class="ModelThumbnail" src="' + OneModel['cover'] + '" />'+
+			'	</div>'+
+			'	<div class="PrinterInfoMark">?</div>'+
+			'	<div class="PrinterInfo">'+
+			'		<div class="title trans">Nozzle</div>'+
+			'		<div class="value">' + OneModel['nozzle_diameter'].replaceAll(";", " · ") + '</div>'+
+			'	</div>'+
+			'	<div style="display: flex;">'+
+			'		<div class="ModelCheckBox" vendor="' +vendor+ '" model="'+OneModel['model']+'"></div>'+
+			'		<div class="PName">'+ modelName +'</div>'+ // ><p>'+ vendorName +'</p>
+			'	</div>'+
+			'</div>';
 }
 
 function SelectPrinterAll( sVendor )
 {
 	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").addClass('ModelCheckBoxSelected');
 	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").each(function() {
-    	let strModel = this.getAttribute("model");
+		let strModel = this.getAttribute("model");
 		SetModelSelect(sVendor, strModel, true);
 	});
 }
@@ -335,7 +333,7 @@ function SelectPrinterNone( sVendor )
 {
 	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").removeClass('ModelCheckBoxSelected');
 	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").each(function() {
-    	let strModel = this.getAttribute("model");
+		let strModel = this.getAttribute("model");
 		SetModelSelect(sVendor, strModel, false);
 	});
 }
@@ -365,7 +363,6 @@ function UpdateVendorCheckbox(sVendor) {
 }
 
 function OnExitFilter() {
-
 	let nTotal = 0;
 	let ModelAll = {};
 	for (vendor in ModelNozzleSelected) {
@@ -393,18 +390,15 @@ function OnExitFilter() {
 	SendWXMessage(JSON.stringify(tSend));
 
 	return nTotal;
-
 }
 
 function ShowNotice( nShow )
 {
-	if(nShow==0)
-	{
+	if(nShow==0) {
 		$("#NoticeMask").hide();
 		$("#NoticeBody").hide();
 	}
-	else
-	{
+	else {
 		$("#NoticeMask").show();
 		$("#NoticeBody").show();
 	}
@@ -546,7 +540,7 @@ function initScrollEvents() {
 			armSnap();
 	});
 
-		// Re-arm on keyboard scroll or focus changes
+	// Re-arm on keyboard scroll or focus changes
 	document.addEventListener('keydown', e => {
 		if (document.activeElement != SearchBox){
 			let scrollKeys = ['ArrowUp','ArrowDown','PageUp','PageDown',' '];
