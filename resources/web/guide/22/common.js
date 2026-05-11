@@ -431,7 +431,7 @@ function ChooseDefaultFilament()
 	}	
 	
 	//DefaultMaterialList
-	let DefaultMaterialString=new Array();
+	let DefaultMaterialString = "";
 	let nMode=m_ProfileItem["model"].length;
 	for(let n=0;n<nMode;n++)
 	{

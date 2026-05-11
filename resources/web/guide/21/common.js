@@ -1,14 +1,12 @@
-let pModel;
-let ModelNozzleSelected;
+var	pModel              = {};
+var	ModelNozzleSelected = {};
 let SearchBox;
 let $content;
 
 function InitGlobalVariables()
 {
-	pModel              = {};
-	ModelNozzleSelected = {};
-	SearchBox           = document.querySelector('.searchTerm');
-	$content            = $('#Content');
+	SearchBox = document.querySelector('.searchTerm');
+	$content  = $('#Content');
 }
 
 function RequestProfile()
@@ -222,7 +220,6 @@ function FilterModelList(keyword) {
 		obj.append(ModelHtml[key]);
 	}
 
-
 	//Update Checkbox
 	ModelSelect = $('.ModelCheckBox');
 	for (let n = 0; n < ModelSelect.length; n++) {
@@ -247,7 +244,6 @@ function FilterModelList(keyword) {
 	});
 	$SidebarVendors.html(SidebarHTML)
 
-	const $content = $('#Content');
 	$content.css("padding-right",  $content[0].scrollHeight > $content[0].clientHeight ? "10px" : "20px");
 
 	// let AlreadySelect=$(".ModelCheckBoxSelected");
@@ -634,8 +630,16 @@ function initKeyEvents(closeOnESC) {
 	document.onkeydown = function (event) {
 		var e = event || window.event || arguments.callee.caller.arguments[0];
 
-		if (closeOnESC && e.keyCode == 27)
-			ClosePage();
+		let sidebar = document.getElementById('SidebarContainer');
+
+		if (e.keyCode == 27){
+			if(sidebar.getAttribute('open') == "1") { // prefer to close sidebar first if its open
+				sidebar.setAttribute('open', '0');
+			}
+			else if (closeOnESC){
+				ClosePage();
+			}
+		}
 
 		// ORCA focus search bar on key input
 		// SearchBox not in focus && writable character && non modifier
@@ -643,8 +647,8 @@ function initKeyEvents(closeOnESC) {
 			SearchBox.focus();
 		}
 
-		// Close sidebar
-		document.getElementById('SidebarContainer').setAttribute('open', '0')
+		// Close sidebar on any key input
+		sidebar.setAttribute('open', '0');
 
 		//if (window.event) {
 		//	try { e.keyCode = 0; } catch (e) { }
@@ -652,5 +656,3 @@ function initKeyEvents(closeOnESC) {
 		//}
 	};
 }
-
-document.addEventListener('DOMContentLoaded', initKeyEvents);
