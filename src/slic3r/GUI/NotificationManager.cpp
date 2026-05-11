@@ -761,18 +761,17 @@ void NotificationManager::PopNotification::render_hypertext(ImGuiWrapper& imgui,
 		HyperColor = ImVec4(135.f / 255.f, 43 / 255.f, 43 / 255.f, 1); 
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly)) 
 	{ 
-		if (m_data.level == NotificationLevel::SeriousWarningNotificationLevel || m_data.level == NotificationLevel::SeriousWarningNotificationLevel){
-			HyperColor.y += 0.1f; 
-			HyperColor.x += 0.2f; 
+		if (m_data.level == NotificationLevel::SeriousWarningNotificationLevel){
+			HyperColor.y += 0.1f;
+			HyperColor.x += 0.2f;
 		}
 		else if(m_data.level == NotificationLevel::ErrorNotificationLevel){
-			HyperColor.y += 0.1f; 
+			HyperColor.y += 0.1f;
 		}
 		else {
 			HyperColor = m_HyperTextColorHover;
 		}
 	}
-		
 
 	//text
     push_style_color(ImGuiCol_Text, HyperColor, m_state == EState::FadingOut, m_current_fade_opacity);
@@ -2264,8 +2263,9 @@ void NotificationManager::push_import_finished_notification(const std::string& p
 void NotificationManager::SharedProfilesNotification::init()
 {
 	PopNotification::init();
-	// Add one extra line for the hyperlink row ("Browse shared profiles" + "Don't show again")
-	m_lines_count++;
+	// Add two extra lines for the hyperlink row ("Browse shared profiles" + "Don't show again")
+	// and 1 more additional line for adding spacing between them to make it easier to click
+	m_lines_count = m_lines_count + 2; // ORCA
 }
 
 void NotificationManager::SharedProfilesNotification::render_text(ImGuiWrapper& imgui,
@@ -2292,18 +2292,18 @@ void NotificationManager::SharedProfilesNotification::render_text(ImGuiWrapper& 
 	}
 
 	// Render "Browse shared profiles" hyperlink on the next line
-	float hyper_y = starting_y + m_endlines.size() * shift_y;
+	float hyper_y = starting_y + m_endlines.size() * shift_y - m_line_height / 2.f;
 	render_hypertext(imgui, x_offset, hyper_y, m_hypertext);
 
 	// Render "Don't show again" hyperlink after the browse link
 	{
-		float dont_show_x = x_offset + ImGui::CalcTextSize((m_hypertext + "  ").c_str()).x;
+		float dont_show_y = hyper_y + ImGui::CalcTextSize((m_hypertext + "  ").c_str()).y + m_line_height / 2.f;
 		std::string dont_show_text = _u8L("Don't show again");
 		ImVec2 part_size = ImGui::CalcTextSize(dont_show_text.c_str());
 
 		// Invisible button
-		ImGui::SetCursorPosX(dont_show_x - 4);
-		ImGui::SetCursorPosY(hyper_y - 5);
+		ImGui::SetCursorPosX(x_offset); // ORCA render on new line to prevent long translations from being cut off
+		ImGui::SetCursorPosY(dont_show_y);
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.0f, .0f, .0f, .0f));
 		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.0f, .0f, .0f, .0f));
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(.0f, .0f, .0f, .0f));
@@ -2321,8 +2321,8 @@ void NotificationManager::SharedProfilesNotification::render_text(ImGuiWrapper& 
 
 		// Text
 		push_style_color(ImGuiCol_Text, color, m_state == EState::FadingOut, m_current_fade_opacity);
-		ImGui::SetCursorPosX(dont_show_x);
-		ImGui::SetCursorPosY(hyper_y);
+		ImGui::SetCursorPosX(x_offset);
+		ImGui::SetCursorPosY(dont_show_y);
 		imgui.text(dont_show_text.c_str());
 		ImGui::PopStyleColor();
 
