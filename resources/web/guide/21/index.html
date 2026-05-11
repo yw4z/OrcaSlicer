@@ -98,27 +98,7 @@
 
 </body>
 <script>
-	initGlobals();
-
-	document.onkeydown = function (event) {
-		var e = event || window.event || arguments.callee.caller.arguments[0];
-
-		// ORCA focus search bar on key input
-		// SearchBox not in focus && writable character && non modifier
-		if (document.activeElement != SearchBox && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-			SearchBox.focus();
-		}
-
-		// Close sidebar
-		document.getElementById('SidebarContainer').setAttribute('open', '0')
-
-		//if (window.event) {
-		//	try { e.keyCode = 0; } catch (e) { }
-		//	e.returnValue = true;
-		//}
-	};
-
-	initScrollEvents();
-	LayoutMode("large-cover");
+	initKeyEvents(false); // dont close on ESC
+	InitGlobalVariables();
 </script>
 </html>

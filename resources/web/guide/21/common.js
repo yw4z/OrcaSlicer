@@ -1,9 +1,14 @@
-function initGlobals()
+let pModel;
+let ModelNozzleSelected;
+let SearchBox;
+let $content;
+
+function InitGlobalVariables()
 {
 	pModel              = {};
 	ModelNozzleSelected = {};
-	SearchBox = document.querySelector('.searchTerm');
-	$content  = $('#Content');
+	SearchBox           = document.querySelector('.searchTerm');
+	$content            = $('#Content');
 }
 
 function RequestProfile()
@@ -362,6 +367,46 @@ function UpdateVendorCheckbox(sVendor) {
 	$vb.find(".modelCount").text(selCount + " / " + $cbs.length);
 }
 
+function OnExit()
+{	
+	let ModelAll={};
+	
+	let ModelSelect=$(".ModelCheckBoxSelected");
+	let nTotal=ModelSelect.length;
+
+	if( nTotal==0 ) {
+		ShowNotice(1);
+		return 0;
+	}
+	
+	for(let n=0;n<nTotal;n++)
+	{
+	    let OneItem=ModelSelect[n];
+		
+		let strModel=OneItem.getAttribute("model");
+			
+		//alert(strModel+strVendor+strNozzel);
+		
+		if(!ModelAll.hasOwnProperty(strModel))
+		{
+			//alert("ADD: "+strModel);
+			
+			ModelAll[strModel]={};
+		
+			ModelAll[strModel]["model"]=strModel;
+		}
+	}
+		
+	var tSend={};
+	tSend['sequence_id']=Math.round(new Date() / 1000);
+	tSend['command']="save_userguide_models";
+	tSend['data']=ModelAll;
+	
+	SendWXMessage( JSON.stringify(tSend) );
+
+    return nTotal;
+}
+
 function OnExitFilter() {
 	let nTotal = 0;
 	let ModelAll = {};
@@ -557,6 +602,8 @@ function initScrollEvents() {
 	});
 }
 
+document.addEventListener('DOMContentLoaded', initScrollEvents);
+
 // LAYOUT SELECTOR
 function LayoutMode(value) {
 	let LayoutSelector = document.querySelector('.LayoutSelector > .TabGroup');
@@ -581,3 +628,31 @@ function LayoutMode(value) {
 
 	if (target) scrollToVendor(target);
 }
+
+document.addEventListener('DOMContentLoaded', () => LayoutMode("large-cover"));
+
+// KEY EVENTS
+function initKeyEvents(closeOnESC) {
+	document.onkeydown = function (event) {
+		var e = event || window.event || arguments.callee.caller.arguments[0];
+
+		if (closeOnESC && e.keyCode == 27)
+			ClosePage();
+
+		// ORCA focus search bar on key input
+		// SearchBox not in focus && writable character && non modifier
+		if (document.activeElement != SearchBox && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			SearchBox.focus();
+		}
+
+		// Close sidebar
+		document.getElementById('SidebarContainer').setAttribute('open', '0')
+
+		//if (window.event) {
+		//	try { e.keyCode = 0; } catch (e) { }
+		//	e.returnValue = true;
+		//}
+	};
+}
+
+document.addEventListener('DOMContentLoaded', initKeyEvents);

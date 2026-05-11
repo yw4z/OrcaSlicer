@@ -1,3 +1,6 @@
+// UNIQUE FUNCTIONS
+
+// Keep in here for future additions
 function OnInit()
 {
 	//let strInput=JSON.stringify(cData);
