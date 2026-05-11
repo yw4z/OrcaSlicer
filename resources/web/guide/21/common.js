@@ -51,8 +51,7 @@ function ChooseModel( vendor, ModelName )
 {
 	let ChooseItem=$(".ModelCheckBox[vendor='"+vendor+"'][model='"+ModelName+"']");
 	
-	if(ChooseItem!=null)
-	{
+	if(ChooseItem.length > 0) {
 		if( $(ChooseItem).hasClass('ModelCheckBoxSelected') )
 			$(ChooseItem).removeClass('ModelCheckBoxSelected');
 		else
@@ -112,8 +111,7 @@ function HandleModelList( pVal )
 		let OneModel=pModel[m];
 
 		let SelectList=OneModel['nozzle_selected'];
-		if(SelectList!='')
-		{
+		if(SelectList!='') {
 			ChooseModel(OneModel['vendor'], OneModel['model']);
 		}
 	}
@@ -410,8 +408,8 @@ function OnExit()
 function OnExitFilter() {
 	let nTotal = 0;
 	let ModelAll = {};
-	for (vendor in ModelNozzleSelected) {
-		for (model in ModelNozzleSelected[vendor]) {
+	for (let vendor in ModelNozzleSelected) {
+		for (let model in ModelNozzleSelected[vendor]) {
 			if (!ModelNozzleSelected[vendor][model])
 				continue;
 
