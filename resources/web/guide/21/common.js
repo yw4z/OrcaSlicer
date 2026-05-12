@@ -94,7 +94,7 @@ function HandleModelList( pVal )
 		if( !ModelHtml.hasOwnProperty(strVendor))
 			ModelHtml[strVendor]='';
 			
-		ModelHtml[strVendor]+=CreatePrinterBlock(OneModel); // ORCA
+		ModelHtml[strVendor] += CreatePrinterBlock(OneModel); // ORCA
 	}
 	
 	//Update Nozzel Html Append
@@ -114,13 +114,7 @@ function HandleModelList( pVal )
 		}
 	}
 
-	const $SidebarVendors = $('#SidebarVendors');
-	let SidebarHTML = "";
-	$(`.OneVendorBlock`).each((i, el)=>{
-		UpdateVendorCheckbox(el.getAttribute("vendor"));
-		SidebarHTML +=`<div class="SidebarItem" onclick="scrollToVendor(this.textContent)">${el.getAttribute('vendor')}</div>`;
-	});
-	$SidebarVendors.html(SidebarHTML)
+	UpdateSidebarVendors();
 
 	// let AlreadySelect=$(".ModelCheckBoxSelected");
 	// let nSelect=AlreadySelect.length;
@@ -130,14 +124,6 @@ function HandleModelList( pVal )
 	// }
 	
 	TranslatePage();
-}
-
-function scrollToVendor(vendor) {
-	const el = $(".OneVendorBlock[vendor='"+vendor+"']")[0];
-	if (el){
-		document.getElementById('SidebarContainer').setAttribute('open', '0');
-		document.getElementById('Content').scrollTo({top: el.offsetTop, behavior: "smooth"});
-	}
 }
 
 function SetModelSelect(vendor, model, checked) {
@@ -210,7 +196,7 @@ function FilterModelList(keyword) {
 		if (!ModelHtml.hasOwnProperty(strVendor))
 			ModelHtml[strVendor] = '';
 			
-		ModelHtml[strVendor]+=CreatePrinterBlock(OneModel); // ORCA
+		ModelHtml[strVendor] += CreatePrinterBlock(OneModel); // ORCA
 	}
 
 	//Update Nozzel Html Append
@@ -236,13 +222,7 @@ function FilterModelList(keyword) {
 			$(OneItem).removeClass('ModelCheckBoxSelected');
 	}
 
-	const $SidebarVendors = $('#SidebarVendors');
-	let SidebarHTML = "";
-	$(`.OneVendorBlock`).each((i, el)=>{
-		UpdateVendorCheckbox(el.getAttribute("vendor"));
-		SidebarHTML +=`<div class="SidebarItem" onclick="scrollToVendor(this.textContent)">${el.getAttribute('vendor')}</div>`;
-	});
-	$SidebarVendors.html(SidebarHTML)
+	UpdateSidebarVendors();
 
 	$content.css("padding-right",  $content[0].scrollHeight > $content[0].clientHeight ? "10px" : "20px");
 
@@ -317,6 +297,24 @@ function CreatePrinterBlock(OneModel)
 			'		<div class="PName">'+ modelName +'</div>'+ // ><p>'+ vendorName +'</p>
 			'	</div>'+
 			'</div>';
+}
+
+function scrollToVendor(vendor) {
+	const el = $(".OneVendorBlock[vendor='"+vendor+"']")[0];
+	if (el){
+		document.getElementById('SidebarContainer').setAttribute('open', '0');
+		document.getElementById('Content').scrollTo({top: el.offsetTop, behavior: "smooth"});
+	}
+}
+
+function UpdateSidebarVendors()
+{
+	let SidebarHTML = "";
+	$(`.OneVendorBlock`).each((i, el)=>{
+		UpdateVendorCheckbox(el.getAttribute("vendor"));
+		SidebarHTML +=`<div class="SidebarItem" onclick="scrollToVendor(this.textContent)">${el.getAttribute('vendor')}</div>`;
+	});
+	$('#SidebarVendors').html(SidebarHTML)
 }
 
 function SelectPrinterAll( sVendor )
