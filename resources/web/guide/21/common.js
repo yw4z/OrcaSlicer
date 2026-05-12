@@ -39,26 +39,6 @@ function HandleStudio( pVal )
 	}
 }
 
-function ShowPrinterThumb(pItem, strImg)
-{
-	$(pItem).attr('src',strImg);
-	$(pItem).attr('onerror',null);
-}
-
-function ChooseModel( vendor, ModelName )
-{
-	let ChooseItem=$(".ModelCheckBox[vendor='"+vendor+"'][model='"+ModelName+"']");
-	
-	if(ChooseItem.length > 0) {
-		if( $(ChooseItem).hasClass('ModelCheckBoxSelected') )
-			$(ChooseItem).removeClass('ModelCheckBoxSelected');
-		else
-			$(ChooseItem).addClass('ModelCheckBoxSelected');		
-
-		SetModelSelect(vendor, ModelName, $(ChooseItem).hasClass('ModelCheckBoxSelected'));
-	}		
-}
-
 function HandleModelList( pVal )
 {
 	if( !pVal.hasOwnProperty("model") )
@@ -154,6 +134,20 @@ function GetModelSelect(vendor, model) {
 	}
 
 	return oVendor[model];
+}
+
+function ChooseModel(vendor, ModelName)
+{
+	let ChooseItem=$(".ModelCheckBox[vendor='"+vendor+"'][model='"+ModelName+"']");
+	
+	if(ChooseItem.length > 0) {
+		if( $(ChooseItem).hasClass('ModelCheckBoxSelected') )
+			$(ChooseItem).removeClass('ModelCheckBoxSelected');
+		else
+			$(ChooseItem).addClass('ModelCheckBoxSelected');		
+
+		SetModelSelect(vendor, ModelName, $(ChooseItem).hasClass('ModelCheckBoxSelected'));
+	}		
 }
 
 function FilterModelList(keyword) {
@@ -317,25 +311,7 @@ function UpdateSidebarVendors()
 	$('#SidebarVendors').html(SidebarHTML)
 }
 
-function SelectPrinterAll( sVendor )
-{
-	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").addClass('ModelCheckBoxSelected');
-	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").each(function() {
-		let strModel = this.getAttribute("model");
-		SetModelSelect(sVendor, strModel, true);
-	});
-}
-
-function SelectPrinterNone( sVendor )
-{
-	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").removeClass('ModelCheckBoxSelected');
-	$("div.OneVendorBlock[vendor='"+sVendor+"'] .ModelCheckBox").each(function() {
-		let strModel = this.getAttribute("model");
-		SetModelSelect(sVendor, strModel, false);
-	});
-}
-
-function ChooseVendor(sVendor) {
+function ChooseVendor(sVendor) { // automatically selects / unselects all
 	const $cbs = $(`.OneVendorBlock[vendor='${sVendor}'] .ModelCheckBox`);
 	const sel  = $cbs.length && $cbs.not('.ModelCheckBoxSelected').length;
 
