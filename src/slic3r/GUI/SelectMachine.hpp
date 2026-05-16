@@ -42,6 +42,7 @@
 #include "Widgets/ComboBox.hpp"
 #include "Widgets/ScrolledWindow.hpp"
 #include "Widgets/PopupWindow.hpp"
+#include "Widgets/HyperLink.hpp" // ORCA
 #include <wx/simplebook.h>
 #include <wx/hashmap.h>
 
@@ -371,7 +372,7 @@ protected:
     Label*                              m_st_txt_error_desc{nullptr};
     Label*                              m_st_txt_extra_info{nullptr};
     Label*                              m_ams_backup_tip{nullptr};
-    wxHyperlinkCtrl*                    m_link_network_state{ nullptr };
+    HyperLink*                          m_link_network_state{ nullptr }; // ORCA
     wxSimplebook*                       m_rename_switch_panel{nullptr};
     wxSimplebook*                       m_simplebook{nullptr};
     wxStaticText*                       m_rename_text{nullptr};
@@ -499,12 +500,12 @@ public:
     bool Show(bool show);
     void show_init();
     bool do_ams_mapping(MachineObject *obj_,bool use_ams);
-    bool get_ams_mapping_result(std::string& mapping_array_str, std::string& mapping_array_str2, std::string& ams_mapping_info);
+    bool get_ams_mapping_result(std::string& mapping_array_str, std::string& mapping_array_str2, std::string& ams_mapping_info) const;
     bool build_nozzles_info(std::string& nozzles_info);
     bool can_hybrid_mapping(DevExtderSystem data);
     void auto_supply_with_ext(std::vector<DevAmsTray> slots);
     bool is_nozzle_type_match(DevExtderSystem data, wxString& error_message) const;
-    int  convert_filament_map_nozzle_id_to_task_nozzle_id(int nozzle_id);
+    int  convert_filament_map_nozzle_id_to_task_nozzle_id(int nozzle_id) const;
 
     PrintFromType get_print_type() {return m_print_type;};
     wxString    format_steel_name(NozzleType type);

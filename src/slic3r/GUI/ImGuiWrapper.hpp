@@ -133,6 +133,7 @@ public:
     bool bbl_button(const wxString &label, const wxString& tooltip = {});
     bool button(const wxString& label, float width, float height);
     bool button(const wxString& label, const ImVec2 &size, bool enable); // default size = ImVec2(0.f, 0.f)
+    bool glyph_button(wchar_t icon_char, ImVec2 icon_size); // ORCA
     bool radio_button(const wxString &label, bool active);
     static ImVec4          to_ImVec4(const ColorRGB &color);
     bool input_double(const std::string &label, const double &value, const std::string &format = "%.3f");
@@ -347,6 +348,7 @@ public:
     static const ImVec4 COL_SEPARATOR;
     static const ImVec4 COL_SEPARATOR_DARK;
     static const ImVec4 COL_ORCA;
+    static const ImVec4 COL_MODIFIED;
 
     //BBS
     static void on_change_color_mode(bool is_dark);
@@ -364,7 +366,7 @@ public:
     static void pop_button_disable_style();
     static void push_combo_style(const float scale);
     static void pop_combo_style();
-    static void push_radio_style();
+    static void push_radio_style(const float scale);
     static void pop_radio_style();
 
     //BBS
