@@ -61,7 +61,7 @@ CenteredTitle::CenteredTitle(wxWindow* parent)
         int y = rect.y + (rect.height - textHeight) / 2 + 1;
         int x = rect.x + (ellipsized != m_title)                       // is ellipsized
             ? FromDIP(4)                                               // align to left when clipped
-            : (rect.width - dc.GetTextExtent(m_title).GetWidth()) / 2); // centered when has available space
+            : ((rect.width - dc.GetTextExtent(m_title).GetWidth()) / 2); // centered when has available space
 
         dc.DrawText(ellipsized, x, y);
     });
