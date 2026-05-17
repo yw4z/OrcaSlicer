@@ -2,11 +2,6 @@
 
 #include "slic3r/GUI/GUI_App.hpp"
 
-/*
-TODO
-option to hiding top toolbar
-*/
-
 CheckList::CheckList(
     wxWindow* parent,
     const wxArrayString& choices,
@@ -222,9 +217,9 @@ void CheckList::ShowMenu(wxMouseEvent &evt)
         }
     },wxID_FILE1, wxID_FILE6);
 
-    wxWindow* p = dynamic_cast<wxWindow*>(evt.GetEventObject());
-    if     (p->GetId() == m_scroll_area->GetId())
-        p->PopupMenu(&m, evt.GetPosition());
-    else if(p->GetId() == m_menu_button->GetId())
-        p->PopupMenu(&m, evt.GetPosition());
+    wxWindow* src = dynamic_cast<wxWindow*>(evt.GetEventObject());
+    if (!src) return;
+    wxPoint screen_pos = src->ClientToScreen(evt.GetPosition());
+    wxPoint local_pos  = ScreenToClient(screen_pos);
+    PopupMenu(&m, local_pos);
 }
