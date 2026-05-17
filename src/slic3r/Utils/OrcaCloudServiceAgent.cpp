@@ -74,19 +74,47 @@ constexpr const char* SECRET_STORE_SERVICE = "OrcaSlicer/Auth";
 constexpr const char* SECRET_STORE_USER    = "orca_refresh_token";
 constexpr std::chrono::seconds TOKEN_REFRESH_SKEW{900}; // 15 minutes
 
-std::string generate_uuid_for_setting_id(const std::string& name = "")
+// Return a JSON field only when it is present as a string. Missing or non-string values normalize to empty.
+std::string get_json_string_field(const json& j, const std::string& key)
+{
+    if (j.contains(key) && j[key].is_string()) {
+        return j[key].get<std::string>();
+    }
+    return "";
+}
+
+// Resolve the human-facing UI label from provider metadata.
+std::string resolve_display_name(
+    const std::string& display_name,
+    const std::string& nickname,
+    const std::string& full_name,
+    const std::string& name,
+    const std::string& username)
+{
+    // Providers and payload shapes do not all use the same display-name field.
+    // Fallback sequence: display_name -> nickname -> full_name -> name
+    if (!display_name.empty()) return display_name;
+    if (!nickname.empty()) return nickname;
+    if (!full_name.empty()) return full_name;
+    if (!name.empty()) return name;
+    return username;
+}
+
+std::string generate_uuid_for_setting_id(const std::string& name, const std::string& user_id = "")
 {
     if (name.empty()) {
         return "";
     }
 
-    // Use a fixed namespace UUID for OrcaSlicer profiles
-    // This ensures the same name always generates the same UUID
+    // Mix user_id into the hashed input so two different users generating a setting_id
+    // for an identically-named preset get distinct UUIDs. Without this, the cloud's ID
+    // space collides across accounts and the second user's create gets HTTP 409 with
+    // server_profile=null on every sync (the foreign owner's record is not exposed).
     static const boost::uuids::uuid orca_namespace =
         boost::uuids::string_generator()("f47ac10b-58cc-4372-a567-0e02b2c3d479");
 
     boost::uuids::name_generator_sha1 gen(orca_namespace);
-    boost::uuids::uuid id = gen(name);
+    boost::uuids::uuid id = user_id.empty() ? gen(name) : gen(user_id + "/" + name);
     return boost::uuids::to_string(id);
 }
 
@@ -904,7 +932,7 @@ int OrcaCloudServiceAgent::get_user_presets(std::map<std::string, std::map<std::
 
 std::string OrcaCloudServiceAgent::request_setting_id(std::string name, std::map<std::string, std::string>* values_map, unsigned int* http_code)
 {
-    std::string new_id = generate_uuid_for_setting_id(name);
+    std::string new_id = generate_uuid_for_setting_id(name, get_user_id());
     if (new_id.empty()) {
         BOOST_LOG_TRIVIAL(error) << "OrcaCloudServiceAgent: request_setting_id failed - name is empty";
         return "";
@@ -1665,47 +1693,43 @@ bool OrcaCloudServiceAgent::set_user_session(const std::string& token,
 
 bool OrcaCloudServiceAgent::set_user_session(const json& session_json, bool notify_login)
 {
-    auto safe_str = [](const json& j, const std::string& key) -> std::string {
-        if (j.contains(key) && j[key].is_string()) return j[key].get<std::string>();
-        return "";
-    };
-
-    std::string access_token = safe_str(session_json, "access_token");
+    std::string access_token = get_json_string_field(session_json, "access_token");
     if (access_token.empty()) {
-        access_token = safe_str(session_json, "token");
+        access_token = get_json_string_field(session_json, "token");
     }
-    std::string refresh_token = safe_str(session_json, "refresh_token");
+    std::string refresh_token = get_json_string_field(session_json, "refresh_token");
 
     std::string user_id, username, nickname, avatar;
     if (session_json.contains("user") && session_json["user"].is_object()) {
         // Nested format (Orca cloud / GoTrue response)
         const auto& user = session_json["user"];
-        user_id = safe_str(user, "id");
+        user_id = get_json_string_field(user, "id");
+
         if (user.contains("user_metadata") && user["user_metadata"].is_object()) {
-
             const auto& meta = user["user_metadata"];
-            username = safe_str(meta, "username"); // Orca Cloud's unique username 
+            username = get_json_string_field(meta, "username"); // Orca Cloud's unique username
 
-            nickname = safe_str(meta, "display_name"); // Orca Cloud's primary display name field
-            // Fallback to different name from different providers if display_name is not set
-            if (nickname.empty())
-                nickname = safe_str(meta, "full_name");
-            if (nickname.empty())
-                nickname = safe_str(meta, "name");
-            if (nickname.empty())
-                nickname = username;
-
-            avatar = safe_str(meta, "avatar_url");
+            // Orca Cloud's primary display name field is display_name.
+            // Fallback to different names from different providers if display_name is not set.
+            nickname = resolve_display_name(
+                get_json_string_field(meta, "display_name"),
+                get_json_string_field(meta, "nickname"),
+                get_json_string_field(meta, "full_name"),
+                get_json_string_field(meta, "name"),
+                username);
+            avatar = get_json_string_field(meta, "avatar_url");
         }
     } else {
         // Flat format (WebView direct token flow)
-        user_id = safe_str(session_json, "user_id");
-        username = safe_str(session_json, "username");
-        nickname = safe_str(session_json, "display_name");
-        if(nickname.empty())
-            nickname = safe_str(session_json, "nickname");
-            
-        avatar = safe_str(session_json, "avatar");
+        user_id = get_json_string_field(session_json, "user_id");
+        username = get_json_string_field(session_json, "username");
+        nickname = resolve_display_name(
+            get_json_string_field(session_json, "display_name"),
+            get_json_string_field(session_json, "nickname"),
+            get_json_string_field(session_json, "full_name"),
+            get_json_string_field(session_json, "name"),
+            username);
+        avatar = get_json_string_field(session_json, "avatar");
     }
 
     if (access_token.empty() || user_id.empty()) {
