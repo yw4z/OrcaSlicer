@@ -77,6 +77,7 @@ private:
 private:
     int      m_selection { 0 };
     bool     m_pressed   { false };
+    bool     m_enabled   { true };
     wxString m_tooltips[3];
 	StateColor dot_active;
 	StateColor dot_dimmed;

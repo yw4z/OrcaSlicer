@@ -235,7 +235,7 @@ ModeSwitchButton::ModeSwitchButton(wxWindow* parent, wxWindowID id)
         std::make_pair(wxColour("#009688"), (int) StateColor::Normal)
     );
     dot_dimmed = StateColor(
-        std::make_pair(wxColour("#ACACAC"), (int) StateColor::Disabled),
+        std::make_pair(wxColour("#6B6B6B"), (int) StateColor::Disabled),
         std::make_pair(wxColour("#ACACAC"), (int) StateColor::Normal)
     );
 
@@ -303,6 +303,7 @@ bool ModeSwitchButton::Enable(bool enable /* = true */)
         wxCommandEvent e(EVT_ENABLE_CHANGED);
         e.SetEventObject(this);
         GetEventHandler()->ProcessEvent(e);
+        m_enabled = enable;
         Refresh();
     }
     return changed;
@@ -326,10 +327,31 @@ void ModeSwitchButton::doRender(wxDC& dc)
     dc.SetBrush(wxBrush(background_color.colorForStates(states)));
     dc.DrawRoundedRectangle(bounds, half_height);
 
-    dc.SetPen(*wxTRANSPARENT_PEN);
-    for (int idx = 0; idx < 3; ++idx) {
-        dc.SetBrush(wxBrush((idx <= m_selection ? dot_active : dot_dimmed).colorForStates(states)));
-        dc.DrawCircle(wxPoint(half_height + dot_dist * idx, half_height), bounds.height * (double)(idx == m_selection ? 0.35 : 0.20));
+    if (m_enabled) {
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        for (int idx = 0; idx < 3; ++idx) {
+            dc.SetBrush(wxBrush((idx <= m_selection ? dot_active : dot_dimmed).colorForStates(states)));
+            dc.DrawCircle(wxPoint(half_height + dot_dist * idx, half_height), bounds.height * (double)(idx == m_selection ? 0.35 : 0.20));
+        }
+    }
+    else { // Developer mode
+        wxString str = "DEV";
+        int kerning = 4; // pixels between chars
+        dc.SetTextForeground(dot_dimmed.colorForStates(states));
+
+        wxCoord totalWidth = 0;
+        for (char c : str)
+            totalWidth += dc.GetTextExtent(wxString(c)).x + kerning;
+        totalWidth -= kerning;
+
+        wxCoord x = bounds.x + (bounds.width - totalWidth) / 2;
+        wxCoord y = bounds.y + (bounds.height - dc.GetTextExtent(str).y) / 2;
+
+        for (char c : str) {
+            wxString ch(c);
+            dc.DrawText(ch, x, y);
+            x += dc.GetTextExtent(ch).x + kerning;
+        }
     }
 }
 
