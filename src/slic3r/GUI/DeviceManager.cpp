@@ -150,7 +150,7 @@ wxString Slic3r::get_stage_string(int stage)
     case 39:
         return _L("Nozzle offset calibration");
     case 40:
-        return _L("high temperature auto bed leveling");
+        return _L("High temperature auto bed leveling");
     case 41:
         return _L("Auto Check: Quick Release Lever");
     case 42:
@@ -363,6 +363,30 @@ std::string MachineObject::get_ftp_folder()
     return DevPrinterConfigUtil::get_ftp_folder(printer_type);
 }
 
+std::string MachineObject::dev_id_from_address(const std::string& host, const std::string& port)
+{
+    std::string result = host;
+    // Normalize host: strip protocol and path
+    if (result.find("http://") == 0)
+        result = result.substr(7);
+    else if (result.find("https://") == 0)
+        result = result.substr(8);
+    auto slash = result.find('/');
+    if (slash != std::string::npos)
+        result = result.substr(0, slash);
+
+    // Build full address (host:port)
+    if (!port.empty()) {
+        // Strip inline port if present (port comes from printhost_port)
+        auto colon = result.find(':');
+        if (colon != std::string::npos)
+            result = result.substr(0, colon);
+
+        result += ":" + port;
+    }
+    return result;
+}
+
 bool MachineObject::HasRecentCloudMessage()
 {
     auto curr_time = std::chrono::system_clock::now();
@@ -468,6 +492,13 @@ bool MachineObject::is_series_n() const { return is_series_n(DevPrinterConfigUti
 bool MachineObject::is_series_p() const { return is_series_p(DevPrinterConfigUtil::get_printer_series_str(printer_type)); }
 bool MachineObject::is_series_x() const { return is_series_x(DevPrinterConfigUtil::get_printer_series_str(printer_type)); }
 bool MachineObject::is_series_o() const { return is_series_o(DevPrinterConfigUtil::get_printer_series_str(printer_type)); }
+
+bool MachineObject::can_use_emmc_print() const
+{
+    AppConfig* config = GUI::wxGetApp().app_config;
+    std::string disable_emmc_print = config ? config->get("disable_emmc_print") : "true";
+    return is_support_print_with_emmc && (disable_emmc_print == "0" || disable_emmc_print == "false");
+}
 
 std::string MachineObject::get_printer_series_str() const{ return DevPrinterConfigUtil::get_printer_series_str(printer_type);};
 
@@ -2406,7 +2437,7 @@ bool MachineObject::is_connected()
     if (!is_lan_mode_printer()) {
         NetworkAgent* m_agent = Slic3r::GUI::wxGetApp().getAgent();
         if (m_agent) {
-            return m_agent->is_server_connected();
+            return m_agent->is_server_connected(Slic3r::GUI::wxGetApp().get_printer_cloud_provider());
         }
     }
     return true;

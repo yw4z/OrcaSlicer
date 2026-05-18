@@ -10,7 +10,7 @@
 extern std::string g_log_folder;
 extern std::string g_log_start_time;
 
-namespace BBL {
+namespace Slic3r {
 
 #define BAMBU_NETWORK_SUCCESS                           0
 #define BAMBU_NETWORK_ERR_INVALID_HANDLE                -1
@@ -115,8 +115,6 @@ namespace BBL {
 #define IOT_JSON_KEY_FILAMENT_ID        "filament_id"
 #define IOT_JSON_KEY_USER_ID            "user_id"
 
-// user callbacks
-typedef std::function<void(int online_login, bool login)> OnUserLoginFn;
 // printer callbacks
 typedef std::function<void(std::string topic_str)>  OnPrinterConnectedFn;
 typedef std::function<void(int status, std::string dev_id, std::string msg)> OnLocalConnectedFn;
