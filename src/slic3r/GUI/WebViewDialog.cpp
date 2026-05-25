@@ -417,8 +417,14 @@ void WebViewPanel::OnClose(wxCloseEvent& evt)
 void WebViewPanel::OnFreshLoginStatus(wxTimerEvent &event)
 {
     auto mainframe = Slic3r::GUI::wxGetApp().mainframe;
-    if (mainframe && mainframe->m_webview == this)
-        Slic3r::GUI::wxGetApp().get_login_info();
+    if (mainframe && mainframe->m_webview == this) {
+        auto* app_config = Slic3r::GUI::wxGetApp().app_config;
+        if (app_config && app_config->get_stealth_mode()) return;
+        Slic3r::GUI::wxGetApp().get_login_info(ORCA_CLOUD_PROVIDER);
+        if (app_config && app_config->has_cloud_provider(BBL_CLOUD_PROVIDER)) {
+            Slic3r::GUI::wxGetApp().get_login_info(BBL_CLOUD_PROVIDER);
+        }
+    }
 }
 
 void WebViewPanel::SetLoginPanelVisibility(bool bshow)
@@ -487,25 +493,50 @@ void WebViewPanel::SendLoginInfo()
 
 void WebViewPanel::ShowNetpluginTip()
 {
-    const auto bblnetwork_enabled = wxGetApp().app_config->get_bool("installed_networking");
+    // Install Network Plugin
+    const auto bblnetwork_enabled =wxGetApp().app_config->get_bool("installed_networking");
+    if(!bblnetwork_enabled) {
+        return;
+    }
+    bool        bValid       = wxGetApp().is_compatibility_version();
 
-    // Show tip if: plugin is enabled but incompatible, OR BBL printer selected but plugin not loaded
-    bool need_show = false;
-    if (bblnetwork_enabled) {
-        need_show = !wxGetApp().is_compatibility_version();
-    } else if (wxGetApp().preset_bundle && wxGetApp().preset_bundle->is_bbl_vendor()) {
-        need_show = true;
+    int nShow = 0;
+    if (!bValid) nShow = 1;
+
+    BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": bValid=%1%, nShow=%2%")%bValid %nShow;
+
+    json m_Res           = json::object();
+    m_Res["command"]     = "network_plugin_installtip";
+    m_Res["sequence_id"] = "10001";
+    m_Res["show"]        = nShow;
+
+    wxString strJS = wxString::Format("window.postMessage(%s)", m_Res.dump(-1, ' ', false, json::error_handler_t::ignore));
+
+    RunScript(strJS);
+}
+
+void WebViewPanel::SendCloudProvidersInfo()
+{
+    auto* app_config = wxGetApp().app_config;
+    if (!app_config)
+        return;
+
+    json j;
+    j["command"] = "cloud_providers_info";
+    json data;
+    json provider_array = json::array();
+
+    if (!app_config->get_stealth_mode()) {
+        auto providers = app_config->get_cloud_providers();
+        for (const auto& p : providers) {
+            provider_array.push_back(p);
+        }
     }
 
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": need_show=%1%") % need_show;
+    data["providers"] = provider_array;
+    j["data"] = data;
 
-    json res = json::object();
-    res["command"] = "network_plugin_installtip";
-    res["sequence_id"] = "10001";
-    res["show"] = need_show ? 1 : 0;
-
-    wxString strJS = wxString::Format("window.postMessage(%s)", res.dump(-1, ' ', false, json::error_handler_t::ignore));
-
+    wxString strJS = wxString::Format("window.postMessage(%s)", j.dump());
     RunScript(strJS);
 }
 
@@ -613,6 +644,7 @@ void WebViewPanel::OnDocumentLoaded(wxWebViewEvent& evt)
             wxLogMessage("%s", "Document loaded; url='" + evt.GetURL() + "'");
     }
     UpdateState();
+    SendCloudProvidersInfo();
 }
 
 void WebViewPanel::OnTitleChanged(wxWebViewEvent &evt)

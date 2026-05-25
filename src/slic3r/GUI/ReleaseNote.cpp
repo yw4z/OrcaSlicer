@@ -27,6 +27,7 @@
 
 #include "DeviceCore/DevManager.h"
 #include "DeviceCore/DevStorage.h"
+#include "md4c/src/md4c-html.h"
 
 namespace Slic3r { namespace GUI {
 
@@ -242,24 +243,23 @@ UpdateVersionDialog::UpdateVersionDialog(wxWindow *parent)
     auto        m_line_top   = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 1));
     m_line_top->SetBackgroundColour(wxColour(166, 169, 170));
 
+    wxBoxSizer *m_sizer_top  = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer *m_sizer_desc = new wxBoxSizer(wxVERTICAL);
 
-    wxBoxSizer *m_sizer_body = new wxBoxSizer(wxHORIZONTAL);
-
-
-
-    auto sm    = create_scaled_bitmap("OrcaSlicer", nullptr, 70);
-    m_brand = new wxStaticBitmap(this, wxID_ANY, sm, wxDefaultPosition, wxSize(FromDIP(70), FromDIP(70)));
-
-
-
-    wxBoxSizer *m_sizer_right = new wxBoxSizer(wxVERTICAL);
+    auto sm    = create_scaled_bitmap("OrcaSlicer", nullptr, 64);
+    m_brand = new wxStaticBitmap(this, wxID_ANY, sm, wxDefaultPosition, FromDIP(wxSize(64, 64)));
 
     m_text_up_info = new Label(this, Label::Head_14, wxEmptyString, LB_AUTO_WRAP);
     m_text_up_info->SetForegroundColour(wxColour(0x26, 0x2E, 0x30));
 
-    m_simplebook_release_note = new wxSimplebook(this);
-    m_simplebook_release_note->SetSize(wxSize(FromDIP(560), FromDIP(430)));
-    m_simplebook_release_note->SetMinSize(wxSize(FromDIP(560), FromDIP(430)));
+    auto github_link = new HyperLink(this, _L("Check on Github"), "", LB_AUTO_WRAP);
+    github_link->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &e) {
+        EndModal(wxID_YES);
+    });
+
+    m_simplebook_release_note = new wxSimplebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSIMPLE_BORDER);
+    //m_simplebook_release_note->SetSize(wxSize(FromDIP(560), FromDIP(430)));
+    m_simplebook_release_note->SetMinSize(FromDIP(wxSize(640,420)));
     m_simplebook_release_note->SetBackgroundColour(wxColour(0xF8, 0xF8, 0xF8));
 
     m_scrollwindows_release_note = new wxScrolledWindow(m_simplebook_release_note, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(560), FromDIP(430)), wxVSCROLL);
@@ -269,36 +269,36 @@ UpdateVersionDialog::UpdateVersionDialog(wxWindow *parent)
     //webview
     m_vebview_release_note = CreateTipView(m_simplebook_release_note);
     m_vebview_release_note->SetBackgroundColour(wxColour(0xF8, 0xF8, 0xF8));
-    m_vebview_release_note->SetSize(wxSize(FromDIP(560), FromDIP(430)));
-    m_vebview_release_note->SetMinSize(wxSize(FromDIP(560), FromDIP(430)));
+    //m_vebview_release_note->SetSize(wxSize(FromDIP(560), FromDIP(430)));
+    //m_vebview_release_note->SetMinSize(wxSize(FromDIP(560), FromDIP(430)));
     //m_vebview_release_note->SetMaxSize(wxSize(FromDIP(560), FromDIP(430)));
-    m_vebview_release_note->Bind(wxEVT_WEBVIEW_NAVIGATING,[=](wxWebViewEvent& event){
-        static bool load_url_first = false;
-        if(load_url_first){
-            // Orca: not used in Orca Slicer
-            // wxLaunchDefaultBrowser(url_line);
+    if (wxGetApp().app_config->get_bool("developer_mode"))
+        m_vebview_release_note->EnableAccessToDevTools();
+
+    m_vebview_release_note->Bind(wxEVT_WEBVIEW_NAVIGATING,[=, count = 0](wxWebViewEvent& event) mutable {
+        count++;
+        if (count == 1) {
+            m_vebview_release_note->SetPage(wxString::FromUTF8(html_source), "");
+        } else if (count >= 3) {
+            // Launch the default browser for links clicked by the user
+            wxLaunchDefaultBrowser(event.GetURL());
             event.Veto();
-        }else{
-            load_url_first = true;
         }
-        
     });
 
-	fs::path ph(data_dir());
-	ph /= "resources/tooltip/releasenote.html";
-	if (!fs::exists(ph)) {
-		ph = resources_dir();
-		ph /= "tooltip/releasenote.html";
-	}
-	auto url = ph.string();
-	std::replace(url.begin(), url.end(), '\\', '/');
-	url = "file:///" + url;
-    m_vebview_release_note->LoadURL(from_u8(url));
+	// fs::path ph(data_dir());
+	// ph /= "resources/tooltip/releasenote.html";
+	// if (!fs::exists(ph)) {
+	// 	ph = resources_dir();
+	// 	ph /= "tooltip/releasenote.html";
+	// }
+	// auto url = ph.string();
+	// std::replace(url.begin(), url.end(), '\\', '/');
+	// url = "file:///" + url;
+ //    m_vebview_release_note->LoadURL(from_u8(url));
 
     m_simplebook_release_note->AddPage(m_scrollwindows_release_note, wxEmptyString, false);
     m_simplebook_release_note->AddPage(m_vebview_release_note, wxEmptyString, false);
-
-
 
     auto sizer_button = new wxBoxSizer(wxHORIZONTAL);
 
@@ -325,8 +325,6 @@ UpdateVersionDialog::UpdateVersionDialog(wxWindow *parent)
     });
 
     auto stable_only_label = new Label(this, _L("Check for stable updates only"));
-    stable_only_label->SetFont(Label::Body_13);
-    stable_only_label->SetForegroundColour(wxColour(38, 46, 48));
     stable_only_label->SetFont(Label::Body_12);
 
     m_button_cancel = new Button(this, _L("Cancel"));
@@ -336,25 +334,27 @@ UpdateVersionDialog::UpdateVersionDialog(wxWindow *parent)
         EndModal(wxID_NO);
     });
 
-    m_sizer_main->Add(m_line_top, 0, wxEXPAND | wxBOTTOM, 0);
-
     //sizer_button->Add(m_remind_choice, 0, wxALL | wxEXPAND, FromDIP(5));
+
+    sizer_button->Add(m_cb_stable_only     , 0, wxALIGN_CENTER);
+    sizer_button->Add(stable_only_label    , 0, wxALIGN_CENTER | wxLEFT, FromDIP(5));
     sizer_button->AddStretchSpacer();
-    sizer_button->Add(stable_only_label, 0, wxALIGN_CENTER | wxLEFT, FromDIP(7));
-    sizer_button->Add(m_cb_stable_only, 0, wxALIGN_CENTER | wxLEFT, FromDIP(5));
-    sizer_button->Add(m_button_download, 0, wxALL, FromDIP(5));
-    sizer_button->Add(m_button_skip_version, 0, wxALL, FromDIP(5));
-    sizer_button->Add(m_button_cancel, 0, wxALL, FromDIP(5));
+    sizer_button->Add(m_button_download    , 0, wxLEFT, FromDIP(10));
+    sizer_button->Add(m_button_skip_version, 0, wxLEFT, FromDIP(10));
+    sizer_button->Add(m_button_cancel      , 0, wxLEFT, FromDIP(10));
 
-    m_sizer_right->Add(m_text_up_info, 0, wxEXPAND | wxBOTTOM | wxTOP, FromDIP(15));
-    m_sizer_right->Add(m_simplebook_release_note, 1, wxEXPAND | wxRIGHT, 0);
-    m_sizer_right->Add(sizer_button, 0, wxEXPAND | wxRIGHT, FromDIP(20));
+    m_sizer_desc->AddStretchSpacer();
+    m_sizer_desc->Add(m_text_up_info, 0, wxEXPAND | wxBOTTOM, FromDIP(5));
+    m_sizer_desc->Add(github_link);
+    m_sizer_desc->AddStretchSpacer();
 
-    m_sizer_body->Add(m_brand, 0, wxTOP|wxRIGHT|wxLEFT, FromDIP(15));
-    m_sizer_body->Add(0, 0, 0, wxRIGHT, 0);
-    m_sizer_body->Add(m_sizer_right, 1, wxBOTTOM | wxEXPAND, FromDIP(8));
-    m_sizer_main->Add(m_sizer_body, 1, wxEXPAND, 0);
-    m_sizer_main->Add(0, 0, 0, wxBOTTOM, 10);
+    m_sizer_top->Add(m_brand     , 0, wxRIGHT  | wxALIGN_CENTER_VERTICAL, FromDIP(15));
+    m_sizer_top->Add(m_sizer_desc, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
+
+    m_sizer_main->Add(m_line_top               , 0, wxEXPAND);
+    m_sizer_main->Add(m_sizer_top              , 0, wxEXPAND | wxTOP | wxLEFT | wxRIGHT, FromDIP(15));
+    m_sizer_main->Add(m_simplebook_release_note, 1, wxEXPAND | wxTOP | wxLEFT | wxRIGHT, FromDIP(15));
+    m_sizer_main->Add(sizer_button             , 0, wxEXPAND | wxALL                   , FromDIP(15));
 
     SetSizer(m_sizer_main);
     Layout();
@@ -470,27 +470,34 @@ void UpdateVersionDialog::update_version_info(wxString release_note, wxString ve
     //     }
     // }
 
-    if (use_web_link) {
-        m_brand->Hide();
-        m_text_up_info->Hide();
-        m_simplebook_release_note->SetSelection(1);
-        m_vebview_release_note->LoadURL(from_u8(url_line));
-    }
-    else {
-        m_simplebook_release_note->SetMaxSize(wxSize(FromDIP(560), FromDIP(430)));
-        m_simplebook_release_note->SetSelection(0);
-        m_text_up_info->SetLabel(wxString::Format(_L("Click to download new version in default browser: %s"), version));
-        wxBoxSizer* sizer_text_release_note = new wxBoxSizer(wxVERTICAL);
-        auto        m_staticText_release_note = new ::Label(m_scrollwindows_release_note, release_note, LB_AUTO_WRAP);
-        m_staticText_release_note->SetMinSize(wxSize(FromDIP(560), -1));
-        m_staticText_release_note->SetMaxSize(wxSize(FromDIP(560), -1));
-        sizer_text_release_note->Add(m_staticText_release_note, 0, wxALL, 5);
-        m_scrollwindows_release_note->SetSizer(sizer_text_release_note);
-        m_scrollwindows_release_note->Layout();
-        m_scrollwindows_release_note->Fit();
-        SetMinSize(GetSize());
-        SetMaxSize(GetSize());
-    }
+    // if (use_web_link) {
+    //     m_brand->Hide();
+    //     m_text_up_info->Hide();
+    //     m_simplebook_release_note->SetSelection(1);
+    //     m_vebview_release_note->LoadURL(from_u8(url_line));
+    // }
+    // else {
+    //m_simplebook_release_note->SetMaxSize(wxSize(FromDIP(560), FromDIP(430)));
+    m_simplebook_release_note->SetSelection(1);
+    m_text_up_info->SetLabel(wxString::Format(_L("Click to download new version in default browser: %s"), version));
+    auto data_buf_in = release_note.utf8_str();
+    auto bg_color = StateColor::darkModeColorFor(wxColour("#FFFFFF")).GetAsString();
+    auto fg_color = StateColor::darkModeColorFor(wxColour("#262E30")).GetAsString();
+    auto style    = "body {color:" + fg_color + "; background-color:" + bg_color + "; font-family:sans-serif}"
+                  + "a    {color: #009688}"               // matches hyperlink colors
+                  + "img  {max-width:100%; height:auto}"  // fixes overflowing images
+                  + "ul   {padding-inline-start: 20px}";  // reduce left padding on list items
+    html_source = (boost::format("<html><head><style>%1%</style></head><body>") % style).str();
+    md_html(data_buf_in.data(), data_buf_in.length(), [](const MD_CHAR* text, MD_SIZE size, void* userdata) {
+        std::string* out_buf = (std::string*)userdata;
+        out_buf->append(text, size);
+    }, (void*) &html_source, MD_DIALECT_GITHUB | MD_FLAG_STRIKETHROUGH | MD_FLAG_WIKILINKS, 0);
+    html_source.append("</body></html>");
+    m_vebview_release_note->LoadURL("file://" + (boost::filesystem::path (resources_dir()) / "web/guide/0/index.html").string());
+
+    SetMinSize(GetSize());
+    SetMaxSize(GetSize());
+    // }
 
     wxGetApp().UpdateDlgDarkUI(this);
     Layout();
