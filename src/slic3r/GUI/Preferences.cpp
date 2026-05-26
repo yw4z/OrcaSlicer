@@ -51,7 +51,7 @@ private:
     int           m_last_wrap_width = -1;
 
 public:
-    WikiLabel::WikiLabel(
+    WikiLabel(
         wxWindow*       parent,
         const wxString& label,
         const wxString& url     = wxEmptyString,
@@ -79,7 +79,7 @@ public:
         Bind(wxEVT_LEFT_DOWN,    &WikiLabel::OnLeftDown, this);
     }
 
-    void WikiLabel::SetLabel(const wxString& label)
+    void SetLabel(const wxString& label)
     {
         m_label = label;
         m_last_wrap_width = -1; // force re-wrap
@@ -95,7 +95,7 @@ public:
     void      SetURL(const wxString& url)  { m_url = url; }
     wxString  GetURL()    const            { return m_url; }
 
-    void WikiLabel::ReflowText()
+    void ReflowText()
     {
         const int clientW = GetClientSize().GetWidth();
  
@@ -119,7 +119,7 @@ public:
         InvalidateBestSize();
     }
  
-    wxSize WikiLabel::DoGetBestSize() const override
+    wxSize DoGetBestSize() const override
     {
         wxClientDC dc(const_cast<WikiLabel*>(this));
         dc.SetFont(m_font);
@@ -142,7 +142,7 @@ public:
     }
  
 private:
-    wxArrayString WikiLabel::WrapText(int pixelWidth) const
+    wxArrayString WrapText(int pixelWidth) const
     {
         wxArrayString result;
         if (pixelWidth <= 0) {
@@ -184,7 +184,7 @@ private:
         return result;
     }
  
-    void WikiLabel::OnPaint(wxPaintEvent& evt)
+    void OnPaint(wxPaintEvent& evt)
     {
         wxAutoBufferedPaintDC dc(this);
  
@@ -217,14 +217,14 @@ private:
         }
     }
  
-    void WikiLabel::OnSize(wxSizeEvent& evt)
+    void OnSize(wxSizeEvent& evt)
     {
         ReflowText();
         Refresh();
         evt.Skip();
     }
 
-    void WikiLabel::OnMotion(wxMouseEvent& evt)
+    void OnMotion(wxMouseEvent& evt)
     {
         if(!m_url.IsEmpty()){
             m_hovered = true;
@@ -233,7 +233,7 @@ private:
         evt.Skip();
     }
  
-    void WikiLabel::OnLeaveWin(wxMouseEvent& evt)
+    void OnLeaveWin(wxMouseEvent& evt)
     {
         if(!m_url.IsEmpty()){
             m_hovered = false;
@@ -242,7 +242,7 @@ private:
         evt.Skip();
     }
  
-    void WikiLabel::OnLeftDown(wxMouseEvent& evt)
+    void OnLeftDown(wxMouseEvent& evt)
     {
         if (!m_url.IsEmpty())
             wxLaunchDefaultBrowser(m_url);
