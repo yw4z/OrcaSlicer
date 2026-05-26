@@ -117,9 +117,6 @@ public:
  
         SetMinSize(wxSize(-1, totalH));
         InvalidateBestSize();
- 
-        if (wxWindow* p = GetParent())
-            p->Layout();
     }
  
     wxSize WikiLabel::DoGetBestSize() const override
@@ -187,7 +184,7 @@ private:
         return result;
     }
  
-    void WikiLabel::OnPaint(wxPaintEvent& /*evt*/)
+    void WikiLabel::OnPaint(wxPaintEvent& evt)
     {
         wxAutoBufferedPaintDC dc(this);
  
@@ -268,20 +265,16 @@ wxBoxSizer *PreferencesDialog::create_item_title(wxString title)
     return m_sizer_title;
 }
 
-wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString tooltip, wxString url)
+wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString tooltip, wxString wiki_url)
 {
     wxBoxSizer *sizer = new wxBoxSizer(wxHORIZONTAL);
     sizer->AddSpacer(FromDIP(DESIGN_LEFT_MARGIN));
 
-    auto label_ctrl = new wxStaticText(m_parent, wxID_ANY, label, wxDefaultPosition, DESIGN_TITLE_SIZE, wxST_NO_AUTORESIZE);
-    label_ctrl->SetForegroundColour(DESIGN_GRAY900_COLOR);
-    label_ctrl->SetFont(::Label::Body_14);
-    label_ctrl->Wrap(DESIGN_TITLE_SIZE.x);
+    wxString url;
+    if(!wiki_url.IsEmpty())
+        url = "https://www.orcaslicer.com/wiki/" + wiki_url;
 
-    if(!tooltip.IsEmpty())
-        label_ctrl->SetToolTip(tooltip);
-
-    //auto label_ctrl = new WikiLabel(m_parent, label, "hi", wxDefaultPosition, DESIGN_TITLE_SIZE);
+    auto label_ctrl = new WikiLabel(m_parent, label, url, wxDefaultPosition, DESIGN_TITLE_SIZE);
 
     sizer->Add(label_ctrl, 0, wxALIGN_CENTER | wxTOP | wxBOTTOM, FromDIP(3));
     sizer->AddSpacer(FromDIP(5));
@@ -289,11 +282,11 @@ wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString toolti
     return sizer;
 }
 
-std::tuple<wxBoxSizer*, ComboBox*> PreferencesDialog::create_item_combobox_base(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, unsigned int current_index)
+std::tuple<wxBoxSizer*, ComboBox*> PreferencesDialog::create_item_combobox_base(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, unsigned int current_index, const wxString wiki_url)
 {
     auto tip = tooltip.IsEmpty() ? title : tooltip; // auto fill tooltips with title if its empty
 
-    wxBoxSizer *m_sizer = create_item_label(title, tip);
+    wxBoxSizer *m_sizer = create_item_label(title, tip, wiki_url);
 
     auto combobox = new ::ComboBox(m_parent, wxID_ANY, wxEmptyString, wxDefaultPosition, DESIGN_LARGE_COMBOBOX_SIZE, 0, nullptr, wxCB_READONLY);
     combobox->GetDropDown().SetUseContentWidth(true);
@@ -311,7 +304,7 @@ std::tuple<wxBoxSizer*, ComboBox*> PreferencesDialog::create_item_combobox_base(
     return {m_sizer, combobox};
 }
 
-wxBoxSizer* PreferencesDialog::create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::function<void(wxString)> onchange)
+wxBoxSizer* PreferencesDialog::create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::function<void(wxString)> onchange, const wxString wiki_url)
 {
     unsigned int current_index = 0;
 
@@ -320,7 +313,7 @@ wxBoxSizer* PreferencesDialog::create_item_combobox(wxString title, wxString too
         current_index = atoi(current_setting.c_str());
     }
 
-    auto [sizer, combobox] = create_item_combobox_base(title, tooltip, param, vlist, current_index);
+    auto [sizer, combobox] = create_item_combobox_base(title, tooltip, param, vlist, current_index, wiki_url);
 
     //// save config
     combobox->GetDropDown().Bind(wxEVT_COMBOBOX, [this, param, onchange](wxCommandEvent& e) {
@@ -333,7 +326,7 @@ wxBoxSizer* PreferencesDialog::create_item_combobox(wxString title, wxString too
     return sizer;
 }
 
-wxBoxSizer *PreferencesDialog::create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::vector<std::string> config_name_index)
+wxBoxSizer *PreferencesDialog::create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::vector<std::string> config_name_index, const wxString wiki_url)
 {
     assert(vlist.size() == config_name_index.size());
     unsigned int current_index = 0;
@@ -661,11 +654,11 @@ wxBoxSizer *PreferencesDialog::create_item_loglevel_combobox(wxString title, wxS
     return m_sizer;
 }
 
-wxBoxSizer *PreferencesDialog::create_item_input(wxString title, wxString title2, wxString tooltip, std::string param, std::function<void(wxString)> onchange)
+wxBoxSizer *PreferencesDialog::create_item_input(wxString title, wxString title2, wxString tooltip, std::string param, std::function<void(wxString)> onchange, const wxString wiki_url)
 {
     auto tip = tooltip.IsEmpty() ? title : tooltip; // auto fill tooltips with title if its empty
 
-    wxBoxSizer *m_sizer = create_item_label(title, tip);
+    wxBoxSizer *m_sizer = create_item_label(title, tip, wiki_url);
 
     auto       input = new ::TextInput(m_parent, wxEmptyString, wxEmptyString, wxEmptyString, wxDefaultPosition, DESIGN_INPUT_SIZE, wxTE_PROCESS_ENTER);
     StateColor input_bg(std::pair<wxColour, int>(wxColour("#F0F0F1"), StateColor::Disabled), std::pair<wxColour, int>(*wxWHITE, StateColor::Enabled));
@@ -702,11 +695,11 @@ wxBoxSizer *PreferencesDialog::create_item_input(wxString title, wxString title2
     return m_sizer;
 }
 
-wxBoxSizer *PreferencesDialog::create_item_spinctrl(wxString title, wxString title2, wxString side_label, wxString tooltip, std::string param, int min, int max, std::function<void(int)> onchange)
+wxBoxSizer *PreferencesDialog::create_item_spinctrl(wxString title, wxString title2, wxString side_label, wxString tooltip, std::string param, int min, int max, std::function<void(int)> onchange, const wxString wiki_url)
 {
     auto tip = tooltip.IsEmpty() ? title : tooltip; // auto fill tooltips with title if its empty
 
-    wxBoxSizer *m_sizer = create_item_label(title, tip);
+    wxBoxSizer *m_sizer = create_item_label(title, tip, wiki_url);
 
     auto input = new SpinInput(m_parent, wxEmptyString, side_label, wxDefaultPosition, DESIGN_INPUT_SIZE, wxSP_ARROW_KEYS, min, max, stoi(app_config->get(param)));
     input->SetToolTip(tip);
@@ -967,11 +960,11 @@ void PreferencesDialog::set_dark_mode()
 #endif
 }
 
-wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxString tooltip, std::string param, const wxString secondary_title)
+wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxString tooltip, std::string param, const wxString secondary_title, const wxString wiki_url)
 {
     auto tip = tooltip.IsEmpty() ? title : tooltip; // auto fill tooltips with title if its empty
 
-    wxBoxSizer *m_sizer = create_item_label(title, tip);
+    wxBoxSizer *m_sizer = create_item_label(title, tip, wiki_url);
 
     auto checkbox = new ::CheckBox(m_parent);
     checkbox->SetValue(app_config->get_bool(param));
@@ -1125,11 +1118,11 @@ wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxString too
     return m_sizer;
 }
 
-wxBoxSizer* PreferencesDialog::create_item_button(wxString title, wxString title2, wxString tooltip, wxString tooltip2, std::function<void()> onclick)
+wxBoxSizer* PreferencesDialog::create_item_button(wxString title, wxString title2, wxString tooltip, wxString tooltip2, std::function<void()> onclick, const wxString wiki_url)
 {
     auto tip = tooltip.IsEmpty() ? tooltip2 : tooltip; // use button tooltip if label tooltip empty
 
-    wxBoxSizer *m_sizer = create_item_label(title, tip);
+    wxBoxSizer *m_sizer = create_item_label(title, tip, wiki_url);
 
     auto m_button_download = new Button(m_parent, title2);
     m_button_download->SetStyle(title2 == _L("Clear") ? ButtonStyle::Alert : ButtonStyle::Regular, ButtonType::Parameter);
@@ -1576,7 +1569,7 @@ void PreferencesDialog::create_items()
         _L("Controls the quantization bit depth used when compressing the mesh to Draco format.\n"
            "0 = lossless compression (geometry is preserved at full precision). Valid lossy values range from 8 to 30.\n"
            "Lower values produce smaller files but lose more geometric detail; higher values preserve more detail at the cost of larger files."),
-        "drc_bits", DRC_BITS_MIN, DRC_BITS_MAX
+        "drc_bits", DRC_BITS_MIN, DRC_BITS_MAX, nullptr, "import_export#drc"
     );
     g_sizer->Add(item_draco_bits);
 
