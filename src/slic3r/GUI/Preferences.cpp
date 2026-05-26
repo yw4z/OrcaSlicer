@@ -38,6 +38,222 @@ public:
     bool ShouldScrollToChildOnFocus(wxWindow* child) override { return false; }
 };
 
+class WikiLabel : public wxPanel {
+private:
+    wxString      m_label;
+    wxString      m_url;
+    wxArrayString m_lines;
+    bool          m_hovered = false;
+    wxFont        m_font;
+    int           m_v_gap;
+    int           m_h_gap;
+    int           m_em_unit;
+    int           m_last_wrap_width = -1;
+
+public:
+    WikiLabel::WikiLabel(
+        wxWindow*       parent,
+        const wxString& label,
+        const wxString& url     = wxEmptyString,
+        const wxPoint&  pos     = wxDefaultPosition,
+        const wxSize&   size    = wxDefaultSize
+    )
+        : wxPanel(parent, wxID_ANY, pos, size, wxFULL_REPAINT_ON_RESIZE)
+        , m_label(label)
+        , m_url(url)
+    {
+        if (!wxOSX)
+            SetDoubleBuffered(true);// SetDoubleBuffered exists on Win and Linux/GTK, but is missing on OSX
+        SetBackgroundColour(parent->GetBackgroundColour());
+
+        m_font = Label::Body_14;
+        SetFont(m_font);
+        m_em_unit = em_unit(m_parent);
+        m_v_gap   = lround(0.2 * m_em_unit);
+        m_h_gap   = lround(0.2 * m_em_unit);
+
+        Bind(wxEVT_PAINT,        &WikiLabel::OnPaint, this);
+        Bind(wxEVT_SIZE,         &WikiLabel::OnSize, this);
+        Bind(wxEVT_MOTION,       &WikiLabel::OnMotion, this);
+        Bind(wxEVT_LEAVE_WINDOW, &WikiLabel::OnLeaveWin, this);
+        Bind(wxEVT_LEFT_DOWN,    &WikiLabel::OnLeftDown, this);
+    }
+
+    void WikiLabel::SetLabel(const wxString& label)
+    {
+        m_label = label;
+        m_last_wrap_width = -1; // force re-wrap
+        ReflowText();
+        Refresh();
+    }
+
+    wxString  GetLabel()  const override
+    {
+        return m_label;
+    }
+ 
+    void      SetURL(const wxString& url)  { m_url = url; }
+    wxString  GetURL()    const            { return m_url; }
+
+    void WikiLabel::ReflowText()
+    {
+        const int clientW = GetClientSize().GetWidth();
+ 
+        if (clientW <= 2 * m_h_gap)
+            return;
+ 
+        const int wrapW = clientW - 2 * m_h_gap;
+ 
+        if (wrapW == m_last_wrap_width && !m_lines.IsEmpty())
+            return;
+        m_last_wrap_width = wrapW;
+ 
+        m_lines = WrapText(wrapW);
+ 
+        wxMemoryDC mdc;
+        mdc.SetFont(m_font);
+        const int lineH  = mdc.GetCharHeight();
+        const int totalH = static_cast<int>(m_lines.size()) * lineH + 2 * m_v_gap;
+ 
+        SetMinSize(wxSize(-1, totalH));
+        InvalidateBestSize();
+ 
+        if (wxWindow* p = GetParent())
+            p->Layout();
+    }
+ 
+    wxSize WikiLabel::DoGetBestSize() const override
+    {
+        wxClientDC dc(const_cast<WikiLabel*>(this));
+        dc.SetFont(m_font);
+ 
+        const int lineH  = dc.GetCharHeight();
+        const int totalH = static_cast<int>(m_lines.size()) * lineH + 2 * m_v_gap;
+ 
+        int w = GetClientSize().GetWidth();
+        if (w <= 2 * m_h_gap) {
+            int maxW = 0;
+            for (const wxString& line : wxSplit(m_label, '\n')) {
+                int lw, lh;
+                dc.GetTextExtent(line, &lw, &lh);
+                maxW = wxMax(maxW, lw);
+            }
+            w = maxW + 2 * m_h_gap;
+        }
+ 
+        return wxSize(w, totalH);
+    }
+ 
+private:
+    wxArrayString WikiLabel::WrapText(int pixelWidth) const
+    {
+        wxArrayString result;
+        if (pixelWidth <= 0) {
+            result.Add(m_label);
+            return result;
+        }
+ 
+        wxMemoryDC dc;
+        dc.SetFont(m_font);
+ 
+        for (const wxString& para : wxSplit(m_label, '\n')) {
+            if (para.IsEmpty()) {
+                result.Add(wxEmptyString);
+                continue;
+            }
+ 
+            wxString currentLine;
+            for (const wxString& word : wxSplit(para, ' ')) {
+                wxString candidate = currentLine.IsEmpty()
+                                     ? word
+                                     : (currentLine + ' ' + word);
+                int tw, th;
+                dc.GetTextExtent(candidate, &tw, &th);
+ 
+                if (tw <= pixelWidth) {
+                    currentLine = candidate;
+                } else {
+                    if (currentLine.IsEmpty())
+                        result.Add(word);           // single word wider than column
+                    else {
+                        result.Add(currentLine);
+                        currentLine = word;
+                    }
+                }
+            }
+            if (!currentLine.IsEmpty())
+                result.Add(currentLine);
+        }
+        return result;
+    }
+ 
+    void WikiLabel::OnPaint(wxPaintEvent& /*evt*/)
+    {
+        wxAutoBufferedPaintDC dc(this);
+ 
+        dc.SetBackground(wxBrush(GetParent() ? GetParent()->GetBackgroundColour() : *wxWHITE));
+        dc.Clear();
+ 
+        wxColour textCol = StateColor::darkModeColorFor(m_hovered ? "#26A69A" : "#363636");
+ 
+        dc.SetTextForeground(textCol);
+        dc.SetFont(m_font);
+        dc.SetBackgroundMode(wxTRANSPARENT);
+ 
+        int lineH = dc.GetCharHeight();
+        int y     = m_v_gap;
+ 
+        for (const wxString& line : m_lines) {
+            if (!line.IsEmpty()) {
+                dc.DrawText(line, m_h_gap, y);
+
+                if (m_hovered) {
+                    int tw, th;
+                    dc.GetTextExtent(line, &tw, &th);
+ 
+                    int underlineY = y + lineH - 1;   // 1 px below the baseline
+                    dc.SetPen(wxPen(textCol, 1));
+                    dc.DrawLine(m_h_gap, underlineY, m_h_gap + tw, underlineY);
+                }
+            }
+            y += lineH;
+        }
+    }
+ 
+    void WikiLabel::OnSize(wxSizeEvent& evt)
+    {
+        ReflowText();
+        Refresh();
+        evt.Skip();
+    }
+
+    void WikiLabel::OnMotion(wxMouseEvent& evt)
+    {
+        if(!m_url.IsEmpty()){
+            m_hovered = true;
+            Refresh();
+        }
+        evt.Skip();
+    }
+ 
+    void WikiLabel::OnLeaveWin(wxMouseEvent& evt)
+    {
+        if(!m_url.IsEmpty()){
+            m_hovered = false;
+            Refresh();
+        }
+        evt.Skip();
+    }
+ 
+    void WikiLabel::OnLeftDown(wxMouseEvent& evt)
+    {
+        if (!m_url.IsEmpty())
+            wxLaunchDefaultBrowser(m_url);
+        Refresh();
+        evt.Skip();
+    } 
+};
+
 wxBoxSizer *PreferencesDialog::create_item_title(wxString title)
 {
     wxBoxSizer *m_sizer_title = new wxBoxSizer(wxHORIZONTAL);
@@ -52,7 +268,7 @@ wxBoxSizer *PreferencesDialog::create_item_title(wxString title)
     return m_sizer_title;
 }
 
-wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString tooltip, wxString link)
+wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString tooltip, wxString url)
 {
     wxBoxSizer *sizer = new wxBoxSizer(wxHORIZONTAL);
     sizer->AddSpacer(FromDIP(DESIGN_LEFT_MARGIN));
@@ -64,6 +280,8 @@ wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString toolti
 
     if(!tooltip.IsEmpty())
         label_ctrl->SetToolTip(tooltip);
+
+    //auto label_ctrl = new WikiLabel(m_parent, label, "hi", wxDefaultPosition, DESIGN_TITLE_SIZE);
 
     sizer->Add(label_ctrl, 0, wxALIGN_CENTER | wxTOP | wxBOTTOM, FromDIP(3));
     sizer->AddSpacer(FromDIP(5));
@@ -698,49 +916,6 @@ wxBoxSizer *PreferencesDialog::create_item_auto_reslice(wxString title, wxString
 
     input->Enable(checkbox->GetValue());
     input->Refresh();
-
-    return m_sizer;
-}
-
-wxBoxSizer* PreferencesDialog::create_item_draco(wxString title, wxString side_label, wxString tooltip)
-{
-    wxBoxSizer *m_sizer = create_item_label(title, tooltip);
-
-    auto input = new ::TextInput(m_parent, wxEmptyString, side_label, wxEmptyString, wxDefaultPosition, DESIGN_INPUT_SIZE, wxTE_PROCESS_ENTER);
-    StateColor input_bg(std::pair<wxColour, int>(wxColour("#F0F0F1"), StateColor::Disabled),
-                        std::pair<wxColour, int>(*wxWHITE, StateColor::Enabled));
-    input->SetBackgroundColor(input_bg);
-    input->GetTextCtrl()->SetValue(app_config->get("drc_bits"));
-    wxTextValidator validator(wxFILTER_DIGITS);
-    input->SetToolTip(tooltip);
-    input->GetTextCtrl()->SetValidator(validator);
-
-    m_sizer->Add(input, 0, wxALIGN_CENTER_VERTICAL);
-
-    std::function<void()> set_draco_bits = [this, input]() {
-        long drc_bits = DRC_BITS_DEFAULT;
-        input->GetTextCtrl()->GetValue().ToLong(&drc_bits);
-        if (drc_bits > DRC_BITS_MAX) {
-            drc_bits = DRC_BITS_MAX;
-            input->GetTextCtrl()->SetValue(std::to_string(drc_bits));
-        } else if (drc_bits < DRC_BITS_MIN && drc_bits != 0) {
-            drc_bits = DRC_BITS_MIN;
-            input->GetTextCtrl()->SetValue(std::to_string(drc_bits));
-        }
-
-        app_config->set("drc_bits", std::to_string(drc_bits));
-        app_config->save();
-    };
-
-    input->GetTextCtrl()->Bind(wxEVT_TEXT_ENTER, [set_draco_bits](wxCommandEvent& e) {
-        set_draco_bits();
-        e.Skip();
-    });
-
-    input->GetTextCtrl()->Bind(wxEVT_KILL_FOCUS, [set_draco_bits](wxFocusEvent& e) {
-        set_draco_bits();
-        e.Skip();
-    });
 
     return m_sizer;
 }
@@ -1396,11 +1571,13 @@ void PreferencesDialog::create_items()
     auto item_step_dialog      = create_item_checkbox(_L("Show options when importing STEP file"), _L("If enabled, a parameter settings dialog will appear during STEP file import."), "enable_step_mesh_setting");
     g_sizer->Add(item_step_dialog);
 
-    auto item_draco_bits = create_item_draco(_L("Quality level for Draco export"),
+    auto item_draco_bits = create_item_spinctrl(_L("Quality level for Draco export"), "",
         _L("bits"),
         _L("Controls the quantization bit depth used when compressing the mesh to Draco format.\n"
            "0 = lossless compression (geometry is preserved at full precision). Valid lossy values range from 8 to 30.\n"
-           "Lower values produce smaller files but lose more geometric detail; higher values preserve more detail at the cost of larger files."));
+           "Lower values produce smaller files but lose more geometric detail; higher values preserve more detail at the cost of larger files."),
+        "drc_bits", DRC_BITS_MIN, DRC_BITS_MAX
+    );
     g_sizer->Add(item_draco_bits);
 
     auto item_backup           = create_item_backup(_L("Auto backup"), _L("Backup your project periodically for restoring from the occasional crash."));
