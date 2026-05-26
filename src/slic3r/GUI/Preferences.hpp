@@ -28,9 +28,6 @@ namespace Slic3r { namespace GUI {
 #define DESIGN_INPUT_SIZE wxSize(FromDIP(120), -1)
 #define DESIGN_LEFT_MARGIN 25
 
-class CheckBox;
-class TextInput;
-
 class PreferencesDialog : public DPIDialog
 {
 private:
@@ -75,7 +72,6 @@ public:
     ::CheckBox * m_bambu_cloud_checkbox      = {nullptr};
     ::TextInput *m_backup_interval_textinput = {nullptr};
     ::ComboBox * m_network_version_combo     = {nullptr};
-    wxBoxSizer * m_network_version_sizer     = {nullptr};
     std::vector<NetworkLibraryVersionInfo> m_available_versions;
 
     wxString m_developer_mode_def;
@@ -86,6 +82,7 @@ public:
     std::vector<wxFlexGridSizer*> f_sizers;
 
     wxBoxSizer *create_item_title(wxString title);
+    wxBoxSizer *create_item_label(wxString label, const wxString tooltip = "", const wxString link = "");
     wxBoxSizer *create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::function<void(wxString)> onchange = {});
     wxBoxSizer *create_item_combobox(wxString title, wxString tooltip, std::string param, std::vector<wxString> vlist, std::vector<std::string> config_name_index);
     wxBoxSizer *create_item_region_combobox(wxString title, wxString tooltip);
@@ -102,6 +99,8 @@ public:
     wxBoxSizer *create_item_backup(wxString title, wxString tooltip);
     wxBoxSizer *create_item_auto_reslice(wxString title, wxString checkbox_tooltip, wxString delay_tooltip);
     wxBoxSizer *create_item_draco(wxString title, wxString side_label, wxString tooltip);
+    wxBoxSizer *create_item_bambu_cloud(wxString title, wxString tooltip);
+    wxBoxSizer *create_item_network_plugin_version(wxString title, wxString tooltip);
     wxBoxSizer *create_item_multiple_combobox(wxString title, wxString tooltip, std::string parama, std::vector<wxString> vlista, std::vector<wxString> vlistb);
 #ifdef WIN32
     wxBoxSizer *create_item_link_association(wxString url_prefix, wxString website_name);
@@ -109,7 +108,6 @@ public:
 
     void create_items();
     void create_sync_page();
-    void create_shortcuts_page();
     wxBoxSizer* create_debug_page();
 
     void UpdateSidebarLayout();
