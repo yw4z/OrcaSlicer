@@ -226,7 +226,7 @@ private:
 
     void OnMotion(wxMouseEvent& evt)
     {
-        if(!m_url.IsEmpty()){
+        if(!m_url.IsEmpty() && !m_hovered){
             m_hovered = true;
             Refresh();
         }
@@ -235,7 +235,7 @@ private:
  
     void OnLeaveWin(wxMouseEvent& evt)
     {
-        if(!m_url.IsEmpty()){
+        if(!m_url.IsEmpty() && m_hovered){
             m_hovered = false;
             Refresh();
         }
@@ -275,6 +275,8 @@ wxBoxSizer *PreferencesDialog::create_item_label(wxString label, wxString toolti
         url = "https://www.orcaslicer.com/wiki/" + wiki_url;
 
     auto label_ctrl = new WikiLabel(m_parent, label, url, wxDefaultPosition, DESIGN_TITLE_SIZE);
+
+    label_ctrl->SetToolTip(tooltip);
 
     sizer->Add(label_ctrl, 0, wxALIGN_CENTER | wxTOP | wxBOTTOM, FromDIP(3));
     sizer->AddSpacer(FromDIP(5));
@@ -1561,7 +1563,10 @@ void PreferencesDialog::create_items()
     auto item_gcodes_warning   = create_item_checkbox(_L("Don't warn when loading 3MF with modified G-code"), "", "no_warn_when_modified_gcodes");
     g_sizer->Add(item_gcodes_warning);
 
-    auto item_step_dialog      = create_item_checkbox(_L("Show options when importing STEP file"), _L("If enabled, a parameter settings dialog will appear during STEP file import."), "enable_step_mesh_setting");
+    auto item_step_dialog = create_item_checkbox(
+        _L("Show options when importing STEP file"), _L("If enabled, a parameter settings dialog will appear during STEP file import."), 
+        "enable_step_mesh_setting", wxEmptyString, "import_export#dont-show-again"
+    );
     g_sizer->Add(item_step_dialog);
 
     auto item_draco_bits = create_item_spinctrl(_L("Quality level for Draco export"), "",
@@ -1876,7 +1881,7 @@ void PreferencesDialog::create_items()
     //// DEVELOPER > Settings
     g_sizer->Add(create_item_title(_L("Settings")), 1, wxEXPAND);
 
-    auto item_develop_mode     = create_item_checkbox(_L("Developer mode"), "", "developer_mode");
+    auto item_develop_mode     = create_item_checkbox(_L("Developer mode"), "", "developer_mode", wxEmptyString, "option_mode#developer+mode");
     g_sizer->Add(item_develop_mode);
 
     auto item_ams_blacklist    = create_item_checkbox(_L("Skip AMS blacklist check"), "", "skip_ams_blacklist_check");
