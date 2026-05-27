@@ -38,6 +38,10 @@ public:
     bool ShouldScrollToChildOnFocus(wxWindow* child) override { return false; }
 };
 
+// TODO before replacing with HyperLink class
+// make Wrap(-1) and Wrap(width) functional
+// ellipsize_end on wrap(-1)
+// add SetUnderlined() for allowing always highlighted while using as HyperLink
 class WikiLabel : public wxPanel {
 private:
     wxString      m_label;
@@ -45,9 +49,6 @@ private:
     wxArrayString m_lines;
     bool          m_hovered = false;
     wxFont        m_font;
-    int           m_v_gap;
-    int           m_h_gap;
-    int           m_em_unit;
     int           m_last_wrap_width = -1;
 
 public:
@@ -62,15 +63,12 @@ public:
         , m_label(label)
         , m_url(url)
     {
-        if (!wxOSX)
-            SetDoubleBuffered(true);// SetDoubleBuffered exists on Win and Linux/GTK, but is missing on OSX
+#ifndef __WXOSX__ 
+        SetDoubleBuffered(true);// SetDoubleBuffered exists on Win and Linux/GTK, but is missing on OSX
+#endif
         SetBackgroundColour(parent->GetBackgroundColour());
 
-        m_font = Label::Body_14;
-        SetFont(m_font);
-        m_em_unit = em_unit(m_parent);
-        m_v_gap   = lround(0.2 * m_em_unit);
-        m_h_gap   = lround(0.2 * m_em_unit);
+        SetFont(Label::Body_14);
 
         Bind(wxEVT_PAINT,        &WikiLabel::OnPaint, this);
         Bind(wxEVT_SIZE,         &WikiLabel::OnSize, this);
@@ -87,11 +85,19 @@ public:
         Refresh();
     }
 
-    wxString  GetLabel()  const override
+    bool SetFont(const wxFont& font) override
     {
-        return m_label;
+        const bool changed = wxPanel::SetFont(font);
+        m_font = font;
+        m_last_wrap_width = -1; // force re-wrap
+        if (IsShownOnScreen()) {
+            ReflowText();
+            Refresh();
+        }
+        return changed;
     }
- 
+
+    wxString  GetLabel()  const override   { return m_label; }
     void      SetURL(const wxString& url)  { m_url = url; }
     wxString  GetURL()    const            { return m_url; }
 
@@ -99,21 +105,42 @@ public:
     {
         const int clientW = GetClientSize().GetWidth();
  
-        if (clientW <= 2 * m_h_gap)
+        if (clientW <= 0 || (clientW == m_last_wrap_width && !m_lines.IsEmpty()))
             return;
+
+        m_last_wrap_width = clientW;
+
+        wxArrayString lines;
+        for (const wxString& para : wxSplit(m_label, '\n')) {
+            if (para.IsEmpty()) {
+                lines.Add(wxEmptyString);
+                continue;
+            }
  
-        const int wrapW = clientW - 2 * m_h_gap;
+            wxString currentLine;
+            for (const wxString& word : wxSplit(para, ' ')) {
+                wxString candidate = currentLine.IsEmpty() ? word : (currentLine + ' ' + word);
+                wxSize sz = GetTextExtent(candidate);
  
-        if (wrapW == m_last_wrap_width && !m_lines.IsEmpty())
-            return;
-        m_last_wrap_width = wrapW;
+                if (sz.GetWidth() <= clientW)
+                    currentLine = candidate;
+                else {
+                    if (currentLine.IsEmpty())
+                        lines.Add(word); // single word wider than column
+                    else {
+                        lines.Add(currentLine);
+                        currentLine = word;
+                    }
+                }
+            }
+            if (!currentLine.IsEmpty())
+                lines.Add(currentLine);
+        }
+        m_lines = lines;
  
-        m_lines = WrapText(wrapW);
- 
-        wxMemoryDC mdc;
-        mdc.SetFont(m_font);
-        const int lineH  = mdc.GetCharHeight();
-        const int totalH = static_cast<int>(m_lines.size()) * lineH + 2 * m_v_gap;
+        const int lineH  = wxMax(1, wxWindow::GetCharHeight()); // GTK can return 0 from GetCharHeight() before the window is realized
+        const int nLines = m_lines.IsEmpty() ? 1 : static_cast<int>(m_lines.size());
+        const int totalH = static_cast<int>(nLines * lineH * 1.3);
  
         SetMinSize(wxSize(-1, totalH));
         InvalidateBestSize();
@@ -121,72 +148,38 @@ public:
  
     wxSize DoGetBestSize() const override
     {
-        wxClientDC dc(const_cast<WikiLabel*>(this));
-        dc.SetFont(m_font);
+        const int lineH  = wxMax(1, wxWindow::GetCharHeight()); // GTK can return 0 from GetCharHeight() before the window is realized
+        const int nLines = m_lines.IsEmpty() ? 1 : static_cast<int>(m_lines.size());
+        const int totalH = static_cast<int>(nLines * lineH * 1.3);
  
-        const int lineH  = dc.GetCharHeight();
-        const int totalH = static_cast<int>(m_lines.size()) * lineH + 2 * m_v_gap;
+        const int clientW = GetClientSize().GetWidth();
  
-        int w = GetClientSize().GetWidth();
-        if (w <= 2 * m_h_gap) {
-            int maxW = 0;
-            for (const wxString& line : wxSplit(m_label, '\n')) {
-                int lw, lh;
-                dc.GetTextExtent(line, &lw, &lh);
-                maxW = wxMax(maxW, lw);
-            }
-            w = maxW + 2 * m_h_gap;
+        if (clientW > 0)
+            return wxSize(clientW, totalH);
+ 
+        if (m_label.IsEmpty())
+            return wxSize(1, lineH);
+ 
+        int maxW = 0;
+        for (const wxString& line : wxSplit(m_label, '\n')) {
+            const int lw = GetTextExtent(line).GetWidth();
+            maxW = wxMax(maxW, lw);
         }
  
-        return wxSize(w, totalH);
+        return wxSize(wxMax(1, maxW), totalH);
+    }
+
+    void Rescale()
+    {
+        m_last_wrap_width = -1;
+        m_lines.Clear();
+        InvalidateBestSize();
     }
  
 private:
-    wxArrayString WrapText(int pixelWidth) const
-    {
-        wxArrayString result;
-        if (pixelWidth <= 0) {
-            result.Add(m_label);
-            return result;
-        }
- 
-        wxMemoryDC dc;
-        dc.SetFont(m_font);
- 
-        for (const wxString& para : wxSplit(m_label, '\n')) {
-            if (para.IsEmpty()) {
-                result.Add(wxEmptyString);
-                continue;
-            }
- 
-            wxString currentLine;
-            for (const wxString& word : wxSplit(para, ' ')) {
-                wxString candidate = currentLine.IsEmpty()
-                                     ? word
-                                     : (currentLine + ' ' + word);
-                int tw, th;
-                dc.GetTextExtent(candidate, &tw, &th);
- 
-                if (tw <= pixelWidth) {
-                    currentLine = candidate;
-                } else {
-                    if (currentLine.IsEmpty())
-                        result.Add(word);           // single word wider than column
-                    else {
-                        result.Add(currentLine);
-                        currentLine = word;
-                    }
-                }
-            }
-            if (!currentLine.IsEmpty())
-                result.Add(currentLine);
-        }
-        return result;
-    }
- 
     void OnPaint(wxPaintEvent& evt)
     {
-        wxAutoBufferedPaintDC dc(this);
+        wxPaintDC dc(this);
  
         dc.SetBackground(wxBrush(GetParent() ? GetParent()->GetBackgroundColour() : *wxWHITE));
         dc.Clear();
@@ -198,19 +191,19 @@ private:
         dc.SetBackgroundMode(wxTRANSPARENT);
  
         int lineH = dc.GetCharHeight();
-        int y     = m_v_gap;
+        int y     = lround(lineH * 0.15);
  
         for (const wxString& line : m_lines) {
             if (!line.IsEmpty()) {
-                dc.DrawText(line, m_h_gap, y);
+                dc.DrawText(line, 0, y);
 
                 if (m_hovered) {
                     int tw, th;
                     dc.GetTextExtent(line, &tw, &th);
  
-                    int underlineY = y + lineH - 1;   // 1 px below the baseline
+                    int underlineY = y + lineH - 1; // 1 px below the baseline
                     dc.SetPen(wxPen(textCol, 1));
-                    dc.DrawLine(m_h_gap, underlineY, m_h_gap + tw, underlineY);
+                    dc.DrawLine(0, underlineY, tw, underlineY);
                 }
             }
             y += lineH;
@@ -246,7 +239,6 @@ private:
     {
         if (!m_url.IsEmpty())
             wxLaunchDefaultBrowser(m_url);
-        Refresh();
         evt.Skip();
     } 
 };
@@ -1457,7 +1449,47 @@ PreferencesDialog::~PreferencesDialog()
 {
 }
 
-void PreferencesDialog::on_dpi_changed(const wxRect &suggested_rect) { this->Refresh(); }
+void PreferencesDialog::on_dpi_changed(const wxRect &suggested_rect) {
+    m_pref_tabs->Rescale();
+
+    int sel = m_pref_tabs->GetSelection();
+    for (size_t i = 0; i < m_pref_tabs->GetCount(); ++i)
+        f_sizers[i]->Show(true);
+
+    std::function<void(wxWindow*, int)> WalkControls;
+    WalkControls = [&](wxWindow* parent, int depth) -> void {
+        if (!parent) return;
+
+        for (auto* child : parent->GetChildren()) {
+            if (!child)
+                continue;
+            else if (auto* btn = dynamic_cast<Button*>(child))
+                btn->Rescale();
+            else if (auto* chk = dynamic_cast<CheckBox*>(child))
+                chk->msw_rescale();
+            else if (auto* txt = dynamic_cast<TextInput*>(child))
+                txt->Rescale();
+            else if (auto* cmb = dynamic_cast<ComboBox*>(child))
+                cmb->Rescale();
+            else if (auto* spn = dynamic_cast<SpinInput*>(child))
+                spn->Rescale();
+            else if (auto* lbl = dynamic_cast<WikiLabel*>(child)){
+                lbl->SetSize(DESIGN_TITLE_SIZE);
+                lbl->Rescale();
+            }
+                
+            WalkControls(child, depth + 1);
+        }
+    };
+    WalkControls(this, 0);
+
+    wxCommandEvent event(wxEVT_TAB_SEL_CHANGED, m_pref_tabs->GetId());
+    event.SetInt(sel);
+    event.SetEventObject(m_pref_tabs);
+    m_pref_tabs->GetEventHandler()->ProcessEvent(event);
+
+    Refresh();
+}
 
 void PreferencesDialog::Split(const std::string &src, const std::string &separator, std::vector<wxString> &dest)
 {
