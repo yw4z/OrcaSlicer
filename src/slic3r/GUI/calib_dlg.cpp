@@ -348,7 +348,7 @@ void PA_Calibration_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiBMSpeeds->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -563,7 +563,7 @@ void Temp_Calibration_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiStep->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -672,7 +672,7 @@ void MaxVolumetricSpeed_Test_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiStep->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -932,7 +932,7 @@ void VFA_Test_Dlg::on_dpi_changed(const wxRect& suggested_rect)
     m_tiStep->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -1044,7 +1044,7 @@ void Retraction_Test_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiStep->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -1271,7 +1271,7 @@ void Input_Shaping_Freq_Test_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiDampingFactor->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -1473,7 +1473,7 @@ void Input_Shaping_Damp_Test_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiDampingFactorEnd->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -1665,7 +1665,7 @@ void Cornering_Test_Dlg::on_dpi_changed(const wxRect& suggested_rect) {
     m_tiJDEnd->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
     Fit();
 }
 
@@ -1779,7 +1779,8 @@ void FlowRateCalibrationDialog::on_dpi_changed(const wxRect& suggested_rect) {
     m_rbType->Rescale();
 
     Layout();
-    this->Refresh();
+    Refresh();
+    Fit();
 }
 
 }} // namespace Slic3r::GUI
