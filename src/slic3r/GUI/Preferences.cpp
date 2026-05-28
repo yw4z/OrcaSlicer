@@ -112,29 +112,27 @@ public:
 
         wxArrayString lines;
         for (const wxString& para : wxSplit(m_label, '\n')) {
-            if (para.IsEmpty()) {
+            if (para.IsEmpty())
                 lines.Add(wxEmptyString);
-                continue;
-            }
- 
-            wxString currentLine;
-            for (const wxString& word : wxSplit(para, ' ')) {
-                wxString candidate = currentLine.IsEmpty() ? word : (currentLine + ' ' + word);
-                wxSize sz = GetTextExtent(candidate);
- 
-                if (sz.GetWidth() <= clientW)
-                    currentLine = candidate;
-                else {
-                    if (currentLine.IsEmpty())
-                        lines.Add(word); // single word wider than column
+            else {
+                wxString currentLine;
+                for (const wxString& word : wxSplit(para, ' ')) {
+                    wxString candidate = currentLine.IsEmpty() ? word : (currentLine + ' ' + word);
+
+                    if (GetTextExtent(candidate).GetWidth() <= clientW)
+                        currentLine = candidate;
                     else {
-                        lines.Add(currentLine);
-                        currentLine = word;
+                        if (currentLine.IsEmpty())
+                            lines.Add(word); // single word wider than column
+                        else {
+                            lines.Add(currentLine);
+                            currentLine = word;
+                        }
                     }
                 }
+                if (!currentLine.IsEmpty())
+                    lines.Add(currentLine);
             }
-            if (!currentLine.IsEmpty())
-                lines.Add(currentLine);
         }
         m_lines = lines;
  
@@ -161,17 +159,15 @@ public:
             return wxSize(1, lineH);
  
         int maxW = 0;
-        for (const wxString& line : wxSplit(m_label, '\n')) {
-            const int lw = GetTextExtent(line).GetWidth();
-            maxW = wxMax(maxW, lw);
-        }
+        for (const wxString& line : wxSplit(m_label, '\n'))
+            maxW = wxMax(maxW, GetTextExtent(line).GetWidth());
  
         return wxSize(wxMax(1, maxW), totalH);
     }
 
     void Rescale()
     {
-        m_last_wrap_width = -1;
+        m_last_wrap_width = -1; // force re-wrap
         m_lines.Clear();
         InvalidateBestSize();
     }
