@@ -284,11 +284,8 @@ ObjColorPanel::ObjColorPanel(wxWindow *parent, Slic3r::ObjDialogInOut &in_out, c
                 }
             }
 
-                wxStaticText *combox_title = new wxStaticText(m_page_simple, wxID_ANY, _L("view"), wxPoint(FromDIP(216), FromDIP(312)));
-                // combox_title->SetTransparent(true);
-                combox_title->SetBackgroundColour(wxColour(240, 240, 240, 0));
-                combox_title->SetForegroundColour(wxColour(107, 107, 107, 100));
-                auto cur_combox = new ComboBox(m_page_simple, wxID_ANY, wxEmptyString, wxPoint(FromDIP(250), FromDIP(310)), wxSize(FromDIP(100), -1), 0, NULL, wxCB_READONLY);
+                wxStaticText *combox_title = new wxStaticText(m_page_simple, wxID_ANY, _L("view"));
+                auto cur_combox = new ComboBox(m_page_simple, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(FromDIP(100), -1), 0, NULL, wxCB_READONLY);
                 wxArrayString choices = get_all_camera_view_type();
                 for (size_t i = 0; i < choices.size(); i++) { cur_combox->Append(choices[i]); }
                 cur_combox->SetSelection(0);
