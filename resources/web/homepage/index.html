@@ -7,7 +7,7 @@
 <title>homepage</title>
 <link rel="stylesheet" type="text/css" href="../include/global.css" />	<!-- ORCA One for all-->
 <link rel="stylesheet" type="text/css" href="./css/home.css" />
-<link rel="stylesheet" type="text/css" href="./css/dark.css" />	
+<!-- <link rel="stylesheet" type="text/css" href="./css/dark.css" />	 -->
 
 <script type="text/javascript" src="../include/jquery-2.1.1.min.js"></script>
 <script type="text/javascript" src="../include/json2.js"></script>	
@@ -19,11 +19,16 @@
 	
 <script type="text/javascript" src="js/home.js"></script>
 </head>
-<body class="ZScrol" onLoad="OnInit()">
+<body class="thin-scroll" onLoad="OnInit()">
 <div id="LeftBoard" style="display: none;">
 	<div id="LoginArea">
 	<div id="Login1">
-		<div id="Icon1"><img id="BBLIcon" src="../image/logo.png" /></div> <!-- ORCA use square icon for better consistency on UI -->
+		<div id="Icon1"> <!-- ORCA add dark mode support for logo -->
+			<picture> <!-- should work on all browsers after 2019+ -->
+				<source media="(prefers-color-scheme: dark)" srcset="../image/logo-dark.png">
+				<img id="ORCAicon" src="../image/logo-light.png"/>
+			</picture>
+		</div> 
 		<div id="LoginBtn" class="ButtonStyleRegular ButtonTypeWindow" onClick="OnLoginOrRegister()"><span class="trans" tid="t26">login</span> / <span class="trans" tid="t27">register</span></div>
 	</div>
 		
@@ -36,22 +41,22 @@
 	</div>	
 		
 	<div id="NoPluginTip">	
-	    <div id="NoPluginText"><a class="RedFont trans" tid="t76">Network plugin not detected. Click </a><a Class="LinkBtn trans" onClick="BeginDownloadNetworkPlugin()" tid="t77">here</a><a class="RedFont trans" tid="t78"> to install it.</a></div>
+	    <div id="NoPluginText"><a class="RedFont trans" tid="t76">Network plugin not detected. Click </a><a Class="HyperLink trans" onClick="BeginDownloadNetworkPlugin()" tid="t77">here</a><a class="RedFont trans" tid="t78"> to install it.</a></div>
 	</div>
 		
 	</div>
 
 	<div id="BtnArea">
 	    <div menu="recent" class="BtnItem BtnItemSelected" onClick="GotoMenu('recent')">
-			<div class="BtnIcon "><img class="LeftIcon" src="img/i2.png" /></div>
-			<div class="trans" tid="t28">recent</div> 
+			<div class="trans" tid="t28">recent</div>
+			<div class="NavArrow icon16"></div>
 		</div>	
-
 	</div>
 </div>
 
 <div id="RightBoard">
-<div id="ContentBoard" class="ZScrol" board="recent">
+<a class="HyperLink WikiLink">OrcaSlicer Wiki</a>
+<div id="ContentBoard" class="thin-scroll" board="recent">
     <div style="height: 14px;"></div>	
 	<div id="MenuArea">
 <!--		<div class="MenuItem" onClick="OnClickModelDepot()">
@@ -74,9 +79,8 @@
 				<div class="trans TextS1" tid="t33">open project</div>
 				<div class="MenuDesc">3mf</div>
 			</div>
-		</div>		
+		</div>
 	</div>
-	
 	<div id="DebugText"></div>	
 	<div id="RecentFileArea">
 		<div id="RecentTitleBlock">
@@ -160,19 +164,6 @@
 	</div>
 	
     <div style="height: 14px;"></div>	
-	
-	<div id="recnet_context_menu">
-		<div id="CT_Delete_Bar" class="CT_Item" onClick="OnDeleteRecentFile()">
-			<div class="CT_Icon CT_Delete"></div>
-			<div class="CT_Text trans" tid="t88">clear</div>
-		</div>
-		<div id="CT_Folder_Bar" class="CT_Item " onClick="OnExploreRecentFile()" >
-			<div class="CT_Icon CT_Explore"></div>
-			<div class="CT_Text trans" tid="t89">open in explorer </div>
-		</div>				
-    </div>
-	
-	
 </div>
 
 </div>	

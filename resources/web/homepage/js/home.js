@@ -29,7 +29,7 @@ function Set_RecentFile_MouseRightBtn_Event()
 			
 			if(e.which == 3){
 				//鼠标点击了右键+$(this).attr('ff') );
-				ShowRecnetFileContextMenu();
+				//ShowRecnetFileContextMenu();
 			}else if(e.which == 2){
 				//鼠标点击了中键
 			}else if(e.which == 1){
@@ -40,15 +40,32 @@ function Set_RecentFile_MouseRightBtn_Event()
 
 	$(document).bind("contextmenu",function(e){
 		//在这里书写代码，构建个性右键化菜单
-		return false;
-	});	
+		//return false;
+	});
+
+	$(".FileActions").mousedown(function(e){		
+		return false; // Block events on empty area & parent
+	});
+
+	$(".FileActionsReveal").mousedown(function(e){		
+		RightBtnFilePath=$(this).attr('fpath');
+		if(e.which == 1)
+			OnExploreRecentFile();
+		return false; // Block events from parent
+	});
+	$(".FileActionsRemove").mousedown(function(e){		
+		RightBtnFilePath=$(this).attr('fpath');
+		if(e.which == 1)
+			OnDeleteRecentFile();
+		return false; // Block events from parent
+	});
 	
     $(document).mousemove( function(e){
 		MousePosX=e.pageX;
 		MousePosY=e.pageY;
 		
-		let ContextMenuWidth=$('#recnet_context_menu').width();
-		let ContextMenuHeight=$('#recnet_context_menu').height();
+		//let ContextMenuWidth=$('#recnet_context_menu').width();
+		//let ContextMenuHeight=$('#recnet_context_menu').height();
 	
 		let DocumentWidth=$(document).width();
 		let DocumentHeight=$(document).height();
@@ -63,13 +80,13 @@ function Set_RecentFile_MouseRightBtn_Event()
 		var e = e || window.event;
         var elem = e.target || e.srcElement;
         while (elem) {
-			if (elem.id && elem.id == 'recnet_context_menu') {
-                    return;
-			}
+			//if (elem.id && elem.id == 'recnet_context_menu') {
+            //        return;
+			//}
 			elem = elem.parentNode;
 		}		
 		
-		$("#recnet_context_menu").hide();
+		//$("#recnet_context_menu").hide();
 	} );
 
 	
@@ -201,8 +218,14 @@ function ShowRecentFileList( pList )
 		let TmpHtml='<div class="FileItem"  fpath="'+sPath+'"  >'+
 				'<a class="FileTip" title="'+sPath+'"></a>'+
 				'<div class="FileImg" ><img src="'+sImg+'" onerror="this.onerror=null;this.src=\'img/d.png\';"  alt="No Image"  /></div>'+
-				'<div class="FileName TextS1">'+sName+'</div>'+
+				'<div class="FileName">'+sName+'</div>'+
 				'<div class="FileDate">'+sTime+'</div>'+
+				'<div class="FileActions">'+
+					'<div class="FileActionsReveal ButtonStyleRegular ButtonTypeWindow trans" fpath="'+sPath+'">Show in folder</div>'+
+					'<div class="FileActionsRemove ButtonStyleAlert ButtonTypeWindow" fpath="'+sPath+'">'+
+						'<div class="icon16"/></div>'+
+					'</div>'+
+				'</div>'+
 			    '</div>';
 		
 		strHtml+=TmpHtml;
@@ -214,6 +237,7 @@ function ShowRecentFileList( pList )
 	UpdateRecentClearBtnDisplay();
 }
 
+/*
 function ShowRecnetFileContextMenu()
 {
 	$("#recnet_context_menu").offset({top: 10000, left:-10000});
@@ -235,6 +259,7 @@ function ShowRecnetFileContextMenu()
 	
 	$("#recnet_context_menu").offset({top: RealY, left:RealX});
 }
+*/
 
 /*-------RecentFile MX Message------*/
 function SendMsg_GetLoginInfo()
@@ -307,7 +332,7 @@ function OnOpenRecentFile( strPath )
 function OnDeleteRecentFile( )
 {
 	//Clear in UI
-	$("#recnet_context_menu").hide();
+	//$("#recnet_context_menu").hide();
 	
 	let AllFile=$(".FileItem");
 	let nFile=AllFile.length;
@@ -365,7 +390,7 @@ function OnExploreRecentFile( )
 	
 	SendWXMessage( JSON.stringify(tSend) );	
 	
-	$("#recnet_context_menu").hide();
+	//$("#recnet_context_menu").hide();
 }
 
 function OnLogOut()

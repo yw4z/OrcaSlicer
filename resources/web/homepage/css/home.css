@@ -4,7 +4,7 @@
 	border: 0px;
 	margin: 0px;
     font-family: "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-sans;
-	border-color: #D7D7D7;
+	border-color: var(--border-color);
 	user-select: none;
 }
 
@@ -17,43 +17,10 @@ html, body {
     font-size: 16px;	
 }
 
-.ZScrol::-webkit-scrollbar {/*滚动条整体样式*/
-    width: 12px;     /*高宽分别对应横竖滚动条的尺寸*/
-    height: 1px;
-	padding: 2px;
-}
-
-.ZScrol::-webkit-scrollbar-thumb {/*滚动条里面小方块*/
-    border-radius: 6px;
-    -webkit-box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
-	box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
-    background-color: #AAAAAA;
-}
-
-.ZScrol::-webkit-scrollbar-track {/*滚动条里面轨道*/
-        -webkit-box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
-	    box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
-        border-radius: 10px;
-        background: #EDEDED;
-}
-
-
 .RedFont
 {
 	font-size:12px;
 	color: #F07E4A;		
-}
-
-.LinkBtn
-{
-	font-size:12px;
-	color: #00ffea;	
-	cursor: pointer;
-}
-
-.LinkBtn:hover
-{
-	text-decoration:underline;
 }
 
 /*------------------*/
@@ -63,18 +30,31 @@ html, body {
 }
 
 /*------------------*/
+
+.TextS1
+{
+	color:var(--fg-color-text);
+}
+
+.TextS2
+{
+	color:var(--fg-color-label);
+}
+
 body
 {
 	display:flex;
 	justify-content: flex-start;
+	background: var(--bg-color-alt);
 }
 
 #LeftBoard
 {
 	border-right-width: 1px;
 	border-right-style: solid;
-	width:262px;
+	width:220px; /*Match sidebar width with Device / Project / Calibration tabs*/
 	height: 100%;
+	background: var(--bg-color);
 }
 
 #LoginArea
@@ -86,7 +66,7 @@ body
 	justify-content: center;
 	flex-wrap: nowrap;
 	position: relative;
-	width:262px;
+	width:220px; /*Match sidebar width with Device / Project / Calibration tabs*/
 }
 
 
@@ -118,18 +98,13 @@ body
 
 #DownloadBtn
 {
-	color:#00ffd9;
+	color:var(--main-color-fixed);
 }
 
 
-#Icon1
-{
-	margin-right: 10px;	
-}
-
-#BBLIcon
-{
-	height:96px; /*ORCA use bigger icon to fit logo size*/
+#ORCAicon {
+	height:80px; /*ORCA use bigger icon to fit logo size*/
+	margin-top:2px; /*ORCA Align icon vertically with add / open buttons*/
 }
 
 #Login2
@@ -155,52 +130,41 @@ body
 	width: 80%;
 }
 
-#LogoutBtn
+#LoginBtn, #LogoutBtn
 {
 	margin-top: 5px;
 }
 
 /*------------------*/
-#BtnArea
-{
-	
-}
-
-
 .BtnItem
 {
-    padding-left:40px;	
-	height:50px;
-	line-height: 50px;
+    padding-left:22px;
+	padding-right:10px;
+	height:44px;
 	display: flex;
-	justify-content:flex-start;
-	cursor: pointer;
+	justify-content:space-between;
+	align-items: center;
+	border: 1px Solid transparent;
+	color:var(--fg-color-label);
 }
 
 .BtnItem:hover
 {
-	background-color: #BFE1DE; /*ORCA color with %25 opacity*/
+	border-color: var(--main-color);		/*ORCA color*/
 }
 
 .BtnItemSelected
 {
-	background-color: #BFE1DE; /*ORCA color with %25 opacity*/
+	background-color: var(--focus-bg-item); /*ORCA color with %25 opacity*/
+	border-color: var(--focus-bg-item);		/*ORCA color*/
+	font-weight: 700;
+	color:var(--fg-color-text);
 }
 
-.BtnIcon
-{
-	margin-right:6px;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
+.NavArrow {
+	--icon-url:var(--icon-nav-arrow);
+	background-color: var(--fg-color-text);
 }
-
-.LeftIcon
-{
-	width:20px;
-	height: 20px;
-}
-
 
 /*--------------------*/
 #RightBoard
@@ -219,6 +183,13 @@ body
 	flex-direction: column;
 	position: relative;
 	height: 100%;
+}
+
+.WikiLink {
+	position: fixed;
+	right: 20px;
+	top: 20px;
+	z-index: 99;
 }
 
 .TitleSmallIcon
@@ -240,39 +211,41 @@ body
 {
 	border-width: 1px;
 	border-style: solid;
-	border-radius: 12px;
-	height: 101px;
+	border-radius: 13px; /* Same radius with buttons */
+	height: 100px;
 	width: 253px;
-	padding-left: 20px;
+	padding-left: 18px;
 	display: flex;
 	justify-content: flex-start;
 	align-items: center;
 	margin-right: 16px;
-	cursor: pointer;
+	background-color: var(--bg-color);
 }
 
 .MenuItem:hover
 {
-	border-color: #009688;		/*ORCA color*/
-	background-color: #E5F0EE; /*ORCA color with %25 opacity*/
+	border-color: var(--main-color);		/*ORCA color*/
+	background-color: var(--focus-bg-box); /*ORCA color with %25 opacity*/
 }
 
 .MenuIcon
 {
 	margin-right: 1em;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
 }
 
 .MenuIcon img
 {
-	width:56px;
-	height: 56px;
+	width: 64px;
+	height: 64px;
 }
 
 .MenuDesc
 {
-	color: #A8A8A8;
+	color: var(--fg-color-label);
 }
-
 
 .Content-Title
 {
@@ -358,8 +331,7 @@ body
     overflow: hidden;
     word-break: break-all;
 	position: relative;
-	cursor: pointer;
-	margin: 8px;
+	margin: 8px 16px 8px 0; /*remove margin from left and Align contents with title*/
 }
 
 .FileTip
@@ -374,10 +346,17 @@ body
 .FileImg
 {
 	text-align: center;
-	background-color: #E4E4E4;
-	border-radius: 8px;
+	background: var(--bg-color);
+	border-radius: 13px; /* Same radius with buttons */
 	width: 184px;
-	height: 184px;	
+	height: 184px;
+	box-shadow: inset 0 0 1px 1px var(--border-color);
+}
+
+.FileItem:hover .FileImg
+{
+	background-color: var(--focus-bg-box); 
+	box-shadow: inset 0 0 1px 1px var(--main-color) ;
 }
 
 .FileItem img
@@ -389,99 +368,67 @@ body
 	object-fit: cover;
 }
 
-.FileName
-{
+.FileName,
+.FileDate {
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
-    word-break: break-all;	
-}
-
-.FileDate
-{
-	color: #A8A8A8;
-}
-
-#recnet_context_menu
-{
-	position: absolute;
-	margin: 0px;
-	padding: 10px;
-	border: 0px;
-	min-width: 100px;
-	border: 1px solid #D7D7D7;
-    top: 100px;
-	border-radius: 5px;
-	color: #323A3D;
-	background-color: #fff;
-    display: none;
-	z-index: 1;
-}
-
-.CT_Item
-{
-	padding: 4px 12px;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-.CT_Item:hover
-{
-	cursor: pointer;
-	background-color:#009688; /*ORCA color*/
-	border-radius: 4px;
-	color: #fff;
-}
-
-
-.CT_Icon
-{
-	margin-right: 6px;
-	width: 16px;
-	height: 16px;	
-}
-
-#CT_Delete_Bar:hover  .CT_Delete
-{
-	background: url("../img/remove2.svg");
-	background-repeat: no-repeat;
-	background-size: contain;	
-}
-
-.CT_Delete
-{
-	background: url("../img/remove.svg");
-	background-repeat: no-repeat;
-	background-size: contain;	
-}
-
-#CT_Folder_Bar:hover .CT_Explore
-{
-	background: url("../img/open_folder2.svg");
-	background-repeat: no-repeat;
-	background-size: contain;	
-}
-
-.CT_Explore
-{
-	background: url("../img/open_folder.svg");
-	background-repeat: no-repeat;
-	background-size: contain;		
-}
-
-
-.CT_Seperate
-{
-	border-bottom:1px solid  #C5C5C5;
-}
-
-.CT_Text
-{
+    word-break: break-all;
+	color:var(--fg-color-text);
+	height: 20px;
 	line-height: 20px;
-	height: 20px;	
-	display: block;
 }
+
+.FileName {
+	margin-top: 5px;
+}
+
+.FileDate {
+	color: var(--fg-color-disabled);
+}
+
+.FileItem:hover .FileName, 
+.FileItem:hover .FileDate {
+	display: none; 
+}
+
+/*ORCA Hide filename and date on hover and show action buttons*/
+.FileActions {
+	position: relative; /* Allows mouse events for child elements and blocks parent evemts*/
+	display: none;
+	width: 100%;
+	margin-top: 1px;
+}
+
+.FileItem:hover .FileActions {
+	display: flex;
+	justify-content: space-between;
+}
+
+.FileActionsReveal,
+.FileActionsRemove {
+	position: relative; /* Allows mouse events for child elements and blocks parent evemts*/
+	border: 4px solid var(--bg-color-alt); /* increases hitbox size */
+	border-radius: 17px; /* 13 + 4 */
+}
+
+.FileActionsReveal {
+	margin-left: -4px;
+}
+
+.FileActionsRemove {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding-left: 4px;
+	padding-right: 4px;
+	min-width: unset;
+	margin-right: -4px;
+	--icon-url: var(--icon-cross);
+}
+
+.FileActionsRemove       .icon16 {background: var(--fg-color-text)}
+.FileActionsRemove:hover .icon16 {background: #FFF}
 
 /*--------Mall------*/
 #MallBoard
