@@ -136,8 +136,14 @@ TroubleshootDialog::TroubleshootDialog()
     version_font = version_font.Scaled(1.65f); // SetPointSize(18) not works on macOS because it uses a 72 PPI reference
     version->SetFont(version_font);
     version->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
-    auto build        = new Label(this, wxString(GIT_COMMIT_HASH), wxALIGN_CENTRE_HORIZONTAL);
-    build->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
+
+    auto build = new Button(this, wxString(GIT_COMMIT_HASH));
+    build->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    auto hash_url = "https://github.com/OrcaSlicer/OrcaSlicer/commit/" + wxString(GIT_COMMIT_HASH);
+    build->SetToolTip(hash_url);
+    build->Bind(wxEVT_BUTTON, [hash_url](wxCommandEvent &e) {
+         wxLaunchDefaultBrowser(hash_url);
+    });
 
     // SYSTEM INFO
     auto sys_info_lines = [this](bool show_sys) {
@@ -317,7 +323,7 @@ TroubleshootDialog::TroubleshootDialog()
     left_sizer->Add(m_header_logo     , 0, wxEXPAND | wxALIGN_CENTER);
     left_sizer->Add(logo_line         , 0, wxEXPAND       | wxTOP, FromDIP(12));
     left_sizer->Add(version           , 0, wxEXPAND       | wxTOP, FromDIP(6));
-    left_sizer->Add(build             , 0, wxEXPAND       | wxTOP, FromDIP(0));
+    left_sizer->Add(build             , 0, wxALIGN_CENTER | wxTOP, FromDIP(4));
     left_sizer->Add(sys_panel         , 0, wxEXPAND       | wxTOP, FromDIP(15));
     left_sizer->AddStretchSpacer();
     left_sizer->Add(sys_btn_sizer     , 0, wxEXPAND       | wxTOP, FromDIP(15));
