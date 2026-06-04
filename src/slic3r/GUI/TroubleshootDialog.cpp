@@ -495,7 +495,7 @@ wxString TroubleshootDialog::GetProfilesOverview()
                 auto *compatible_printers = dynamic_cast<const ConfigOptionStrings*>(jt->config.option("compatible_printers"));
                 bool is_compatible = false;
                 if (compatible_printers == nullptr || compatible_printers->values.empty()) {
-                    is_compatible = true;
+                    is_compatible = false;
                 }
                 else {
                     for (const auto& p : compatible_printers->values) {
