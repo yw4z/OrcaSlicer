@@ -998,6 +998,7 @@ void TroubleshootDialog::RebuildSystemProfiles()
             try {
                 boost::filesystem::remove_all(sys_folder);
                 EndModal(wxID_REMOVE);
+                RestartApplication();
             }
             catch (const std::exception& e) {
                 BOOST_LOG_TRIVIAL(warning) << "Failed to delete system folder..." << e.what();
@@ -1007,6 +1008,58 @@ void TroubleshootDialog::RebuildSystemProfiles()
             }
         }
     }
+}
+
+bool TroubleshootDialog::RestartApplication()
+{
+    wxString execPath = wxStandardPaths::Get().GetExecutablePath();
+    if (execPath.IsEmpty()) {
+        MessageDialog(this,
+            _L("Failed to determine executable path."),
+            wxString(SLIC3R_APP_FULL_NAME),
+            wxICON_WARNING | wxOK
+        ).ShowModal();
+        return false;
+    }
+
+    // Reconstruct original argv if you need to forward launch arguments,
+    // e.g. "--datadir", profile flags, etc.
+    // wxString args = "--some-flag";
+    // wxString cmd  = wxString::Format(R"("%s" %s)", execPath, args);
+
+#ifdef __WXMSW__
+    wxString cmd = wxString::Format(R"("%s")", execPath);
+    
+    // CreateProcess needs a mutable buffer for lpCommandLine
+    std::vector<wchar_t> cmdBuf(cmd.wc_str(), cmd.wc_str() + cmd.length() + 1);
+
+    STARTUPINFO         si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcess(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        MessageDialog(this, _L("Failed to launch a new instance."), wxString(SLIC3R_APP_FULL_NAME), wxICON_WARNING | wxOK).ShowModal();
+        return false;
+    }
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+#else
+    // macOS / Linux — wxExecute with ASYNC so it doesn't block
+    wxString cmd = wxString::Format(R"("%s")", execPath);
+    long pid = wxExecute(cmd, wxEXEC_ASYNC);
+    if (pid == 0) {
+        MessageDialog(this,
+            _L("Failed to launch a new instance."),
+            wxString(SLIC3R_APP_FULL_NAME),
+            wxICON_WARNING | wxOK
+        ).ShowModal();
+        return false;
+    }
+#endif
+    wxMilliSleep(500);
+
+    // Close this instance cleanly
+    wxGetApp().GetTopWindow()->Close(true); // triggers EVT_CLOSE, runs cleanup
+
+    return true;
 }
 
 void TroubleshootDialog::ClearLogs()

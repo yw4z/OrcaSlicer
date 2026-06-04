@@ -66,6 +66,7 @@ protected:
 
     void     PackAll();
     void     RebuildSystemProfiles();
+    bool     RestartApplication();
     void     ClearLogs();
     void     UpdateLogsStorage();
 
