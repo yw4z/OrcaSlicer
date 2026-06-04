@@ -77,6 +77,7 @@ protected:
     static std::map<std::string, std::string> parse_lscpu_etc(const std::string& name, char delimiter);
 #endif
 
+    bool     ExportAsJson(const wxString& json_data, const wxString& export_name = wxEmptyString);
     bool     ExportAsZip(const std::vector<wxString>& sources, const wxString& export_name);
     bool     AddToZip(wxZipOutputStream& zip, const wxString& fullPathOrTextData, const wxString& rootDir);
     bool     SaveAsZip(const std::vector<wxString>& sourcePaths, const wxString& zipFullPath);

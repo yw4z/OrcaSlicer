@@ -273,12 +273,9 @@ TroubleshootDialog::TroubleshootDialog()
     prf_sys_cache_szr->Add(prf_sys_cache_btn, 0, wxALIGN_CENTER_VERTICAL);
 
     auto prf_loaded_szr = create_label(_L("Loaded profiles overview"), _L("This section shows information for loaded profiles"));
-    auto prf_loaded_btn = create_btn(_L("Copy"), _L("Copies detailed overview of loaded profiles in json format to clipboard"));
+    auto prf_loaded_btn = create_btn(_L("Export") + dots, _L("Exports detailed overview of loaded profiles in json format"));
     prf_loaded_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
-        wxClipboardLocker lock;
-        if (!lock)
-            return false;
-        return wxTheClipboard->SetData(new wxTextDataObject(GetProfilesOverview()));
+        return ExportAsJson(GetProfilesOverview(),"ProfilesOverview");
     });
     prf_loaded_szr->Add(prf_loaded_btn, 0, wxALIGN_CENTER_VERTICAL);
 
@@ -1133,6 +1130,49 @@ void TroubleshootDialog::BrowseFolder(std::string path)
         else
             ::wxExecute(const_cast<char**>(argv), wxEXEC_ASYNC);
     #endif
+}
+
+bool TroubleshootDialog::ExportAsJson(const wxString& json_data, const wxString& export_name)
+{
+    wxString home = wxGetHomeDir();
+
+    wxFileName desktop(home, "");
+    desktop.AppendDir("Desktop");
+    wxString defaultPath = wxDirExists(desktop.GetPath()) ? desktop.GetPath() : home;
+
+    wxFileDialog dialog(this, _L("Choose where to save the exported JSON file"), defaultPath,
+        export_name.IsEmpty() ? "export.json" : export_name + ".json",
+        "JSON files (*.json)|*.json",
+        wxFD_SAVE | wxFD_OVERWRITE_PROMPT
+    );
+
+    if (dialog.ShowModal() != wxID_OK)
+        return false;
+
+    wxString jsonPath = dialog.GetPath();
+
+    wxFile file(jsonPath, wxFile::write);
+    if (!file.IsOpened()) {
+        MessageDialog(this, _L("Export failed\nPlease check write permissions or file in use by another application"),
+            wxString(SLIC3R_APP_FULL_NAME), wxICON_WARNING | wxOK
+        ).ShowModal();
+        return false;
+    }
+
+    bool success = file.Write(json_data, wxConvUTF8);
+    file.Close();
+
+    if (!success) {
+        wxRemoveFile(jsonPath);
+        MessageDialog(this, _L("Export failed\nPlease check write permissions or file in use by another application"),
+            wxString(SLIC3R_APP_FULL_NAME), wxICON_WARNING | wxOK
+        ).ShowModal();
+        return false;
+    }
+
+    MessageDialog(this, _L("Export successful"), wxString(SLIC3R_APP_FULL_NAME), wxICON_INFORMATION | wxOK).ShowModal();
+
+    return true;
 }
 
 bool TroubleshootDialog::ExportAsZip(const std::vector<wxString>& sources, const wxString& export_name)
