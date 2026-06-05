@@ -33,7 +33,7 @@ html, body {
 /*------------------*/
 #DebugText
 {
-	height:30px;
+	max-height:30px; /* it will only takes space when it has content with max-height */
 }
 
 /*------------------*/
@@ -47,8 +47,7 @@ body
 #LeftBoard
 {
 	display: none;  /* shown by cloud_providers_info from backend */
-	border-right-width: 1px;
-	border-right-style: solid;
+	border-right: 1px solid var(--border-color);
 	width: 250px; /*Match sidebar width with Device / Project / Calibration tabs*/
 	height: 100%;
 	background: var(--bg-color-alt);
@@ -74,11 +73,8 @@ body
 
 .CloudSection {
 	border-top: 1px solid var(--border-color);
+	box-shadow: 0 1px 0 var(--border-color);
 	width:100%;
-}
-
-.CloudSection:last-child {
-	border-bottom: 1px solid var(--border-color);
 }
 
 .CloudHeader {
@@ -161,10 +157,6 @@ body
 
 #OrcaLogin2 {
 	display: none;
-}
-
-#OrcaStatusText {
-	font-size: 12px;
 }
 
 #OrcaCloudSection .status-dot.online {
