@@ -280,7 +280,7 @@ void ModeSwitchButton::SetSelection(int selection)
 
 void ModeSwitchButton::SelectAndNotify(int selection)
 {
-    if (!IsEnabled())
+    if (m_dev_mode || !IsEnabled())
         return;
 
     SetSelection(selection);
@@ -310,6 +310,14 @@ bool ModeSwitchButton::Enable(bool enable /* = true */)
     return changed;
 }
 
+void ModeSwitchButton::SetDevMode(bool enable /* = true */)
+{
+    if (enable != m_dev_mode){
+        m_dev_mode = enable;
+        Refresh();
+    }
+}
+
 void ModeSwitchButton::doRender(wxDC& dc)
 {
     const wxRect bounds = GetClientRect();
@@ -328,7 +336,7 @@ void ModeSwitchButton::doRender(wxDC& dc)
     dc.SetBrush(wxBrush(background_color.colorForStates(states)));
     dc.DrawRoundedRectangle(bounds, v_center);
 
-    if (m_enabled) {
+    if (!m_dev_mode) {
         double dot_dist = (bounds.width - bounds.height) * 0.50;
 
         // Track
@@ -368,6 +376,11 @@ void ModeSwitchButton::doRender(wxDC& dc)
 
 void ModeSwitchButton::mouseDown(wxMouseEvent& event)
 {
+    if (m_dev_mode){
+        Slic3r::GUI::wxGetApp().troubleshoot();
+        return;
+    }
+
     if (!IsEnabled()) {
         event.Skip();
         return;

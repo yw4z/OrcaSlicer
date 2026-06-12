@@ -63,6 +63,8 @@ public:
     void msw_rescale() { Rescale(); }
 
     bool Enable(bool enable = true) override;
+    void SetDevMode(bool enable = true);
+    bool GetDevMode() const {return m_dev_mode;};
 
 protected:
     void doRender(wxDC& dc) override;
@@ -79,6 +81,7 @@ private:
     int      m_selection { 0 };
     bool     m_pressed   { false };
     bool     m_enabled   { true };
+    bool     m_dev_mode  { false };
     wxString m_tooltips[3];
     StateColor dot_active;
     StateColor dot_dimmed;
