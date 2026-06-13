@@ -1420,7 +1420,7 @@ bool AmsMapingPopup::ProcessLeftDown(wxMouseEvent &event)
 void AmsMapingPopup::paintEvent(wxPaintEvent &evt)
 {
     wxPaintDC dc(this);
-    dc.SetPen(StateColor::darkModeColorFor(wxColour("#DBDBDB"))); // ORCA fix popup border color for dark mode
+    dc.SetPen(wxPen(StateColor::darkModeColorFor(wxColour("#009688")),FromDIP(2))); // ORCA use colorful border for separation
     dc.SetBrush(*wxTRANSPARENT_BRUSH);
     dc.DrawRoundedRectangle(0, 0, GetSize().x, GetSize().y, 0);
 }
