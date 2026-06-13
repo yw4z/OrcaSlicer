@@ -813,7 +813,7 @@ void AmsMapingPopup::msw_rescale()
     m_split_left_line->SetMaxSize(wxSize(-1, 1));
     sizer_split_ams->Add(0, 0, 0, wxEXPAND, 0);
     sizer_split_ams->Add(ams_title_text, 0, wxALIGN_CENTER, 0);
-    sizer_split_ams->Add(m_split_left_line, 1, wxEXPAND, 0);
+    sizer_split_ams->Add(m_split_left_line, 1, wxALIGN_CENTER, 0); // ORCA align line vertically
     return sizer_split_ams;
  }
 
