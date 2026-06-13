@@ -3216,10 +3216,12 @@ SyncNozzleAndAmsDialog::SyncNozzleAndAmsDialog(InputInfo &input_info)
                               wxGetApp().preset_bundle->get_printer_extruder_count() == 1 ? 370 :320,
                               input_info.dialog_pos,
                               90,
+                              (
                               wxGetApp().preset_bundle->get_printer_extruder_count() == 1 ? _L("Successfully synchronized nozzle information.") :
-                                                                                            _L("Successfully synchronized nozzle and AMS number information."),
-                              _L("Continue to sync filaments"),
-                              _CTX(L_CONTEXT("Cancel", "Sync_Nozzle_AMS"), "Sync_Nozzle_AMS"),
+                                                                                            _L("Successfully synchronized nozzle and AMS number information.")
+                              ) + "\n\n" + _L("Do you want to continue to sync filaments?"),
+                              _L("Yes"), // ORCA use shorter text for buttons
+                              _CTX(L_CONTEXT(_L("No"), "Sync_Nozzle_AMS"), "Sync_Nozzle_AMS"),
                               DisappearanceMode::TimedDisappearance)
     , m_input_info(input_info)
 {
