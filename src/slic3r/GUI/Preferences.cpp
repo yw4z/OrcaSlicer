@@ -1070,6 +1070,10 @@ wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxString too
             }
         }
 
+        if (param == "show_unsupported_presets") {
+            wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_FILAMENT);
+        }
+
         if (param == "enable_high_low_temp_mixed_printing") {
             if (checkbox->GetValue()) {
                 const wxString warning_title = _L("Bed Temperature Difference Warning");
@@ -1745,6 +1749,30 @@ void PreferencesDialog::create_items()
     g_sizer = f_sizers.back();
     g_sizer->AddGrowableCol(0, 1);
 
+    //// GRAPHICS > Realistic view
+    g_sizer->Add(create_item_title(_L("Realistic View")), 1, wxEXPAND);
+
+    auto item_realistic_phong = create_item_checkbox(
+        _L("Phong shading"),
+        _L("Uses Phong shading inside realistic view.")
+        , SETTING_OPENGL_REALISTIC_PHONG
+    );
+    g_sizer->Add(item_realistic_phong);
+
+    auto item_realistic_ssao = create_item_checkbox(
+        _L("SSAO ambient occlusion"),
+        _L("Applies SSAO in realistic view."),
+        SETTING_OPENGL_PHONG_SSAO
+    );
+    g_sizer->Add(item_realistic_ssao);
+
+    auto item_realistic_shadows = create_item_checkbox(
+        _L("Shadows"),
+        _L("Renders cast shadows on the plate in realistic view."),
+        SETTING_OPENGL_PHONG_BASIC_PLATE_SHADOWS
+    );
+    g_sizer->Add(item_realistic_shadows);
+
     //// GRAPHICS > Anti-aliasing
     g_sizer->Add(create_item_title(_L("Anti-aliasing")), 1, wxEXPAND);
 
@@ -1875,6 +1903,26 @@ void PreferencesDialog::create_items()
     //// ASSOCIATE TAB 
     /////////////////////////////////////
 #ifdef _WIN32
+    // MSIX: associations are declared in the package manifest and defaults are
+    // managed by Windows Settings; the runtime registry toggles below cannot work.
+    // Show a minimal page that sends the user to Windows' Default Apps settings instead.
+    if (is_running_in_msix()) {
+        m_pref_tabs->AppendItem(_L("Associate"));
+        f_sizers.push_back(new wxFlexGridSizer(1, 1, v_gap, 0));
+        g_sizer = f_sizers.back();
+        g_sizer->AddGrowableCol(0, 1);
+
+        g_sizer->Add(create_item_title(_L("Associate files to OrcaSlicer")), 1, wxEXPAND);
+
+        auto item_open_default_apps = create_item_button(
+            _L("File associations for the Microsoft Store version are managed by Windows Settings."),
+            _L("Open Windows Default Apps Settings"), "", "",
+            []() { wxLaunchDefaultBrowser("ms-settings:defaultapps"); });
+        g_sizer->Add(item_open_default_apps);
+
+        g_sizer->AddSpacer(FromDIP(10));
+        sizer_page->Add(g_sizer, 0, wxEXPAND);
+    } else {
     m_pref_tabs->AppendItem(_L("Associate"));
     f_sizers.push_back(new wxFlexGridSizer(1, 1, v_gap, 0));
     g_sizer = f_sizers.back();
@@ -1909,6 +1957,7 @@ void PreferencesDialog::create_items()
 
     g_sizer->AddSpacer(FromDIP(10));
     sizer_page->Add(g_sizer, 0, wxEXPAND);
+    }
 #endif // _WIN32
 
     //////////////////////////
@@ -1927,6 +1976,9 @@ void PreferencesDialog::create_items()
 
     auto item_ams_blacklist    = create_item_checkbox(_L("Skip AMS blacklist check"), "", "skip_ams_blacklist_check");
     g_sizer->Add(item_ams_blacklist);
+  
+    auto item_show_unsupported = create_item_checkbox(_L("Show unsupported presets"), _L("Show incompatible/unsupported presets in the printer and filament dropdown lists. These presets cannot be selected."), "show_unsupported_presets");
+    g_sizer->Add(item_show_unsupported);
 
     //// DEVELOPER > Experimental Features
     g_sizer->Add(create_item_title(_L("Experimental Features")), 1, wxEXPAND);
@@ -1935,6 +1987,7 @@ void PreferencesDialog::create_items()
     g_sizer->Add(item_keep_painting);
 
     //// DEVELOPER > Storage
+
     g_sizer->Add(create_item_title(_L("Storage")), 1, wxEXPAND);
     auto item_allow_abnormal_storage = create_item_checkbox(_L("Allow Abnormal Storage"), _L("This allows the use of Storage that is marked as abnormal by the Printer.\nUse at your own risk, can cause issues!"), "allow_abnormal_storage");
     g_sizer->Add(item_allow_abnormal_storage);
