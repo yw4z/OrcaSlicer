@@ -262,6 +262,7 @@ ModeSwitchButton::ModeSwitchButton(wxWindow* parent, wxWindowID id)
     m_tooltips[0] = _L("Simple settings");
     m_tooltips[1] = _L("Advanced settings");
     m_tooltips[2] = _L("Expert settings");
+    m_tooltips[3] = _L("Developer mode") + "\n" + _L("Launch troubleshoot center") + "...";
 
     Bind(wxEVT_LEFT_DOWN, &ModeSwitchButton::mouseDown, this);
     Bind(wxEVT_LEFT_UP, &ModeSwitchButton::mouseReleased, this);
@@ -314,6 +315,7 @@ void ModeSwitchButton::SetDevMode(bool enable /* = true */)
 {
     if (enable != m_dev_mode){
         m_dev_mode = enable;
+        update_tooltip();
         Refresh();
     }
 }
@@ -438,7 +440,10 @@ wxRect ModeSwitchButton::thumb_rect_for(int selection) const
 
 void ModeSwitchButton::update_tooltip()
 {
-    SetToolTip(m_tooltips[m_selection]);
+    if (m_dev_mode)
+        SetToolTip(m_tooltips[3]);
+    else
+        SetToolTip(m_tooltips[m_selection]);
 }
 
 MultiSwitchButton::MultiSwitchButton(wxWindow *parent, wxWindowID id, const wxPoint &pos, const wxSize &size, long style)
