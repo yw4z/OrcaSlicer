@@ -1267,9 +1267,8 @@ void GLGizmoMeasure::render_dimensioning()
             ImVec2 txt_size = ImGui::CalcTextSize(txt.c_str());
             const ImGuiStyle& style = ImGui::GetStyle();
             //ImGui::SetCursorScreenPos({ pos.x + style.FramePadding.x, pos.y });
-            // ORCA improved layout
+            // ORCA corrected style and layout
             bool is_editable = (m_hit_different_volumes.size() < 2 && wxGetApp().plater()->canvas3D()->get_canvas_type() == GLCanvas3D::ECanvasType::CanvasView3D);
-            //WORK_AREA
             ImGui::PushStyleColor(ImGuiCol_Button       , {1.f, 1.f, 1.f, .75f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {1.f, 1.f, 1.f, is_editable ? .9f : .75f});
             ImGui::PushStyleColor(ImGuiCol_ButtonActive , {1.f, 1.f, 1.f, .75f});
@@ -1348,6 +1347,7 @@ void GLGizmoMeasure::render_dimensioning()
 
             m_imgui->disable_background_fadeout_animation();
             ImGui::PushItemWidth(value_str_width);
+            // ORCA corrected style and layout
             ImGui::PushStyleColor(ImGuiCol_FrameBg       , {1.f, 1.f, 1.f, .75f});
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, {1.f, 1.f, 1.f, 1.f});
             ImGui::PushStyleColor(ImGuiCol_FrameBgActive , {1.f, 1.f, 1.f, 1.f});
