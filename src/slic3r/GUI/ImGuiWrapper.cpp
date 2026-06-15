@@ -957,6 +957,34 @@ bool ImGuiWrapper::glyph_button(wchar_t icon_char, ImVec2 icon_size)
     return clicked;
 }
 
+// ORCA reset button that invisible when not enabled
+// it always rendered so line height stays same unlike other solutions
+bool ImGuiWrapper::revert_button(const std::string& label_id, const std::string& tooltip_str, const bool enabled) {
+    disabled_begin(!enabled);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+    ImGui::PushStyleColor(ImGuiCol_Button, {0.25f, 0.25f, 0.25f, 0.0f});
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {0, 0, 0, 0});
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  {0, 0, 0, 0});
+    ImGui::PushStyleColor(ImGuiCol_Text, {1, 1, 1, enabled ? 1.f : 0.f});
+
+    const bool revert = button(wxString(ImGui::RevertBtn) + "##" + wxString::FromUTF8(label_id));
+
+    if (ImGui::IsItemHovered()){
+        if(tooltip_str.empty())
+            tooltip(_u8L("Reset"), ImGui::GetFontSize() * 20.0f);
+        else
+            tooltip(tooltip_str.c_str(), ImGui::GetFontSize() * 20.0f);
+    }
+
+    ImGui::PopStyleColor(4);
+    ImGui::PopStyleVar(1);
+
+    disabled_end();
+
+    return revert;
+};
+
 bool ImGuiWrapper::radio_button(const wxString &label, bool active)
 {
     auto label_utf8 = into_u8(label);
@@ -2754,6 +2782,18 @@ void ImGuiWrapper::push_radio_style(const float scale)
 void ImGuiWrapper::pop_radio_style()
 {
     ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(1);
+}
+
+// ORCA Reduces vertical / horizontal spacing for next item (or items between used lines)
+// helpful when imcreasing releation between controls like title & input. also saves screen space
+void ImGuiWrapper::push_compact_spacing(const float scale)
+{
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2.f * scale, 2.f * scale));
+}
+
+void ImGuiWrapper::pop_compact_spacing()
+{
     ImGui::PopStyleVar(1);
 }
 
