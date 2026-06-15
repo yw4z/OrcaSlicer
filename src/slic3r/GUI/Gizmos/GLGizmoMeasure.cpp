@@ -2026,6 +2026,9 @@ void GLGizmoMeasure::show_distance_xyz_ui()
         // ORCA existing of values should check before creating table otherwise it will draw blank table
         bool hasAnyValue       = hasAngle || hasDistance || hasDirectDistance || hasDistanceXYZ; 
 
+        if(hasAnyValue) // add seperator only when it needed
+            ImGui::Separator();
+
         if(hasAnyValue && ImGui::BeginTable("Measure", 3)){
 
             if (hasAngle)
@@ -2063,6 +2066,8 @@ void GLGizmoMeasure::show_distance_xyz_ui()
 
     // ORCA show build volume when there is no selection
     if (isMeasure && !(hasFirstValue || hasSecondValue)) {
+        ImGui::Separator();  // add seperator only when it needed
+
         Selection& selection = m_parent.get_selection();
         const Selection::IndicesList& idxs = selection.get_volume_idxs();
 
@@ -2093,6 +2098,7 @@ void GLGizmoMeasure::show_face_face_assembly_common() {
         m_selected_features.second.feature->get_type() == Measure::SurfaceFeatureType::Plane) {
         auto &action                         = m_assembly_action;
 
+        ImGui::Separator(); // Show separator only when its needed
         m_imgui->disabled_begin(!(action.can_set_to_center_coincidence));
         {
             if (m_imgui->button(_L("Center coincidence"))) {
@@ -2194,7 +2200,7 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
     init_render_input_window();
     show_selection_ui();
 
-    ImGui::Separator();
+    //ImGui::Separator();
     show_distance_xyz_ui();
 
     ImGui::Separator();

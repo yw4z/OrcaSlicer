@@ -103,13 +103,15 @@ void GLGizmoAssembly::on_render_input_window(float x, float y, float bottom_limi
         ;
     }
     show_selection_ui();
+    render_input_window_warning(m_same_model_object); // ORCA show warning under selection section
 
-    ImGui::Separator();
+    //ImGui::Separator();
+    // actions
     show_face_face_assembly_common(); // ORCA show it under actions section
     show_face_face_assembly_senior();
-    show_distance_xyz_ui();
 
-    render_input_window_warning(m_same_model_object); // ORCA show warning under actions section
+    // measurements
+    show_distance_xyz_ui();
 
     ImGui::Separator();
     float f_scale =m_parent.get_gizmos_manager().get_layout_scale();
