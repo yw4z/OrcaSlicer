@@ -2013,46 +2013,53 @@ void GLGizmoMeasure::show_distance_xyz_ui()
     bool isAssemblyFc   = m_assembly_mode == AssemblyMode::FACE_FACE;
     bool hasFirstValue  = m_selected_features.first.feature.has_value();
     bool hasSecondValue = m_selected_features.second.feature.has_value();
-    bool hasDistanceXYZ = false;
 
-    if (isMeasure && hasSecondValue && ImGui::BeginTable("Measure", 3)) {
+    if (hasSecondValue) {
         const Measure::MeasurementResult &measure = m_measurement_result;
-
-        if (measure.angle.has_value())
-            add_measure_row_to_table(_u8L("Angle"), format_double(Geometry::rad2deg(measure.angle->angle)) + "°", "ClipboardAngle");
-
         const bool show_strict = measure.distance_strict.has_value() &&
-                                    (!measure.distance_infinite.has_value() || std::abs(measure.distance_strict->dist - measure.distance_infinite->dist) > EPSILON);
+                               (!measure.distance_infinite.has_value() || std::abs(measure.distance_strict->dist - measure.distance_infinite->dist) > EPSILON);
+        bool hasAngle          = measure.angle.has_value();
+        bool hasDistance       = measure.distance_infinite.has_value() && isMeasure;
+        bool hasDirectDistance = show_strict && (isMeasure || (isAssembly && isAssemblyPt));
+        bool hasDistanceXYZ    = measure.distance_xyz.has_value() && isMeasure;
+        
+        // ORCA existing of values should check before creating table otherwise it will draw blank table
+        bool hasAnyValue       = hasAngle || hasDistance || hasDirectDistance || hasDistanceXYZ; 
 
-        if (measure.distance_infinite.has_value() && isMeasure) {
-            double distance = measure.distance_infinite->dist;
-            if (m_use_inches) distance = GizmoObjectManipulation::mm_to_in * distance;
-            add_measure_row_to_table(show_strict ? _u8L("Perpendicular distance") : _u8L("Distance"), format_double(distance) + m_units, "ClipboardDistanceInfinite");
-        }
-        if (show_strict && (isMeasure || (isAssembly && isAssemblyPt))) {
-            double distance = measure.distance_strict->dist;
-            if (m_use_inches)
-                distance = GizmoObjectManipulation::mm_to_in * distance;
-            add_measure_row_to_table(_u8L("Direct distance"), format_double(distance) + m_units, "ClipboardDistanceStrict");
-        }
-        if (measure.distance_xyz.has_value() && isMeasure) {
-            hasDistanceXYZ = true;
-            Vec3d distance = *measure.distance_xyz;
-            if (m_use_inches) distance = GizmoObjectManipulation::mm_to_in * distance;
-            if (measure.distance_xyz->norm() > EPSILON) {
-                //add_measure_row_to_table(_u8L("Distance XYZ"), format_vec3(distance), "ClipboardDistanceXYZ");
-                // ORCA use XYZ distances on new lines. window cannot shrink back its width
-                add_measure_row_to_table(_u8L("Distance") + " X", format_double(double(distance[0])), "ClipboardDistanceX");
-                add_measure_row_to_table(_u8L("Distance") + " Y", format_double(double(distance[1])), "ClipboardDistanceY");
-                add_measure_row_to_table(_u8L("Distance") + " Z", format_double(double(distance[2])), "ClipboardDistanceZ");
+        if(hasAnyValue && ImGui::BeginTable("Measure", 3)){
+
+            if (hasAngle)
+                add_measure_row_to_table(_u8L("Angle"), format_double(Geometry::rad2deg(measure.angle->angle)) + "°", "ClipboardAngle");
+
+            if (hasDistance) {
+                double distance = measure.distance_infinite->dist;
+                if (m_use_inches) distance = GizmoObjectManipulation::mm_to_in * distance;
+                add_measure_row_to_table(show_strict ? _u8L("Perpendicular distance") : _u8L("Distance"), format_double(distance) + m_units, "ClipboardDistanceInfinite");
             }
+            if (hasDirectDistance) {
+                double distance = measure.distance_strict->dist;
+                if (m_use_inches)
+                    distance = GizmoObjectManipulation::mm_to_in * distance;
+                add_measure_row_to_table(_u8L("Direct distance"), format_double(distance) + m_units, "ClipboardDistanceStrict");
+            }
+            if (hasDistanceXYZ) {
+                Vec3d distance = *measure.distance_xyz;
+                if (m_use_inches) distance = GizmoObjectManipulation::mm_to_in * distance;
+                if (measure.distance_xyz->norm() > EPSILON) {
+                    //add_measure_row_to_table(_u8L("Distance XYZ"), format_vec3(distance), "ClipboardDistanceXYZ");
+                    // ORCA use XYZ distances on new lines. window cannot shrink back its width
+                    add_measure_row_to_table(_u8L("Distance") + " X", format_double(double(distance[0])), "ClipboardDistanceX");
+                    add_measure_row_to_table(_u8L("Distance") + " Y", format_double(double(distance[1])), "ClipboardDistanceY");
+                    add_measure_row_to_table(_u8L("Distance") + " Z", format_double(double(distance[2])), "ClipboardDistanceZ");
+                }
+            }
+            ImGui::EndTable();
         }
-        ImGui::EndTable();
-    }
 
-    // ORCA render XYZ cords outside of table to render in single line
-    if (m_distance.norm() > 0.01 && !(isAssembly && isAssemblyFc) && !hasDistanceXYZ)
-        add_edit_distance_xyz_box(m_distance);
+        // ORCA render XYZ cords outside of table to render in single line
+        if (!hasDistanceXYZ && m_distance.norm() > 0.01 && !(isAssembly && isAssemblyFc))
+            add_edit_distance_xyz_box(m_distance);
+    }
 
     // ORCA show build volume when there is no selection
     if (isMeasure && !(hasFirstValue || hasSecondValue)) {
