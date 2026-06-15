@@ -1292,8 +1292,9 @@ void GLGizmoMeasure::render_dimensioning()
             }
 
             ImGui::PopStyleColor(5);
+            ImGui::PopStyleVar(1); // FrameBorderSize
             m_imgui->end();
-            ImGui::PopStyleVar(4);
+            ImGui::PopStyleVar(3);
         }
 
         if (m_editing_distance && !ImGui::IsPopupOpen("distance_popup"))
@@ -1584,7 +1585,7 @@ void GLGizmoMeasure::render_dimensioning()
         }
         m_imgui->end();
         ImGui::PopStyleColor(5);
-        ImGui::PopStyleVar(1);
+        ImGui::PopStyleVar(2);
         ImGuiWrapper::pop_common_window_style();
     };
 
