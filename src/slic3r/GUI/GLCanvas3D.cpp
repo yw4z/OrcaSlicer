@@ -8644,14 +8644,17 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
 
             m_sel_plate_toolbar.m_items[i]->percent = plate_list.get_plate(i)->get_slicing_percent();
 
+            bool can_slice = plate_list.get_plate(i)->can_slice();
+            bool is_empty  = plate_list.get_plate(i)->empty();
+
             if (plate_list.get_plate(i)->is_slice_result_valid()) {
-                if (plate_list.get_plate(i)->can_slice() && plate_list.get_plate(i)->is_slice_result_ready_for_print())
+                if ((!is_empty && can_slice) && plate_list.get_plate(i)->is_slice_result_ready_for_print())
                     m_sel_plate_toolbar.m_items[i]->slice_state = IMToolbarItem::SliceState::SLICED;
                 else
                     m_sel_plate_toolbar.m_items[i]->slice_state = IMToolbarItem::SliceState::SLICE_FAILED;
             }
             else {
-                if (!plate_list.get_plate(i)->can_slice() || (plate_list.get_plate(i)->has_printable_instances() && !plate_list.get_plate(i)->can_slice()))
+                if ((!is_empty && !can_slice) || (plate_list.get_plate(i)->has_printable_instances() && !plate_list.get_plate(i)->can_slice()))
                     m_sel_plate_toolbar.m_items[i]->slice_state = IMToolbarItem::SliceState::SLICE_FAILED;
                 else {
                     if (plate_list.get_plate(i)->get_slicing_percent() < 0.0f)
@@ -8918,17 +8921,12 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         // Translate window pos to abs pos, also account for the window scrolling
         auto hover_rect = button_pos + ImGui::GetWindowPos() - ImGui::GetCurrentWindow()->Scroll;
         bool is_plate_hovered = ImGui::IsMouseHoveringRect(hover_rect, hover_rect + button_size);
-        if (item->selected) {
+
+        if (item->selected)
             ImGui::PushStyleColor(ImGuiCol_Border, is_plate_hovered ? ImGuiWrapper::COL_ORCA_HOVER : ImGuiWrapper::COL_ORCA);
-        }
-        else {
-            if (is_plate_hovered) {
-                ImGui::PushStyleColor(ImGuiCol_Border, button_hover);
-            }
-            else {
-                ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(.0f, .0f, .0f, .0f));
-            }
-        }
+        else
+            ImGui::PushStyleColor(ImGuiCol_Border, is_plate_hovered ? button_hover : ImVec4(.0f, .0f, .0f, .0f));
+
         if(ImGui::Button("##invisible_button", button_size)){
             // ORCA switch back to prepare tab when clicked failed plates
             if (!is_empty && (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED)){
@@ -8986,14 +8984,14 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             
         };
 
-        if (can_slice && item->slice_state == IMToolbarItem::SliceState::UNSLICED) {
+        if (is_empty){
+            ImGui::GetWindowDrawList()->AddRectFilled(start_pos, end_pos, plate_dim, button_radius);
+        } else if (can_slice && item->slice_state == IMToolbarItem::SliceState::UNSLICED) {
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, end_pos, plate_dim, button_radius);
             // ORCA add slice button to guide user
-            if (!is_empty){
-                ImVec4 confirm_active = m_is_dark ? ImGuiWrapper::COL_ORCA_DARK : ImGuiWrapper::COL_ORCA;
-                ImVec4 confirm_hover  = m_is_dark ? ImGuiWrapper::COL_ORCA_HOVER_DARK : ImGuiWrapper::COL_ORCA_HOVER;
-                draw_info_btn(_u8L("Slice"), !(m_process && m_process->running()) ? (is_plate_hovered ? confirm_hover : confirm_active) : window_bg); // use disabled if slicing in progress
-            }
+            ImVec4 confirm_active = m_is_dark ? ImGuiWrapper::COL_ORCA_DARK       : ImGuiWrapper::COL_ORCA;
+            ImVec4 confirm_hover  = m_is_dark ? ImGuiWrapper::COL_ORCA_HOVER_DARK : ImGuiWrapper::COL_ORCA_HOVER;
+            draw_info_btn(_u8L("Slice"), !(m_process && m_process->running()) ? (is_plate_hovered ? confirm_hover : confirm_active) : window_bg); // use disabled if slicing in progress
         } else if (item->slice_state == IMToolbarItem::SliceState::SLICING) {
             ImVec2 rect_size = ImVec2(button_width, button_height * item->percent / 100.0f);
             ImVec2 rect_start_pos = ImVec2(start_pos.x, start_pos.y + rect_size.y);
@@ -9001,8 +8999,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, rect_end_pos, plate_bg, button_radius);
             ImGui::GetWindowDrawList()->AddRectFilled(rect_start_pos, rect_end_pos, plate_dim, button_radius);
             // ORCA show percentage as text
-            if (!is_empty) // dont show when plate empty
-                draw_info_btn("%" + std::to_string(int(item->percent)), window_bg);
+            draw_info_btn("%" + std::to_string(int(item->percent)), window_bg);
         } else if (!is_empty && (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED)) {
             // Draw exclamation mark that matches with icon
             ImVec2 center  = ImVec2(start_pos.x + button_width/2, start_pos.y + button_height/2 - ImGui::GetTextLineHeight() * .5f);
