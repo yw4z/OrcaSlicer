@@ -8797,10 +8797,14 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         // draw image
         ImVec2 button_start_pos = ImGui::GetCursorScreenPos();
 
+        auto stats_hover_rect = button_start_pos + ImGui::GetWindowPos() - ImGui::GetCurrentWindow()->Scroll;
+        bool is_stats_hovered = ImGui::IsMouseHoveringRect(stats_hover_rect, stats_hover_rect + size);
+
         if (all_plates_stats_item->selected) {
-            ImGui::PushStyleColor(ImGuiCol_Button, button_active);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, button_active);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, button_active);
+            auto border_color = is_stats_hovered ? ImGuiWrapper::COL_ORCA_HOVER : ImGuiWrapper::COL_ORCA;
+            ImGui::PushStyleColor(ImGuiCol_Button       , border_color);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, border_color);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive , border_color);
         }
         else {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(128.0f, 128.0f, 128.0f, 0.0f));
