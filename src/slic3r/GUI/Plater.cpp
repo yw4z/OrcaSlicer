@@ -10319,7 +10319,8 @@ void Plater::priv::on_action_select_sliced_plate(wxCommandEvent &evt)
     if (q != nullptr) {
         BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ":received select sliced plate event\n" ;
     }
-    q->select_sliced_plate(evt.GetInt());
+    bool skip_zoom = evt.GetExtraLong() == 1;
+    q->select_sliced_plate(evt.GetInt(), skip_zoom);
 }
 
 void Plater::priv::on_action_print_all(SimpleEvent&)
@@ -17649,7 +17650,7 @@ int Plater::select_plate(int plate_index, bool need_slice)
     return ret;
 }
 
-int Plater::select_sliced_plate(int plate_index)
+int Plater::select_sliced_plate(int plate_index, bool skip_zoom)
 {
     int ret = 0;
     BOOST_LOG_TRIVIAL(info) << "select_sliced_plate plate_idx=" << plate_index;
@@ -17662,7 +17663,8 @@ int Plater::select_sliced_plate(int plate_index)
         Thaw();
         return -1;
     }
-    p->partplate_list.select_plate_view();
+    if(skip_zoom)
+        p->partplate_list.select_plate_view();
     Thaw();
 
     return ret;

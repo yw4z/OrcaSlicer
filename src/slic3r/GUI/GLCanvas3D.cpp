@@ -8927,11 +8927,14 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         if(ImGui::Button("##invisible_button", button_size)){
             if (m_process && !m_process->running()) {
                 all_plates_stats_item->selected = false;
+                bool was_active = item->selected;
                 item->selected = true;
                 // begin to slicing plate
                 if (item->slice_state != IMToolbarItem::SliceState::SLICED)
                     wxGetApp().plater()->update(true, true);
                 wxCommandEvent* evt = new wxCommandEvent(EVT_GLTOOLBAR_SELECT_SLICED_PLATE);
+                if(!was_active || (was_active && item->slice_state == IMToolbarItem::SliceState::SLICED)) // ORCA dont reset viewing angle if item was active and non sliced
+                    evt->SetExtraLong(1); // 1 = skip zooming plate
                 evt->SetInt(i);
                 wxQueueEvent(wxGetApp().plater(), evt);
             }
