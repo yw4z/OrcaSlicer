@@ -8919,7 +8919,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         auto hover_rect = button_pos + ImGui::GetWindowPos() - ImGui::GetCurrentWindow()->Scroll;
         bool is_plate_hovered = ImGui::IsMouseHoveringRect(hover_rect, hover_rect + button_size);
         if (item->selected) {
-            ImGui::PushStyleColor(ImGuiCol_Border, button_active);
+            ImGui::PushStyleColor(ImGuiCol_Border, is_plate_hovered ? ImGuiWrapper::COL_ORCA_HOVER : ImGuiWrapper::COL_ORCA);
         }
         else {
             if (is_plate_hovered) {
