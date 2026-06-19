@@ -7730,7 +7730,7 @@ void Plater::priv::schedule_background_process()
 void Plater::priv::schedule_auto_reslice_if_needed()
 {
     AppConfig* cfg = wxGetApp().app_config;
-    if (cfg == nullptr || !cfg->get_bool("auto_slice_after_change"))
+    if (cfg == nullptr || (cfg && !cfg->get_bool("auto_slice_after_change")))
         return;
 
     if (!is_preview_shown())
@@ -7740,7 +7740,7 @@ void Plater::priv::schedule_auto_reslice_if_needed()
         return;
 
     PartPlate* plate = partplate_list.get_curr_plate();
-    if (plate == nullptr || !plate->has_printable_instances())
+    if (plate == nullptr || (plate != nullptr && !plate->has_printable_instances()))
         return;
 
     if (background_process.running() || m_is_slicing) {
@@ -7771,7 +7771,7 @@ void Plater::priv::trigger_auto_reslice_now()
     this->auto_reslice_pending = false;
 
     AppConfig* cfg = wxGetApp().app_config;
-    if (cfg == nullptr || !cfg->get_bool("auto_slice_after_change"))
+    if (cfg == nullptr || (cfg && !cfg->get_bool("auto_slice_after_change")))
         return;
 
     if (!is_preview_shown())
@@ -7784,7 +7784,7 @@ void Plater::priv::trigger_auto_reslice_now()
         return;
 
     PartPlate* plate = this->partplate_list.get_curr_plate();
-    if (plate == nullptr || !plate->has_printable_instances())
+    if (plate == nullptr || (plate != nullptr && !plate->has_printable_instances()))
         return;
 
     this->q->reslice();
