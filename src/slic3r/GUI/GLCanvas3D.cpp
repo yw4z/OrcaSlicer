@@ -8892,6 +8892,10 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
     for (int i = 0; i < m_sel_plate_toolbar.m_items.size(); i++) {
         IMToolbarItem* item = m_sel_plate_toolbar.m_items[i];
 
+        auto current_plate = plate_list.get_plate(i);
+        bool can_slice     = current_plate->can_slice();
+        bool is_empty      = current_plate->empty();
+
         // draw image
         ImVec2 button_start_pos = ImGui::GetCursorScreenPos();
         ImGui::PushID(i);
@@ -8911,13 +8915,14 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.0f, .0f, .0f, .0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.0f, .0f, .0f, .0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(.0f, .0f, .0f, .0f));
+        // Translate window pos to abs pos, also account for the window scrolling
+        auto hover_rect = button_pos + ImGui::GetWindowPos() - ImGui::GetCurrentWindow()->Scroll;
+        bool is_plate_hovered = ImGui::IsMouseHoveringRect(hover_rect, hover_rect + button_size);
         if (item->selected) {
             ImGui::PushStyleColor(ImGuiCol_Border, button_active);
         }
         else {
-            // Translate window pos to abs pos, also account for the window scrolling
-            auto hover_rect = button_pos + ImGui::GetWindowPos() - ImGui::GetCurrentWindow()->Scroll;
-            if (ImGui::IsMouseHoveringRect(hover_rect, hover_rect + button_size)) {
+            if (is_plate_hovered) {
                 ImGui::PushStyleColor(ImGuiCol_Border, button_hover);
             }
             else {
@@ -8925,7 +8930,29 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             }
         }
         if(ImGui::Button("##invisible_button", button_size)){
-            if (m_process && !m_process->running()) {
+            // ORCA switch back to prepare tab when clicked failed plates
+            if (!is_empty && (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED)){
+                if (m_canvas != nullptr && !wxGetApp().is_closing()) {
+                    m_canvas->CallAfter([this, i]() {
+                        auto& app = wxGetApp();
+                        if (!app.is_closing()){
+                            auto* plater = app.plater();
+                            if (plater){
+                                plater->select_view_3D("3D"); // ensure its in 3D view
+                                plater->select_plate(i);
+                                zoom_to_bed();
+                                auto* view3d_canvas = plater->get_view3D_canvas3D();
+                                if(view3d_canvas){
+                                    view3d_canvas->get_gizmos_manager().reset_all_states(); // close all gizmos
+                                    view3d_canvas->reload_scene(true);
+                                }
+                                app.mainframe->select_tab((size_t)MainFrame::TabPosition::tp3DEditor);
+                            }
+                        }
+                    });
+                }
+            }
+            else if (m_process && !m_process->running()) {
                 all_plates_stats_item->selected = false;
                 bool was_active = item->selected;
                 item->selected = true;
@@ -8946,7 +8973,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         ImVec2 size      = ImVec2(button_width, button_height);
         ImVec2 end_pos   = ImVec2(start_pos.x + size.x, start_pos.y + size.y);
         // ORCA show additional information depends on state
-        auto draw_info_btn = [end_pos, f_scale, margin, window_bg, button_active](std::string str, ImVec4 bg_color){
+        auto draw_info_btn = [end_pos, f_scale, margin, window_bg](std::string str, ImVec4 bg_color){
             GImGui->FontSize = 15.0f * f_scale;
             ImVec2      txt_slice_sz  = ImGui::CalcTextSize(str.c_str());
             ImVec2      btn_pad       = ImVec2(8.f, 1.f) * f_scale;
@@ -8959,14 +8986,14 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             
         };
 
-        auto current_plate = plate_list.get_plate(i);
-        bool can_slice     = current_plate->can_slice();
-        bool is_empty      = current_plate->empty();
         if (can_slice && item->slice_state == IMToolbarItem::SliceState::UNSLICED) {
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, end_pos, plate_dim, button_radius);
             // ORCA add slice button to guide user
-            if (!is_empty) // dont show when plate empty
-                draw_info_btn(_u8L("Slice"), !(m_process && m_process->running()) ? button_active : window_bg); // use disabled if slicing in progress
+            if (!is_empty){
+                ImVec4 confirm_active = m_is_dark ? ImGuiWrapper::COL_ORCA_DARK : ImGuiWrapper::COL_ORCA;
+                ImVec4 confirm_hover  = m_is_dark ? ImGuiWrapper::COL_ORCA_HOVER_DARK : ImGuiWrapper::COL_ORCA_HOVER;
+                draw_info_btn(_u8L("Slice"), !(m_process && m_process->running()) ? (is_plate_hovered ? confirm_hover : confirm_active) : window_bg); // use disabled if slicing in progress
+            }
         } else if (item->slice_state == IMToolbarItem::SliceState::SLICING) {
             ImVec2 rect_size = ImVec2(button_width, button_height * item->percent / 100.0f);
             ImVec2 rect_start_pos = ImVec2(start_pos.x, start_pos.y + rect_size.y);
@@ -8978,13 +9005,14 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
                 draw_info_btn("%" + std::to_string(int(item->percent)), window_bg);
         } else if (!is_empty && (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED)) {
             // Draw exclamation mark that matches with icon
-            ImVec2 center  = ImVec2(start_pos.x + button_width/2, start_pos.y + button_height/2);
+            ImVec2 center  = ImVec2(start_pos.x + button_width/2, start_pos.y + button_height/2 - ImGui::GetTextLineHeight() * .5f);
             auto draw_list =ImGui::GetWindowDrawList();
             auto clr = m_is_dark ? IM_COL32(60, 44, 48, 255) : IM_COL32(202, 186, 186, 255);
             draw_list->AddRectFilled(start_pos, end_pos, IM_COL32(64, 1, 1, 64), button_radius);
             draw_list->AddCircleFilled(center, 14.f * f_scale,IM_COL32(225, 74, 74, 255));
             draw_list->AddRectFilled(center - ImVec2(2.f, 10.f) * f_scale, center + ImVec2(2.f, 4.f) * f_scale, clr, 2.f * f_scale);
             draw_list->AddCircleFilled(center + ImVec2(0, 8.f * f_scale),2.f * f_scale, clr);
+            draw_info_btn(_u8L("Review"), ImGui::ColorConvertU32ToFloat4(IM_COL32(225, 74, 74, is_plate_hovered ? 128 : 64)));
         } else if (item->slice_state == IMToolbarItem::SliceState::SLICED) {
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, end_pos, plate_bg, button_radius);
         }
