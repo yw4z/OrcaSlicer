@@ -8754,6 +8754,8 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
     ImVec4 window_bg     = m_is_dark ? ImVec4(.13f, .13f, .15f, .5f) : ImVec4(1.f, 1.f, 1.f, .7f);
     ImVec4 button_active = ImGuiWrapper::COL_ORCA; // ORCA: Use orca color for selected sliced plate border
     ImVec4 button_hover  = ImVec4(0.67f, 0.67f, 0.67, m_is_dark ? .6f : 1.0f);
+    ImVec4 orca_active   = m_is_dark ? ImGuiWrapper::COL_ORCA_DARK       : ImGuiWrapper::COL_ORCA;
+    ImVec4 orca_hover    = m_is_dark ? ImGuiWrapper::COL_ORCA_HOVER_DARK : ImGuiWrapper::COL_ORCA_HOVER;
     ImVec4 scroll_col    = ImVec4(0.77f, 0.77f, 0.77f, m_is_dark ? .6f : 1.0f);
     ImU32  plate_bg      = m_is_dark ? IM_COL32(255, 255, 255, 10) : IM_COL32(0, 0, 0, 10);
     ImU32  plate_dim     = m_is_dark ? IM_COL32(30, 30, 30, 100) : IM_COL32(0, 0, 0, 50);
@@ -8929,7 +8931,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
 
         if(ImGui::Button("##invisible_button", button_size)){
             // ORCA switch back to prepare tab when clicked failed plates
-            if (!is_empty && (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED)){
+            if (!is_empty && item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED){
                 if (m_canvas != nullptr && !wxGetApp().is_closing()) {
                     m_canvas->CallAfter([this, i]() {
                         auto& app = wxGetApp();
@@ -8958,7 +8960,8 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
                 if (item->slice_state != IMToolbarItem::SliceState::SLICED)
                     wxGetApp().plater()->update(true, true);
                 wxCommandEvent* evt = new wxCommandEvent(EVT_GLTOOLBAR_SELECT_SLICED_PLATE);
-                if(!was_active || (was_active && item->slice_state == IMToolbarItem::SliceState::SLICED)) // ORCA dont reset viewing angle if item was active and non sliced
+                // ORCA dont reset viewing angle if item was active and non sliced to allow making comparisons on parameter changes
+                if(!was_active || (was_active && item->slice_state == IMToolbarItem::SliceState::SLICED)) 
                     evt->SetExtraLong(1); // 1 = skip zooming plate
                 evt->SetInt(i);
                 wxQueueEvent(wxGetApp().plater(), evt);
@@ -8973,15 +8976,13 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         // ORCA show additional information depends on state
         auto draw_info_btn = [end_pos, f_scale, margin, window_bg](std::string str, ImVec4 bg_color){
             GImGui->FontSize = 15.0f * f_scale;
-            ImVec2      txt_slice_sz  = ImGui::CalcTextSize(str.c_str());
-            ImVec2      btn_pad       = ImVec2(8.f, 1.f) * f_scale;
-            ImVec2      btn_center    = end_pos - txt_slice_sz * .5f - margin;
-            ImVec2      txt_slice_pos = end_pos - txt_slice_sz - margin - btn_pad;
-            ImVec2      txt_slice_end = end_pos - margin - btn_pad;
+            ImVec2 txt_slice_sz  = ImGui::CalcTextSize(str.c_str());
+            ImVec2 btn_pad       = ImVec2(8.f, 1.f) * f_scale;
+            ImVec2 txt_slice_pos = end_pos - txt_slice_sz - margin - btn_pad;
+            ImVec2 txt_slice_end = end_pos - margin - btn_pad;
             ImGui::GetWindowDrawList()->AddRectFilled(txt_slice_pos - btn_pad, txt_slice_end + btn_pad, ImGui::GetColorU32(bg_color), (txt_slice_sz.y + btn_pad.y) * .5f);
             ImGui::RenderText(txt_slice_pos, str.c_str());
             ImGui::SetWindowFontScale(1.2f);
-            
         };
 
         if (is_empty){
@@ -8989,9 +8990,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         } else if (can_slice && item->slice_state == IMToolbarItem::SliceState::UNSLICED) {
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, end_pos, plate_dim, button_radius);
             // ORCA add slice button to guide user
-            ImVec4 confirm_active = m_is_dark ? ImGuiWrapper::COL_ORCA_DARK       : ImGuiWrapper::COL_ORCA;
-            ImVec4 confirm_hover  = m_is_dark ? ImGuiWrapper::COL_ORCA_HOVER_DARK : ImGuiWrapper::COL_ORCA_HOVER;
-            draw_info_btn(_u8L("Slice"), !(m_process && m_process->running()) ? (is_plate_hovered ? confirm_hover : confirm_active) : window_bg); // use disabled if slicing in progress
+            draw_info_btn(_u8L("Slice"), (m_process && m_process->running() ? window_bg : (is_plate_hovered ? orca_hover : orca_active))); // use disabled if slicing in progress
         } else if (item->slice_state == IMToolbarItem::SliceState::SLICING) {
             ImVec2 rect_size = ImVec2(button_width, button_height * item->percent / 100.0f);
             ImVec2 rect_start_pos = ImVec2(start_pos.x, start_pos.y + rect_size.y);
