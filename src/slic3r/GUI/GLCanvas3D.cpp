@@ -8946,7 +8946,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
         auto draw_info_btn = [end_pos, f_scale, margin, window_bg, button_active](std::string str, ImVec4 bg_color){
             GImGui->FontSize = 15.0f * f_scale;
             ImVec2      txt_slice_sz  = ImGui::CalcTextSize(str.c_str());
-            ImVec2      btn_pad       = ImVec2(8.f, 2.f) * f_scale;
+            ImVec2      btn_pad       = ImVec2(8.f, 1.f) * f_scale;
             ImVec2      btn_center    = end_pos - txt_slice_sz * .5f - margin;
             ImVec2      txt_slice_pos = end_pos - txt_slice_sz - margin - btn_pad;
             ImVec2      txt_slice_end = end_pos - margin - btn_pad;
@@ -8973,7 +8973,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             // ORCA show percentage as text
             if (!is_empty) // dont show when plate empty
                 draw_info_btn("%" + std::to_string(int(item->percent)), window_bg);
-        } else if (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED) {
+        } else if (!is_empty && (!can_slice || item->slice_state == IMToolbarItem::SliceState::SLICE_FAILED)) {
             // Draw exclamation mark that matches with icon
             ImVec2 center  = ImVec2(start_pos.x + button_width/2, start_pos.y + button_height/2);
             auto draw_list =ImGui::GetWindowDrawList();
