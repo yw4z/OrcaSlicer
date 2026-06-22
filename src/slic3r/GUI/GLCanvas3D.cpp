@@ -8717,8 +8717,6 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
     auto canvas_w = float(cnv_size.get_width());
     auto canvas_h = float(cnv_size.get_height());
 
-    bool is_hovered = false;
-
     m_sel_plate_toolbar.set_icon_size(100.0f * f_scale, 100.0f * f_scale);
 
     float button_width = m_sel_plate_toolbar.icon_width;
@@ -9002,9 +9000,10 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
                 m_is_dark ? ImVec4(.9f, .9f, .9f, 1) : (is_processing ? ImVec4(.3f, .3f, .3f, 1) : ImVec4(1, 1, 1, 1))
             );
         } else if (item->slice_state == IMToolbarItem::SliceState::SLICING) {
+            // ORCA use bottom to top for shade animation that matches with printing / slicing orientation
             ImVec2 rect_size = ImVec2(button_width, button_height * item->percent / 100.0f);
-            ImVec2 rect_start_pos = ImVec2(start_pos.x, start_pos.y + rect_size.y);
-            ImVec2 rect_end_pos = ImVec2(start_pos.x + button_width, start_pos.y + button_height);
+            ImVec2 rect_start_pos = ImVec2(start_pos.x, start_pos.y);
+            ImVec2 rect_end_pos = ImVec2(start_pos.x + button_width, start_pos.y + button_height - rect_size.y);
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, rect_end_pos, plate_bg, button_radius);
             ImGui::GetWindowDrawList()->AddRectFilled(rect_start_pos, rect_end_pos, plate_dim, button_radius);
             // ORCA show percentage as text
