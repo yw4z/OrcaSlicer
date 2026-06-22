@@ -172,7 +172,7 @@ void PartPlate::init()
 	m_locked = false;
 	m_ready_for_slice = true;
 	m_slice_result_valid = false;
-	m_slice_percent = 0.0f;
+	m_slice_percent = -1.0f; // ORCA create new plates with negative values or it will take "slicing" role on toolbar
 	m_hover_id = -1;
 	m_selected = false;
 	//m_quadric = ::gluNewQuadric();
