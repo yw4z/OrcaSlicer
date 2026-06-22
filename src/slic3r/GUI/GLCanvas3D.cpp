@@ -9004,7 +9004,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             ImVec2 rect_size = ImVec2(button_width, button_height * item->percent / 100.0f);
             ImVec2 rect_start_pos = ImVec2(start_pos.x, start_pos.y);
             ImVec2 rect_end_pos = ImVec2(start_pos.x + button_width, start_pos.y + button_height - rect_size.y);
-            ImGui::GetWindowDrawList()->AddRectFilled(start_pos, rect_end_pos, plate_bg, button_radius);
+            ImGui::GetWindowDrawList()->AddRectFilled(start_pos, end_pos, plate_bg, button_radius);
             ImGui::GetWindowDrawList()->AddRectFilled(rect_start_pos, rect_end_pos, plate_dim, button_radius);
             // ORCA show percentage as text
             draw_info_btn(std::to_string(int(item->percent)) + "%", 
