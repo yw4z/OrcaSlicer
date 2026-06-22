@@ -9008,7 +9008,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
             ImGui::GetWindowDrawList()->AddRectFilled(start_pos, rect_end_pos, plate_bg, button_radius);
             ImGui::GetWindowDrawList()->AddRectFilled(rect_start_pos, rect_end_pos, plate_dim, button_radius);
             // ORCA show percentage as text
-            draw_info_btn("%" + std::to_string(int(item->percent)), 
+            draw_info_btn(std::to_string(int(item->percent)) + "%", 
                 window_bg,
                 m_is_dark ? ImVec4(.9f, .9f, .9f, 1) : ImVec4(.3f, .3f, .3f, 1)
             );
@@ -9041,7 +9041,7 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
     ImGui::PopStyleColor(8);
     ImGui::PopStyleVar(7);
 
-    //ImGui::IsWindowHovered()
+    //ORCA ImGui::IsWindowHovered() returns false when left_down events on buttons that causes scrollbar disappears for a short time 
     auto win_pos = ImGui::GetWindowPos();
     bool is_win_hovered = ImGui::IsMouseHoveringRect(win_pos, win_pos + ImGui::GetWindowSize());
     m_sel_plate_toolbar.is_display_scrollbar = is_win_hovered;
