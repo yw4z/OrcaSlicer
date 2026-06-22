@@ -9041,11 +9041,10 @@ void GLCanvas3D::_render_imgui_select_plate_toolbar()
     ImGui::PopStyleColor(8);
     ImGui::PopStyleVar(7);
 
-    if (ImGui::IsWindowHovered() || is_hovered) {
-        m_sel_plate_toolbar.is_display_scrollbar = true;
-    } else {
-        m_sel_plate_toolbar.is_display_scrollbar = false;
-    }
+    //ImGui::IsWindowHovered()
+    auto win_pos = ImGui::GetWindowPos();
+    bool is_win_hovered = ImGui::IsMouseHoveringRect(win_pos, win_pos + ImGui::GetWindowSize());
+    m_sel_plate_toolbar.is_display_scrollbar = is_win_hovered;
 
     imgui.end();
     m_sel_plate_toolbar.is_render_finish = true;
