@@ -137,20 +137,22 @@ bool CrealityPrint::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, 
     }
 
     bool res = true;
-    auto url = make_url("upload/" + safe_filename(upload_filename.string()));
+    const auto safe_upload_filename = safe_filename(upload_filename.string());
+    // Only encode the URL path segment; keep the multipart filename and start-print path as the stored filename.
+    auto url = make_url("upload/" + Http::url_encode(safe_upload_filename));
 
     auto  http = Http::post(url); // std::move(url));
     set_auth(http);
     if (!supports_multi_color_print())
         http.form_add("path", upload_parent_path.string());
-    http.form_add_file("file", upload_data.source_path.string(), upload_filename.string())
+    http.form_add_file("file", upload_data.source_path.string(), safe_upload_filename)
 
         .on_complete([&](std::string body, unsigned status) {
             BOOST_LOG_TRIVIAL(debug) << boost::format("%1%: File uploaded: HTTP %2%: %3%") % name % status % body;
 
             if (upload_data.post_action == PrintHostPostUploadAction::StartPrint) {
                 wxString errormsg;
-                if (!start_print(errormsg, safe_filename(upload_filename.string()), upload_data.extended_info)) {
+                if (!start_print(errormsg, safe_upload_filename, upload_data.extended_info)) {
                     error_fn(std::move(errormsg));
                     res = false;
                 }
@@ -412,11 +414,19 @@ bool CrealityPrint::start_print(wxString &msg, const std::string &filename, cons
             };
             ws.write(net::buffer(to_string(cmd)));
 
+            // K1-family firmware closes the WebSocket right after accepting the
+            // start command, so a blocking read here surfaces a benign
+            // "End of file [asio.misc:2]" even though the print already started
+            // (the command is delivered by write()). Read best-effort, ignore errors.
             beast::flat_buffer buffer;
-            ws.read(buffer);
+            beast::error_code  read_ec;
+            ws.read(buffer, read_ec);
         }
 
-        ws.close(websocket::close_code::normal);
+        // Same reason: the printer may have already closed the connection. A close
+        // error here is not a failure — the start command was sent above.
+        beast::error_code close_ec;
+        ws.close(websocket::close_code::normal, close_ec);
         return true;
     } catch(std::exception const& e) {
         BOOST_LOG_TRIVIAL(error) << "CrealityPrint: Error starting print: " << e.what();
