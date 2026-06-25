@@ -9415,7 +9415,9 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     ImGuiWrapper& imgui = *wxGetApp().imgui();
     const float canvas_w = float(get_canvas_size().get_width());
-    const ImVec2 button_size = ImVec2(64.0f * em_unit * f_scale, m_assemble_view_toolbar.get_height()) ;
+    const float toolbar_width  = m_assemble_view_toolbar.get_height();
+    const float toolbar_height = m_assemble_view_toolbar.get_height();
+    const ImVec2 button_size = ImVec2(64.0f * em_unit * f_scale, toolbar_height); // ORCA match button size with toolbar height
     const float spacing = 4.0f * em_unit * f_scale;
     const float toolbar_margin = 35.0f * em_unit * f_scale;
 
@@ -9425,8 +9427,9 @@ void GLCanvas3D::_render_paint_toolbar() const
     ImGui::PushStyleColor(ImGuiCol_WindowBg, m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG); // ORCA Toolbar color
 
     imgui.set_next_window_pos(0.5f * canvas_w, 0, ImGuiCond_Always, 0.5f, 0.0f);
-    float constraint_window_width = canvas_w - 2 * (m_main_toolbar.get_width() + m_gizmos.get_scaled_total_width() + m_assemble_view_toolbar.get_width() + m_separator_toolbar.get_width() + toolbar_margin);
-    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, { constraint_window_width, m_assemble_view_toolbar.get_height() + 2.f * spacing});
+    // ORCA fixed window width calculation.
+    float constraint_window_width = canvas_w - 2 * (m_main_toolbar.get_width() + m_gizmos.get_scaled_total_width() + toolbar_width + m_separator_toolbar.get_width() + toolbar_margin);
+    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, { constraint_window_width, toolbar_height + 2.f * spacing}); // ORCA
     imgui.begin(_L("Paint Toolbar"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     const float cursor_y = ImGui::GetCursorPosY();
@@ -9434,11 +9437,11 @@ void GLCanvas3D::_render_paint_toolbar() const
     const ImRect left_arrow_button = ImRect(ImGui::GetCurrentWindow()->Pos, ImGui::GetCurrentWindow()->Pos + arrow_button_size);
     const ImRect right_arrow_button = ImRect(ImGui::GetCurrentWindow()->Pos + ImGui::GetWindowSize() - arrow_button_size, ImGui::GetCurrentWindow()->Pos + ImGui::GetWindowSize());
 
-    ImU32 arrow_bg = imgui.to_ImU32(imgui.from_ImVec4(m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG));
-    arrow_bg = (arrow_bg & 0x00FFFFFF) | (static_cast<ImU32>(0.7f * 255) << 24);
+    ImU32 arrow_bg = imgui.to_ImU32(imgui.from_ImVec4(m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG)); // ORCA match background with toolbar
+    arrow_bg = (arrow_bg & 0x00FFFFFF) | (static_cast<ImU32>(0.7f * 255) << 24); // ORCA use arrows with more transparancy to show color under it
     ImU32 left_arrow_button_color  = arrow_bg;
     ImU32 right_arrow_button_color = arrow_bg;
-    ImU32 arrow_color = imgui.to_ImU32(imgui.from_ImVec4(!m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG));
+    ImU32 arrow_color = imgui.to_ImU32(imgui.from_ImVec4(!m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG)); // ORCA
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImGuiContext& context = *GImGui;
     bool disabled = !wxGetApp().plater()->can_fillcolor();
@@ -9496,7 +9499,7 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     if (ImGui::GetWindowWidth() == constraint_window_width) {
         if (ImGui::IsMouseHoveringRect(left_arrow_button.Min, left_arrow_button.Max)) {
-            left_arrow_button_color = (left_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24);
+            left_arrow_button_color = (left_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24); // ORCA use color with more opaque on hover
             if (context.IO.MouseClicked[ImGuiMouseButton_Left]) {
                 ImGui::SetScrollX(ImGui::GetScrollX() - button_size.x);
                 imgui.set_requires_extra_frame();
@@ -9506,7 +9509,7 @@ void GLCanvas3D::_render_paint_toolbar() const
         ImGui::BBLRenderArrow(draw_list, left_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Left, 2.0f);
 
         if (ImGui::IsMouseHoveringRect(right_arrow_button.Min, right_arrow_button.Max)) {
-            right_arrow_button_color = (right_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24);
+            right_arrow_button_color = (right_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24); // ORCA use color with more opaque on hover
             if (context.IO.MouseClicked[ImGuiMouseButton_Left]) {
                 ImGui::SetScrollX(ImGui::GetScrollX() + button_size.x);
                 imgui.set_requires_extra_frame();
