@@ -819,6 +819,10 @@ void GizmoObjectManipulation::do_render_move_window(ImGuiWrapper *imgui_wrapper,
     if (render_combo(imgui_wrapper, "", modes, selection_idx, 0, coord_combo_width)) {
         combox_changed = true;
     }
+    if (ImGui::IsItemHovered()) {
+        auto tooltip_str = _L("Coordinate system used for transform actions.");
+        imgui_wrapper->tooltip(tooltip_str, imgui_wrapper->calc_text_size(tooltip_str).x + 3 * space_size);
+    }
     ImGuiWrapper::pop_combo_style();
 
     // ORCA use TextColored to match axes color
@@ -967,6 +971,10 @@ void GizmoObjectManipulation::do_render_rotate_window(ImGuiWrapper *imgui_wrappe
     unsigned int current_active_id = ImGui::GetActiveID();
     ImGui::PushItemWidth(caption_max);
     imgui_wrapper->text(_L("World")); // ORCA
+    if (ImGui::IsItemHovered()) {
+        auto tooltip_str = _L("Coordinate system used for transform actions.");
+        imgui_wrapper->tooltip(tooltip_str, imgui_wrapper->calc_text_size(tooltip_str).x + 3 * space_size);
+    }
     // ORCA use TextColored to match axes color
     float offset_to_center = (unit_size - ImGui::CalcTextSize("O").x) / 2;
     ImGui::SameLine(caption_max + index * space_size + offset_to_center);
@@ -1189,6 +1197,10 @@ void GizmoObjectManipulation::do_render_scale_input_window(ImGuiWrapper* imgui_w
     bool combox_changed = false;
     if (render_combo(imgui_wrapper, "", modes, selection_idx, 0, coord_combo_width)) {
         combox_changed = true;
+    }
+    if (ImGui::IsItemHovered()) {
+        auto tooltip_str = _L("Coordinate system used for transform actions.");
+        imgui_wrapper->tooltip(tooltip_str, imgui_wrapper->calc_text_size(tooltip_str).x + 3 * space_size);
     }
     ImGuiWrapper::pop_combo_style();
 
