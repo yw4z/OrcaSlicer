@@ -9709,6 +9709,9 @@ void GLCanvas3D::_render_assemble_info() const
     float margin = 10.0f * get_scale();
     imgui->set_next_window_pos(canvas_w - margin, canvas_h - margin, ImGuiCond_Always, 1.0f, 1.0f);
     ImGuiWrapper::push_common_window_style(get_scale()); // ORCA use window style for popups with title
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding   , ImVec2(margin, margin)); // Use less horizontal padding
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowTitleAlign, ImVec2(.5f, .5f)); // Use centered title
+    
     imgui->begin(_L("Assembly Info"), ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
     font->Scale = origScale;
     ImGui::PushFont(font);
@@ -9724,6 +9727,7 @@ void GLCanvas3D::_render_assemble_info() const
         ImGui::Text("%.2f x %.2f x %.2f", size0, size1, size2);
     }
     imgui->end();
+    ImGui::PopStyleVar(2);
     ImGuiWrapper::pop_common_window_style();
 }
 
