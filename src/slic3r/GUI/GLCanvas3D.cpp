@@ -9082,8 +9082,8 @@ void GLCanvas3D::_render_return_toolbar() const
     auto canvas_h = float(cnv_size.get_height());
     float window_width = real_size.x + button_icon_size.x + imgui.scaled(2.0f);
     float window_height = button_icon_size.y + imgui.scaled(2.0f);
-    float window_pos_x = 30.0f + (is_collapse_toolbar_on_left() ? (get_collapse_toolbar_width() + 5.f) : 0);
-    float window_pos_y = 0.0f;
+    float window_pos_x = 10.f + (is_collapse_toolbar_on_left() ? get_collapse_toolbar_width() : 0.f); // ORCA place return button closer to corner
+    float window_pos_y = 0.0f; // ORCA
 
     imgui.set_next_window_pos(window_pos_x, window_pos_y, ImGuiCond_Always, 0, 0);
 #ifdef __WINDOWS__
