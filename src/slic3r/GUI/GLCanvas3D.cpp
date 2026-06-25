@@ -9083,7 +9083,7 @@ void GLCanvas3D::_render_return_toolbar() const
     float window_width = real_size.x + button_icon_size.x + imgui.scaled(2.0f);
     float window_height = button_icon_size.y + imgui.scaled(2.0f);
     float window_pos_x = 30.0f + (is_collapse_toolbar_on_left() ? (get_collapse_toolbar_width() + 5.f) : 0);
-    float window_pos_y = 14.0f;
+    float window_pos_y = 0.0f;
 
     imgui.set_next_window_pos(window_pos_x, window_pos_y, ImGuiCond_Always, 0, 0);
 #ifdef __WINDOWS__
@@ -9112,7 +9112,7 @@ void GLCanvas3D::_render_return_toolbar() const
 
     ImVec4 bg_col = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
     ImVec4 tint_col = fg_color; // icon color
-    ImVec2 margin = ImVec2(10.0f, 5.0f);
+    ImVec2 margin = ImVec2(10.0f, 0.0f);
 
     if (ImGui::ImageTextButton(real_size,_utf8(L("Return")).c_str(), m_return_toolbar.get_return_texture_id(), button_icon_size, uv0, uv1, -1, bg_col, tint_col, margin)) {
         const_cast<GLGizmosManager*>(&m_gizmos)->reset_all_states();
@@ -9381,11 +9381,11 @@ void GLCanvas3D::_render_paint_toolbar() const
 {
     if (m_canvas_type != ECanvasType::CanvasAssembleView)
         return;
-#if ENABLE_RETINA_GL
-    float f_scale = m_retina_helper->get_scale_factor();
-#else
-    float f_scale = 1.0f;
-#endif
+    float f_scale = get_scale();
+    #ifdef WIN32
+        const int dpi = get_dpi_for_window(wxGetApp().GetTopWindow());
+        f_scale *= (float) dpi / (float) DPI_DEFAULT;
+    #endif // WIN32
     int em_unit = wxGetApp().em_unit() / 10;
 
     std::vector<std::string> colors = wxGetApp().plater()->get_extruder_colors_from_plater_config();
@@ -9415,9 +9415,9 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     ImGuiWrapper& imgui = *wxGetApp().imgui();
     const float canvas_w = float(get_canvas_size().get_width());
-    const ImVec2 button_size = ImVec2(64.0f, 48.0f) * f_scale * em_unit;
+    const ImVec2 button_size = ImVec2(64.0f * em_unit * f_scale, m_assemble_view_toolbar.get_height()) ;
     const float spacing = 4.0f * em_unit * f_scale;
-    const float return_button_margin = 130.0f * em_unit * f_scale;
+    const float toolbar_margin = 35.0f * em_unit * f_scale;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(spacing, spacing));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
@@ -9425,17 +9425,20 @@ void GLCanvas3D::_render_paint_toolbar() const
     ImGui::PushStyleColor(ImGuiCol_WindowBg, m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG); // ORCA Toolbar color
 
     imgui.set_next_window_pos(0.5f * canvas_w, 0, ImGuiCond_Always, 0.5f, 0.0f);
-    float constraint_window_width = canvas_w - 2 * return_button_margin;
-    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, { constraint_window_width, FLT_MAX });
+    float constraint_window_width = canvas_w - 2 * (m_main_toolbar.get_width() + m_gizmos.get_scaled_total_width() + m_assemble_view_toolbar.get_width() + m_separator_toolbar.get_width() + toolbar_margin);
+    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, { constraint_window_width, m_assemble_view_toolbar.get_height() + 2.f * spacing});
     imgui.begin(_L("Paint Toolbar"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     const float cursor_y = ImGui::GetCursorPosY();
     const ImVec2 arrow_button_size = ImVec2(0.375f * button_size.x, ImGui::GetWindowHeight());
     const ImRect left_arrow_button = ImRect(ImGui::GetCurrentWindow()->Pos, ImGui::GetCurrentWindow()->Pos + arrow_button_size);
     const ImRect right_arrow_button = ImRect(ImGui::GetCurrentWindow()->Pos + ImGui::GetWindowSize() - arrow_button_size, ImGui::GetCurrentWindow()->Pos + ImGui::GetWindowSize());
-    ImU32 left_arrow_button_color = IM_COL32(0, 0, 0, 0.4f * 255);
-    ImU32 right_arrow_button_color = IM_COL32(0, 0, 0, 0.4f * 255);
-    ImU32 arrow_color = IM_COL32(255, 255, 255, 255);
+
+    ImU32 arrow_bg = imgui.to_ImU32(imgui.from_ImVec4(m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG));
+    arrow_bg = (arrow_bg & 0x00FFFFFF) | (static_cast<ImU32>(0.7f * 255) << 24);
+    ImU32 left_arrow_button_color  = arrow_bg;
+    ImU32 right_arrow_button_color = arrow_bg;
+    ImU32 arrow_color = imgui.to_ImU32(imgui.from_ImVec4(!m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG));
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImGuiContext& context = *GImGui;
     bool disabled = !wxGetApp().plater()->can_fillcolor();
@@ -9493,7 +9496,7 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     if (ImGui::GetWindowWidth() == constraint_window_width) {
         if (ImGui::IsMouseHoveringRect(left_arrow_button.Min, left_arrow_button.Max)) {
-            left_arrow_button_color = IM_COL32(0, 0, 0, 0.64f * 255);
+            left_arrow_button_color = (left_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24);
             if (context.IO.MouseClicked[ImGuiMouseButton_Left]) {
                 ImGui::SetScrollX(ImGui::GetScrollX() - button_size.x);
                 imgui.set_requires_extra_frame();
@@ -9503,7 +9506,7 @@ void GLCanvas3D::_render_paint_toolbar() const
         ImGui::BBLRenderArrow(draw_list, left_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Left, 2.0f);
 
         if (ImGui::IsMouseHoveringRect(right_arrow_button.Min, right_arrow_button.Max)) {
-            right_arrow_button_color = IM_COL32(0, 0, 0, 0.64f * 255);
+            right_arrow_button_color = (right_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24);
             if (context.IO.MouseClicked[ImGuiMouseButton_Left]) {
                 ImGui::SetScrollX(ImGui::GetScrollX() + button_size.x);
                 imgui.set_requires_extra_frame();
@@ -9513,7 +9516,7 @@ void GLCanvas3D::_render_paint_toolbar() const
         ImGui::BBLRenderArrow(draw_list, right_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Right, 2.0f);
     }
 
-    m_paint_toolbar_width = (ImGui::GetWindowWidth() + 50.0f * em_unit * f_scale);
+    m_paint_toolbar_width = (ImGui::GetWindowWidth() + toolbar_margin);
     imgui.end();
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor();
@@ -9694,8 +9697,8 @@ void GLCanvas3D::_render_assemble_info() const
     ImGuiWrapper* imgui = wxGetApp().imgui();
     auto canvas_w = float(get_canvas_size().get_width());
     auto canvas_h = float(get_canvas_size().get_height());
-    float space_size = imgui->get_style_scaling() * 8.0f;
-    float caption_max = imgui->calc_text_size(_L("Total Volume:")).x + 3 * space_size;
+    //float space_size = imgui->get_style_scaling() * 8.0f;
+    //float caption_max = imgui->calc_text_size(_L("Total Volume:")).x + 3 * space_size;
 
     ImGuiIO& io = ImGui::GetIO();
     ImFont* font = io.Fonts->Fonts[0];
@@ -9715,9 +9718,9 @@ void GLCanvas3D::_render_assemble_info() const
     double size1 = m_selection.get_bounding_box().size()(1);
     double size2 = m_selection.get_bounding_box().size()(2);
     if (!m_selection.is_empty()) {
-        ImGui::Text(_L("Volume:").ToUTF8()); ImGui::SameLine(caption_max);
+        imgui->bold_text(_L("Volume:").utf8_string()); // ORCA draw on new line to make modal smaller
         ImGui::Text("%.2f", size0 * size1 * size2);
-        ImGui::Text(_L("Size:").ToUTF8()); ImGui::SameLine(caption_max);
+        imgui->bold_text(_L("Size:").utf8_string());   // ORCA draw on new line to make modal smaller
         ImGui::Text("%.2f x %.2f x %.2f", size0, size1, size2);
     }
     imgui->end();
