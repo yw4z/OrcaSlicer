@@ -542,6 +542,7 @@ private:
     mutable Vec2i32 m_canvas_toolbar_pos = {140, 5};
     mutable float m_sc{1};
     mutable float m_paint_toolbar_width;
+    mutable float m_return_toolbar_width;
 
     //BBS: add canvas type for assemble view usage
     ECanvasType m_canvas_type;

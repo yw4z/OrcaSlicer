@@ -9140,6 +9140,8 @@ void GLCanvas3D::_render_return_toolbar() const
     ImGui::PopStyleColor(5);
     ImGui::PopStyleVar(1);
 
+    m_return_toolbar_width = (ImGui::GetWindowWidth() + window_pos_x);
+
     imgui.end();
 }
 
@@ -9415,21 +9417,22 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     ImGuiWrapper& imgui = *wxGetApp().imgui();
     const float canvas_w = float(get_canvas_size().get_width());
-    const float toolbar_width  = m_assemble_view_toolbar.get_height();
-    const float toolbar_height = m_assemble_view_toolbar.get_height();
-    const ImVec2 button_size = ImVec2(64.0f * em_unit * f_scale, toolbar_height); // ORCA match button size with toolbar height
+    const float assembly_toolbar_h = m_assemble_view_toolbar.get_height();
+    const ImVec2 button_size = ImVec2(64.0f * em_unit * f_scale, assembly_toolbar_h); // ORCA match button size with toolbar height
     const float spacing = 4.0f * em_unit * f_scale;
-    const float toolbar_margin = 35.0f * em_unit * f_scale;
+    const float toolbar_margin = assembly_toolbar_h * .2f ; // margin between assembly button / filament bar / toolbar
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(spacing, spacing));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, 0));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, m_is_dark ? ImGuiWrapper::COL_TOOLBAR_BG_DARK : ImGuiWrapper::COL_TOOLBAR_BG); // ORCA Toolbar color
-
-    imgui.set_next_window_pos(0.5f * canvas_w, 0, ImGuiCond_Always, 0.5f, 0.0f);
     // ORCA fixed window width calculation.
-    float constraint_window_width = canvas_w - 2 * (m_main_toolbar.get_width() + m_gizmos.get_scaled_total_width() + toolbar_width + m_separator_toolbar.get_width() + toolbar_margin);
-    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, { constraint_window_width, toolbar_height + 2.f * spacing}); // ORCA
+    float collapse_w  = get_collapse_toolbar_width();
+    float min_pos_x = m_return_toolbar_width;
+    float max_pos_x = canvas_w - m_gizmos.get_scaled_total_width() - get_assemble_view_toolbar_width() - toolbar_margin * 2.f - (!is_collapse_toolbar_on_left() && collapse_w > 0.f ? collapse_w : 0.f);
+    float constraint_window_width = max_pos_x - min_pos_x;
+    imgui.set_next_window_pos(min_pos_x + constraint_window_width * .5f, 0, ImGuiCond_Always, .5f, 0.0f); // ORCA align it to left for best optimized layout
+    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, {constraint_window_width, assembly_toolbar_h + 2.f * spacing}); // ORCA
     imgui.begin(_L("Paint Toolbar"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     const float cursor_y = ImGui::GetCursorPosY();
@@ -9519,7 +9522,7 @@ void GLCanvas3D::_render_paint_toolbar() const
         ImGui::BBLRenderArrow(draw_list, right_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Right, 2.0f);
     }
 
-    m_paint_toolbar_width = (ImGui::GetWindowWidth() + toolbar_margin);
+    m_paint_toolbar_width = ImGui::GetWindowWidth();
     imgui.end();
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor();
