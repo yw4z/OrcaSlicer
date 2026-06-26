@@ -9082,7 +9082,7 @@ void GLCanvas3D::_render_return_toolbar() const
     auto canvas_h = float(cnv_size.get_height());
     float window_width = real_size.x + button_icon_size.x + imgui.scaled(2.0f);
     float window_height = button_icon_size.y + imgui.scaled(2.0f);
-    float window_pos_x = 10.f + (is_collapse_toolbar_on_left() ? get_collapse_toolbar_width() : 0.f); // ORCA place return button closer to corner
+    float window_pos_x = get_assemble_view_toolbar_margin() + (is_collapse_toolbar_on_left() ? get_collapse_toolbar_width() : 0.f); // ORCA place return button closer to corner
     float window_pos_y = 0.0f; // ORCA
 
     imgui.set_next_window_pos(window_pos_x, window_pos_y, ImGuiCond_Always, 0, 0);
@@ -9407,8 +9407,15 @@ void GLCanvas3D::_render_paint_toolbar() const
                         filament_text_second_line.push_back(display_filament_type.substr(pos + 1));
                     }
                     else {
-                        filament_text_first_line.push_back(display_filament_type);
-                        filament_text_second_line.push_back("");
+                        // ORCA also try to split with "-". it saves space for -AERO, -CF
+                        pos = display_filament_type.find('-');
+                        if (pos != std::string::npos) {
+                            filament_text_first_line.push_back(display_filament_type.substr(0, pos));
+                            filament_text_second_line.push_back(display_filament_type.substr(pos + 1));
+                        } else {
+                            filament_text_first_line.push_back(display_filament_type);
+                            filament_text_second_line.push_back("");
+                        }
                     }
                 }
             }
@@ -9417,10 +9424,10 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     ImGuiWrapper& imgui = *wxGetApp().imgui();
     const float canvas_w = float(get_canvas_size().get_width());
-    const float assembly_toolbar_h = m_assemble_view_toolbar.get_height();
-    const ImVec2 button_size = ImVec2(64.0f * em_unit * f_scale, assembly_toolbar_h); // ORCA match button size with toolbar height
-    const float spacing = 4.0f * em_unit * f_scale;
-    const float toolbar_margin = assembly_toolbar_h * .2f ; // margin between assembly button / filament bar / toolbar
+    const float assembly_icon_h = m_assemble_view_toolbar.get_scaled_icon_size();
+    const ImVec2 button_size = ImVec2(assembly_icon_h * 1.2f, assembly_icon_h); // ORCA match button size with toolbar height
+    const float spacing = 4.f * f_scale;
+    const float toolbar_margin = get_assemble_view_toolbar_margin(); // margin between assembly button / filament bar / toolbar
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(spacing, spacing));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
@@ -9430,9 +9437,10 @@ void GLCanvas3D::_render_paint_toolbar() const
     float collapse_w  = get_collapse_toolbar_width();
     float min_pos_x = m_return_toolbar_width;
     float max_pos_x = canvas_w - m_gizmos.get_scaled_total_width() - get_assemble_view_toolbar_width() - toolbar_margin * 2.f - (!is_collapse_toolbar_on_left() && collapse_w > 0.f ? collapse_w : 0.f);
+    float win_height = assembly_icon_h + spacing * 2.f;
     float constraint_window_width = max_pos_x - min_pos_x;
     imgui.set_next_window_pos(min_pos_x + constraint_window_width * .5f, 0, ImGuiCond_Always, .5f, 0.0f); // ORCA align it to left for best optimized layout
-    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, {constraint_window_width, assembly_toolbar_h + 2.f * spacing}); // ORCA
+    ImGui::SetNextWindowSizeConstraints({ 0, 0 }, {constraint_window_width, win_height}); // ORCA
     imgui.begin(_L("Paint Toolbar"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     const float cursor_y = ImGui::GetCursorPosY();
@@ -9476,7 +9484,7 @@ void GLCanvas3D::_render_paint_toolbar() const
             ImGui::PopItemFlag();
     }
 
-    const float text_offset_y = 4.0f * em_unit * f_scale;
+    const float text_offset_y = 2.f * f_scale;
     for (int i = 0; i < extruder_num; i++) {
         decode_color(colors[i], rgba);
         float  gray       = 0.299 * rgba.r_uchar() + 0.587 * rgba.g_uchar() + 0.114 * rgba.b_uchar();
@@ -9489,18 +9497,23 @@ void GLCanvas3D::_render_paint_toolbar() const
         ImGui::TextColored(text_color, std::to_string(i + 1).c_str());
         imgui.pop_bold_font();
 
+        bool is_single_line = filament_text_second_line[i].empty();
+
         ImVec2 filament_first_line_label_size = ImGui::CalcTextSize(filament_text_first_line[i].c_str());
-        ImGui::SetCursorPosY(cursor_y + text_offset_y + number_label_size.y);
+        ImGui::SetCursorPosY(cursor_y + text_offset_y + number_label_size.y * .8f * (is_single_line ? 1.5f : 1.f));
         ImGui::SetCursorPosX(spacing + i * (spacing + button_size.x) + (button_size.x - filament_first_line_label_size.x) / 2);
         ImGui::TextColored(text_color, filament_text_first_line[i].c_str());
 
-        ImVec2 filament_second_line_label_size = ImGui::CalcTextSize(filament_text_second_line[i].c_str());
-        ImGui::SetCursorPosY(cursor_y + text_offset_y + number_label_size.y + filament_first_line_label_size.y);
-        ImGui::SetCursorPosX(spacing + i * (spacing + button_size.x) + (button_size.x - filament_second_line_label_size.x) / 2);
-        ImGui::TextColored(text_color, filament_text_second_line[i].c_str());
+        if(!is_single_line){
+            ImVec2 filament_second_line_label_size = ImGui::CalcTextSize(filament_text_second_line[i].c_str());
+            ImGui::SetCursorPosY(cursor_y + text_offset_y + number_label_size.y * .6f + filament_first_line_label_size.y);
+            ImGui::SetCursorPosX(spacing + i * (spacing + button_size.x) + (button_size.x - filament_second_line_label_size.x) / 2);
+            ImGui::TextColored(text_color, filament_text_second_line[i].c_str());
+        }
     }
 
-    if (ImGui::GetWindowWidth() == constraint_window_width) {
+    //if (ImGui::GetWindowWidth() == constraint_window_width) { // ORCA does not work on scaled screens
+    if (ImGui::GetScrollX() != 0.0f){ // ORCA dont show if no scrolling to left. also shows when it needed
         if (ImGui::IsMouseHoveringRect(left_arrow_button.Min, left_arrow_button.Max)) {
             left_arrow_button_color = (left_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24); // ORCA use color with more opaque on hover
             if (context.IO.MouseClicked[ImGuiMouseButton_Left]) {
@@ -9509,8 +9522,9 @@ void GLCanvas3D::_render_paint_toolbar() const
             }
         }
         draw_list->AddRectFilled(left_arrow_button.Min, left_arrow_button.Max, left_arrow_button_color);
-        ImGui::BBLRenderArrow(draw_list, left_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Left, 2.0f);
-
+        ImGui::BBLRenderArrow(draw_list, left_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Left, 2.f * f_scale);
+    }
+    if (ImGui::GetScrollX() < ImGui::GetScrollMaxX()){ // ORCA dont show if no scrolling to right. also shows when it needed
         if (ImGui::IsMouseHoveringRect(right_arrow_button.Min, right_arrow_button.Max)) {
             right_arrow_button_color = (right_arrow_button_color & 0x00FFFFFF) | (static_cast<ImU32>(.9f * 255) << 24); // ORCA use color with more opaque on hover
             if (context.IO.MouseClicked[ImGuiMouseButton_Left]) {
@@ -9519,8 +9533,9 @@ void GLCanvas3D::_render_paint_toolbar() const
             }
         }
         draw_list->AddRectFilled(right_arrow_button.Min, right_arrow_button.Max, right_arrow_button_color);
-        ImGui::BBLRenderArrow(draw_list, right_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Right, 2.0f);
+        ImGui::BBLRenderArrow(draw_list, right_arrow_button.GetCenter() - ImVec2(draw_list->_Data->FontSize, draw_list->_Data->FontSize) * 0.5f, arrow_color, ImGuiDir_Right, 2.f * f_scale);
     }
+    //}
 
     m_paint_toolbar_width = ImGui::GetWindowWidth();
     imgui.end();

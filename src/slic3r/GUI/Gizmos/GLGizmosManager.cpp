@@ -93,7 +93,7 @@ GLGizmosManager::EType GLGizmosManager::get_gizmo_from_mouse(const Vec2d &mouse_
     if (m_parent.get_canvas_type() == GLCanvas3D::CanvasAssembleView) {
         const float cnv_w = (float)m_parent.get_canvas_size().get_width();
         float collapse_w = m_parent.get_collapse_toolbar_width();
-        top_x = cnv_w - get_scaled_total_width() - (m_parent.get_assemble_view_toolbar_height() * .2f + (!m_parent.is_collapse_toolbar_on_left() && collapse_w > 0.f ? collapse_w : 0.f));
+        top_x = cnv_w - get_scaled_total_width() - (m_parent.get_assemble_view_toolbar_margin() + (!m_parent.is_collapse_toolbar_on_left() && collapse_w > 0.f ? collapse_w : 0.f));
     } else {
         const float separator_width = m_parent.get_separator_toolbar_width();
 
@@ -1198,7 +1198,7 @@ void GLGizmosManager::do_render_overlay() const
     float top_x;
     if (m_parent.get_canvas_type() == GLCanvas3D::CanvasAssembleView) {
         float collapse_w = m_parent.get_collapse_toolbar_width() * 2.f;
-        top_x = (cnv_w - (m_parent.get_assemble_view_toolbar_height() * .4f + (!m_parent.is_collapse_toolbar_on_left() && collapse_w > 0.f ? collapse_w : 0.f))) * inv_cnv_w - width;
+        top_x = (cnv_w - (m_parent.get_assemble_view_toolbar_margin() * 2.f + (!m_parent.is_collapse_toolbar_on_left() && collapse_w > 0.f ? collapse_w : 0.f))) * inv_cnv_w - width;
     }
     else {
         //BBS: GUI refactor: GLToolbar&&Gizmo adjust
