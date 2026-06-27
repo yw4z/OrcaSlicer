@@ -617,6 +617,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         ImGui::BBLDragFloat("##gap_area_input", &TriangleSelectorPatch::gap_area, 0.05f, 0.0f, 0.0f, "%.2f");
 
         // Apply Gap fill button
+        m_imgui->push_button_style(scale);
         if (m_imgui->button(m_desc.at("perform"))) {
             Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Gap fill", UndoRedo::SnapshotType::GizmoAction);
 
@@ -628,6 +629,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             update_model_object();
             m_parent.set_as_dirty();
         }
+        m_imgui->pop_button_style();
     }
 
     ImGui::Separator();
@@ -635,9 +637,11 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         ImGui::AlignTextToFramePadding();
         m_imgui->text(m_desc.at("clipping_of_view"));
     } else {
+        m_imgui->push_button_style(scale);
         if (m_imgui->button(m_desc.at("reset_direction"))) {
             wxGetApp().CallAfter([this]() { m_c->object_clipper()->set_position_by_ratio(-1., false); });
         }
+        m_imgui->pop_button_style();
     }
 
     auto clp_dist = float(m_c->object_clipper()->get_position());
@@ -658,6 +662,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
     ImGui::SameLine();
     m_imgui->disabled_begin(m_c->selection_info()->model_object()->is_mm_painted() == false);
+    m_imgui->push_button_style(scale);
     if (m_imgui->button(m_desc.at("remove_all"))) {
         Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Reset selection", UndoRedo::SnapshotType::GizmoAction);
         ModelObject *        mo  = m_c->selection_info()->model_object();
@@ -672,13 +677,16 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         update_model_object();
         m_parent.set_as_dirty();
     }
+    m_imgui->pop_button_style();
     m_imgui->disabled_end();
 
     ImGui::SameLine();
+    m_imgui->push_button_style(scale);
     GLGizmoUtils::begin_right_aligned_buttons({_L("Done")});
     if (m_imgui->button(_L("Done"))) {
         m_parent.reset_all_gizmos();
     }
+    m_imgui->pop_button_style();
 
     ImGui::PopStyleVar(1); // ImGuiStyleVar_FramePadding
     GizmoImguiEnd();

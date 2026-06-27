@@ -970,6 +970,11 @@ ImVec4 ImGuiWrapper::to_ImVec4(const ColorRGB &color) {
     return {color.r(), color.g(), color.b(), 1.0};
 }
 
+// ORCA
+ImVec4 ImGuiWrapper::to_ImVec4(const char* hex_code) {
+    return to_ImVec4(decode_color_to_float_array(hex_code));
+}
+
 bool ImGuiWrapper::input_double(const std::string &label, const double &value, const std::string &format)
 {
     return ImGui::InputDouble(label.c_str(), const_cast<double*>(&value), 0.0f, 0.0f, format.c_str(), ImGuiInputTextFlags_CharsDecimal);
@@ -2504,9 +2509,31 @@ std::vector<unsigned char> ImGuiWrapper::load_svg(const std::string& bitmap_name
 //BBS
 static bool m_is_dark_mode = false;
 
+// ORCA global color managment
+// TODO
+// - find a solution for IMCOL32 and COLORRGBA
+// - cleanup all other color definations overtime
+ImGuiWrapper::CanvasColors m_canvas_colors;
+void ImGuiWrapper::update_canvas_colors(bool is_dark) {
+    CanvasColors& c = m_canvas_colors;
+    c.main                       = to_ImVec4(is_dark ? "#00675b" : "#009688");
+    c.main_fixed                 = to_ImVec4("#009688"); // for improving readability / visiblity of some controls on dark mode
+    c.text                       = to_ImVec4(is_dark ? "#EFEFF0" : "#262E30");
+    c.text_disabled              = to_ImVec4(is_dark ? "#909090" : "#6B6A6A");
+    c.button_regular.bg          = to_ImVec4(is_dark ? "#3E3E45" : "#DFDFDF");
+    c.button_regular.bg_hover    = to_ImVec4(is_dark ? "#4D4D54" : "#D4D4D4");
+    c.button_regular.fg          = c.text;
+    c.button_regular.fg_disabled = c.text_disabled;
+    c.button_confirm.bg          = c.main;
+    c.button_confirm.bg_hover    = to_ImVec4(is_dark ? "#008172" : "#26A69A");
+    c.button_confirm.fg          = to_ImVec4(is_dark ? "#FEFEFE" : "#FEFEFE");
+    c.button_confirm.fg_disabled = to_ImVec4(is_dark ? "#909090" : "#6B6A6A");
+}
+
 void ImGuiWrapper::on_change_color_mode(bool is_dark)
 {
     m_is_dark_mode = is_dark;
+    update_canvas_colors(is_dark); // ORCA
 }
 
 void ImGuiWrapper::push_toolbar_style(const float scale)
@@ -2648,6 +2675,34 @@ void ImGuiWrapper::pop_common_window_style() {
     ImGui::PopStyleVar(5);
 }
 
+// ORCA unified button styling
+void ImGuiWrapper::push_button_style(const float scale, CanvasButtonType type, CanvasButtonStyle style) {
+    bool is_confirm = style == CanvasButtonStyle::Confirm;
+    bool is_compact = type  == CanvasButtonType::Compact;
+
+    auto clr = is_confirm
+        ? m_canvas_colors.button_confirm
+        : m_canvas_colors.button_regular;
+        // alert
+        // disabled
+
+    ImGui::PushStyleColor(ImGuiCol_Button,        clr.bg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clr.bg_hover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  clr.bg);
+    ImGui::PushStyleColor(ImGuiCol_Text,          clr.fg);
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled,  clr.fg_disabled);
+    ImGui::PushStyleColor(ImGuiCol_Border            , ImVec4(0,0,0,0)); // No border required since focus events not supported
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , (is_compact ? 12.f : 4.0f) * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , (is_compact ? ImVec2(12.f, 4.f) : ImVec2(12.f, 5.f)) * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
+}
+
+void ImGuiWrapper::pop_button_style() {
+    ImGui::PopStyleColor(6);
+    ImGui::PopStyleVar(3);
+}
+
+// TODO remove all other push_button styles
 void ImGuiWrapper::push_confirm_button_style() {
     if (m_is_dark_mode) {
         ImGui::PushStyleColor(ImGuiCol_Button,        to_ImVec4(decode_color_to_float_array("#00675b")));

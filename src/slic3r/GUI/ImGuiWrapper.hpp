@@ -318,10 +318,24 @@ public:
 
     static ImU32 to_ImU32(const ColorRGBA& color);
     static ImVec4 to_ImVec4(const ColorRGBA& color);
+    static ImVec4 to_ImVec4(const char* hex_code);
     static ColorRGBA from_ImU32(const ImU32& color);
     static ColorRGBA from_ImVec4(const ImVec4& color);
 
     ImFontAtlasCustomRect* GetTextureCustomRect(const wchar_t& tex_id);
+
+    // ORCA global color managment
+    struct CanvasButtonColorSet { ImVec4 bg, bg_hover, fg, fg_disabled; };
+    struct CanvasColors {
+        ImVec4 main;
+        ImVec4 main_fixed;
+        ImVec4 text;
+        ImVec4 text_disabled;
+        CanvasButtonColorSet button_regular;
+        CanvasButtonColorSet button_confirm;
+        // TODO add more types of colors for controls
+    };
+    static void update_canvas_colors(bool is_dark);
 
     static const ImVec4 COL_GREY_DARK;
     static const ImVec4 COL_GREY_LIGHT;
@@ -362,6 +376,24 @@ public:
     static void pop_menu_style();
     static void push_common_window_style(const float scale);
     static void pop_common_window_style();
+
+    // ORCA unified button styling
+    enum class CanvasButtonStyle : uint8_t{
+        Regular = 0,
+        Confirm,
+        Alert,
+        COUNT
+    };
+    enum class CanvasButtonType : uint8_t{
+        Regular = 0,
+        Window,
+        Compact,
+        Choice,
+        COUNT
+    };
+    static void push_button_style(const float scale, CanvasButtonType type = CanvasButtonType::Regular, CanvasButtonStyle style = CanvasButtonStyle::Regular);
+    static void pop_button_style();
+
     static void push_confirm_button_style();
     static void pop_confirm_button_style();
     static void push_cancel_button_style();
