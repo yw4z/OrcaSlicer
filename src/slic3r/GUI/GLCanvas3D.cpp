@@ -8262,14 +8262,15 @@ void GLCanvas3D::_render_wireframe_overlay()
     if (shader == nullptr)
         return;
 
-    const Camera& camera = wxGetApp().plater()->get_camera();
-    const Size    sz     = get_canvas_size();
+    const Camera&      camera      = wxGetApp().plater()->get_camera();
+    const Transform3d& view_matrix = camera.get_view_matrix();
+    const Transform3d& proj_matrix = camera.get_projection_matrix();
+    const Size         sz          = get_canvas_size();
 
     shader->start_using();
-    shader->set_uniform("offset",
-        OpenGLManager::get_gl_info().is_mesa() ? 0.0005 : 0.00001);
-    shader->set_uniform("view_model_matrix", camera.get_view_matrix());
-    shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+    shader->set_uniform("offset", OpenGLManager::get_gl_info().is_mesa() ? 0.0005 : 0.00001);
+    shader->set_uniform("view_model_matrix", view_matrix);
+    shader->set_uniform("projection_matrix", proj_matrix);
 
     glsafe(::glEnable(GL_DEPTH_TEST));
 #if !SLIC3R_OPENGL_ES
@@ -8278,8 +8279,7 @@ void GLCanvas3D::_render_wireframe_overlay()
     glsafe(::glPolygonMode(GL_FRONT_AND_BACK, GL_LINE));
 #endif
 
-    m_volumes.render(GLVolumeCollection::ERenderType::Opaque, false,
-        camera.get_view_matrix(), camera.get_projection_matrix(), sz);
+    m_volumes.render(GLVolumeCollection::ERenderType::Opaque, false, view_matrix, proj_matrix, sz);
 
 #if !SLIC3R_OPENGL_ES
     glsafe(::glPolygonMode(GL_FRONT_AND_BACK, GL_FILL));
