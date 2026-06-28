@@ -2216,18 +2216,13 @@ bool CreatePrinterPresetDialog::load_system_and_user_presets_with_curr_model(Pre
         }
 
         try {
-            try { // Load OrcaFilamentLibrary FIRST to populate m_config_maps
-                temp_preset_bundle.load_vendor_configs_from_json(
-                    preset_path, 
-                    PresetBundle::ORCA_FILAMENT_LIBRARY,
-                    PresetBundle::LoadConfigBundleAttribute::LoadSystem | PresetBundle::LoadConfigBundleAttribute::LoadFilamentOnly,
-                    ForwardCompatibilitySubstitutionRule::EnableSilent
-                );
-            } catch (...) {
-                BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Could not load OrcaFilamentLibrary for vendor configs";
-            }
-            temp_preset_bundle.load_vendor_configs_from_json(preset_path, selected_vendor_id, PresetBundle::LoadConfigBundleAttribute::LoadSystem,
-                                                             ForwardCompatibilitySubstitutionRule::EnableSilent);
+            // Pass the app's preset bundle (which already holds OrcaFilamentLibrary) as the base
+            // bundle so vendor filaments that inherit OFL bases resolve via the existing
+            // cross-vendor inheritance path.
+            temp_preset_bundle.load_vendor_configs_from_json(preset_path, selected_vendor_id,
+                                                             PresetBundle::LoadConfigBundleAttribute::LoadSystem,
+                                                             ForwardCompatibilitySubstitutionRule::EnableSilent,
+                                                             wxGetApp().preset_bundle);
         } catch (...) {
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "load vendor fonfigs form json failed";
             MessageDialog dlg(this, _L("The printer model was not found, please reselect."), wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Info"),
