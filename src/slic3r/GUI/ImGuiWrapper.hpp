@@ -338,11 +338,11 @@ public:
         ImVec4 text_disabled; // Text color for disabled controls
         ImVec4 text_warning;  // Text color for warnings labels
         ImVec4 text_modified; // Text color for labels on modified parameters
-        ImVec4 focus_control; // ORCA color with %10 opacity. Used on focused control backgrounds
-        ImVec4 focus_item;    // ORCA color with %25 opacity. Used on ckecked items on control boxes / selected text bg
+        ImVec4 focus_control; // ORCA color with 10% opacity. Used on focused control backgrounds
+        ImVec4 focus_item;    // ORCA color with 25% opacity. Used on checked items in control boxes / selected text bg
         ImVec4 border;        // border color for controls
-        ImVec4 separator;     // seperator color
-        ImVec4 icon;          // color matches with icons. use it when border not visible enough
+        ImVec4 separator;     // separator color
+        ImVec4 icon;          // color matches the icons; use it when the border is not visible enough
         ImVec4 toolbar_bg;
         CanvasButtonColors button_regular;
         CanvasButtonColors button_confirm;
