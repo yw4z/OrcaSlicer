@@ -307,12 +307,13 @@ void GLGizmoMmuSegmentation::render_tooltip_button(float x, float y)
 // ORCA
 bool GLGizmoMmuSegmentation::draw_color_button(int idx, std::string id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale)
 {
+    const ImGuiWrapper::CanvasColors colors = ImGuiWrapper::canvas_colors();
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     std::string label_id  = std::to_string(idx) + id_str + std::to_string(idx);
     ImVec2      pos       = ImGui::GetCursorScreenPos();
     ImVec2      size      = ImVec2(27.f * scale, 27.f * scale);
     ImVec4      color_vec = ImGuiWrapper::to_ImVec4(color);
-    ImU32       br_color  = ImGui::ColorConvertFloat4ToU32(active ? ImGuiWrapper::COL_ORCA : m_is_dark_mode ? ImVec4(.35f, .35f, .35f, 1) : ImVec4(.85f, .85f, .85f, 1));
+    ImU32       br_color  = ImGuiWrapper::to_ImU32(active ? colors.main_fixed : colors.border);
     bool        dark_tone = (0.299f * color.r() + 0.587f * color.g() + 0.114f * color.b()) < 0.51f; // matching values used by wxWidgets with clr.GetLuminance() < 0.51
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
@@ -329,7 +330,7 @@ bool GLGizmoMmuSegmentation::draw_color_button(int idx, std::string id_str, cons
     auto drawBorder = [&](float d, float r, float t, ImU32 col) {
         draw_list->AddRect({pos.x + d * scale, pos.y + d * scale}, {pos.x + size.x - d * scale , pos.y + size.y - d * scale}, col, r * scale, 0, t * scale);
     };
-    drawBorder(1.5f, 3.f, 4.f, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg)));
+    drawBorder(1.5f, 3.f, 4.f, ImGuiWrapper::to_ImU32(colors.bg));
     if(active)
         drawBorder(.5f, 4.f , 2.f, br_color);
     else
@@ -1000,6 +1001,8 @@ void GLGizmoMmuSegmentation::update_used_filaments()
 
 void GLGizmoMmuSegmentation::render_filament_remap_ui(float window_width, float max_tooltip_width, float scale)
 {
+    const ImGuiWrapper::CanvasColors colors = ImGuiWrapper::canvas_colors();
+
     size_t n_extr = std::min((size_t)EnforcerBlockerType::ExtruderMax, m_extruders_colors.size());
 
     int displayed_count = 0;
@@ -1052,8 +1055,8 @@ void GLGizmoMmuSegmentation::render_filament_remap_ui(float window_width, float 
         // Apply popup styling before BeginPopup using standard Orca colors
         ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding  , 8.0f * scale);
         ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 2.0f * scale); // thicker & colored border to prevent mixing with main window. Current ImGui version not supports shadows
-        ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
-        ImGui::PushStyleColor(ImGuiCol_Border , ImGui::ColorConvertFloat4ToU32(ImGuiWrapper::COL_ORCA));
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, colors.bg);
+        ImGui::PushStyleColor(ImGuiCol_Border , colors.main_fixed);
         
         if (ImGui::BeginPopup(pop_id.c_str())) {
             

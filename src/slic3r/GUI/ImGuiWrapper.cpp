@@ -2511,9 +2511,6 @@ std::vector<unsigned char> ImGuiWrapper::load_svg(const std::string& bitmap_name
     return data;
 }
 
-//BBS
-static bool m_is_dark_mode = false;
-
 // ORCA global color managment
 // Color conversion method for ColorRGBA / ImU32 > ImGuiWrapper::from_ImVec4(ImVec4)
 // TODO
@@ -2557,6 +2554,9 @@ void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     c.black                       = to_ImVec4("#000000");
     c.transparent                 = to_ImVec4("#00000000");
 }
+
+//BBS
+static bool m_is_dark_mode = false;
 
 void ImGuiWrapper::on_change_color_mode(bool is_dark)
 {
