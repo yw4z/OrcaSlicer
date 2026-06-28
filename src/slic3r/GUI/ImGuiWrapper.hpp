@@ -329,11 +329,24 @@ public:
     struct CanvasColors {
         ImVec4 main;
         ImVec4 main_fixed;
+        ImVec4 bg;
+        ImVec4 title_bg;
         ImVec4 text;
         ImVec4 text_disabled;
+        ImVec4 text_warning;
+        ImVec4 focus_control;
+        ImVec4 focus_item;
+        ImVec4 separator;
         CanvasButtonColorSet button_regular;
         CanvasButtonColorSet button_confirm;
-        // TODO add more types of colors for controls
+        // button_alert
+        // button_disabled
+        ImVec4 x_axis;
+        ImVec4 y_axis;
+        ImVec4 z_axis;
+        ImVec4 white;
+        ImVec4 black;
+        ImVec4 transparent;
     };
     static void update_canvas_colors(bool is_dark);
 
