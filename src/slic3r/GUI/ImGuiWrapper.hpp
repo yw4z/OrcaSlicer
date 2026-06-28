@@ -327,7 +327,7 @@ public:
 
     // ORCA global color managment
     // Color conversion method for ColorRGBA / ImU32 > ImGuiWrapper::from_ImVec4(ImVec4)
-    struct CanvasButtonColorSet { ImVec4 bg, bg_hover, fg, fg_disabled; };
+    struct CanvasButtonColors { ImVec4 bg, bg_hover, fg, fg_disabled; };
     struct CanvasColors {
         ImVec4 main;          // main accent color
         ImVec4 main_fixed;    // main accent color. for improving readability / visiblity of some controls on dark mode
@@ -342,11 +342,12 @@ public:
         ImVec4 focus_item;    // ORCA color with %25 opacity. Used on ckecked items on control boxes / selected text bg
         ImVec4 border;        // border color for controls
         ImVec4 separator;     // seperator color
+        ImVec4 icon;          // color matches with icons. use it when border not visible enough
         ImVec4 toolbar_bg;
-        CanvasButtonColorSet button_regular;
-        CanvasButtonColorSet button_confirm;
+        CanvasButtonColors button_regular;
+        CanvasButtonColors button_confirm;
+        CanvasButtonColors button_disabled;
         // button_alert
-        // button_disabled
         ImVec4 x_axis;
         ImVec4 y_axis;
         ImVec4 z_axis;
@@ -402,6 +403,7 @@ public:
     enum class CanvasButtonStyle : uint8_t{
         Regular = 0,
         Confirm,
+        Disabled,
         Alert,
         COUNT
     };

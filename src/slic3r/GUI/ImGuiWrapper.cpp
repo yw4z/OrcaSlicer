@@ -2521,36 +2521,41 @@ static bool m_is_dark_mode = false;
 ImGuiWrapper::CanvasColors ImGuiWrapper::m_canvas_colors = {};
 void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     CanvasColors& c = m_canvas_colors;
-    c.main                       = to_ImVec4(is_dark ? "#00675b" : "#009688");
-    c.main_fixed                 = to_ImVec4("#009688");                       // for improving readability / visiblity of some controls on dark mode
-    c.bg                         = to_ImVec4(is_dark ? "#2D2D31" : "#FFFFFF");
-    c.bg_sec                     = to_ImVec4(is_dark ? "#36363B" : "#F4F4F4");
-    c.bg_alt                     = to_ImVec4(is_dark ? "#242428" : "#FEFFFF");
-    c.text                       = to_ImVec4(is_dark ? "#EFEFF0" : "#262E30");
-    c.text_disabled              = to_ImVec4(is_dark ? "#909090" : "#6B6A6A");
-    c.text_warning               = to_ImVec4("#FD6F28");
-    c.text_modified              = c.text_warning;
-    c.focus_control              = to_ImVec4(is_dark ? "#283232" : "#E5F0EE"); // ORCA color with %10 opacity
-    c.focus_item                 = to_ImVec4(is_dark ? "#223C3C" : "#BFE1DE"); // ORCA color with %25 opacity
-    c.border                     = to_ImVec4(is_dark ? "#4A4A51" : "#DBDBDB");
-    c.separator                  = to_ImVec4(is_dark ? "#4C4C55" : "#EEEEEE");
-    c.toolbar_bg                 = to_ImVec4(is_dark ? "#393C42" : "#FAFAFA");
+    c.main                        = to_ImVec4(is_dark ? "#00675b" : "#009688");
+    c.main_fixed                  = to_ImVec4("#009688");                       // for improving readability / visiblity of some controls on dark mode
+    c.bg                          = to_ImVec4(is_dark ? "#2D2D31" : "#FFFFFF");
+    c.bg_sec                      = to_ImVec4(is_dark ? "#36363B" : "#F4F4F4");
+    c.bg_alt                      = to_ImVec4(is_dark ? "#242428" : "#FEFFFF");
+    c.text                        = to_ImVec4(is_dark ? "#EFEFF0" : "#262E30");
+    c.text_disabled               = to_ImVec4(is_dark ? "#909090" : "#6B6A6A");
+    c.text_warning                = to_ImVec4("#FD6F28");
+    c.text_modified               = c.text_warning;
+    c.focus_control               = to_ImVec4(is_dark ? "#283232" : "#E5F0EE"); // ORCA color with %10 opacity
+    c.focus_item                  = to_ImVec4(is_dark ? "#223C3C" : "#BFE1DE"); // ORCA color with %25 opacity
+    c.border                      = to_ImVec4(is_dark ? "#4A4A51" : "#DBDBDB");
+    c.separator                   = to_ImVec4(is_dark ? "#4C4C55" : "#EEEEEE");
+    c.icon                        = to_ImVec4(is_dark ? "#949494" : "#7C8282");
+    c.toolbar_bg                  = to_ImVec4(is_dark ? "#393C42" : "#FAFAFA");
     // Controls
-    c.button_regular.bg          = to_ImVec4(is_dark ? "#3E3E45" : "#DFDFDF");
-    c.button_regular.bg_hover    = to_ImVec4(is_dark ? "#4D4D54" : "#D4D4D4");
-    c.button_regular.fg          = c.text;
-    c.button_regular.fg_disabled = c.text_disabled;
-    c.button_confirm.bg          = c.main;
-    c.button_confirm.bg_hover    = to_ImVec4(is_dark ? "#008172" : "#26A69A");
-    c.button_confirm.fg          = to_ImVec4(is_dark ? "#FEFEFE" : "#FEFEFE");
-    c.button_confirm.fg_disabled = to_ImVec4(is_dark ? "#909090" : "#6B6A6A");
+    c.button_regular.bg           = to_ImVec4(is_dark ? "#3E3E45" : "#DFDFDF");
+    c.button_regular.bg_hover     = to_ImVec4(is_dark ? "#4D4D54" : "#D4D4D4");
+    c.button_regular.fg           = c.text;
+    c.button_regular.fg_disabled  = c.text_disabled;
+    c.button_confirm.bg           = c.main;
+    c.button_confirm.bg_hover     = to_ImVec4(is_dark ? "#008172" : "#26A69A");
+    c.button_confirm.fg           = to_ImVec4(is_dark ? "#FEFEFE" : "#FEFEFE");
+    c.button_confirm.fg_disabled  = c.text_disabled;
+    c.button_disabled.bg          = c.button_regular.bg;
+    c.button_disabled.bg_hover    = c.button_regular.bg;
+    c.button_disabled.fg          = c.text_disabled;
+    c.button_disabled.fg_disabled = c.text_disabled;
     // Colors
-    c.x_axis                     = to_ImVec4("#FF3C5B");
-    c.y_axis                     = to_ImVec4("#64C818");
-    c.z_axis                     = to_ImVec4("#2F88E9");
-    c.white                      = to_ImVec4("#FFFFFF");
-    c.black                      = to_ImVec4("#000000");
-    c.transparent                = to_ImVec4("#00000000");
+    c.x_axis                      = to_ImVec4("#FF3C5B");
+    c.y_axis                      = to_ImVec4("#64C818");
+    c.z_axis                      = to_ImVec4("#2F88E9");
+    c.white                       = to_ImVec4("#FFFFFF");
+    c.black                       = to_ImVec4("#000000");
+    c.transparent                 = to_ImVec4("#00000000");
 }
 
 void ImGuiWrapper::on_change_color_mode(bool is_dark)
@@ -2643,23 +2648,30 @@ void ImGuiWrapper::pop_common_window_style() {
 
 // ORCA unified button styling
 void ImGuiWrapper::push_button_style(const float scale, CanvasButtonType type, CanvasButtonStyle style) {
-    bool is_compact = type  == CanvasButtonType::Compact;
+    float  rounding = 4.0f; 
+    ImVec2 padding  = ImVec2(12.f, 5.f);
+    if(type  == CanvasButtonType::Compact){
+        rounding = 12.f;
+        padding  = ImVec2(12.f, 4.f);
+    }
+    // window
+    // choice
 
-    auto clr = style == CanvasButtonStyle::Confirm
-        ? m_canvas_colors.button_confirm
-        : m_canvas_colors.button_regular;
-        // alert
-        // disabled
-
-    ImGui::PushStyleColor(ImGuiCol_Button,        clr.bg);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clr.bg_hover);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  clr.bg);
-    ImGui::PushStyleColor(ImGuiCol_Text,          clr.fg);
-    ImGui::PushStyleColor(ImGuiCol_TextDisabled,  clr.fg_disabled);
-    ImGui::PushStyleColor(ImGuiCol_Border            , ImVec4(0,0,0,0)); // No border required since focus events not supported
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , (is_compact ? 12.f : 4.0f) * scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , (is_compact ? ImVec2(12.f, 4.f) : ImVec2(12.f, 5.f)) * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , rounding * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , padding  * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
+
+    auto clr = style == CanvasButtonStyle::Confirm  ? m_canvas_colors.button_confirm
+             : style == CanvasButtonStyle::Disabled ? m_canvas_colors.button_disabled
+             : m_canvas_colors.button_regular;
+        // alert
+
+    ImGui::PushStyleColor(ImGuiCol_Button       , clr.bg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clr.bg_hover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive , clr.bg);
+    ImGui::PushStyleColor(ImGuiCol_Text         , clr.fg);
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled , clr.fg_disabled);
+    ImGui::PushStyleColor(ImGuiCol_Border       , ImVec4(0,0,0,0)); // No border required since focus events not supported
 }
 
 void ImGuiWrapper::pop_button_style() {
@@ -2699,16 +2711,11 @@ void ImGuiWrapper::pop_cancel_button_style() {
 }
 
 void ImGuiWrapper::push_button_disable_style() {
-    if (m_is_dark_mode) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(54 / 255.f, 54 / 255.f, 60 / 255.f, 1.f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(54 / 255.f, 54 / 255.f, 60 / 255.f, 1.f));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 1.f, 1.f, 0.4f));
-    }
-    else {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(206.f / 255.f, 206.f / 255.f, 206.f / 255.f, 1.f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(206.f / 255.f, 206.f / 255.f, 206.f / 255.f, 1.f));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 1.f, 1.f, 1.f));
-    }
+    CanvasColors c = m_canvas_colors;
+    auto clr = m_canvas_colors.button_disabled;
+    ImGui::PushStyleColor(ImGuiCol_Button, clr.bg);
+    ImGui::PushStyleColor(ImGuiCol_Border, c.border);
+    ImGui::PushStyleColor(ImGuiCol_Text  , clr.fg);
 }
 
 void ImGuiWrapper::pop_button_disable_style() {
@@ -2721,7 +2728,7 @@ void ImGuiWrapper::push_combo_style(const float scale)
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 1.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f * scale);
     ImGui::PushStyleColor(ImGuiCol_PopupBg      , c.bg          );
-    ImGui::PushStyleColor(ImGuiCol_BorderActive , c.main_fixed  ); // ORCA hovered item border color
+    ImGui::PushStyleColor(ImGuiCol_BorderActive , c.main        ); // ORCA hovered item border color
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, c.transparent ); // ORCA hovered item background color
     ImGui::PushStyleColor(ImGuiCol_HeaderActive , c.main_fixed  );
     ImGui::PushStyleColor(ImGuiCol_Header       , c.focus_item  ); // ORCA active item background color
@@ -2740,7 +2747,7 @@ void ImGuiWrapper::push_radio_style(const float scale)
     CanvasColors c = m_canvas_colors;
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1.5f, 1.5f) * scale); // ORCA ensure icon size stays consistent
     ImGui::PushStyleColor(ImGuiCol_CheckMark, c.main_fixed); // ORCA use orca color for radio buttons
-    ImGui::PushStyleColor(ImGuiCol_Border   , c.border    ); // ORCA match border color
+    ImGui::PushStyleColor(ImGuiCol_Border   , c.icon      ); // ORCA match border color
 }
 
 void ImGuiWrapper::pop_radio_style()
