@@ -317,6 +317,7 @@ public:
     void disable_background_fadeout_animation();
 
     static ImU32 to_ImU32(const ColorRGBA& color);
+    static ImU32 to_ImU32(const ImVec4& color);
     static ImVec4 to_ImVec4(const ColorRGBA& color);
     static ImVec4 to_ImVec4(const char* hex_code);
     static ColorRGBA from_ImU32(const ImU32& color);
@@ -325,18 +326,23 @@ public:
     ImFontAtlasCustomRect* GetTextureCustomRect(const wchar_t& tex_id);
 
     // ORCA global color managment
+    // Color conversion method for ColorRGBA / ImU32 > ImGuiWrapper::from_ImVec4(ImVec4)
     struct CanvasButtonColorSet { ImVec4 bg, bg_hover, fg, fg_disabled; };
     struct CanvasColors {
-        ImVec4 main;
-        ImVec4 main_fixed;
-        ImVec4 bg;
-        ImVec4 title_bg;
-        ImVec4 text;
-        ImVec4 text_disabled;
-        ImVec4 text_warning;
-        ImVec4 focus_control;
-        ImVec4 focus_item;
-        ImVec4 separator;
+        ImVec4 main;          // main accent color
+        ImVec4 main_fixed;    // main accent color. for improving readability / visiblity of some controls on dark mode
+        ImVec4 bg;            // background color
+        ImVec4 bg_sec;        // used for separation with background like titlebars / 
+        ImVec4 bg_alt;        // used when secondary background color not enough for separation 
+        ImVec4 text;          // Text color
+        ImVec4 text_disabled; // Text color for disabled controls
+        ImVec4 text_warning;  // Text color for warnings labels
+        ImVec4 text_modified; // Text color for labels on modified parameters
+        ImVec4 focus_control; // ORCA color with %10 opacity. Used on focused control backgrounds
+        ImVec4 focus_item;    // ORCA color with %25 opacity. Used on ckecked items on control boxes / selected text bg
+        ImVec4 border;        // border color for controls
+        ImVec4 separator;     // seperator color
+        ImVec4 toolbar_bg;
         CanvasButtonColorSet button_regular;
         CanvasButtonColorSet button_confirm;
         // button_alert
