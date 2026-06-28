@@ -348,7 +348,9 @@ public:
         ImVec4 black;
         ImVec4 transparent;
     };
+    static CanvasColors m_canvas_colors;
     static void update_canvas_colors(bool is_dark);
+    static CanvasColors canvas_colors() { return m_canvas_colors; }
 
     static const ImVec4 COL_GREY_DARK;
     static const ImVec4 COL_GREY_LIGHT;

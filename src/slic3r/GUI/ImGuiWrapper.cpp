@@ -2513,7 +2513,7 @@ static bool m_is_dark_mode = false;
 // TODO
 // - find a solution for IMCOL32 and COLORRGBA
 // - cleanup all other color definations overtime
-ImGuiWrapper::CanvasColors m_canvas_colors;
+ImGuiWrapper::CanvasColors ImGuiWrapper::m_canvas_colors = {};
 void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     CanvasColors& c = m_canvas_colors;
     c.main                       = to_ImVec4(is_dark ? "#00675b" : "#009688");
@@ -2538,6 +2538,9 @@ void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     c.button_confirm.fg          = to_ImVec4(is_dark ? "#FEFEFE" : "#FEFEFE");
     c.button_confirm.fg_disabled = to_ImVec4(is_dark ? "#909090" : "#6B6A6A");
     // Colors
+    // axis_x
+    // axis_y
+    // axis_z
     c.white                      = to_ImVec4("#FFFFFF");
     c.black                      = to_ImVec4("#000000");
     c.transparent                = to_ImVec4("#00000000");
@@ -2553,7 +2556,7 @@ void ImGuiWrapper::on_change_color_mode(bool is_dark)
 
 void ImGuiWrapper::push_toolbar_style(const float scale)
 {
-    CanvasColors& c = m_canvas_colors;
+    CanvasColors c = m_canvas_colors;
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 10.0f) * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f * scale);
