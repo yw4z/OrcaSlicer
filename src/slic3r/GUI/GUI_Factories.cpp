@@ -590,6 +590,7 @@ wxMenu* MenuFactory::append_submenu_add_handy_model(wxMenu* menu, ModelVolumeTyp
     static const std::vector<HandyModel> handy_models = {
         {L("Orca Cube"),           {"OrcaCube_v2.drc", "OrcaPlug_v2.drc"},                    true},
         {L("OrcaSliced Combo"),    {"OrcaSliced.3mf", "OrcaCube_v2.drc", "OrcaPlug_v2.drc"},  true},
+        {L("Orca Badge"),          {"OrcaBadge.3mf"}},
         {L("Orca Tolerance Test"), {"OrcaToleranceTest.drc"}},
         {L("3DBenchy"),            {"3DBenchy.drc"}},
         {L("Cali Cat"),            {"calicat.drc"}},
