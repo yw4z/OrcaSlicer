@@ -1592,6 +1592,9 @@ void PreferencesDialog::create_items()
     auto item_project_load     = create_item_combobox(_L("Load behaviour"), _L("Should printer/filament/process settings be loaded when opening a 3MF file?"), SETTING_PROJECT_LOAD_BEHAVIOUR, projectLoadSettingsBehaviourOptions, projectLoadSettingsConfigOptions);
     g_sizer->Add(item_project_load);
 
+    auto item_backup           = create_item_backup(_L("Auto backup"), _L("Backup your project periodically to help with restoring from an occasional crash."));
+    g_sizer->Add(item_backup); 
+
     auto item_max_recent_count = create_item_input(_L("Maximum recent files"), "", _L("Maximum count of recent files"), "max_recent_count", [](wxString value) {
         long max = 0;
         if (value.ToLong(&max))
@@ -1619,9 +1622,6 @@ void PreferencesDialog::create_items()
         "drc_bits", DRC_BITS_MIN, DRC_BITS_MAX, nullptr, "import_export#drc"
     );
     g_sizer->Add(item_draco_bits);
-
-    auto item_backup           = create_item_backup(_L("Auto backup"), _L("Backup your project periodically to help with restoring from an occasional crash."));
-    g_sizer->Add(item_backup); 
 
     //// GENERAL > Preset
     g_sizer->Add(create_item_title(_L("Preset")), 1, wxEXPAND);
