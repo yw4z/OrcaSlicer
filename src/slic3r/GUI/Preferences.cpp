@@ -1878,6 +1878,13 @@ void PreferencesDialog::create_items()
         if (m_sync_user_preset_checkbox) m_sync_user_preset_checkbox->Enable(false);
     }
 
+    auto item_filament_sync_mode = create_item_combobox(
+        _L("Filament sync mode"),
+        _L("Choose whether sync updates both filament preset and color, or only color."),
+        "sync_ams_filament_mode",
+        {_L("Filament & Color"), _L("Color only")});
+    g_sizer->Add(item_filament_sync_mode);
+
     auto item_system_sync      = create_item_checkbox(_L("Update built-in presets automatically."), "", "sync_system_preset");
     g_sizer->Add(item_system_sync);
 
@@ -1885,16 +1892,6 @@ void PreferencesDialog::create_items()
                                                       _L("Store authentication tokens in an encrypted file instead of the system keychain. (Requires restart)"),
                                                       SETTING_USE_ENCRYPTED_TOKEN_FILE);
     g_sizer->Add(item_token_storage);
-
-    //// ONLINE > Filament Sync Options
-    g_sizer->Add(create_item_title(_L("Filament Sync Options")), 1, wxEXPAND);
-
-    auto item_filament_sync_mode = create_item_combobox(
-        _L("Filament sync mode"),
-        _L("Choose whether sync updates both filament preset and color, or only color."),
-        "sync_ams_filament_mode",
-        {_L("Filament & Color"), _L("Color only")});
-    g_sizer->Add(item_filament_sync_mode);
 
     //// ONLINE > Network plugin
     g_sizer->Add(create_item_title(_L("Bambu network plug-in")), 1, wxEXPAND);
