@@ -307,7 +307,7 @@ void GLGizmoMmuSegmentation::render_tooltip_button(float x, float y)
 // ORCA
 bool GLGizmoMmuSegmentation::draw_color_button(int idx, std::string id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale)
 {
-    const ImGuiWrapper::CanvasColors colors = ImGuiWrapper::canvas_colors();
+    const auto& colors = ImGuiWrapper::canvas_colors();
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     std::string label_id  = std::to_string(idx) + id_str + std::to_string(idx);
     ImVec2      pos       = ImGui::GetCursorScreenPos();
@@ -355,7 +355,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         scale *= (float) dpi / (float) DPI_DEFAULT;
     #endif // WIN32
 
-    const ImGuiWrapper::CanvasColors colors = ImGuiWrapper::canvas_colors();
+    const auto& colors = ImGuiWrapper::canvas_colors();
 
     const float approx_height = m_imgui->scaled(22.0f);
     y = std::min(y, bottom_limit - approx_height);
@@ -1001,7 +1001,7 @@ void GLGizmoMmuSegmentation::update_used_filaments()
 
 void GLGizmoMmuSegmentation::render_filament_remap_ui(float window_width, float max_tooltip_width, float scale)
 {
-    const ImGuiWrapper::CanvasColors colors = ImGuiWrapper::canvas_colors();
+    const auto& colors = ImGuiWrapper::canvas_colors();
 
     size_t n_extr = std::min((size_t)EnforcerBlockerType::ExtruderMax, m_extruders_colors.size());
 

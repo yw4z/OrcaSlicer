@@ -2511,10 +2511,10 @@ std::vector<unsigned char> ImGuiWrapper::load_svg(const std::string& bitmap_name
     return data;
 }
 
-// ORCA global color managment
-// Color conversion method for ColorRGBA / ImU32 > ImGuiWrapper::from_ImVec4(ImVec4)
+// ORCA global color management
+// Color conversion methods for ColorRGBA / ImU32 -> ImGuiWrapper::from_ImVec4(ImVec4)
 // TODO
-// - cleanup all other color definations overtime
+// - clean up other color definitions over time
 ImGuiWrapper::CanvasColors ImGuiWrapper::m_canvas_colors = {};
 void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     CanvasColors& c = m_canvas_colors;
@@ -2566,7 +2566,7 @@ void ImGuiWrapper::on_change_color_mode(bool is_dark)
 
 void ImGuiWrapper::push_toolbar_style(const float scale)
 {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 10.0f) * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f * scale);
@@ -2601,7 +2601,7 @@ void ImGuiWrapper::pop_toolbar_style()
 
 void ImGuiWrapper::push_menu_style(const float scale)
 {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     ImGuiWrapper::push_toolbar_style(scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f) * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 4.0f * scale);
@@ -2619,7 +2619,7 @@ void ImGuiWrapper::pop_menu_style()
 }
 
 void ImGuiWrapper::push_common_window_style(const float scale) {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 10.0f) * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowTitleAlign, ImVec2(0.05f, 0.50f) * scale);
@@ -2681,7 +2681,7 @@ void ImGuiWrapper::pop_button_style() {
 
 // TODO remove all other push_button styles
 void ImGuiWrapper::push_confirm_button_style() {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     auto clr = m_canvas_colors.button_confirm;
     ImGui::PushStyleColor(ImGuiCol_Button       , clr.bg);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clr.bg_hover);
@@ -2696,7 +2696,7 @@ void ImGuiWrapper::pop_confirm_button_style() {
 }
 
 void ImGuiWrapper::push_cancel_button_style() {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     auto clr = m_canvas_colors.button_regular;
     ImGui::PushStyleColor(ImGuiCol_Button       , clr.bg);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clr.bg_hover);
@@ -2711,7 +2711,7 @@ void ImGuiWrapper::pop_cancel_button_style() {
 }
 
 void ImGuiWrapper::push_button_disable_style() {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     auto clr = m_canvas_colors.button_disabled;
     ImGui::PushStyleColor(ImGuiCol_Button, clr.bg);
     ImGui::PushStyleColor(ImGuiCol_Border, c.border);
@@ -2724,7 +2724,7 @@ void ImGuiWrapper::pop_button_disable_style() {
 
 void ImGuiWrapper::push_combo_style(const float scale)
 {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 1.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f * scale);
     ImGui::PushStyleColor(ImGuiCol_PopupBg      , c.bg          );
@@ -2744,7 +2744,7 @@ void ImGuiWrapper::pop_combo_style()
 
 void ImGuiWrapper::push_radio_style(const float scale)
 {
-    CanvasColors c = m_canvas_colors;
+    const CanvasColors& c = m_canvas_colors;
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1.5f, 1.5f) * scale); // ORCA ensure icon size stays consistent
     ImGui::PushStyleColor(ImGuiCol_CheckMark, c.main_fixed); // ORCA use orca color for radio buttons
     ImGui::PushStyleColor(ImGuiCol_Border   , c.icon      ); // ORCA match border color

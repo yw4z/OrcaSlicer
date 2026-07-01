@@ -330,7 +330,7 @@ public:
     struct CanvasButtonColors { ImVec4 bg, bg_hover, fg, fg_disabled; };
     struct CanvasColors {
         ImVec4 main;          // main accent color
-        ImVec4 main_fixed;    // main accent color. for improving readability / visiblity of some controls on dark mode
+        ImVec4 main_fixed;    // main accent color. for improving readability / visibility of some controls on dark mode
         ImVec4 bg;            // background color
         ImVec4 bg_sec;        // used for separation with background like titlebars / 
         ImVec4 bg_alt;        // used when secondary background color not enough for separation 
@@ -357,7 +357,7 @@ public:
     };
     static CanvasColors m_canvas_colors;
     static void update_canvas_colors(bool is_dark);
-    static CanvasColors canvas_colors() { return m_canvas_colors; }
+    static const CanvasColors canvas_colors() { return m_canvas_colors; }
 
     static const ImVec4 COL_GREY_DARK;
     static const ImVec4 COL_GREY_LIGHT;
