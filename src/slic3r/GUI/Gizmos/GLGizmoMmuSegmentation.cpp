@@ -640,7 +640,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         ImGui::AlignTextToFramePadding();
         m_imgui->text(m_desc.at("clipping_of_view"));
     } else {
-        m_imgui->push_button_style(scale);
+        m_imgui->push_button_style(scale, ImGuiWrapper::CanvasButtonType::Window);
         if (m_imgui->button(m_desc.at("reset_direction"))) {
             wxGetApp().CallAfter([this]() { m_c->object_clipper()->set_position_by_ratio(-1., false); });
         }

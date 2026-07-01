@@ -2518,8 +2518,17 @@ std::vector<unsigned char> ImGuiWrapper::load_svg(const std::string& bitmap_name
 ImGuiWrapper::CanvasColors ImGuiWrapper::m_canvas_colors = {};
 void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     CanvasColors& c = m_canvas_colors;
+    // Main Colors
     c.main                        = to_ImVec4(is_dark ? "#00675b" : "#009688");
     c.main_fixed                  = to_ImVec4("#009688");                       // for improving readability / visiblity of some controls on dark mode
+    c.x_axis                      = to_ImVec4("#FF3C5B");
+    c.y_axis                      = to_ImVec4("#64C818");
+    c.z_axis                      = to_ImVec4("#2F88E9");
+    c.white                       = to_ImVec4("#FFFFFF");
+    c.black                       = to_ImVec4("#000000");
+    c.transparent                 = to_ImVec4("#00000000");
+    c.alert                       = to_ImVec4("#E14747");
+    // Item Colors
     c.bg                          = to_ImVec4(is_dark ? "#2D2D31" : "#FFFFFF");
     c.bg_sec                      = to_ImVec4(is_dark ? "#36363B" : "#F4F4F4");
     c.bg_alt                      = to_ImVec4(is_dark ? "#242428" : "#FEFFFF");
@@ -2546,13 +2555,10 @@ void ImGuiWrapper::update_canvas_colors(bool is_dark) {
     c.button_disabled.bg_hover    = c.button_regular.bg;
     c.button_disabled.fg          = c.text_disabled;
     c.button_disabled.fg_disabled = c.text_disabled;
-    // Colors
-    c.x_axis                      = to_ImVec4("#FF3C5B");
-    c.y_axis                      = to_ImVec4("#64C818");
-    c.z_axis                      = to_ImVec4("#2F88E9");
-    c.white                       = to_ImVec4("#FFFFFF");
-    c.black                       = to_ImVec4("#000000");
-    c.transparent                 = to_ImVec4("#00000000");
+    c.button_alert.bg             = c.button_regular.bg;
+    c.button_alert.bg_hover       = c.alert;
+    c.button_alert.fg             = c.text_disabled;
+    c.button_alert.fg_disabled    = c.text_disabled;
 }
 
 //BBS
@@ -2648,23 +2654,19 @@ void ImGuiWrapper::pop_common_window_style() {
 
 // ORCA unified button styling
 void ImGuiWrapper::push_button_style(const float scale, CanvasButtonType type, CanvasButtonStyle style) {
-    float  rounding = 4.0f; 
-    ImVec2 padding  = ImVec2(12.f, 5.f);
-    if(type  == CanvasButtonType::Compact){
-        rounding = 12.f;
-        padding  = ImVec2(12.f, 4.f);
-    }
-    // window
-    // choice
+    float  r;
+    ImVec2 pad;
+    if(type == CanvasButtonType::Window ){r = 16.f; pad = ImVec2(8.f , 4.f);}
+    else      /* fallback to Choice */   {r = 4.f ; pad = ImVec2(12.f, 5.f);}
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , rounding * scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , padding  * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , r * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , pad  * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
 
     auto clr = style == CanvasButtonStyle::Confirm  ? m_canvas_colors.button_confirm
              : style == CanvasButtonStyle::Disabled ? m_canvas_colors.button_disabled
+             : style == CanvasButtonStyle::Alert    ? m_canvas_colors.button_alert
              : m_canvas_colors.button_regular;
-        // alert
 
     ImGui::PushStyleColor(ImGuiCol_Button       , clr.bg);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clr.bg_hover);

@@ -331,6 +331,13 @@ public:
     struct CanvasColors {
         ImVec4 main;          // main accent color
         ImVec4 main_fixed;    // main accent color. for improving readability / visibility of some controls on dark mode
+        ImVec4 x_axis;
+        ImVec4 y_axis;
+        ImVec4 z_axis;
+        ImVec4 white;
+        ImVec4 black;
+        ImVec4 transparent;
+        ImVec4 alert;
         ImVec4 bg;            // background color
         ImVec4 bg_sec;        // used for separation with background like titlebars / 
         ImVec4 bg_alt;        // used when secondary background color not enough for separation 
@@ -347,13 +354,7 @@ public:
         CanvasButtonColors button_regular;
         CanvasButtonColors button_confirm;
         CanvasButtonColors button_disabled;
-        // button_alert
-        ImVec4 x_axis;
-        ImVec4 y_axis;
-        ImVec4 z_axis;
-        ImVec4 white;
-        ImVec4 black;
-        ImVec4 transparent;
+        CanvasButtonColors button_alert;
     };
     static CanvasColors m_canvas_colors;
     static void update_canvas_colors(bool is_dark);
@@ -408,13 +409,11 @@ public:
         COUNT
     };
     enum class CanvasButtonType : uint8_t{
-        Regular = 0,
-        Window,
-        Compact,
-        Choice,
+        Choice = 0, // Semi-Rounded For dialog choice buttons
+        Window,     // FullyRounded For slightly more compact pill shaped button
         COUNT
     };
-    static void push_button_style(const float scale, CanvasButtonType type = CanvasButtonType::Regular, CanvasButtonStyle style = CanvasButtonStyle::Regular);
+    static void push_button_style(const float scale, CanvasButtonType type = CanvasButtonType::Choice, CanvasButtonStyle style = CanvasButtonStyle::Regular);
     static void pop_button_style();
 
     static void push_confirm_button_style();
