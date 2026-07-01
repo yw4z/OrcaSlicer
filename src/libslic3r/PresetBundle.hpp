@@ -370,7 +370,7 @@ public:
 
     //BBS: add some functions for multiple extruders
     int get_printer_extruder_count() const;
-    bool support_different_extruders();
+    bool support_different_extruders() const;
 
     // Orca: Ensure filament_presets has at least one slot per nozzle on FFF printers.
     // Called from (load|update)_selections before the parallel project_config arrays
