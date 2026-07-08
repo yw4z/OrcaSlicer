@@ -51,18 +51,20 @@ void CreateFontStyleImagesJob::process(Ctl &ctl)
 
         // Normalize to fit max_size, exactly like CreateFontImageJob does against m_input.size.
         // Fit by height (matches row height), then clamp width if needed.
-        double scale = m_input.max_size.y() / (double) bounding_box.size().y();
+        constexpr float preview_padding_px = 2.f; // margin for AA sampling, tune to your AA kernel radius
 
+        double scale = m_input.max_size.y() / (double) bounding_box.size().y();
         BoundingBoxf bb2(bounding_box.min.cast<double>(), bounding_box.max.cast<double>());
         bb2.scale(scale);
-        image.tex_size.x = std::ceil(bb2.max.x() - bb2.min.x());
-        image.tex_size.y = std::ceil(bb2.max.y() - bb2.min.y());
 
         // crop width only if the (now height-normalized) text is too wide
+        image.tex_size.x = std::ceil(bb2.max.x() - bb2.min.x()) + 2 * preview_padding_px;
+        image.tex_size.y = std::ceil(bb2.max.y() - bb2.min.y()) + 2 * preview_padding_px;
+
         if (image.tex_size.x > m_input.max_size.x())
             image.tex_size.x = m_input.max_size.x();
 
-        scales[index] = scale; // store the fitted scale, used later for pixel_dim
+        scales[index] = scale;
     }
 
     // arrange bounding boxes
