@@ -187,8 +187,8 @@ Model Model::read_from_step(const std::string&                                  
                             ImportStepProgressFn                                    stepFn,
                             StepIsUtf8Fn                                            stepIsUtf8Fn,
                             std::function<int(Slic3r::Step&, double&, double&, bool&)>     step_mesh_fn,
-                            double                                                  linear_defletion,
-                            double                                                  angle_defletion,
+                            double                                                  linear_deflection,
+                            double                                                  angle_deflection,
                             bool                                                   is_split_compound)
 {
     Model model;
@@ -201,13 +201,13 @@ Model Model::read_from_step(const std::string&                                  
         goto _finished;
     }
     if (step_mesh_fn) {
-        if (step_mesh_fn(step_file, linear_defletion, angle_defletion, is_split_compound) == -1) {
+        if (step_mesh_fn(step_file, linear_deflection, angle_deflection, is_split_compound) == -1) {
             status = Step::Step_Status::CANCEL;
             goto _finished;
         }
     }
     
-    status = step_file.mesh(&model, is_cb_cancel, is_split_compound, linear_defletion, angle_defletion);
+    status = step_file.mesh(&model, is_cb_cancel, is_split_compound, linear_deflection, angle_deflection);
 
 _finished:
 
@@ -2708,6 +2708,23 @@ const TriangleMesh& ModelVolume::get_convex_hull() const
     return *m_convex_hull.get();
 }
 
+// Orca: get volume bbox for separate infill
+static std::mutex mtx_model;
+BoundingBox ModelVolume::get_volume_bbox(const Transform3d &matrix, Point &shift, bool apply_cache = false) {
+    std::unique_lock l(mtx_model); // locks function here
+    // Orca: the cache is keyed by the instance transform/shift; a ModelVolume is shared
+    // across instances, so returning the cache blindly would hand back another instance's bbox.
+    if (m_cached_volume_bbox.defined && apply_cache
+        && matrix.isApprox(m_cached_volume_bbox_matrix)
+        && shift == m_cached_volume_bbox_shift)
+        return m_cached_volume_bbox;
+    auto hull = get_convex_hull_2d(matrix);
+    hull.translate(-shift);
+    m_cached_volume_bbox_matrix = matrix;
+    m_cached_volume_bbox_shift  = shift;
+    return m_cached_volume_bbox = hull.bounding_box().polygon().bounding_box();
+}
+
 //BBS: refine the model part names
 ModelVolumeType ModelVolume::type_from_string(const std::string &s)
 {
@@ -2972,31 +2989,31 @@ void Model::setPrintSpeedTable(const DynamicPrintConfig& config, const PrintConf
     //Slic3r::DynamicPrintConfig config = wxGetApp().preset_bundle->full_config();
     printSpeedMap.maxSpeed = 0;
     if (config.has("inner_wall_speed")) {
-        printSpeedMap.perimeterSpeed = config.opt_float("inner_wall_speed");
+        printSpeedMap.perimeterSpeed = config.opt_float_nullable("inner_wall_speed", 0);
         if (printSpeedMap.perimeterSpeed > printSpeedMap.maxSpeed)
             printSpeedMap.maxSpeed = printSpeedMap.perimeterSpeed;
     }
     if (config.has("outer_wall_speed")) {
-        printSpeedMap.externalPerimeterSpeed = config.opt_float("outer_wall_speed");
+        printSpeedMap.externalPerimeterSpeed = config.opt_float_nullable("outer_wall_speed", 0);
         printSpeedMap.maxSpeed = std::max(printSpeedMap.maxSpeed, printSpeedMap.externalPerimeterSpeed);
     }
     if (config.has("sparse_infill_speed")) {
-        printSpeedMap.infillSpeed = config.opt_float("sparse_infill_speed");
+        printSpeedMap.infillSpeed = config.opt_float_nullable("sparse_infill_speed", 0);
         if (printSpeedMap.infillSpeed > printSpeedMap.maxSpeed)
             printSpeedMap.maxSpeed = printSpeedMap.infillSpeed;
     }
     if (config.has("internal_solid_infill_speed")) {
-        printSpeedMap.solidInfillSpeed = config.opt_float("internal_solid_infill_speed");
+        printSpeedMap.solidInfillSpeed = config.opt_float_nullable("internal_solid_infill_speed", 0);
         if (printSpeedMap.solidInfillSpeed > printSpeedMap.maxSpeed)
             printSpeedMap.maxSpeed = printSpeedMap.solidInfillSpeed;
     }
     if (config.has("top_surface_speed")) {
-        printSpeedMap.topSolidInfillSpeed = config.opt_float("top_surface_speed");
+        printSpeedMap.topSolidInfillSpeed = config.opt_float_nullable("top_surface_speed", 0);
         if (printSpeedMap.topSolidInfillSpeed > printSpeedMap.maxSpeed)
             printSpeedMap.maxSpeed = printSpeedMap.topSolidInfillSpeed;
     }
     if (config.has("support_speed")) {
-        printSpeedMap.supportSpeed = config.opt_float("support_speed");
+        printSpeedMap.supportSpeed = config.opt_float_nullable("support_speed", 0);
 
         if (printSpeedMap.supportSpeed > printSpeedMap.maxSpeed)
             printSpeedMap.maxSpeed = printSpeedMap.supportSpeed;
@@ -3226,25 +3243,28 @@ double Model::findMaxSpeed(const ModelObject* object) {
     double topSolidInfillSpeedObj = Model::printSpeedMap.topSolidInfillSpeed;
     double supportSpeedObj = Model::printSpeedMap.supportSpeed;
     double smallPerimeterSpeedObj = Model::printSpeedMap.smallPerimeterSpeed;
+    double smallSupportPerimeterSpeedObj = Model::printSpeedMap.smallSupportPerimeterSpeed;
     for (std::string objectKey : objectKeys) {
         if (objectKey == "inner_wall_speed"){
-            perimeterSpeedObj = object->config.opt_float(objectKey);
+            perimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
             externalPerimeterSpeedObj = Model::printSpeedMap.externalPerimeterSpeed / Model::printSpeedMap.perimeterSpeed * perimeterSpeedObj;
         }
         if (objectKey == "sparse_infill_speed")
-            infillSpeedObj = object->config.opt_float(objectKey);
+            infillSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
         if (objectKey == "internal_solid_infill_speed")
-            solidInfillSpeedObj = object->config.opt_float(objectKey);
+            solidInfillSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
         if (objectKey == "top_surface_speed")
-            topSolidInfillSpeedObj = object->config.opt_float(objectKey);
+            topSolidInfillSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
         if (objectKey == "support_speed")
-            supportSpeedObj = object->config.opt_float(objectKey);
+            supportSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
         if (objectKey == "outer_wall_speed")
-            externalPerimeterSpeedObj = object->config.opt_float(objectKey);
+            externalPerimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
         if (objectKey == "small_perimeter_speed")
-            smallPerimeterSpeedObj = object->config.opt_float(objectKey);
+            smallPerimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
+        if (objectKey == "small_support_perimeter_speed")
+            smallSupportPerimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
     }
-    objMaxSpeed = std::max(perimeterSpeedObj, std::max(externalPerimeterSpeedObj, std::max(infillSpeedObj, std::max(solidInfillSpeedObj, std::max(topSolidInfillSpeedObj, std::max(supportSpeedObj, std::max(smallPerimeterSpeedObj, objMaxSpeed)))))));
+    objMaxSpeed = std::max(perimeterSpeedObj, std::max(externalPerimeterSpeedObj, std::max(infillSpeedObj, std::max(solidInfillSpeedObj, std::max(topSolidInfillSpeedObj, std::max(supportSpeedObj, std::max(smallPerimeterSpeedObj, std::max(smallSupportPerimeterSpeedObj, objMaxSpeed))))))));
     if (objMaxSpeed <= 0) objMaxSpeed = 250.;
     return objMaxSpeed;
 }

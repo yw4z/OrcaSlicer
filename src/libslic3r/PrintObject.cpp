@@ -4,6 +4,7 @@
 #include "Print.hpp"
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
+#include "Clipper2Utils.hpp"
 #include "ElephantFootCompensation.hpp"
 #include "Geometry.hpp"
 #include "I18N.hpp"
@@ -157,10 +158,10 @@ std::vector<std::reference_wrapper<const PrintRegion>> PrintObject::all_regions(
     return out;
 }
 
-Polygons create_polyholes(const Point center, const coord_t radius, const coord_t nozzle_diameter, bool multiple)
+Polygons create_polyholes(const Point center, const coord_t radius, const coord_t nozzle_diameter, bool multiple, int max_edges)
 {
     // n = max(round(2 * d), 3); // for 0.4mm nozzle
-    size_t nb_edges = (int)std::max(3, (int)std::round(4.0 * unscaled(radius) * 0.4 / unscaled(nozzle_diameter)));
+    size_t nb_edges = (int)std::min(max_edges, std::max(3, (int)std::round(4.0 * unscaled(radius) * 0.4 / unscaled(nozzle_diameter))));
     // cylinder(h = h, r = d / cos (180 / n), $fn = n);
     //create x polyholes by rotation if multiple
     int nb_polyhole = 1;
@@ -190,8 +191,8 @@ void PrintObject::_transform_hole_to_polyholes()
 {
     // get all circular holes for each layer
     // the id is center-diameter-extruderid
-    //the tuple is Point center; float diameter_max; int extruder_id; coord_t max_variation; bool twist;
-    std::vector<std::vector<std::pair<std::tuple<Point, float, int, coord_t, bool>, Polygon*>>> layerid2center;
+    //the tuple is Point center; float diameter_max; int extruder_id; coord_t max_variation; bool twist; int max_edges;
+    std::vector<std::vector<std::pair<std::tuple<Point, float, int, coord_t, bool, int>, Polygon*>>> layerid2center;
     for (size_t i = 0; i < this->m_layers.size(); i++) layerid2center.emplace_back();
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, m_layers.size()),
@@ -230,9 +231,10 @@ void PrintObject::_transform_hole_to_polyholes()
                                 // SCALED_EPSILON was a bit too harsh. Now using a config, as some may want some harsh setting and some don't.
                                 coord_t max_variation = std::max(SCALED_EPSILON, scale_(this->m_layers[layer_idx]->m_regions[region_idx]->region().config().hole_to_polyhole_threshold.get_abs_value(unscaled(diameter_sum / hole.points.size()))));
                                 bool twist = this->m_layers[layer_idx]->m_regions[region_idx]->region().config().hole_to_polyhole_twisted.value;
+                                int max_edges = this->m_layers[layer_idx]->m_regions[region_idx]->region().config().hole_to_polyhole_max_edges.value;
                                 if (diameter_max - diameter_min < max_variation * 2 && diameter_line_max - diameter_line_min < max_variation * 2) {
                                     layerid2center[layer_idx].emplace_back(
-                                        std::tuple<Point, float, int, coord_t, bool>{center, diameter_max, layer->m_regions[region_idx]->region().config().outer_wall_filament_id.value, max_variation, twist}, & hole);
+                                        std::tuple<Point, float, int, coord_t, bool, int>{center, diameter_max, layer->m_regions[region_idx]->region().config().outer_wall_filament_id.value, max_variation, twist, max_edges}, & hole);
                                 }
                             }
                         }
@@ -243,14 +245,14 @@ void PrintObject::_transform_hole_to_polyholes()
         }
     });
     //sort holes per center-diameter
-    std::map<std::tuple<Point, float, int, coord_t, bool>, std::vector<std::pair<Polygon*, int>>> id2layerz2hole;
+    std::map<std::tuple<Point, float, int, coord_t, bool, int>, std::vector<std::pair<Polygon*, int>>> id2layerz2hole;
 
     //search & find hole that span at least X layers
     const size_t min_nb_layers = 2;
     for (size_t layer_idx = 0; layer_idx < this->m_layers.size(); ++layer_idx) {
         for (size_t hole_idx = 0; hole_idx < layerid2center[layer_idx].size(); ++hole_idx) {
             //get all other same polygons
-            std::tuple<Point, float, int, coord_t, bool>& id = layerid2center[layer_idx][hole_idx].first;
+            std::tuple<Point, float, int, coord_t, bool, int>& id = layerid2center[layer_idx][hole_idx].first;
             float max_z = layers()[layer_idx]->print_z;
             std::vector<std::pair<Polygon*, int>> holes;
             holes.emplace_back(layerid2center[layer_idx][hole_idx].second, layer_idx);
@@ -258,7 +260,7 @@ void PrintObject::_transform_hole_to_polyholes()
                 if (layers()[search_layer_idx]->print_z - layers()[search_layer_idx]->height - max_z > EPSILON) break;
                 //search an other polygon with same id
                 for (size_t search_hole_idx = 0; search_hole_idx < layerid2center[search_layer_idx].size(); ++search_hole_idx) {
-                    std::tuple<Point, float, int, coord_t, bool>& search_id = layerid2center[search_layer_idx][search_hole_idx].first;
+                    std::tuple<Point, float, int, coord_t, bool, int>& search_id = layerid2center[search_layer_idx][search_hole_idx].first;
                     if (std::get<2>(id) == std::get<2>(search_id)
                         && std::get<0>(id).distance_to(std::get<0>(search_id)) < std::get<3>(id)
                         && std::abs(std::get<1>(id) - std::get<1>(search_id)) < std::get<3>(id)
@@ -279,7 +281,7 @@ void PrintObject::_transform_hole_to_polyholes()
     }
     //create a polyhole per id and replace holes points by it.
     for (auto entry : id2layerz2hole) {
-        Polygons polyholes = create_polyholes(std::get<0>(entry.first), std::get<1>(entry.first), scale_(print()->config().nozzle_diameter.get_at(std::get<2>(entry.first) - 1)), std::get<4>(entry.first));
+        Polygons polyholes = create_polyholes(std::get<0>(entry.first), std::get<1>(entry.first), scale_(print()->config().nozzle_diameter.get_at(std::get<2>(entry.first) - 1)), std::get<4>(entry.first), std::get<5>(entry.first));
         for (auto& poly_to_replace : entry.second) {
             Polygon polyhole = polyholes[poly_to_replace.second % polyholes.size()];
             //search the clone in layers->slices
@@ -561,6 +563,11 @@ void PrintObject::prepare_infill()
 {
     if (! this->set_started(posPrepareInfill))
         return;
+
+    // Orca: clear all volume bbox caches
+    for (auto volume : this->model_object()->volumes)
+        volume->reset_volume_bbox();
+
     m_print->set_status(25, L("Generating infill regions"));
     if (m_typed_slices) {
         // To improve robustness of detect_surfaces_type() when reslicing (working with typed slices), see GH issue #7442.
@@ -897,13 +904,15 @@ void PrintObject::generate_support_material()
 void PrintObject::estimate_curled_extrusions()
 {
     if (this->set_started(posEstimateCurledExtrusions)) {
-        if ( std::any_of(this->print()->m_print_regions.begin(), this->print()->m_print_regions.end(),
-                        [](const PrintRegion *region) { return region->config().enable_overhang_speed.getBool(); })) {
+        if ( std::any_of(this->print()->m_print_regions.begin(), this->print()->m_print_regions.end(), [](const PrintRegion* region) {
+                const auto& cfg = region->config().enable_overhang_speed.values;
+                return std::any_of(cfg.begin(), cfg.end(), [](const unsigned char v) { return (bool) v; });
+            })) {
 
             // Estimate curling of support material and add it to the malformaition lines of each layer
             float support_flow_width = support_material_flow(this, this->config().layer_height).width();
             SupportSpotsGenerator::Params params{this->print()->m_config.filament_type.values,
-                                                 float(this->print()->default_object_config().inner_wall_acceleration.getFloat()),
+                                                 /*float(this->print()->default_object_config().inner_wall_acceleration.getFloat()),*/
                                                  this->config().raft_layers.getInt(), this->config().brim_type.value,
                                                  float(this->config().brim_width.getFloat())};
             SupportSpotsGenerator::estimate_malformations(this->layers(), params);
@@ -1109,6 +1118,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "outer_wall_speed"
             || opt_key == "small_perimeter_speed"
             || opt_key == "small_perimeter_threshold"
+            || opt_key == "small_support_perimeter_speed"
+            || opt_key == "small_support_perimeter_threshold"
             || opt_key == "sparse_infill_speed"
             || opt_key == "inner_wall_speed"
             || opt_key == "support_speed"
@@ -1150,11 +1161,11 @@ bool PrintObject::invalidate_state_by_config_options(
             // todo multi_extruders: Parameter migration between single and double extruder printers
             auto is_gap_fill_changed_state_due_to_speed = [&opt_key, &old_config, &new_config]() -> bool {
                 if (opt_key == "gap_infill_speed") {
-                    const auto *old_gap_fill_speed = old_config.option<ConfigOptionFloat>(opt_key);
-                    const auto *new_gap_fill_speed = new_config.option<ConfigOptionFloat>(opt_key);
+                    const auto *old_gap_fill_speed = old_config.option<ConfigOptionFloatsNullable>(opt_key);
+                    const auto *new_gap_fill_speed = new_config.option<ConfigOptionFloatsNullable>(opt_key);
                     assert(old_gap_fill_speed && new_gap_fill_speed);
-                    return (old_gap_fill_speed->value > 0.f && new_gap_fill_speed->value == 0.f) ||
-                           (old_gap_fill_speed->value == 0.f && new_gap_fill_speed->value > 0.f);
+                    return (old_gap_fill_speed->values.size() != new_gap_fill_speed->values.size())
+                        || (old_gap_fill_speed->values != new_gap_fill_speed->values);
                 }
                 return false;
             };
@@ -1201,6 +1212,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "hole_to_polyhole"
             || opt_key == "hole_to_polyhole_threshold"
             || opt_key == "hole_to_polyhole_twisted"
+            || opt_key == "hole_to_polyhole_max_edges"
             ) {
             steps.emplace_back(posSlice);
         } else if (opt_key == "enable_support") {
@@ -1291,6 +1303,9 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "infill_combination_max_layer_height"
             || opt_key == "bottom_shell_thickness"
             || opt_key == "top_shell_thickness"
+            || opt_key == "top_surface_expansion"
+            || opt_key == "top_surface_expansion_margin"
+            || opt_key == "top_surface_expansion_direction"
             || opt_key == "minimum_sparse_infill_area"
             || opt_key == "sparse_infill_filament_id"
             || opt_key == "internal_solid_filament_id"
@@ -1301,6 +1316,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "skeleton_infill_line_width"
             || opt_key == "infill_direction"
             || opt_key == "solid_infill_direction"
+            || opt_key == "top_layer_direction"
+            || opt_key == "bottom_layer_direction"
             || opt_key == "align_infill_direction_to_model" 
             || opt_key == "extra_solid_infills"
             || opt_key == "ensure_vertical_shell_thickness"
@@ -1322,6 +1339,9 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "top_surface_line_width"
             || opt_key == "top_surface_density"
             || opt_key == "bottom_surface_density"
+            || opt_key == "anisotropic_surfaces" 
+            || opt_key == "center_of_surface_pattern"
+            || opt_key == "separated_infills" 
             || opt_key == "initial_layer_line_width"
             || opt_key == "small_area_infill_flow_compensation"
             || opt_key == "lateral_lattice_angle_1"
@@ -1422,6 +1442,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "outer_wall_speed"
             || opt_key == "small_perimeter_speed"
             || opt_key == "small_perimeter_threshold"
+            || opt_key == "small_support_perimeter_speed"
+            || opt_key == "small_support_perimeter_threshold"
             || opt_key == "sparse_infill_speed"
             || opt_key == "inner_wall_speed"
             || opt_key == "internal_solid_infill_speed"
@@ -1674,6 +1696,69 @@ void PrintObject::detect_surfaces_type()
                             top.clear();
                             surfaces_append(top, diff_ex(top_polygons, bottom), stTop);
                         }
+                    }
+
+                    // ORCA: Expand the top surfaces outward by top_surface_expansion in every direction. This
+                    // enlarges the top solid infill and, in particular, grows it over the covered material left
+                    // by features rising from the middle of a top surface (filling holes and joining tops so the
+                    // features rest on it). The expansion stays inside the section it belongs to: each connected
+                    // solid island has its own outer wall, so the top is grown within each island separately and
+                    // clipped to it - growing one island's top across the gap into another island (which may have
+                    // no top surface, leaving a partially filled layer) is never allowed. The top infill sits
+                    // inside the perimeters, so the margin is measured from the walls: the island is inset by the
+                    // band the walls consume (outer wall + inner walls) plus the configured margin, making that
+                    // value the real clearance between the expanded top and the walls (avoiding a hull line). The
+                    // original top is unioned back in, so where it already sits within that band it is kept as-is.
+                    // Never claims a bottom surface.
+                    const double top_expansion = layerm->region().config().top_surface_expansion.value;
+                    if (top_expansion > 0. && ! top.empty()) {
+                        const double     d        = scale_(top_expansion);
+                        const auto       jt       = Clipper2Lib::JoinType::Miter;
+                        const ExPolygons T        = union_ex(to_expolygons(top));
+                        const int    wall_loops = layerm->region().config().wall_loops.value;
+                        const double wall_band  = wall_loops <= 0 ? 0. :
+                            double(layerm->flow(frExternalPerimeter).scaled_width()) +
+                            double(layerm->flow(frPerimeter).scaled_width()) * double(wall_loops - 1);
+                        const double margin     = scale_(layerm->region().config().top_surface_expansion_margin.value);
+                        // minimum real top to act on: ignore anything thinner than ~2 top-infill lines
+                        const float  min_top    = float(layerm->flow(frTopSolidInfill).scaled_width());
+                        const auto   direction  = layerm->region().config().top_surface_expansion_direction.value;
+
+                        ExPolygons grown;
+                        for (const ExPolygon &island : union_ex(layerm_slices_surfaces)) {
+                            // The top infill only exists inside the perimeters, so seed and measure from the infill
+                            // region (the island minus the wall band), not the raw slice. A section whose only
+                            // exposed top lies in the wall band - i.e. a layer where the top is just the walls
+                            // themselves - has no infill here and is skipped, instead of being flooded inward by
+                            // the expansion. Thin slivers inside the infill region are dropped by the opening too.
+                            const ExPolygons infill_region = wall_band > 0. ? offset_ex(island, -float(wall_band)) : ExPolygons{ island };
+                            const ExPolygons island_top    = intersection_ex(T, infill_region);
+                            if (opening_ex(island_top, min_top).empty())
+                                continue; // no real top infill in this section - never expand into it
+
+                            // grow by d, then keep only the part allowed by the configured direction: inward fills
+                            // the holes/gaps left by features (clip the growth back to the top's own filled outline,
+                            // which leaves the outer edge fixed), outward grows the outer edge toward the walls (drop
+                            // the growth that fell into the original holes), and inward+outward keeps both.
+                            ExPolygons expanded = offset_ex_2(island_top, d, jt);
+                            if (direction != TopSurfaceExpansionDirection::InwardAndOutward) {
+                                ExPolygons outline; // the top with its holes filled (same outer edge)
+                                outline.reserve(island_top.size());
+                                for (const ExPolygon &ex : island_top)
+                                    outline.emplace_back(ex.contour);
+                                outline = union_ex(outline);
+                                expanded = direction == TopSurfaceExpansionDirection::Inward ?
+                                    intersection_ex(expanded, outline) :              // only growth into the holes
+                                    diff_ex(expanded, diff_ex(outline, island_top));  // only growth past the outer edge
+                            }
+                            // hold the expansion clear of the walls by the configured margin
+                            const ExPolygons allowed = margin > 0. ? offset_ex(infill_region, -float(margin)) : infill_region;
+                            append(grown, intersection_ex(expanded, allowed));
+                        }
+
+                        ExPolygons new_top = diff_ex(union_ex(T, grown), to_expolygons(bottom));
+                        top.clear();
+                        surfaces_append(top, std::move(new_top), stTop);
                     }
 
         #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
