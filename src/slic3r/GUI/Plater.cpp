@@ -1934,9 +1934,9 @@ Sidebar::Sidebar(Plater *parent)
         }
 
         wxGridSizer *nozzle_dia_sizer = new wxGridSizer(3, 1, FromDIP(2), 0);
-        nozzle_dia_sizer->Add(p->label_nozzle_title, 0, wxALIGN_CENTER | wxTOP, FromDIP(4));
-        nozzle_dia_sizer->Add(p->combo_nozzle_dia  , 0, wxALIGN_CENTER | wxTOP | wxBOTTOM, FromDIP(2));
-        nozzle_dia_sizer->Add(p->label_nozzle_type , 0, wxALIGN_CENTER);
+        nozzle_dia_sizer->Add(p->label_nozzle_title, 1, wxALIGN_CENTER | wxTOP   , FromDIP(2));
+        nozzle_dia_sizer->Add(p->combo_nozzle_dia  , 0, wxALIGN_CENTER);
+        nozzle_dia_sizer->Add(p->label_nozzle_type , 1, wxALIGN_CENTER | wxBOTTOM, FromDIP(1));
 
         p->panel_nozzle_dia->SetSizer(nozzle_dia_sizer);
 
