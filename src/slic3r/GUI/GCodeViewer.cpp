@@ -631,7 +631,6 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         const float draw_start_y = main_wnd_height - draw_area_height - style.WindowPadding.y;
 
         ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, draw_start_y));
-        //ImGui::SameLine(0,0); // ignore item spacing
 
         // ORCA use glyph based button for fixing button sizes changing depends on used font size on platform
         const wchar_t foldIcon = properties_shown ? ImGui::UnfoldButtonIcon : ImGui::FoldButtonIcon;
