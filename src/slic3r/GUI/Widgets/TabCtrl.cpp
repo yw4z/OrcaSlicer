@@ -179,6 +179,7 @@ void TabCtrl::SetItemText(unsigned int item, wxString const &value)
 {
     if (item >= btns.size()) return;
     btns[item]->SetLabel(value);
+    btns[item]->SetToolTip(value); // ensure tooltip matches with tab
 }
 
 bool TabCtrl::GetItemBold(unsigned int item) const
