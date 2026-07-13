@@ -642,9 +642,7 @@ wxBitmap *get_extruder_color_icon(std::vector<std::string> colors, bool is_gradi
     bitmap_key += "h" + std::to_string(icon_height) + "-w" + std::to_string(icon_width) + "-i" + label;
 
     wxBitmap *bitmap = bmp_cache.find(bitmap_key);
-    #ifdef __WXMSW__
-        auto win = (wxWindow *) Slic3r::GUI::wxGetApp().mainframe;
-    #endif
+    auto win = (wxWindow *) Slic3r::GUI::wxGetApp().mainframe;
     if (bitmap == nullptr) {
 
         std::vector<wxColour> wx_colors;
