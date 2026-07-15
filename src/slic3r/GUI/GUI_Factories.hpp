@@ -96,7 +96,9 @@ private:
     wxMenu*            m_part_utilities_menu;
     int                m_part_filament_pos;
     MenuWithSeparators m_text_part_menu;
+    int                m_text_filament_pos;
     MenuWithSeparators m_svg_part_menu;
+    int                m_svg_filament_pos;
     MenuWithSeparators m_sla_object_menu;
     MenuWithSeparators m_default_menu;
     MenuWithSeparators m_instance_menu;
@@ -158,8 +160,8 @@ private:
     void        append_menu_item_merge_to_multipart_object(wxMenu *menu);
     void        append_menu_item_merge_to_single_object(wxMenu* menu);
     void        append_menu_item_invalidate_cut_info(wxMenu *menu);
-    void        append_menu_item_edit_text(wxMenu *menu);
-    void        append_menu_item_edit_svg(wxMenu *menu);
+    void        append_menu_item_edit_text(wxMenu *menu, int pos);
+    void        append_menu_item_edit_svg(wxMenu *menu, int pos);
 
     void        append_menu_items_instance_manipulation(wxMenu *menu);
     //void        update_menu_items_instance_manipulation(MenuType type);

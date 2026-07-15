@@ -1354,7 +1354,7 @@ wxMenu* MenuFactory::append_menu_item_utilities(wxMenu* menu, bool multi_selecti
     return utilities_menu;
 }
 
-void MenuFactory::append_menu_item_edit_text(wxMenu *menu)
+void MenuFactory::append_menu_item_edit_text(wxMenu *menu, int pos)
 {
     wxString name        = _L("Edit text");
 
@@ -1389,10 +1389,10 @@ void MenuFactory::append_menu_item_edit_text(wxMenu *menu)
             mng.open_gizmo(GLGizmosManager::Emboss); // close() and reopen - move to be visible
         mng.open_gizmo(GLGizmosManager::Emboss);
     };
-    append_menu_item(menu, wxID_ANY, name, description, open_emboss, icon, nullptr, can_edit_text, m_parent);
+    append_menu_item(menu, wxID_ANY, name, description, open_emboss, icon, nullptr, can_edit_text, m_parent, pos);
 }
 
-void MenuFactory::append_menu_item_edit_svg(wxMenu *menu)
+void MenuFactory::append_menu_item_edit_svg(wxMenu *menu, int pos)
 {
     wxString name = _L("Edit SVG");
     auto can_edit_svg = []() {
@@ -1426,7 +1426,7 @@ void MenuFactory::append_menu_item_edit_svg(wxMenu *menu)
             mng.open_gizmo(GLGizmosManager::Svg); // close() and reopen - move to be visible
         mng.open_gizmo(GLGizmosManager::Svg);
     };
-    append_menu_item(menu, wxID_ANY, name, description, open_svg, icon, nullptr, can_edit_svg, m_parent);
+    append_menu_item(menu, wxID_ANY, name, description, open_svg, icon, nullptr, can_edit_svg, m_parent, pos);
 }
 
 void MenuFactory::append_menu_item_invalidate_cut_info(wxMenu *menu)
@@ -1587,13 +1587,12 @@ void MenuFactory::create_text_part_menu()
 {
     wxMenu* menu = &m_text_part_menu;
 
-    append_menu_item_edit_text(menu);
-    menu->AppendSeparator();
-
     append_menu_item_center(menu);
     append_menu_item_transform(&m_text_part_menu, false /*multi_selection*/, false /*show_drop*/, true /*mirror*/);
     append_menu_item_modify(&m_text_part_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/);
     append_menu_item_change_type(menu);
+    m_text_filament_pos = m_text_part_menu.GetMenuItemCount(); // pos for append_menu_item_change_filament();
+    append_menu_item_edit_text(menu, m_text_part_menu.GetMenuItemCount());
     menu->AppendSeparator();
     append_menu_item_delete(menu);
     menu->AppendSeparator();
@@ -1606,13 +1605,12 @@ void MenuFactory::create_svg_part_menu()
 {
     wxMenu* menu = &m_svg_part_menu;
 
-    append_menu_item_edit_svg(menu);
-    menu->AppendSeparator();
-
     append_menu_item_center(menu);
     append_menu_item_transform(&m_svg_part_menu, false /*multi_selection*/, false /*show_drop*/, true /*mirror*/);
     append_menu_item_modify(&m_svg_part_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/);
     append_menu_item_change_type(menu);
+    m_svg_filament_pos = m_svg_part_menu.GetMenuItemCount(); // pos for append_menu_item_change_filament();
+    append_menu_item_edit_svg(menu, m_svg_part_menu.GetMenuItemCount());
     menu->AppendSeparator();
     append_menu_item_delete(menu);
     menu->AppendSeparator();
@@ -1626,14 +1624,12 @@ void MenuFactory::create_bbl_part_menu()
 {
     wxMenu* menu = &m_part_menu;
 
-    append_menu_item_edit_text(menu);
-    menu->AppendSeparator();
-
     append_menu_item_center(menu);
     append_menu_item_transform(&m_part_menu, false /*multi_selection*/, true /*show_drop*/, true /*mirror*/);
     append_menu_item_modify(&m_part_menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/);
     m_part_filament_pos = m_part_menu.GetMenuItemCount(); // pos for append_menu_item_change_filament();
     append_menu_item_change_type(menu);
+    append_menu_item_edit_text(menu, m_part_menu.GetMenuItemCount());
     menu->AppendSeparator();
     append_menu_item_delete(menu);
     menu->AppendSeparator();
@@ -1848,12 +1844,14 @@ wxMenu* MenuFactory::default_menu()
 
 wxMenu* MenuFactory::object_menu()
 {
+    append_menu_item_invalidate_cut_info(&m_object_menu); // TODO
+
     append_menu_items_convert_unit(m_object_utilities_menu);
     append_menu_items_flush_options(&m_object_menu);
-    append_menu_item_invalidate_cut_info(&m_object_menu); // TODO
-    append_menu_item_edit_text(&m_object_menu);
-    append_menu_item_edit_svg(&m_object_menu);
+
     append_menu_item_change_filament(&m_object_menu, m_object_filament_pos);
+    append_menu_item_edit_text(&m_object_menu, m_object_filament_pos + 1);
+    append_menu_item_edit_svg(&m_object_menu, m_object_filament_pos + 1);
     return &m_object_menu;
 }
 
@@ -1862,8 +1860,8 @@ wxMenu* MenuFactory::sla_object_menu()
     append_menu_items_convert_unit(&m_sla_object_menu);
     append_menu_item_settings(&m_sla_object_menu);
     //update_menu_items_instance_manipulation(mtObjectSLA);
-    append_menu_item_edit_text(&m_sla_object_menu);
-    append_menu_item_edit_svg(&m_object_menu);
+    append_menu_item_edit_text(&m_sla_object_menu, 0);
+    append_menu_item_edit_svg(&m_object_menu, 0);
 
     return &m_sla_object_menu;
 }
@@ -1872,22 +1870,22 @@ wxMenu* MenuFactory::part_menu()
 {
     append_menu_items_convert_unit(m_part_utilities_menu);
     append_menu_item_change_filament(&m_part_menu, m_part_filament_pos);
-    append_menu_item_per_object_settings(&m_part_menu);
+    append_menu_item_per_object_settings(&m_part_menu); // TODO listed after utilities menu
     return &m_part_menu;
 }
 
 wxMenu* MenuFactory::text_part_menu()
 {
-    append_menu_item_change_filament(&m_text_part_menu, 2);
-    append_menu_item_per_object_settings(&m_text_part_menu);
+    append_menu_item_change_filament(&m_text_part_menu, m_text_filament_pos); // TODO
+    append_menu_item_per_object_settings(&m_text_part_menu); // TODO listed after utilities menu
 
     return &m_text_part_menu;
 }
 
 wxMenu *MenuFactory::svg_part_menu()
 {
-    append_menu_item_change_filament(&m_svg_part_menu, 2);
-    append_menu_item_per_object_settings(&m_svg_part_menu);
+    append_menu_item_change_filament(&m_svg_part_menu, m_svg_filament_pos); // TODO
+    append_menu_item_per_object_settings(&m_svg_part_menu); // TODO listed after utilities menu
 
     return &m_svg_part_menu;
 }
