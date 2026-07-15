@@ -91,20 +91,23 @@ private:
 
     MenuWithSeparators m_object_menu;
     wxMenu*            m_object_utilities_menu;
-    int                m_object_filament_pos;
+    size_t             m_object_filament_pos;
     MenuWithSeparators m_part_menu;
     wxMenu*            m_part_utilities_menu;
-    int                m_part_filament_pos;
+    size_t             m_part_mods_pos;
+    size_t             m_part_props_pos;
     MenuWithSeparators m_text_part_menu;
-    int                m_text_filament_pos;
+    size_t             m_text_mods_pos;
+    size_t             m_text_props_pos;
     MenuWithSeparators m_svg_part_menu;
-    int                m_svg_filament_pos;
+    size_t             m_svg_mods_pos;
+    size_t             m_svg_props_pos;
     MenuWithSeparators m_sla_object_menu;
     MenuWithSeparators m_default_menu;
     MenuWithSeparators m_instance_menu;
     //BBS: add part plate related logic
     MenuWithSeparators m_plate_menu;
-    int                m_plate_actions_pos;
+    size_t             m_plate_mods_pos;
     MenuWithSeparators m_assemble_object_menu;
     MenuWithSeparators m_assemble_part_menu;
 
@@ -161,8 +164,8 @@ private:
     void        append_menu_item_merge_to_multipart_object(wxMenu *menu);
     void        append_menu_item_merge_to_single_object(wxMenu* menu);
     void        append_menu_item_invalidate_cut_info(wxMenu *menu);
-    void        append_menu_item_edit_text(wxMenu *menu, int pos);
-    void        append_menu_item_edit_svg(wxMenu *menu, int pos);
+    void        append_menu_item_edit_text(wxMenu *menu, size_t pos = -1);
+    void        append_menu_item_edit_svg(wxMenu *menu, size_t pos = -1);
 
     void        append_menu_items_instance_manipulation(wxMenu *menu);
     //void        update_menu_items_instance_manipulation(MenuType type);
@@ -173,14 +176,14 @@ private:
     void        append_menu_item_center(wxMenu* menu);
     void        append_menu_item_drop(wxMenu* menu);
     void        append_menu_item_per_object_process(wxMenu* menu);
-    void        append_menu_item_per_object_settings(wxMenu* menu);
-    void        append_menu_item_change_filament(wxMenu* menu, size_t pos = 0);
+    void        append_menu_item_per_object_settings(wxMenu* menu, size_t pos = -1);
+    void        append_menu_item_change_filament(wxMenu* menu, size_t pos = -1);
     void        append_menu_item_set_printable(wxMenu* menu);
     void        append_menu_item_set_auto_drop(wxMenu* menu);
-    void        append_menu_item_locked(wxMenu* menu, int pos);
+    void        append_menu_item_locked(wxMenu* menu, size_t pos = -1);
     void        append_menu_item_fill_bed(wxMenu *menu);
-    void        append_menu_item_plate_name(wxMenu *menu, int pos);
-    void        append_menu_item_plate_delete(wxMenu *menu, int pos);
+    void        append_menu_item_plate_name(wxMenu *menu, size_t pos = -1);
+    void        append_menu_item_plate_delete(wxMenu *menu, size_t pos = -1);
     void        append_menu_item_transform(wxMenu* menu, bool multi_selection, bool show_drop, bool show_mirror);
     void        append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh);
     wxMenu*     append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op, bool convert_unit);
