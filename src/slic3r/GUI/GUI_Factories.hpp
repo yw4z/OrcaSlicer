@@ -104,6 +104,7 @@ private:
     MenuWithSeparators m_instance_menu;
     //BBS: add part plate related logic
     MenuWithSeparators m_plate_menu;
+    int                m_plate_actions_pos;
     MenuWithSeparators m_assemble_object_menu;
     MenuWithSeparators m_assemble_part_menu;
 
@@ -176,9 +177,10 @@ private:
     void        append_menu_item_change_filament(wxMenu* menu, size_t pos = 0);
     void        append_menu_item_set_printable(wxMenu* menu);
     void        append_menu_item_set_auto_drop(wxMenu* menu);
-    void        append_menu_item_locked(wxMenu* menu);
+    void        append_menu_item_locked(wxMenu* menu, int pos);
     void        append_menu_item_fill_bed(wxMenu *menu);
-    void        append_menu_item_plate_name(wxMenu *menu);
+    void        append_menu_item_plate_name(wxMenu *menu, int pos);
+    void        append_menu_item_plate_delete(wxMenu *menu, int pos);
     void        append_menu_item_transform(wxMenu* menu, bool multi_selection, bool show_drop, bool show_mirror);
     void        append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh);
     wxMenu*     append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op, bool convert_unit);

@@ -1292,6 +1292,7 @@ void MenuFactory::append_menu_item_transform(wxMenu* menu, bool multi_selection,
 
 void MenuFactory::append_menu_item_modify(wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh)
 {
+    // TODO add option for allowing appending directly to menu
     wxMenu* sub_menu = new wxMenu();
 
     if(splittable){
@@ -1331,24 +1332,29 @@ void MenuFactory::append_menu_item_modify(wxMenu* menu, bool multi_selection, bo
 
 wxMenu* MenuFactory::append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op, bool convert_unit)
 {
+    // TODO add option for allowing appending directly to menu
     wxMenu* utilities_menu = new wxMenu();
 
     if(disk_op){
-        //if(multi_selection)
-        append_menu_item_reload_from_disk(utilities_menu);
-        append_menu_item_replace_with_stl(utilities_menu);
-        append_menu_item_replace_all_with_stl(utilities_menu);
+        if(multi_selection){
+            append_menu_item_replace_all_with_stl(utilities_menu);
+        }
+        else{
+            append_menu_item_reload_from_disk(utilities_menu);
+            utilities_menu->AppendSeparator();
+            append_menu_item_replace_with_stl(utilities_menu);
+            append_menu_item_replace_all_with_stl(utilities_menu);
+        }
         utilities_menu->AppendSeparator();
     }
     if(export_op){
-        append_menu_item_export_stl(utilities_menu);
-        append_menu_item_export_drc(utilities_menu);
+        append_menu_item_export_stl(utilities_menu, multi_selection);
+        append_menu_item_export_drc(utilities_menu, multi_selection);
         utilities_menu->AppendSeparator();
     }
-    //if(convert_unit){
-    // TODO multi_selection support
-    // append_menu_items_convert_unit(menu);
-    //}
+    if(convert_unit){
+        append_menu_items_convert_unit(utilities_menu);
+    }
     append_submenu(menu, utilities_menu, wxID_ANY, _L("Utilities"), "", "",[](){return true;}, m_parent);
 
     return utilities_menu;
@@ -1717,9 +1723,10 @@ void MenuFactory::create_plate_menu()
         [](wxCommandEvent&) {
             plater()->select_all();
         }, "", nullptr, []() {
-            return !plater()->model().objects.empty();
+            return !plater()->model().objects.empty() && plater()->can_delete_plate(); // also diable when only one plate exist
         }, m_parent);
 
+    menu->AppendSeparator();
     // delete objects on current plate
     append_menu_item(menu, wxID_ANY, _L("Delete All"), _L("Delete all objects on the current plate"),
         [](wxCommandEvent&) {
@@ -1729,6 +1736,8 @@ void MenuFactory::create_plate_menu()
             assert(plate);
             return !plate->get_objects().empty();
         }, m_parent);
+
+    menu->AppendSeparator();
 
     // arrange objects on current plate
     append_menu_item(menu, wxID_ANY, _L("Arrange"), _L("Arrange current plate"),
@@ -1743,17 +1752,6 @@ void MenuFactory::create_plate_menu()
         },
         m_parent);
 
-    // reload all objects on current plate
-    append_menu_item(
-        menu, wxID_ANY, _L("Reload All"), _L("Reload all from disk"),
-        [](wxCommandEvent&) {
-            PartPlate* plate = plater()->get_partplate_list().get_selected_plate();
-            assert(plate);
-            plater()->set_prepare_state(Job::PREPARE_STATE_MENU);
-            plater()->reload_all_from_disk();
-        },
-        "", nullptr, []() { return !plater()->get_partplate_list().get_selected_plate()->get_objects().empty(); }, m_parent);
-
     // orient objects on current plate
     append_menu_item(menu, wxID_ANY, _L("Auto Rotate"), _L("Auto rotate current plate"),
         [](wxCommandEvent&) {
@@ -1767,17 +1765,7 @@ void MenuFactory::create_plate_menu()
             return !plater()->get_partplate_list().get_selected_plate()->get_objects().empty();
         }, m_parent);
 
-    // delete current plate
-#ifdef __WINDOWS__
-    append_menu_item(menu, wxID_ANY, _L("Delete Plate"), _L("Remove the selected plate"),
-        [](wxCommandEvent&) { plater()->delete_plate(); }, "menu_delete", nullptr,
-        []() { return plater()->can_delete_plate(); }, m_parent);
-#else
-    append_menu_item(menu, wxID_ANY, _L("Delete Plate"), _L("Remove the selected plate"),
-        [](wxCommandEvent&) { plater()->delete_plate(); }, "", nullptr,
-        []() { return plater()->can_delete_plate(); }, m_parent);
-#endif
-
+    m_plate_actions_pos = menu->GetMenuItemCount();
 
     // add shapes
     menu->AppendSeparator();
@@ -1801,8 +1789,20 @@ void MenuFactory::create_plate_menu()
         [](wxCommandEvent&) { plater()->add_file(); }, "", menu,
         []() {return wxGetApp().plater()->can_add_model(); }, m_parent);
 #endif
-    append_menu_item_replace_all_with_stl(menu);
 
+    menu->AppendSeparator();
+    // reload all objects on current plate
+    append_menu_item(
+        menu, wxID_ANY, _L("Reload All"), _L("Reload all from disk"),
+        [](wxCommandEvent&) {
+            PartPlate* plate = plater()->get_partplate_list().get_selected_plate();
+            assert(plate);
+            plater()->set_prepare_state(Job::PREPARE_STATE_MENU);
+            plater()->reload_all_from_disk();
+        },
+        "", nullptr, []() { return !plater()->get_partplate_list().get_selected_plate()->get_objects().empty(); }, m_parent);
+    menu->AppendSeparator();
+    append_menu_item_replace_all_with_stl(menu);
 
     return;
 }
@@ -1934,6 +1934,7 @@ wxMenu* MenuFactory::multi_selection_menu()
         int index = 0;
         if (obj_list()->can_merge_to_multipart_object()) {
             append_menu_item_merge_to_multipart_object(menu);
+            menu->AppendSeparator();
             index++;
         }
         append_menu_item_center(menu);
@@ -1949,14 +1950,8 @@ wxMenu* MenuFactory::multi_selection_menu()
         
         append_menu_item_per_object_process(menu);
         menu->AppendSeparator();
-        
-        // TODO replace with utilities menu
-        append_menu_items_convert_unit(menu);
-        append_menu_item_replace_all_with_stl(menu);
-        //BBS
-        menu->AppendSeparator();
-        append_menu_item_export_stl(menu, true);
-        append_menu_item_export_drc(menu, true);
+
+        append_menu_item_utilities(menu, true /*multi_selection*/, true /*disk_op*/, true /*export_op*/, true /*convert_unit*/);
     }
     else {
         append_menu_item_center(menu);
@@ -1968,14 +1963,10 @@ wxMenu* MenuFactory::multi_selection_menu()
         append_menu_item_delete(menu);
         menu->AppendSeparator();
 
-
         append_menu_item_per_object_process(menu);
         menu->AppendSeparator();
 
-        // TODO replace with utilities menu
-        // append_menu_item_utilities(menu, false /*multi_selection*/, true /*disk_op*/, false/*export_op*/, false/*convert_unit*/);
-        append_menu_items_convert_unit(menu);
-        append_menu_item_replace_all_with_stl(menu);
+        append_menu_item_utilities(menu, true /*multi_selection*/, true /*disk_op*/, false /*export_op*/, true /*convert_unit*/);
     }
     return menu;
 }
@@ -1991,12 +1982,14 @@ wxMenu* MenuFactory::assemble_multi_selection_menu()
             return nullptr;
 
     wxMenu* menu = new MenuWithSeparators();
+    append_menu_item_change_extruder(menu);
+    menu->AppendSeparator();
     append_menu_item_set_visible(menu);
     //append_menu_item_fix_through_cgal(menu);
     //append_menu_item_simplify(menu);
+    menu->AppendSeparator();
     append_menu_item_delete(menu);
     menu->AppendSeparator();
-    append_menu_item_change_extruder(menu);
     return menu;
 }
 
@@ -2029,8 +2022,9 @@ wxMenu *MenuFactory::filament_action_menu(int active_filament_menu_id) {
 //BBS: add partplate related logic
 wxMenu* MenuFactory::plate_menu()
 {
-    append_menu_item_locked(&m_plate_menu);
-    append_menu_item_plate_name(&m_plate_menu);
+    append_menu_item_plate_name(  &m_plate_menu, m_plate_actions_pos);
+    append_menu_item_locked(      &m_plate_menu, m_plate_actions_pos + 1);
+    append_menu_item_plate_delete(&m_plate_menu, m_plate_actions_pos + 2);
     return &m_plate_menu;
 }
 
@@ -2330,7 +2324,7 @@ void MenuFactory::append_menu_item_set_auto_drop(wxMenu* menu)
         menu_item_set_auto_drop->GetId());
 }
 
-void MenuFactory::append_menu_item_locked(wxMenu* menu)
+void MenuFactory::append_menu_item_locked(wxMenu* menu, int pos)
 {
     const std::vector<wxString> names = { _L("Unlock"), _L("Lock") };
     // Delete old menu item
@@ -2348,7 +2342,7 @@ void MenuFactory::append_menu_item_locked(wxMenu* menu)
         [plate](wxCommandEvent&) {
             bool lock = plate->is_locked();
             plate->lock(!lock);
-        }, "", nullptr, []() { return true; }, m_parent);
+        }, "", nullptr, []() { return true; }, m_parent, pos);
 
     m_parent->Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent& evt) {
         PartPlate* plate = plater()->get_partplate_list().get_selected_plate();
@@ -2359,7 +2353,7 @@ void MenuFactory::append_menu_item_locked(wxMenu* menu)
     }, item->GetId());
 }
 
-void MenuFactory::append_menu_item_plate_name(wxMenu *menu)
+void MenuFactory::append_menu_item_plate_name(wxMenu *menu, int pos)
 {
     wxString name= _L("Edit Plate Name");
     // Delete old menu item
@@ -2383,7 +2377,7 @@ void MenuFactory::append_menu_item_plate_name(wxMenu *menu)
             }
             plater()->get_current_canvas3D()->post_event(SimpleEvent(EVT_GLCANVAS_PLATE_NAME_CHANGE));
         },
-        "", nullptr, []() { return true; }, m_parent);
+        "", nullptr, []() { return true; }, m_parent, pos);
 
     m_parent->Bind(
         wxEVT_UPDATE_UI,
@@ -2393,6 +2387,28 @@ void MenuFactory::append_menu_item_plate_name(wxMenu *menu)
             plater()->set_current_canvas_as_dirty();
         },
         item->GetId());
+}
+
+void MenuFactory::append_menu_item_plate_delete(wxMenu *menu, int pos)
+{
+    wxString name= _L("Delete Plate");
+    // Delete old menu item
+    const int item_id = menu->FindItem(name);
+    if (item_id != wxNOT_FOUND) menu->Destroy(item_id);
+
+    PartPlate *plate = plater()->get_partplate_list().get_selected_plate();
+    assert(plate);
+
+    // delete current plate
+    auto item = append_menu_item(menu, wxID_ANY, name, _L("Remove the selected plate"),
+        [](wxCommandEvent&) { plater()->delete_plate(); }, "", nullptr,
+        []() { return plater()->can_delete_plate(); }, m_parent, pos);
+
+    m_parent->Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent& evt) {
+        PartPlate* plate = plater()->get_partplate_list().get_selected_plate();
+        assert(plate);
+        plater()->set_current_canvas_as_dirty();
+    }, item->GetId());
 }
 
 void MenuFactory::update_object_menu()
