@@ -90,7 +90,11 @@ private:
     wxWindow* m_parent {nullptr};
 
     MenuWithSeparators m_object_menu;
+    wxMenu*            m_object_utilities_menu;
+    int                m_object_filament_pos;
     MenuWithSeparators m_part_menu;
+    wxMenu*            m_part_utilities_menu;
+    int                m_part_filament_pos;
     MenuWithSeparators m_text_part_menu;
     MenuWithSeparators m_svg_part_menu;
     MenuWithSeparators m_sla_object_menu;
@@ -113,7 +117,6 @@ private:
     void        create_common_object_menu(wxMenu *menu);
     void        create_object_menu();
     void        create_sla_object_menu();
-    void        create_part_menu();
     void        create_text_part_menu();
     void        create_svg_part_menu();
     //BBS: add part plate related logic
@@ -154,8 +157,6 @@ private:
     void        append_menu_items_flush_options(wxMenu* menu);
     void        append_menu_item_merge_to_multipart_object(wxMenu *menu);
     void        append_menu_item_merge_to_single_object(wxMenu* menu);
-    void        append_menu_item_merge_parts_to_single_part(wxMenu *menu);
-    void        append_menu_items_mirror(wxMenu *menu);
     void        append_menu_item_invalidate_cut_info(wxMenu *menu);
     void        append_menu_item_edit_text(wxMenu *menu);
     void        append_menu_item_edit_svg(wxMenu *menu);
@@ -170,12 +171,15 @@ private:
     void        append_menu_item_drop(wxMenu* menu);
     void        append_menu_item_per_object_process(wxMenu* menu);
     void        append_menu_item_per_object_settings(wxMenu* menu);
-    void        append_menu_item_change_filament(wxMenu* menu);
+    void        append_menu_item_change_filament(wxMenu* menu, size_t pos = 0);
     void        append_menu_item_set_printable(wxMenu* menu);
     void        append_menu_item_set_auto_drop(wxMenu* menu);
     void        append_menu_item_locked(wxMenu* menu);
     void        append_menu_item_fill_bed(wxMenu *menu);
     void        append_menu_item_plate_name(wxMenu *menu);
+    void        append_menu_item_transform(wxMenu* menu, bool multi_selection, bool show_drop, bool show_mirror);
+    void        append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh);
+    wxMenu*     append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op, bool convert_unit);
 };
 
 }}
