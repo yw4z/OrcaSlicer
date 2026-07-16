@@ -90,18 +90,21 @@ private:
     wxWindow* m_parent {nullptr};
 
     MenuWithSeparators m_object_menu;
+    wxMenu*            m_object_transform_menu;
     wxMenu*            m_object_utilities_menu;
-    size_t             m_object_filament_pos;
+    size_t             m_object_geometry_pos;
+    int                m_object_props_marker;
     MenuWithSeparators m_part_menu;
+    wxMenu*            m_part_transform_menu;
     wxMenu*            m_part_utilities_menu;
-    size_t             m_part_mods_pos;
     size_t             m_part_props_pos;
+    size_t             m_part_project_pos;
     MenuWithSeparators m_text_part_menu;
-    size_t             m_text_mods_pos;
     size_t             m_text_props_pos;
+    size_t             m_text_project_pos;
     MenuWithSeparators m_svg_part_menu;
-    size_t             m_svg_mods_pos;
     size_t             m_svg_props_pos;
+    size_t             m_svg_project_pos;
     MenuWithSeparators m_sla_object_menu;
     MenuWithSeparators m_default_menu;
     MenuWithSeparators m_instance_menu;
@@ -118,6 +121,8 @@ private:
     std::array<wxMenuItem*, mtCount> items_increase;
     std::array<wxMenuItem*, mtCount> items_decrease;
     std::array<wxMenuItem*, mtCount> items_set_number_of_copies;
+
+    size_t      FindPositionById(wxMenu* menu, int id);
 
     void        create_default_menu();
     void        create_common_object_menu(wxMenu *menu);
@@ -160,10 +165,10 @@ private:
     void        append_menu_item_delete(wxMenu* menu);
     void        append_menu_item_scale_selection_to_fit_print_volume(wxMenu* menu);
     void        append_menu_items_convert_unit(wxMenu* menu); // Add "Conver/Revert..." menu items (from/to inches/meters) after "Reload From Disk"
-    void        append_menu_items_flush_options(wxMenu* menu);
+    void        append_menu_items_flush_options(wxMenu* menu, size_t pos = -1);
     void        append_menu_item_merge_to_multipart_object(wxMenu *menu);
     void        append_menu_item_merge_to_single_object(wxMenu* menu);
-    void        append_menu_item_invalidate_cut_info(wxMenu *menu);
+    void        append_menu_item_invalidate_cut_info(wxMenu *menu, size_t pos = -1);
     void        append_menu_item_edit_text(wxMenu *menu, size_t pos = -1);
     void        append_menu_item_edit_svg(wxMenu *menu, size_t pos = -1);
 
@@ -184,9 +189,9 @@ private:
     void        append_menu_item_fill_bed(wxMenu *menu);
     void        append_menu_item_plate_name(wxMenu *menu, size_t pos = -1);
     void        append_menu_item_plate_delete(wxMenu *menu, size_t pos = -1);
-    void        append_menu_item_transform(wxMenu* menu, bool multi_selection, bool show_drop, bool show_mirror);
-    void        append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh);
-    wxMenu*     append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op, bool convert_unit);
+    wxMenu*     append_menu_item_transform(wxMenu* menu, bool multi_selection, bool show_drop, bool show_mirror, bool convert_unit);
+    wxMenu*     append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh);
+    wxMenu*     append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op);
 };
 
 }}
