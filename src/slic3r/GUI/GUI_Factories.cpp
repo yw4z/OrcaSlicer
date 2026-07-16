@@ -1301,7 +1301,7 @@ wxMenu* MenuFactory::append_menu_item_transform(wxMenu* menu, bool multi_selecti
     return sub_menu;
 }
 
-wxMenu* MenuFactory::append_menu_item_modify(wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh)
+wxMenu* MenuFactory::append_menu_item_modify(wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh, bool mesh_boolean)
 {
     wxMenu* sub_menu = new wxMenu();
 
@@ -1316,7 +1316,7 @@ wxMenu* MenuFactory::append_menu_item_modify(wxMenu* menu, bool multi_selection,
             []() { return plater()->can_split(false); }, m_parent);
     }
 
-    if(is_mesh){
+    if(mesh_boolean){
         sub_menu->AppendSeparator();
         // Mesh Boolean
         append_menu_item(sub_menu, wxID_ANY, _L("Mesh boolean"), _L("Mesh boolean operations including union and subtraction"),
@@ -1503,7 +1503,7 @@ void MenuFactory::create_common_object_menu(wxMenu* menu)
     
     // Object Split / Mirror / Mesh Tools
     append_menu_item_transform(menu, false /*multi_selection*/, false /*show_drop*/, true /*mirror*/, false /*convert_unit*/);
-    append_menu_item_modify(menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/);
+    append_menu_item_modify(menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/, false /*mesh_boolean*/);
 
     // Delete menu was moved to be after +/- instace to make it more difficult to be selected by mistake.
     menu->AppendSeparator();
@@ -1547,7 +1547,7 @@ void MenuFactory::create_extra_object_menu()
     // Object Center
     append_menu_item_center(&m_object_menu);
     m_object_transform_menu = append_menu_item_transform(&m_object_menu, false /*multi_selection*/, true /*show_drop*/, true /*mirror*/, true /*convert_unit*/);
-    append_menu_item_modify(&m_object_menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/);
+    append_menu_item_modify(&m_object_menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/, true /*mesh_boolean*/);
     m_object_geometry_pos = m_object_menu.GetMenuItemCount(); // pos for property related items
     // Delete
     m_object_menu.AppendSeparator();
@@ -1582,7 +1582,7 @@ void MenuFactory::create_bbl_assemble_object_menu()
     append_menu_item_delete(&m_assemble_object_menu);
     m_assemble_object_menu.AppendSeparator();
 
-    append_menu_item_modify(&m_assemble_object_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/);
+    append_menu_item_modify(&m_assemble_object_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/, false /*mesh_boolean*/);
     m_assemble_object_menu.AppendSeparator();
 }
 
@@ -1603,7 +1603,7 @@ void MenuFactory::create_text_part_menu()
 
     append_menu_item_center(menu);
     append_menu_item_transform(&m_text_part_menu, false /*multi_selection*/, false /*show_drop*/, true /*mirror*/, true /*convert_unit*/);
-    append_menu_item_modify(&m_text_part_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/);
+    append_menu_item_modify(&m_text_part_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/, false /*mesh_boolean*/);
     append_menu_item_edit_text(menu);
     //m_text_geometry_pos = m_text_part_menu.GetMenuItemCount(); // pos for geometry related items
 
@@ -1616,7 +1616,7 @@ void MenuFactory::create_text_part_menu()
     menu->AppendSeparator();
 
     append_menu_item_per_object_process(menu);
-    append_menu_item_per_object_settings(menu);
+    //append_menu_item_per_object_settings(menu);
     m_text_project_pos = m_text_part_menu.GetMenuItemCount(); // pos for append_menu_item_per_object_settings();
 }
 
@@ -1626,7 +1626,7 @@ void MenuFactory::create_svg_part_menu()
 
     append_menu_item_center(menu);
     append_menu_item_transform(&m_svg_part_menu, false /*multi_selection*/, false /*show_drop*/, true /*mirror*/, true /*convert_unit*/);
-    append_menu_item_modify(&m_svg_part_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/);
+    append_menu_item_modify(&m_svg_part_menu, false /*multi_selection*/, false /*splittable*/, true /*mesh*/, false /*mesh_boolean*/);
     append_menu_item_edit_svg(menu);
     //m_svg_geometry_pos = m_svg_part_menu.GetMenuItemCount(); // pos for geometry related items
 
@@ -1639,7 +1639,7 @@ void MenuFactory::create_svg_part_menu()
     menu->AppendSeparator();
 
     append_menu_item_per_object_process(menu);
-    append_menu_item_per_object_settings(menu);
+    //append_menu_item_per_object_settings(menu);
     m_svg_project_pos = m_svg_part_menu.GetMenuItemCount(); // pos for append_menu_item_per_object_settings();
 }
 
@@ -1649,7 +1649,7 @@ void MenuFactory::create_bbl_part_menu()
 
     append_menu_item_center(menu);
     m_part_transform_menu = append_menu_item_transform(&m_part_menu, false /*multi_selection*/, true /*show_drop*/, true /*mirror*/, true /*convert_unit*/);
-    append_menu_item_modify(&m_part_menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/);
+    append_menu_item_modify(&m_part_menu, false /*multi_selection*/, true /*splittable*/, true /*mesh*/, false /*mesh_boolean*/);
     append_menu_item_edit_text(menu);
     //m_part_geometry_pos = m_part_menu.GetMenuItemCount(); // pos for geometry related items
 
@@ -1662,7 +1662,7 @@ void MenuFactory::create_bbl_part_menu()
     menu->AppendSeparator();
 
     append_menu_item_per_object_process(menu);
-    append_menu_item_per_object_settings(menu);
+    //append_menu_item_per_object_settings(menu);
     m_part_project_pos = m_part_menu.GetMenuItemCount(); // pos for append_menu_item_per_object_settings();
 
     menu->AppendSeparator();
@@ -1896,24 +1896,26 @@ wxMenu* MenuFactory::part_menu()
 {
     append_menu_items_convert_unit(m_part_transform_menu);
 
-    append_menu_item_change_filament(&m_part_menu, m_part_props_pos);
+    // append menu items in reverse order so stored pos indexes dont change
     append_menu_item_per_object_settings(&m_part_menu, m_part_project_pos);
-
+    append_menu_item_change_filament(&m_part_menu, m_part_props_pos);
     return &m_part_menu;
 }
 
 wxMenu* MenuFactory::text_part_menu()
 {
-    append_menu_item_change_filament(&m_text_part_menu, m_text_props_pos);
+    // append menu items in reverse order so stored pos indexes dont change
     append_menu_item_per_object_settings(&m_text_part_menu, m_text_project_pos);
+    append_menu_item_change_filament(&m_text_part_menu, m_text_props_pos);
 
     return &m_text_part_menu;
 }
 
 wxMenu *MenuFactory::svg_part_menu()
 {
-    append_menu_item_change_filament(&m_svg_part_menu, m_svg_props_pos);
+    // append menu items in reverse order so stored pos indexes dont change
     append_menu_item_per_object_settings(&m_svg_part_menu, m_svg_project_pos);
+    append_menu_item_change_filament(&m_svg_part_menu, m_svg_props_pos);
 
     return &m_svg_part_menu;
 }
@@ -1966,16 +1968,20 @@ wxMenu* MenuFactory::multi_selection_menu()
             index++;
         }
         append_menu_item_center(menu);
-        append_menu_item_transform(menu, true /*multi_selection*/, true /*show_drop*/, false /*mirror*/, true /*convert_unit*/);
-        append_menu_item_modify(menu, true /*multi_selection*/, false /*splittable*/, true /*is_mesh*/);
+        //ORCA switch to sub menus if new items added
+        //append_menu_item_transform(menu, true /*multi_selection*/, true /*show_drop*/, false /*mirror*/, true /*convert_unit*/);
+        //append_menu_item_modify(menu, true /*multi_selection*/, false /*splittable*/, true /*is_mesh*/, false /*mesh_boolean*/);
+        append_menu_item_drop(menu);
+        append_menu_item_fix_through_cgal(menu);
+        append_menu_items_convert_unit(menu);
+        //append_menu_item_simplify(menu);
         menu->AppendSeparator();
         append_menu_item_delete(menu);
         menu->AppendSeparator();
 
-        append_menu_item_set_printable(menu);
-        menu->AppendSeparator();
-        
         append_menu_item_change_filament(menu);
+        append_menu_item_set_printable(menu);
+        append_menu_item_set_auto_drop(menu);
         menu->AppendSeparator();
 
         append_menu_item_per_object_process(menu);
@@ -1985,20 +1991,28 @@ wxMenu* MenuFactory::multi_selection_menu()
     }
     else {
         append_menu_item_center(menu);
-        append_menu_item_transform(menu, true /*multi_selection*/, true /*show_drop*/, false /*mirror*/, true /*convert_unit*/);
-        append_menu_item_modify(menu, true /*multi_selection*/, true /*splittable*/, true /*is_mesh*/);
+        //ORCA switch to sub menus if new items added
+        auto transform_menu = append_menu_item_transform(menu, true /*multi_selection*/, true /*show_drop*/, false /*mirror*/, true /*convert_unit*/);
+        append_menu_item_modify(menu, true /*multi_selection*/, true /*splittable*/, true /*is_mesh*/, false /*mesh_boolean*/);
+        //append_menu_item_drop(menu);
+        //append_menu_item_fix_through_cgal(menu);
+        append_menu_items_convert_unit(transform_menu);
+        //append_menu_item_simplify(menu);
         menu->AppendSeparator();
         append_menu_item_delete(menu);
         menu->AppendSeparator();
 
         append_menu_item_change_filament(menu);
         append_menu_item_change_type(menu);
+        append_menu_item_set_auto_drop(menu);
         menu->AppendSeparator();
 
         append_menu_item_per_object_process(menu);
         menu->AppendSeparator();
 
-        append_menu_item_utilities(menu, true /*multi_selection*/, true /*disk_op*/, false /*export_op*/);
+        //ORCA switch to sub menus if new items added
+        //append_menu_item_utilities(menu, true /*multi_selection*/, true /*disk_op*/, false /*export_op*/);
+        append_menu_item_replace_all_with_stl(menu);
     }
     return menu;
 }
@@ -2014,14 +2028,13 @@ wxMenu* MenuFactory::assemble_multi_selection_menu()
             return nullptr;
 
     wxMenu* menu = new MenuWithSeparators();
-    append_menu_item_change_extruder(menu);
-    menu->AppendSeparator();
     append_menu_item_set_visible(menu);
     //append_menu_item_fix_through_cgal(menu);
     //append_menu_item_simplify(menu);
     menu->AppendSeparator();
     append_menu_item_delete(menu);
     menu->AppendSeparator();
+    append_menu_item_change_extruder(menu);
     return menu;
 }
 
@@ -2066,6 +2079,7 @@ wxMenu* MenuFactory::assemble_object_menu()
     // Set Visible
     append_menu_item_set_visible(menu);
     // Delete
+    menu->AppendSeparator();
     append_menu_item_delete(menu);
     //// Object Repair
     //append_menu_item_fix_through_cgal(menu);
@@ -2085,6 +2099,7 @@ wxMenu* MenuFactory::assemble_part_menu()
     wxMenu* menu = new MenuWithSeparators();
 
     append_menu_item_set_visible(menu);
+    menu->AppendSeparator();
     append_menu_item_delete(menu);
     //append_menu_item_simplify(menu);
     menu->AppendSeparator();
@@ -2300,7 +2315,10 @@ void MenuFactory::append_menu_item_change_filament(wxMenu* menu, size_t pos)
             [i](wxCommandEvent&) { obj_list()->set_extruder_for_selected_items(i); }, i == 0 ? wxNullBitmap : *icons[i - 1], menu,
             [is_active_extruder]() { return !is_active_extruder; }, m_parent);
     }
-    menu->Insert(pos, wxID_ANY, name, extruder_selection_menu, _L("Change Filament"));
+    if (pos == wxNOT_FOUND)
+        menu->Append(wxID_ANY, name, extruder_selection_menu);
+    else
+        menu->Insert(pos, wxID_ANY, name, extruder_selection_menu, _L("Change Filament"));
 }
 
 void MenuFactory::append_menu_item_set_printable(wxMenu* menu)

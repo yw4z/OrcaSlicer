@@ -93,6 +93,7 @@ private:
     wxMenu*            m_object_transform_menu;
     wxMenu*            m_object_utilities_menu;
     size_t             m_object_geometry_pos;
+    size_t             m_object_props_pos;
     int                m_object_props_marker;
     MenuWithSeparators m_part_menu;
     wxMenu*            m_part_transform_menu;
@@ -190,7 +191,7 @@ private:
     void        append_menu_item_plate_name(wxMenu *menu, size_t pos = -1);
     void        append_menu_item_plate_delete(wxMenu *menu, size_t pos = -1);
     wxMenu*     append_menu_item_transform(wxMenu* menu, bool multi_selection, bool show_drop, bool show_mirror, bool convert_unit);
-    wxMenu*     append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh);
+    wxMenu*     append_menu_item_modify(   wxMenu* menu, bool multi_selection, bool splittable, bool is_mesh, bool mesh_boolean);
     wxMenu*     append_menu_item_utilities(wxMenu* menu, bool multi_selection, bool disk_op, bool export_op);
 };
 
