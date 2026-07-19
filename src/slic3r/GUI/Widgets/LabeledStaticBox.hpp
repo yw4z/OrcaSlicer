@@ -42,8 +42,6 @@ public:
 
     void SetBorderColor(StateColor const &color);
 
-    void SetFont(wxFont set_font);
-
     bool Enable(bool enable) override;
 
     // Only meant to be used by inspector, not public API
@@ -53,7 +51,7 @@ public:
     float      GetScale() const        { return m_scale; }
 
 private:
-    void PickDC(wxDC& dc);
+    void update_label_size();
 
 protected:
     StateHandler state_handler;
@@ -62,11 +60,9 @@ protected:
     StateColor   background_color;
     int          m_border_width;
     int          m_radius;
-    wxFont       m_font;
     wxString     m_label;
     int          m_label_height;
     int          m_label_width;
-    float        m_scale;
     wxPoint      m_pos;
 
     virtual void DrawBorderAndLabel(wxDC& dc);
