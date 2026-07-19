@@ -51,6 +51,7 @@ public:
     float      GetScale() const        { return m_scale; }
 
 private:
+    void calc_label_size(int& w, int& h) const;
     void update_label_size();
 
 protected:
