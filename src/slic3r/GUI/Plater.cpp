@@ -2356,7 +2356,7 @@ void Sidebar::update_sync_ams_btn_enable(wxUpdateUIEvent &e)
  }
 
 Sidebar::Sidebar(Plater *parent)
-    : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(39 * wxGetApp().em_unit(), -1)), p(new priv(parent))
+    : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(390), -1)), p(new priv(parent))
 {
     Choice::register_dynamic_list("support_filament", &dynamic_filament_list);
     Choice::register_dynamic_list("support_interface_filament", &dynamic_filament_list);
@@ -2387,7 +2387,6 @@ Sidebar::Sidebar(Plater *parent)
 #endif
 #endif
 
-    int em = wxGetApp().em_unit();
     //BBS refine layout and styles
     // Sizer in the scrolled area
     auto* scrolled_sizer = m_scrolled_sizer = new wxBoxSizer(wxVERTICAL);
@@ -2450,7 +2449,7 @@ Sidebar::Sidebar(Plater *parent)
         h_sizer_title->Add(p->m_printer_bbl_sync, 0, wxALIGN_CENTER | wxRIGHT, FromDIP(SidebarProps::WideSpacing())); // used larger margin to prevent accidental clicks
         h_sizer_title->Add(p->m_printer_setting, 0, wxALIGN_CENTER);
         h_sizer_title->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
-        h_sizer_title->SetMinSize(-1, 3 * em);
+        h_sizer_title->SetMinSize(-1, FromDIP(30));
 
         p->m_panel_printer_title->SetSizer(h_sizer_title);
         p->m_panel_printer_title->Layout();
@@ -3014,7 +3013,7 @@ Sidebar::Sidebar(Plater *parent)
     p->sizer_params = new wxBoxSizer(wxVERTICAL);
 
     // ORCA: Update search box to modern style
-    p->m_search_bar = new StaticBox(p->scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, 3 * wxGetApp().em_unit())); // ensure its size matches with combo box
+    p->m_search_bar = new StaticBox(p->scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(30))); // ensure its size matches with combo box
     p->m_search_bar->SetCornerRadius(0);
     p->m_search_bar->SetBorderColor(wxColour("#CECECE"));
 
@@ -3158,7 +3157,7 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
 
     (*combo)->clr_picker->SetLabel(wxString::Format("%d", filament_idx + 1));
     combo_and_btn_sizer->Add((*combo)->clr_picker, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()) - FromDIP(2)); // ElementSpacing - 2 (from combo box))
-    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, 30 * wxGetApp().em_unit() / 10}); // ORCA ensure height matches with PlaterPresetComboBox
+    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize(FromDIP(wxSize{-1, 30})); // ORCA ensure height matches with PlaterPresetComboBox
 
     /* BBS hide del_btn
     ScalableButton* del_btn = new ScalableButton(p->m_panel_filament_content, wxID_ANY, "delete_filament");
@@ -3735,12 +3734,11 @@ void Sidebar::update_filaments_counter(bool force_layout)
 
 void Sidebar::msw_rescale()
 {
-    SetMinSize(wxSize(39 * wxGetApp().em_unit(), -1));
+    SetMinSize(wxSize(FromDIP(390), -1));
     p->m_panel_printer_title->Rescale();
-    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, 3 * wxGetApp().em_unit());
+    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, FromDIP(30));
     p->m_panel_filament_title->Rescale();
-    p->m_panel_filament_title->GetSizer()
-        ->SetMinSize(-1, 3 * wxGetApp().em_unit());
+    p->m_panel_filament_title->GetSizer()->SetMinSize(-1, FromDIP(30));
     p->m_printer_icon->msw_rescale();
     p->m_printer_connect->msw_rescale();
     p->m_printer_bbl_sync->msw_rescale();
@@ -3819,7 +3817,7 @@ void Sidebar::msw_rescale()
     // BBS
     //p->object_manipulation->msw_rescale();
     p->object_settings->msw_rescale();
-    p->m_search_bar->SetSize(wxSize(-1, 3 * wxGetApp().em_unit()));
+    p->m_search_bar->SetSize(wxSize(-1, FromDIP(30)));
     p->m_search_item->Rescale();
     p->m_search_item->GetTextCtrl()->SetSize(wxSize(-1, FromDIP(16)));
     p->m_search_bar->Rescale();
@@ -5963,7 +5961,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
                                    .CloseButton(false)
                                    .TopDockable(false)
                                    .BottomDockable(false)
-                                   .BestSize(wxSize(39 * wxGetApp().em_unit(), 90 * wxGetApp().em_unit())));
+                                   .BestSize(wxSize(q->FromDIP(390), q->FromDIP(900))));
 
     auto* panel_sizer = new wxBoxSizer(wxHORIZONTAL);
     panel_sizer->Add(view3D, 1, wxEXPAND | wxALL, 0);
