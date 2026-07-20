@@ -189,25 +189,27 @@ void NetworkPluginDownloadDialog::create_update_available_ui(const std::string& 
     main_sizer->Add(dlg_btns, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, FromDIP(10));
 }
 
+wxString network_version_label(const NetworkLibraryVersionInfo& ver)
+{
+    wxString label = wxString::FromUTF8(ver.display_name);
+    if (!ver.suffix.empty())
+        label = wxString::FromUTF8("\xE2\x94\x94 ") + label;
+    // Both can apply: the loaded build may also be the highest listed one.
+    if (ver.is_latest)
+        label += wxString(" ") + _L("(Latest)");
+    if (ver.is_loaded)
+        label += wxString(" ") + _L("(installed)");
+    return label;
+}
+
 void NetworkPluginDownloadDialog::setup_version_selector()
 {
     m_version_combo = new ComboBox(this, wxID_ANY, wxEmptyString,
         wxDefaultPosition, wxSize(FromDIP(380), FromDIP(28)), 0, nullptr, wxCB_READONLY);
 
     m_available_versions = get_all_available_versions();
-    for (size_t i = 0; i < m_available_versions.size(); ++i) {
-        const auto& ver = m_available_versions[i];
-        wxString label;
-        if (!ver.suffix.empty()) {
-            label = wxString::FromUTF8("\xE2\x94\x94 ") + wxString::FromUTF8(ver.display_name);
-        } else {
-            label = wxString::FromUTF8(ver.display_name);
-            if (ver.is_latest) {
-                label += wxString(" ") + _L("(Latest)");
-            }
-        }
-        m_version_combo->Append(label);
-    }
+    for (const auto& ver : m_available_versions)
+        m_version_combo->Append(network_version_label(ver));
 
     m_version_combo->SetSelection(0);
 }
