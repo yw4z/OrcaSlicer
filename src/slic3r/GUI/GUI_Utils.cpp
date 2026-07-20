@@ -548,7 +548,7 @@ void RemoveButtonBorder(wxWindow* win)
     GtkCssProvider* provider = gtk_css_provider_new();
 
     const char* css =
-        "button {"
+        "button, button:hover, button:active, button:focus {"
         "  border: none;"
         "  outline: none;"
         "  box-shadow: none;"
