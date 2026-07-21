@@ -12,7 +12,7 @@
 #include "libslic3r/MacUtils.hpp"
 #endif
 
-#ifdef __WXGTK3__
+#ifdef __WXGTK__
 #include "../GUI_Utils.hpp"
 #endif
 

@@ -2,7 +2,7 @@
 
 #include "../wxExtensions.hpp"
 
-#ifdef __WXGTK3__
+#ifdef __WXGTK__
 #include "../GUI_Utils.hpp"
 #endif
 

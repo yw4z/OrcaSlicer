@@ -467,6 +467,7 @@ void staticbox_remove_margin(wxStaticBox* sb);
 
 #ifdef __WXGTK3__
 void RemoveButtonBorder(wxWindow* win);
+void RemoveInputBorder(wxWindow* win);
 #endif
 
 #if defined(__WXOSX__) || defined(__linux__)
