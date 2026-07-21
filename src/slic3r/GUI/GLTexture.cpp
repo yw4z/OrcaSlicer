@@ -660,8 +660,8 @@ bool GLTexture::generate_texture_from_text(const std::string& text_str, wxFont& 
 
     found = false;
     src -= 3;
-    for (int h = m_height; h > 0; -h) {
-        for (int w = m_width; w > 0; -w) {
+    for (int h = m_height; h > 0; --h) {
+        for (int w = m_width; w > 0; --w) {
             if ((*src) != background.Red() && !found) {
                 found = true;
                 if (h < font.GetPointSize())
@@ -742,7 +742,7 @@ void GLTexture::render_sub_texture(unsigned int tex_id, float left, float right,
 static bool to_squared_power_of_two(const std::string& filename, int max_size_px, int& w, int& h)
 {
     auto is_power_of_two = [](int v) { return v != 0 && (v & (v - 1)) == 0; };
-    auto upper_power_of_two = [](int v) { v-; v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16; v++; return v; };
+    auto upper_power_of_two = [](int v) { v--; v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16; v++; return v; };
 
     int new_w = std::max(w, h);
     if (!is_power_of_two(new_w))

@@ -5467,7 +5467,7 @@ struct Plater::priv
     bool up_to_date(bool saved, bool backup);
 
     void suppress_snapshots()   { m_prevent_snapshots++; }
-    void allow_snapshots()      { m_prevent_snapshots-; }
+    void allow_snapshots()      { m_prevent_snapshots--; }
     // BBS: single snapshot
     void single_snapshots_enter(SingleSnapshot *single)
     {
@@ -17513,7 +17513,7 @@ void Plater::on_filaments_delete(size_t num_filaments, size_t filament_id, int r
 
         for (auto& item : item->second.gcodes) {
             if (item.type == CustomGCode::Type::ToolChange && item.extruder > filament_id)
-                item.extruder-;
+                item.extruder--;
         }
     }
 }
