@@ -111,16 +111,7 @@ public:
         update_dark_ui(this);
 #endif
 
-        // Linux specific issue : get_dpi_for_window(this) still doesn't responce to the Display's scale in new wxWidgets(3.1.3).
-        // So, calculate the m_em_unit value from the font size, as before
-#if !defined(__WXGTK__)
-        m_em_unit = std::max<size_t>(10, 10.0f * m_scale_factor);
-#else
-        // initialize default width_unit according to the width of the one symbol ("m") of the currently active font of this window.
-        m_em_unit = std::max<size_t>(10, this->GetTextExtent("m").x - 1);
-#endif // __WXGTK__
-
-//        recalc_font();
+        update_em_unit();
 
 #ifndef __WXOSX__
         this->Bind(wxEVT_DPI_CHANGED, [this](wxDPIChangedEvent& evt) {
@@ -220,6 +211,38 @@ private:
 
     int   m_new_font_point_size;
 
+    void update_em_unit()
+    {
+        // fonts already resolve through the OS's effective DPI (monitor scale + accessibility text-scale combined)
+        // so multiplying again double-applies the DPI portion.
+        //wxFont font = get_em_reference_font();
+        wxClientDC dc(this);
+        dc.SetFont(this->GetFont());
+        // 1
+        //wxSize textSize = dc.GetTextExtent("MMMMMMMMMM");
+        //int tW = textSize.GetWidth() / 10;
+        // 2
+        //int tW, tH, descent, externalLeading;
+        //this->GetTextExtent("M", &tW, &tH, &descent, &externalLeading, &font);
+        // 3
+        //int tW = dc.GetCharWidth();
+        // 4
+        //auto fm = dc.GetFontMetrics();
+        //int tW = fm.averageWidth; // not bad
+        // 5
+        //wxSize pxSize  = this->GetTextExtent("M"); // Raw pixel size from the window or a device context (DC)
+        //wxSize dipSize = this->ToDIP(pxSize);      // Convert raw pixels to platform-independent DIP units
+        //int tW = dipSize.x;
+        // 6
+        wxFont font = this->GetFont();
+        int ptSize = font.GetPointSize(); // Bypass Pango/DirectWrite layout wrappers and grab the core point size
+        int base = ptSize;                // Manually map layout math to the point size directly instead of relying on the fluctuating pixel box height.
+
+
+        //int base  = (tW > 2) ? (tW - 1) : 10;
+        m_em_unit = std::max<size_t>(10, static_cast<size_t>(base));
+    };
+
 //    void recalc_font()
 //    {
 //        wxClientDC dc(this);
@@ -241,7 +264,8 @@ private:
         m_normal_font = this->GetFont();
 
         // update em_unit value for new window font
-        m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
+        //m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
+        update_em_unit();
 
         // rescale missed controls sizes and images
         on_dpi_changed(suggested_rect);
@@ -466,8 +490,8 @@ void staticbox_remove_margin(wxStaticBox* sb);
 #endif
 
 #ifdef __WXGTK3__
-void RemoveButtonBorder(wxWindow* win);
-void RemoveInputBorder(wxWindow* win);
+void RemoveButtonBorder(wxWindow* win);   // for wxButton/wxBitmapToggleButton based controls (SwitchButton, CheckBox)
+void RemoveInputBorder(wxWindow* win);    // for TextCtrl based controls (TextInput, ComboBox, SpinInput..)
 #endif
 
 #if defined(__WXOSX__) || defined(__linux__)
