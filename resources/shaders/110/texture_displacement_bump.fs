@@ -40,7 +40,7 @@ varying vec3  clipping_planes_dots;
 varying vec4  model_pos;
 varying vec4  world_pos;
 varying float weight;
-varying float active;
+varying float island_active;
 varying vec2  vertex_uv;
 
 void projection_axes(vec3 n, out vec3 t, out vec3 b)
@@ -81,7 +81,7 @@ void main()
         // Mikkelsen surface-gradient bump; see the 140 variant for the full rationale. Scale-exact
         // for a conformal LSCM map (no global 1/tiling assumption), and gated by the paint weight
         // via a multiply so the branch stays uniform (use_vertex_uv is a uniform).
-        vec2 uv = (active > 0.5)
+        vec2 uv = (island_active > 0.5)
                     ? vec2(dot(island_delta_lin.xy, vertex_uv), dot(island_delta_lin.zw, vertex_uv)) + island_delta_tr
                     : vertex_uv;
         float h = texture2D(height_tex, uv).r;

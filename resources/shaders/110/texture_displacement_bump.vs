@@ -17,7 +17,7 @@ varying vec3  clipping_planes_dots;
 varying vec4  model_pos;
 varying vec4  world_pos;
 varying float weight;
-varying float active;
+varying float island_active;
 varying vec2  vertex_uv;
 
 void main()
@@ -28,7 +28,7 @@ void main()
     gl_Position = projection_matrix * view_model_matrix * model_pos;
     clipping_planes_dots = vec3(dot(world_pos, clipping_plane), world_pos.z - z_range.x, z_range.y - world_pos.z);
 
-    weight    = v_normal.x;
-    active    = v_normal.y;
-    vertex_uv = v_tex_coord;
+    weight        = v_normal.x;
+    island_active = v_normal.y;
+    vertex_uv     = v_tex_coord;
 }

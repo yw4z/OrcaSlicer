@@ -60,7 +60,7 @@ uniform vec2       uv_offset;
 uniform bool       invert;
 uniform bool       use_vertex_uv; // true: sample at vertex_uv with a derived tangent frame (LSCM)
 // A 2x3 affine (columns packed as lin = (m00, m01, m10, m11), tr = (m02, m12)) applied to the uv of
-// the island currently being dragged in the UV editor (active > 0.5). Identity when nothing is
+// the island currently being dragged in the UV editor (island_active > 0.5). Identity when nothing is
 // dragged, so this whole path is a no-op then. Lets a UV island drag move the bump on the model with
 // only a uniform update 
 uniform vec4       island_delta_lin;
@@ -70,7 +70,7 @@ in vec3  clipping_planes_dots;
 in vec4  model_pos;
 in vec4  world_pos;
 in float weight;
-in float active;
+in float island_active;
 in vec2  vertex_uv;
 
 out vec4 out_color;
@@ -125,8 +125,8 @@ void main()
         // derivatives are well defined; the paint weight gates the result by a plain multiply (k)
         // rather than a per-fragment branch, keeping it that way.
         // The dragged island's uv rides a uniform affine so its bump moves without a rebuild; every
-        // other vertex (active == 0) samples its baked uv unchanged.
-        vec2 uv = (active > 0.5)
+        // other vertex (island_active == 0) samples its baked uv unchanged.
+        vec2 uv = (island_active > 0.5)
                     ? vec2(dot(island_delta_lin.xy, vertex_uv), dot(island_delta_lin.zw, vertex_uv)) + island_delta_tr
                     : vertex_uv;
         float h = texture(height_tex, uv).r;
