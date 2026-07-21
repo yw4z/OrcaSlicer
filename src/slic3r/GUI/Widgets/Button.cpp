@@ -299,7 +299,7 @@ void Button::render(wxDC& dc)
     else
         icon = inactive_icon;
     wxSize padding = this->paddingSize;
-    int spacing = 5;
+    int spacing = GetLabel().IsEmpty() ? 0 : 5; // ORCA dont add spacing when no text in use. fixes alignment
     // Wrap text
     auto text = GetLabel();
     if (vertical && textSize.x + padding.x * 2 > size.x) {
@@ -379,14 +379,15 @@ void Button::messureSize()
 {
     wxClientDC dc(this);
     dc.GetTextExtent(GetLabel(), &textSize.width, &textSize.height, &textSize.x, &textSize.y);
+    int spacing = GetLabel().IsEmpty() ? 0 : 5;  // ORCA dont add spacing when no text in use. fixes alignment
     wxSize szContent = textSize.GetSize();
     if (this->active_icon.bmp().IsOk()) {
         if (szContent.y > 0) {
             //BBS norrow size between text and icon
             if (vertical)
-                szContent.y += 5;
+                szContent.y += spacing; // ORCA use spacing instead static value
             else
-                szContent.x += 5;
+                szContent.x += spacing; // ORCA use spacing instead static value
         }
         wxSize szIcon = this->active_icon.GetBmpSize();
         if (vertical) {
