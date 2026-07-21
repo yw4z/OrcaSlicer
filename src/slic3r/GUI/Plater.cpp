@@ -2860,7 +2860,7 @@ Sidebar::Sidebar(Plater *parent)
     p->m_staticText_filament_settings = new Label(p->m_panel_filament_title, _L("Project Filaments"), LB_PROPAGATE_MOUSE_EVENT);
     bSizer39->Add(p->m_filament_icon, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::TitlebarMargin()));
     bSizer39->Add(p->m_staticText_filament_settings, 0, wxALIGN_CENTER | wxLEFT | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()));
-    bSizer39->SetMinSize(-1, FromDIP(30));
+    bSizer39->SetMinSize(-1, 3 * em);
 
     p->m_staticText_filament_count = new Label(p->m_panel_filament_title, "(0)", LB_PROPAGATE_MOUSE_EVENT);
     bSizer39->Add(p->m_staticText_filament_count, 0, wxALIGN_CENTER );
