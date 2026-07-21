@@ -2449,7 +2449,7 @@ Sidebar::Sidebar(Plater *parent)
         h_sizer_title->Add(p->m_printer_bbl_sync, 0, wxALIGN_CENTER | wxRIGHT, FromDIP(SidebarProps::WideSpacing())); // used larger margin to prevent accidental clicks
         h_sizer_title->Add(p->m_printer_setting, 0, wxALIGN_CENTER);
         h_sizer_title->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
-        h_sizer_title->SetMinSize(-1, FromDIP(30));
+        h_sizer_title->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
 
         p->m_panel_printer_title->SetSizer(h_sizer_title);
         p->m_panel_printer_title->Layout();
@@ -2538,7 +2538,7 @@ Sidebar::Sidebar(Plater *parent)
 
         p->combo_printer = new PlaterPresetComboBox(p->panel_printer_preset, Preset::TYPE_PRINTER);
         p->combo_printer->SetBorderWidth(0);
-        p->combo_printer->SetMaxSize(wxSize(-1, FromDIP(30))); // limiting height makes badge visible
+        p->combo_printer->SetMaxSize(wxSize(-1, SidebarProps::ComboHeight())); // limiting height makes badge visible
         // ORCA paint whole combobox on focus
         auto printer_focus_bg = [this, panel_color](bool focused){
             auto bg_color = StateColor::darkModeColorFor(focused ? panel_color.bg_focus : panel_color.bg_normal);
@@ -2606,8 +2606,8 @@ Sidebar::Sidebar(Plater *parent)
         p->combo_nozzle_dia = new ComboBox(p->panel_nozzle_dia, wxID_ANY, wxString(""), wxDefaultPosition, wxDefaultSize, 0, nullptr, wxCB_READONLY);
         p->combo_nozzle_dia->SetBorderWidth(0);
         p->combo_nozzle_dia->GetDropDown().SetUseContentWidth(true);
-        p->combo_nozzle_dia->SetMinSize(FromDIP(wxSize(PRINTER_PANEL_SIZE.GetWidth() - 4, 26))); // requires a static value in here
-        p->combo_nozzle_dia->SetMaxSize(FromDIP(wxSize(PRINTER_PANEL_SIZE.GetWidth() - 4, 26))); // using -1 with wxEXPAND has issues
+        p->combo_nozzle_dia->SetMinSize(FromDIP(wxSize(PRINTER_PANEL_SIZE.GetWidth() - 4, SidebarProps::ComboHeight()))); // requires a static value in here
+        p->combo_nozzle_dia->SetMaxSize(FromDIP(wxSize(PRINTER_PANEL_SIZE.GetWidth() - 4, SidebarProps::ComboHeight()))); // using -1 with wxEXPAND has issues
         p->combo_nozzle_dia->Bind(wxEVT_COMBOBOX, [this](auto &e) {
             auto evt_combo = (*p->single_extruder).combo_diameter;
             evt_combo->SetSelection(e.GetSelection());
@@ -2862,7 +2862,7 @@ Sidebar::Sidebar(Plater *parent)
     p->m_staticText_filament_settings = new Label(p->m_panel_filament_title, _L("Project Filaments"), LB_PROPAGATE_MOUSE_EVENT);
     bSizer39->Add(p->m_filament_icon, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::TitlebarMargin()));
     bSizer39->Add(p->m_staticText_filament_settings, 0, wxALIGN_CENTER | wxLEFT | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()));
-    bSizer39->SetMinSize(-1, FromDIP(30));
+    bSizer39->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
 
     p->m_staticText_filament_count = new Label(p->m_panel_filament_title, "(0)", LB_PROPAGATE_MOUSE_EVENT);
     bSizer39->Add(p->m_staticText_filament_count, 0, wxALIGN_CENTER );
@@ -3013,7 +3013,7 @@ Sidebar::Sidebar(Plater *parent)
     p->sizer_params = new wxBoxSizer(wxVERTICAL);
 
     // ORCA: Update search box to modern style
-    p->m_search_bar = new StaticBox(p->scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(30))); // ensure its size matches with combo box
+    p->m_search_bar = new StaticBox(p->scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(SidebarProps::ComboHeightBig()))); // ensure its size matches with combo box
     p->m_search_bar->SetCornerRadius(0);
     p->m_search_bar->SetBorderColor(wxColour("#CECECE"));
 
@@ -3157,7 +3157,7 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
 
     (*combo)->clr_picker->SetLabel(wxString::Format("%d", filament_idx + 1));
     combo_and_btn_sizer->Add((*combo)->clr_picker, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()) - FromDIP(2)); // ElementSpacing - 2 (from combo box))
-    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize(FromDIP(wxSize{-1, 30})); // ORCA ensure height matches with PlaterPresetComboBox
+    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize(wxSize{-1, FromDIP(SidebarProps::ComboHeightBig())}); // ORCA ensure height matches with PlaterPresetComboBox
 
     /* BBS hide del_btn
     ScalableButton* del_btn = new ScalableButton(p->m_panel_filament_content, wxID_ANY, "delete_filament");
@@ -3736,9 +3736,9 @@ void Sidebar::msw_rescale()
 {
     SetMinSize(wxSize(FromDIP(390), -1));
     p->m_panel_printer_title->Rescale();
-    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, FromDIP(30));
+    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     p->m_panel_filament_title->Rescale();
-    p->m_panel_filament_title->GetSizer()->SetMinSize(-1, FromDIP(30));
+    p->m_panel_filament_title->GetSizer()->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     p->m_printer_icon->msw_rescale();
     p->m_printer_connect->msw_rescale();
     p->m_printer_bbl_sync->msw_rescale();
@@ -3751,7 +3751,7 @@ void Sidebar::msw_rescale()
     p->image_printer->SetSize(FromDIP(PRINTER_THUMBNAIL_SIZE));
     update_printer_thumbnail();
     p->combo_printer->Rescale();
-    p->combo_printer->SetMaxSize(wxSize(-1, FromDIP(30))); // limiting height makes badge visible
+    p->combo_printer->SetMaxSize(wxSize(-1, FromDIP(SidebarProps::ComboHeightBig()))); // limiting height makes badge visible
     p->btn_edit_printer->msw_rescale();
 
     p->panel_nozzle_dia->Rescale();
@@ -3817,7 +3817,7 @@ void Sidebar::msw_rescale()
     // BBS
     //p->object_manipulation->msw_rescale();
     p->object_settings->msw_rescale();
-    p->m_search_bar->SetSize(wxSize(-1, FromDIP(30)));
+    p->m_search_bar->SetSize(wxSize(-1, FromDIP(SidebarProps::ComboHeightBig())));
     p->m_search_item->Rescale();
     p->m_search_item->GetTextCtrl()->SetSize(wxSize(-1, FromDIP(16)));
     p->m_search_bar->Rescale();
@@ -4793,7 +4793,7 @@ template<typename T> void setup_dialog_position(T& info)
 
         auto screen_width = wxDisplay(&sidebar).GetClientArea().GetSize().x;
         auto right_space  = screen_width - sidebar.get_sidebar_pos_right_x();
-        if (right_space < sidebar.FromDIP(400)) {
+        if (right_space < sidebar.FromDIP(SidebarProps::MinWidth())) {
             on_right = false;
         }
     }

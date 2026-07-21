@@ -837,7 +837,7 @@ bool PresetComboBox::selection_is_changed_according_to_physical_printers()
 // ---------------------------------
 
 PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset_type) :
-    PresetComboBox(parent, preset_type, wxSize(25 * wxGetApp().em_unit(), 30 * wxGetApp().em_unit() / 10))
+    PresetComboBox(parent, preset_type, wxSize(-1, parent->FromDIP(SidebarProps::ComboHeightBig())))
 {
     GetDropDown().SetUseContentWidth(true,true);
 
@@ -1641,7 +1641,7 @@ void PlaterPresetComboBox::sync_colour_config(const std::vector<std::string> &cl
 
 TabPresetComboBox::TabPresetComboBox(wxWindow* parent, Preset::Type preset_type) :
     // BBS: new layout
-    PresetComboBox(parent, preset_type, wxSize(20 * wxGetApp().em_unit(), 30 * wxGetApp().em_unit() / 10))
+    PresetComboBox(parent, preset_type, wxSize(-1, parent->FromDIP(SidebarProps::ComboHeightBig())))
 {
     GetDropDown().SetUseContentWidth(true,true);
 }

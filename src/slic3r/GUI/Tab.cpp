@@ -316,7 +316,7 @@ void Tab::create_preset_tab()
     m_btn_search->SetToolTip(_L("Search in preset"));
 
     //search input
-    m_search_item = new StaticBox(m_top_panel, wxID_ANY, wxDefaultPosition, wxSize(-1, 3 * wxGetApp().em_unit())); // ensure its size matches with combo box
+    m_search_item = new StaticBox(m_top_panel, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(SidebarProps::ComboHeightBig()))); // ensure its size matches with combo box
     StateColor box_colour(std::pair<wxColour, int>(*wxWHITE, StateColor::Normal));
     StateColor box_border_colour(std::pair<wxColour, int>(wxColour("#009688"), StateColor::Normal)); // ORCA match border color with other input/combo boxes
 
@@ -444,7 +444,7 @@ void Tab::create_preset_tab()
 
     m_top_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
 
-    m_top_sizer->SetMinSize(-1, 3 * m_em_unit);
+    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     m_top_panel->SetSizer(m_top_sizer);
     if (m_presets_choice)
         m_main_sizer->Add(m_top_panel, 0, wxEXPAND | wxUP | wxDOWN, FromDIP(SidebarProps::ContentMarginV()));
@@ -1584,7 +1584,7 @@ void Tab::msw_rescale()
 {
     m_em_unit = em_unit(m_parent);
 
-    m_top_sizer->SetMinSize(-1, 3 * m_em_unit);
+    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight(), m_parent));
 
     //BBS: GUI refactor
     //if (m_mode_sizer)
@@ -1614,7 +1614,7 @@ void Tab::msw_rescale()
         m_extruder_sync->msw_rescale();
 
     if (m_search_item){
-        m_search_item->SetSize(wxSize(-1, 3 * m_em_unit)); // ensure height matches with preset combo
+        m_search_item->SetSize(wxSize(-1, FromDIP(SidebarProps::ComboHeightBig(), m_parent))); // ensure height matches with preset combo
     }
     if (m_search_input){
         m_search_input->Rescale();

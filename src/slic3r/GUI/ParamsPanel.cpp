@@ -408,7 +408,7 @@ void ParamsPanel::create_layout()
 
     m_left_sizer = new wxBoxSizer( wxVERTICAL );
     // BBS: new layout
-    m_left_sizer->SetMinSize( wxSize(FromDIP(400), -1 ) );
+    m_left_sizer->SetMinSize( wxSize(FromDIP(SidebarProps::MinWidth()), -1 ) );
 
     if (m_top_panel) {
         m_mode_sizer = new wxBoxSizer( wxHORIZONTAL );
@@ -678,9 +678,9 @@ void ParamsPanel::msw_rescale()
     if (m_search_btn) m_search_btn->msw_rescale();
     if (m_compare_btn) m_compare_btn->msw_rescale();
     if (m_tips_arrow) m_tips_arrow->msw_rescale();
-    m_left_sizer->SetMinSize(wxSize(FromDIP(400), -1));
+    m_left_sizer->SetMinSize(wxSize(FromDIP(SidebarProps::MinWidth()), -1));
     if (m_mode_sizer)
-        m_mode_sizer->SetMinSize(-1, FromDIP(30));
+        m_mode_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
     if (m_mode_region)
         ((SwitchButton* )m_mode_region)->Rescale();
     if (m_mode_icon) m_mode_icon->msw_rescale();
