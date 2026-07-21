@@ -1902,7 +1902,7 @@ void ImGuiWrapper::search_list(const ImVec2& size_, bool (*items_getter)(int, co
             scroll_up();
         else {
             if (hovered_id > 0)
-                -hovered_id;
+                --hovered_id;
             scroll_y(hovered_id);
         }
     });
@@ -2293,7 +2293,7 @@ std::string ImGuiWrapper::trunc(const std::string &text,
     } else {
         // decrease letter count
         while (count_letter > 1) {
-            -count_letter;
+            --count_letter;
             result_text = text_.substr(0, count_letter);
             text_width  = calc_text_size(result_text).x;
             if (text_width < allowed_width) break;            

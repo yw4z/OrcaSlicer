@@ -866,7 +866,7 @@ void Sidebar::priv::flush_printer_sync(bool restart)
     }
     //btn_sync_printer->SetBackgroundColorNormal((*counter_sync_printer & 1) ? "#F8F8F8" :"#009688");
     m_printer_bbl_sync->SetBitmap_((*counter_sync_printer & 1) ? "printer_sync_not" : "printer_sync_ok");
-    if (-*counter_sync_printer <= 0)
+    if (--*counter_sync_printer <= 0)
         timer_sync_printer->Stop();
 }
 
@@ -1307,7 +1307,7 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
     btn_up->SetBackgroundColour(*wxWHITE);
     btn_up->Bind(wxEVT_COMMAND_BUTTON_CLICKED, [this, index](auto &evt) {
         if (page_cur > 0)
-            -page_cur;
+            --page_cur;
         update_ams();
     });
     btn_up->Hide();
@@ -1376,7 +1376,7 @@ void ExtruderGroup::update_ams()
         ams[index]->Refresh();
         ams[index]->Open();
     }
-    for (size_t i = i1; i < ams_n1 && left > 0; ++i, ++index, -left) {
+    for (size_t i = i1; i < ams_n1 && left > 0; ++i, ++index, --left) {
         ams[index]->Update(i < ams_1.size() ? ams_1[i] : info1);
         ams[index]->Refresh();
         ams[index]->Open();
@@ -4519,7 +4519,7 @@ void Sidebar::sync_ams_list(bool is_from_big_sync_btn)
 
         for (size_t i = 0; i < merge_info.merges.size(); i++) {
             auto& cur = merge_info.merges[i];
-            for (int j = cur.size() -1; j >= 1 ; j-) {
+            for (int j = cur.size() -1; j >= 1 ; j--) {
                 auto last_index = cur[j];
                 change_filament(last_index, cur[0]);
                 cur.erase(cur.begin() + j);
@@ -12615,7 +12615,7 @@ void Plater::priv::undo()
     const std::vector<UndoRedo::Snapshot> &snapshots = this->undo_redo_stack().snapshots();
     auto it_current = std::lower_bound(snapshots.begin(), snapshots.end(), UndoRedo::Snapshot(this->undo_redo_stack().active_snapshot_time()));
     // BBS: undo-redo until modify record
-    while (-it_current != snapshots.begin() && !snapshot_modifies_project(*it_current));
+    while (--it_current != snapshots.begin() && !snapshot_modifies_project(*it_current));
     if (it_current == snapshots.begin()) return;
     if (get_current_canvas3D()->get_canvas_type() == GLCanvas3D::CanvasAssembleView) {
         if (it_current->snapshot_data.snapshot_type != UndoRedo::SnapshotType::GizmoAction &&
@@ -12635,7 +12635,7 @@ void Plater::priv::redo()
     while (it_current != snapshots.end() && !snapshot_modifies_project(*it_current++));
     if (it_current != snapshots.end()) {
         while (it_current != snapshots.end() && !snapshot_modifies_project(*it_current++));
-        this->undo_redo_to(-it_current);
+        this->undo_redo_to(--it_current);
     }
 }
 
