@@ -215,32 +215,14 @@ private:
     {
         // fonts already resolve through the OS's effective DPI (monitor scale + accessibility text-scale combined)
         // so multiplying again double-applies the DPI portion.
-        //wxFont font = get_em_reference_font();
-        wxClientDC dc(this);
-        dc.SetFont(this->GetFont());
-        // 1
-        //wxSize textSize = dc.GetTextExtent("MMMMMMMMMM");
-        //int tW = textSize.GetWidth() / 10;
-        // 2
-        //int tW, tH, descent, externalLeading;
-        //this->GetTextExtent("M", &tW, &tH, &descent, &externalLeading, &font);
-        // 3
-        //int tW = dc.GetCharWidth();
-        // 4
-        //auto fm = dc.GetFontMetrics();
-        //int tW = fm.averageWidth; // not bad
-        // 5
-        //wxSize pxSize  = this->GetTextExtent("M"); // Raw pixel size from the window or a device context (DC)
-        //wxSize dipSize = this->ToDIP(pxSize);      // Convert raw pixels to platform-independent DIP units
-        //int tW = dipSize.x;
-        // 6
+        #if !defined(__WXGTK__)
+        m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
+        #else
         wxFont font = this->GetFont();
         int ptSize = font.GetPointSize(); // Bypass Pango/DirectWrite layout wrappers and grab the core point size
         int base = ptSize;                // Manually map layout math to the point size directly instead of relying on the fluctuating pixel box height.
-
-
-        //int base  = (tW > 2) ? (tW - 1) : 10;
         m_em_unit = std::max<size_t>(10, static_cast<size_t>(base));
+        #endif // __WXGTK__
     };
 
 //    void recalc_font()
@@ -264,7 +246,6 @@ private:
         m_normal_font = this->GetFont();
 
         // update em_unit value for new window font
-        //m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
         update_em_unit();
 
         // rescale missed controls sizes and images
