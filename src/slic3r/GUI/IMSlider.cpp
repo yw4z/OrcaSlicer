@@ -160,8 +160,9 @@ bool IMSlider::init_texture()
         result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/one_layer_on_hover_dark.svg", 56, 56, m_one_layer_on_hover_dark_id);
         result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/one_layer_off_dark.svg", 56, 56, m_one_layer_off_dark_id);
         result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/one_layer_off_hover_dark.svg", 56, 56, m_one_layer_off_hover_dark_id);
-        result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/im_gcode_pause.svg", 14, 14, m_pause_icon_id);
-        result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/im_gcode_custom.svg", 14, 14, m_custom_icon_id);
+        result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/im_gcode_pause.svg"  , 16, 16, m_pause_icon_id);
+        result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/im_gcode_custom.svg" , 16, 16, m_custom_icon_id);
+        result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/im_gcode_change.svg" , 16, 16, m_change_icon_id);
         result &= IMTexture::load_from_svg_file(Slic3r::resources_dir() + "/images/im_slider_delete.svg", 14, 14, m_delete_icon_id);
     }
 
@@ -651,39 +652,36 @@ void IMSlider::draw_colored_band(const ImRect& groove, const ImRect& slideable_r
 
 void IMSlider::draw_custom_label_block(const ImVec2 anchor, Type type)
 {
-    wxString label;
+    ImTextureID icon_id = m_custom_icon_id;
     switch (type)
     {
     case ColorChange:
-        label = _L("Color");
+        icon_id = m_change_icon_id;
         break;
     case PausePrint:
-        label = _L("Pause");
+        icon_id = m_pause_icon_id;
         break;
     case ToolChange:
-        label = _L("Color");
+        icon_id = m_change_icon_id;
         break;
     case Template:
-        label = _L("Template");
+        icon_id = m_custom_icon_id;
         break;
     case Custom:
-        label = _L("Custom");
+        icon_id = m_custom_icon_id;
         break;
     case Unknown:
         break;
     default:
         break;
     }
-    const ImVec2 text_size = ImGui::CalcTextSize(into_u8(label).c_str());
-    const ImVec2 padding = ImVec2(4, 2) * m_scale;
-    const ImU32  clr = IM_COL32(255, 111, 0, 255);
-    const float  rounding = 2.0f * m_scale;
-    ImVec2 block_pos = { anchor.x - text_size.x - padding.x * 2, anchor.y - text_size.y / 2 - padding.y };
-    ImVec2 block_size = { text_size.x + padding.x * 2, text_size.y + padding.y * 2 };
-    ImGui::RenderFrame(block_pos, block_pos + block_size, clr, false, rounding);
-    ImGui::PushStyleColor(ImGuiCol_Text, { 1,1,1,1 });
-    ImGui::RenderText(block_pos + padding, into_u8(label).c_str());
-    ImGui::PopStyleColor();
+
+    const ImVec2 icon_sz = ImVec2(16.f, 16.f) * m_scale;
+    ImVec2 icon_pos  = { anchor.x - icon_sz.x, anchor.y - icon_sz.y / 2};
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , {0, 0});
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+    button_with_pos(icon_id, icon_sz, icon_pos);
+    ImGui::PopStyleVar(2);
 }
 
 void IMSlider::draw_ticks(const ImRect& slideable_region) {
@@ -696,7 +694,7 @@ void IMSlider::draw_ticks(const ImRect& slideable_region) {
 
     ImGuiContext &context       = *GImGui;
 
-    ImVec2 tick_box      = ImVec2(52.0f, 16.0f) * m_scale;
+    ImVec2 tick_box      = ImVec2(66.0f, 18.0f) * m_scale;
     ImVec2 tick_offset   = ImVec2(22.0f, 14.0f) * m_scale;
     float  tick_width    = 1.0f * m_scale;
     ImVec2 icon_offset   = ImVec2(16.0f, 7.0f) * m_scale;
@@ -748,21 +746,15 @@ void IMSlider::draw_ticks(const ImRect& slideable_region) {
         ImGui::RenderFrame(tick_left.Min, tick_left.Max, tick_clr, false);
         ImGui::RenderFrame(tick_right.Min, tick_right.Max, tick_clr, false);
 
-        //draw pause icon
-        if (tick_it->type == PausePrint) {
-            ImTextureID pause_icon_id = m_pause_icon_id;
-            ImVec2      icon_pos     = ImVec2(slideable_region.GetCenter().x + icon_offset.x, tick_pos - icon_offset.y);
-            button_with_pos(pause_icon_id, icon_size, icon_pos);
-        }
-        if (tick_it->type == Custom || tick_it->type == Template) {
-            ImTextureID custom_icon_id = m_custom_icon_id;
-            ImVec2      icon_pos = ImVec2(slideable_region.GetCenter().x + icon_offset.x, tick_pos - icon_offset.y);
-            button_with_pos(custom_icon_id, icon_size, icon_pos);
-        }
-
         //draw label block
         ImVec2 label_block_anchor = ImVec2(slideable_region.GetCenter().x - tick_offset.y, tick_pos);
         draw_custom_label_block(label_block_anchor, tick_it->type);
+
+        const ImVec2 icon_sz  = ImVec2(16.f, 16.f) * m_scale;
+        const ImVec2 icon_pos = {label_block_anchor.x - icon_sz.x, label_block_anchor.y - icon_sz.y / 2};
+        const ImRect icon_rc  = ImRect(icon_pos, icon_pos + icon_sz);
+        if (ImGui::IsMouseHoveringRect(icon_rc.Min, icon_rc.Max) && context.IO.MouseClicked[0])
+            do_go_to_layer(tick_it->tick);
 
         ++tick_it;
     }
@@ -1121,7 +1113,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             m_show_menu = false;
 
         // draw ticks
-        draw_ticks(groove);
+        draw_ticks(one_slideable_region);
         // draw colored band
         draw_colored_band(groove, one_slideable_region);
 
@@ -1192,7 +1184,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             m_show_menu = false;
 
         // draw ticks
-        draw_ticks(groove);
+        draw_ticks(one_slideable_region);
         // draw colored band
         draw_colored_band(groove, one_slideable_region);
 
