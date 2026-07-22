@@ -551,8 +551,7 @@ bool IMSlider::horizontal_slider(const char* str_id, int* value, int v_min, int 
     ImVec2 handle_center = handle.GetCenter();
 
     // draw scroll line
-    ImRect scroll_line = ImRect(ImVec2(groove.Min.x, groove.Min.y - 2.0f * m_scale),
-        ImVec2(handle_center.x, groove.Max.y + 2.0f * m_scale));
+    ImRect scroll_line = ImRect(ImVec2(groove.Min.x - 2.f * m_scale, groove.Min.y - 2.f * m_scale), ImVec2(handle_center.x, groove.Max.y + 2.f * m_scale));
     window->DrawList->AddRectFilled(scroll_line.Min, scroll_line.Max, range_fill_clr, 0.5f * scroll_line.GetHeight());
 
     // draw handle
@@ -578,7 +577,7 @@ bool IMSlider::horizontal_slider(const char* str_id, int* value, int v_min, int 
     return value_changed;
 }
 
-void IMSlider::draw_colored_band(const ImRect& groove, const ImRect& slideable_region) {
+void IMSlider::draw_colored_band(const ImRect& groove) {
     if (!m_ticks.has_tick_with_code(ToolChange))
         return;
 
@@ -627,7 +626,7 @@ void IMSlider::draw_colored_band(const ImRect& groove, const ImRect& slideable_r
     while (tick_it != m_ticks.ticks.end())
     {
         //get position from tick
-        tick_pos = get_pos_from_value(GetMinValue(), GetMaxValue(), tick_it->tick, slideable_region);
+        tick_pos = get_pos_from_value(GetMinValue(), GetMaxValue(), tick_it->tick, main_band);
         //draw colored band
         if (tick_it->type == ToolChange) {
             if ((m_mode == SingleExtruder) || (m_mode == MultiAsSingle))
@@ -974,7 +973,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         const float rounding = 5.0f * m_scale;
         const ImU32 bg_clr = active ? label_bg_active_clr : label_bg_clr;
         const ImVec2 shadow_offset = ImVec2(2.0f, 2.0f) * m_scale;
-        window->DrawList->AddRectFilled(rect.Min + shadow_offset, rect.Max + shadow_offset, label_shadow_clr, rounding);
+        window->DrawList->AddRectFilled(rect.Min + shadow_offset, rect.Max + shadow_offset, label_shadow_clr, rounding + shadow_offset.x);
         ImGui::RenderFrame(rect.Min, rect.Max, bg_clr, false, rounding);
         window->DrawList->AddRect(rect.Min, rect.Max, hovered ? handle_clr : label_border_clr, rounding, 0, hovered ? 1.5f * m_scale : 1.0f * m_scale);
         const ImVec2 rect_size = rect.GetSize();
@@ -1017,7 +1016,8 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
     // Persist the label that started the drag after the cursor leaves its rect.
     static LabelDragState label_drag;
 
-    if (hovered_label != ssUndef && context.IO.MouseClicked[0]) {
+    // Allow gaining focus on Left or Right click
+    if (hovered_label != ssUndef && (context.IO.MouseClicked[0] || context.IO.MouseClicked[1])) {
         selection = hovered_label;
         label_drag.id = id;
         label_drag.selection = hovered_label;
@@ -1121,9 +1121,9 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             m_show_menu = false;
 
         // draw ticks
-        draw_ticks(h_selected ? higher_slideable_region : lower_slideable_region);
+        draw_ticks(groove);
         // draw colored band
-        draw_colored_band(groove, h_selected ? higher_slideable_region : lower_slideable_region);
+        draw_colored_band(groove);
 
         if (!m_ticks.has_tick_with_code(ToolChange)) {
             // draw scroll line
@@ -1141,17 +1141,21 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         // draw higher label
         text_size = ImVec2(max_label_width, higher_text_content_size.y) + text_padding * 2;
         ImVec2 text_start = ImVec2(higher_handle.Min.x - text_size.x - label_width_margin, higher_handle_center.y - text_size.y);
-        ImRect text_rect(text_start, text_start + text_size);
+        ImRect higher_text_rect(text_start, text_start + text_size);
         const bool higher_label_active = active_label == ssHigher;
-        draw_label(text_rect, higher_text_content_size, higher_label,
-            hovered_label == ssHigher || higher_label_active, higher_label_active);
+        draw_label(higher_text_rect, higher_text_content_size, higher_label,
+            hovered_label == ssHigher || higher_label_active || ImGui::ItemHoverable(higher_handle, id), higher_label_active);
         // draw lower label
         text_size = ImVec2(max_label_width, lower_text_content_size.y) + text_padding * 2;
         text_start        = ImVec2(lower_handle.Min.x - text_size.x - label_width_margin, lower_handle_center.y);
-        text_rect = ImRect(text_start, text_start + text_size);
+        ImRect lower_text_rect(text_start, text_start + text_size);
         const bool lower_label_active = active_label == ssLower;
-        draw_label(text_rect, lower_text_content_size, lower_label,
-            hovered_label == ssLower || lower_label_active, lower_label_active);
+        draw_label(lower_text_rect, lower_text_content_size, lower_label,
+            hovered_label == ssLower || lower_label_active || ImGui::ItemHoverable(lower_handle, id), lower_label_active);
+
+        // Allow opening context menu with right clicking to labels 
+        if (!menu_open && ImGui::ItemHoverable(h_selected ? higher_text_rect : lower_text_rect, id) && context.IO.MouseClicked[1])
+            m_show_menu = true;
         
         // draw mouse position
         if (slider_hovered && !context.IO.MouseDown[0]) {
@@ -1188,9 +1192,9 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             m_show_menu = false;
 
         // draw ticks
-        draw_ticks(one_slideable_region);
+        draw_ticks(groove);
         // draw colored band
-        draw_colored_band(groove, one_slideable_region);
+        draw_colored_band(groove);
 
         // draw handle
         draw_active_handle(handle_center);
