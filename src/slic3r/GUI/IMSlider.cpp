@@ -577,7 +577,7 @@ bool IMSlider::horizontal_slider(const char* str_id, int* value, int v_min, int 
     return value_changed;
 }
 
-void IMSlider::draw_colored_band(const ImRect& groove) {
+void IMSlider::draw_colored_band(const ImRect& groove, const ImRect& slideable_region) {
     if (!m_ticks.has_tick_with_code(ToolChange))
         return;
 
@@ -626,7 +626,7 @@ void IMSlider::draw_colored_band(const ImRect& groove) {
     while (tick_it != m_ticks.ticks.end())
     {
         //get position from tick
-        tick_pos = get_pos_from_value(GetMinValue(), GetMaxValue(), tick_it->tick, main_band);
+        tick_pos = get_pos_from_value(GetMinValue(), GetMaxValue(), tick_it->tick, slideable_region);
         //draw colored band
         if (tick_it->type == ToolChange) {
             if ((m_mode == SingleExtruder) || (m_mode == MultiAsSingle))
@@ -1123,7 +1123,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         // draw ticks
         draw_ticks(groove);
         // draw colored band
-        draw_colored_band(groove);
+        draw_colored_band(groove, one_slideable_region);
 
         if (!m_ticks.has_tick_with_code(ToolChange)) {
             // draw scroll line
@@ -1194,7 +1194,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         // draw ticks
         draw_ticks(groove);
         // draw colored band
-        draw_colored_band(groove);
+        draw_colored_band(groove, one_slideable_region);
 
         // draw handle
         draw_active_handle(handle_center);
@@ -1204,7 +1204,11 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         ImVec2 text_start = ImVec2(one_handle.Min.x - text_size.x - label_width_margin, handle_center.y - 0.5 * text_size.y);
         ImRect text_rect = ImRect(text_start, text_start + text_size);
         const bool label_active = context.ActiveId == id && context.IO.MouseDown[0];
-        draw_label(text_rect, higher_text_content_size, higher_label, hovered_label == ssHigher || label_active, label_active);
+        draw_label(text_rect, higher_text_content_size, higher_label, hovered_label == ssHigher || label_active || ImGui::ItemHoverable(one_handle, id), label_active);
+
+        // Allow opening context menu with right clicking to label
+        if (!menu_open && ImGui::ItemHoverable(text_rect, id) && context.IO.MouseClicked[1])
+            m_show_menu = true;
         
         // draw mouse position
         if (slider_hovered && !context.IO.MouseDown[0]) {
