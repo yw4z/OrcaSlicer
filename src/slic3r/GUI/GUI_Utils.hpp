@@ -111,7 +111,7 @@ public:
         update_dark_ui(this);
 #endif
 
-        update_em_unit();
+        m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
 
 #ifndef __WXOSX__
         this->Bind(wxEVT_DPI_CHANGED, [this](wxDPIChangedEvent& evt) {
@@ -211,20 +211,6 @@ private:
 
     int   m_new_font_point_size;
 
-    void update_em_unit()
-    {
-        // fonts already resolve through the OS's effective DPI (monitor scale + accessibility text-scale combined)
-        // so multiplying again double-applies the DPI portion.
-        #if !defined(__WXGTK__)
-        m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
-        #else
-        wxFont font = this->GetFont();
-        int ptSize = font.GetPointSize(); // Bypass Pango/DirectWrite layout wrappers and grab the core point size
-        int base = ptSize;                // Manually map layout math to the point size directly instead of relying on the fluctuating pixel box height.
-        m_em_unit = std::max<size_t>(10, static_cast<size_t>(base));
-        #endif // __WXGTK__
-    };
-
 //    void recalc_font()
 //    {
 //        wxClientDC dc(this);
@@ -246,7 +232,7 @@ private:
         m_normal_font = this->GetFont();
 
         // update em_unit value for new window font
-        update_em_unit();
+        m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
 
         // rescale missed controls sizes and images
         on_dpi_changed(suggested_rect);
