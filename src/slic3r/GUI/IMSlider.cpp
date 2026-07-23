@@ -1114,9 +1114,9 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             m_show_menu = false;
 
         // draw ticks
-        draw_ticks(one_slideable_region);
+        draw_ticks(h_selected ? higher_slideable_region : lower_slideable_region);
         // draw colored band
-        draw_colored_band(groove, one_slideable_region);
+        draw_colored_band(groove, h_selected ? higher_slideable_region : lower_slideable_region);
 
         if (!m_ticks.has_tick_with_code(ToolChange)) {
             // draw scroll line
