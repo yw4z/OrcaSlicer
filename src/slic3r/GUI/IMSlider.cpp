@@ -676,8 +676,8 @@ void IMSlider::draw_custom_label_block(const ImVec2 anchor, Type type)
         break;
     }
 
-    const ImVec2 icon_sz = ImVec2(16.f, 16.f) * m_scale;
-    ImVec2 icon_pos  = { anchor.x - icon_sz.x, anchor.y - icon_sz.y / 2};
+    const ImVec2 icon_sz = ImVec2(1.f, 1.f) * std::roundf(16.f * m_scale * 1 / GCODE_VIEWER_SLIDER_SCALE); // temporary solution until fixing scaling issue on class. GCODE_VIEWER_SLIDER_SCALE overrides m_scale globally with 0.6 value
+    ImVec2 icon_pos  = {std::roundf(anchor.x - icon_sz.x), std::roundf(anchor.y - icon_sz.y / 2)};
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding   , {0, 0});
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
     button_with_pos(icon_id, icon_sz, icon_pos);
@@ -694,11 +694,11 @@ void IMSlider::draw_ticks(const ImRect& slideable_region) {
 
     ImGuiContext &context       = *GImGui;
 
-    ImVec2 tick_box      = ImVec2(66.0f, 18.0f) * m_scale;
     ImVec2 tick_offset   = ImVec2(22.0f, 14.0f) * m_scale;
     float  tick_width    = 1.0f * m_scale;
     ImVec2 icon_offset   = ImVec2(16.0f, 7.0f) * m_scale;
     ImVec2 icon_size     = ImVec2(14.0f, 14.0f) * m_scale;
+    ImVec2 left_icon_sz  = ImVec2(16.f, 16.f) * m_scale * 1 / GCODE_VIEWER_SLIDER_SCALE;
 
     const ImU32 tick_clr = IM_COL32(144, 144, 144, 255);
     const ImU32 tick_hover_box_clr = m_is_dark ? IM_COL32(65, 65, 71, 255) : IM_COL32(219, 253, 231, 255);
@@ -716,8 +716,10 @@ void IMSlider::draw_ticks(const ImRect& slideable_region) {
         float tick_pos = get_tick_pos(tick_it->tick);
 
         //draw tick hover box when hovered
-        ImRect tick_hover_box = ImRect(slideable_region.GetCenter().x - tick_box.x / 2, tick_pos - tick_box.y / 2, slideable_region.GetCenter().x + tick_box.x / 2,
-                                       tick_pos + tick_box.y / 2);
+        ImRect tick_hover_box = ImRect(
+            slideable_region.GetCenter().x - tick_offset.y - left_icon_sz.x, tick_pos - left_icon_sz.x / 2,
+            slideable_region.GetCenter().x + tick_offset.x + icon_size.x   , tick_pos + left_icon_sz.x / 2
+        );
 
         if (ImGui::IsMouseHoveringRect(tick_hover_box.Min, tick_hover_box.Max))
         {
@@ -750,9 +752,8 @@ void IMSlider::draw_ticks(const ImRect& slideable_region) {
         ImVec2 label_block_anchor = ImVec2(slideable_region.GetCenter().x - tick_offset.y, tick_pos);
         draw_custom_label_block(label_block_anchor, tick_it->type);
 
-        const ImVec2 icon_sz  = ImVec2(16.f, 16.f) * m_scale;
-        const ImVec2 icon_pos = {label_block_anchor.x - icon_sz.x, label_block_anchor.y - icon_sz.y / 2};
-        const ImRect icon_rc  = ImRect(icon_pos, icon_pos + icon_sz);
+        const ImVec2 icon_pos = {label_block_anchor.x - left_icon_sz.x, label_block_anchor.y - left_icon_sz.y / 2};
+        const ImRect icon_rc  = ImRect(icon_pos, icon_pos + left_icon_sz);
         if (ImGui::IsMouseHoveringRect(icon_rc.Min, icon_rc.Max) && context.IO.MouseClicked[0])
             do_go_to_layer(tick_it->tick);
 
