@@ -1527,10 +1527,6 @@ void IMSlider::render_add_menu()
                 }
                 if (hovered) { show_tooltip(_u8L("Insert template custom G-code at the beginning of this layer.")); }
             }
-
-            if (menu_item_with_icon(_u8L("Jump to layer").c_str(), "")) {
-                m_show_go_to_layer_dialog = true;
-            }
         }
 
         //BBS render this menu item only when extruder_num > 1
@@ -1549,6 +1545,14 @@ void IMSlider::render_add_menu()
                 }
                 end_menu();
             }
+        }
+
+        // ORCA show jump on bottom of context menu since its function not different compared to other items
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f * m_scale);
+        ImGui::Separator();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f * m_scale);
+        if (menu_item_with_icon(_u8L("Jump to layer").c_str(), "")) {
+            m_show_go_to_layer_dialog = true;
         }
 
         ImGui::EndPopup();
@@ -1580,6 +1584,9 @@ void IMSlider::render_edit_menu(const TickCode& tick)
             if (menu_item_with_icon(_u8L("Edit Custom G-code").c_str(), "")) {
                 m_show_custom_gcode_window = true;
             }
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f * m_scale);
+            ImGui::Separator();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f * m_scale);
             if (menu_item_with_icon(_u8L("Delete Custom G-code").c_str(), "")) {
                 delete_tick(tick);
             }
@@ -1598,6 +1605,9 @@ void IMSlider::render_edit_menu(const TickCode& tick)
                     }
                     end_menu();
                 }
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f * m_scale);
+                ImGui::Separator();
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f * m_scale);
                 if (menu_item_with_icon(_u8L("Delete Filament Change").c_str(), "")) {
                     delete_tick(tick);
                 }
