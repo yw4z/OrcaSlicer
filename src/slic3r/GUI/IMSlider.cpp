@@ -746,7 +746,25 @@ void IMSlider::draw_ticks(const ImRect& slideable_region) {
         ImRect tick_left  = ImRect(slideable_region.GetCenter().x - tick_offset.x, tick_pos - tick_width, slideable_region.GetCenter().x - tick_offset.y, tick_pos);
         ImRect tick_right = ImRect(slideable_region.GetCenter().x + tick_offset.y, tick_pos - tick_width, slideable_region.GetCenter().x + tick_offset.x, tick_pos);
         ImGui::RenderFrame(tick_left.Min, tick_left.Max, tick_clr, false);
-        ImGui::RenderFrame(tick_right.Min, tick_right.Max, tick_clr, false);
+
+        ImU32 right_tick_clr = tick_clr;
+        if(tick_it->type != Unknown){
+            tick_right.Expand(ImVec2(0.f, 1.f * m_scale)); // make tick thicker
+            switch (tick_it->type) { // match color of tick if it has marker
+                case PausePrint:
+                    right_tick_clr = IM_COL32(255, 111, 0, 255);
+                    break;
+                case ColorChange:
+                case ToolChange:
+                    right_tick_clr = IM_COL32(136, 73, 226, 255);
+                    break;
+                case Template:
+                case Custom:
+                    right_tick_clr = IM_COL32(23, 131, 227, 255);
+                    break;
+            }
+        }
+        ImGui::RenderFrame(tick_right.Min, tick_right.Max, right_tick_clr, false);
 
         //draw label block
         ImVec2 label_block_anchor = ImVec2(slideable_region.GetCenter().x - tick_offset.y, tick_pos);
