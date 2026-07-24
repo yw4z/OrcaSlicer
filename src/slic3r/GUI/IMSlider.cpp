@@ -794,6 +794,8 @@ void IMSlider::show_tooltip(const std::string tooltip) {
 }
 
 void IMSlider::show_tooltip(const TickCode& tick){
+    std::string layer_str  = std::to_string(tick.tick + 1) + "  " + get_label(tick.tick, ltHeight) + "\n";
+
     // Use previous layer's complete time as current layer's tick time,
     // since ticks are added at the beginning of current layer
     std::string time_str = "";
@@ -810,16 +812,16 @@ void IMSlider::show_tooltip(const TickCode& tick){
     case CustomGCode::ColorChange:
         break;
     case CustomGCode::PausePrint:
-        show_tooltip(time_str + _u8L("Pause:") + " \"" + gcode(PausePrint) + "\"");
+        show_tooltip(layer_str + time_str + _u8L("Pause:") + " \"" + gcode(PausePrint) + "\"");
         break;
     case CustomGCode::ToolChange:
-        show_tooltip(time_str + _u8L("Change Filament"));
+        show_tooltip(layer_str + time_str + _u8L("Change Filament") + ": " + std::to_string(tick.extruder));
         break;
     case CustomGCode::Template:
-        show_tooltip(time_str + _u8L("Custom Template:") + " \"" + gcode(Template) + "\"");
+        show_tooltip(layer_str + time_str + _u8L("Custom Template:") + " \"" + gcode(Template) + "\"");
         break;
     case CustomGCode::Custom:
-        show_tooltip(time_str + _u8L("Custom G-code:") + " \"" + tick.extra + "\"");
+        show_tooltip(layer_str + time_str + _u8L("Custom G-code:") + " \"" + tick.extra + "\"");
         break;
     default:
         break;
@@ -862,7 +864,7 @@ void IMSlider::draw_tick_on_mouse_position(const ImRect& slideable_region) {
     ImGui::RenderFrame(tick_right.Min, tick_right.Max, tick_clr, false);
     
     // draw layer time
-    std::string label = get_label(tick, ltEstimatedTime);
+    std::string label = std::to_string(tick + 1) + "  " + get_label(tick, ltHeight) + "\n" + get_label(tick, ltEstimatedTime);
     show_tooltip(label);
 }
 
