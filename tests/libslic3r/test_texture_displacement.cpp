@@ -233,3 +233,91 @@ TEST_CASE("TextureDisplacement: boundary vertices shared with unpainted triangle
     CHECK_FALSE(still_at_original_position(fan.vertices[2])); // B: interior, must have moved
     CHECK_FALSE(still_at_original_position(fan.vertices[3])); // C: interior, must have moved
 }
+
+// Every undirected edge of a closed manifold mesh is shared by exactly two triangles. A T-junction
+// (a hanging node where a refined region meets a coarse one) breaks that: the coarse side spans an
+// edge that the fine side has replaced with two half-edges, so those three edges each show up an
+// odd number of times. Counting edge uses is therefore an exact crack detector for a closed mesh.
+static bool every_edge_used_twice(const indexed_triangle_set &its)
+{
+    std::map<std::pair<int, int>, int> uses;
+    for (const auto &t : its.indices)
+        for (int e = 0; e < 3; ++e) {
+            int a = t[e], b = t[(e + 1) % 3];
+            if (a > b)
+                std::swap(a, b);
+            ++uses[{ a, b }];
+        }
+    for (const auto &[edge, n] : uses)
+        if (n != 2)
+            return false;
+    return true;
+}
+
+TEST_CASE("TextureDisplacement: adaptive subdivision is conformal and region-restricted", "[TextureDisplacement]")
+{
+    const indexed_triangle_set cube = its_make_cube(10., 10., 10.);
+    REQUIRE(every_edge_used_twice(cube)); // sanity: the input really is a closed manifold
+
+    auto longest_edge = [](const indexed_triangle_set &its, const stl_triangle_vertex_indices &t) {
+        float m = 0.f;
+        for (int e = 0; e < 3; ++e)
+            m = std::max(m, (its.vertices[t[e]] - its.vertices[t[(e + 1) % 3]]).norm());
+        return m;
+    };
+
+    SECTION("whole-mesh region refines everywhere and stays conformal")
+    {
+        std::vector<uint8_t> region(cube.indices.size(), 1);
+        std::vector<int>     source;
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 3.f, 12, &source);
+
+        CHECK(out.indices.size() > cube.indices.size()); // it actually refined
+        CHECK(every_edge_used_twice(out));               // ... without opening a single crack
+
+        REQUIRE(source.size() == out.indices.size());
+        for (int s : source)
+            CHECK((s >= 0 && s < int(cube.indices.size()))); // every child names a real parent
+    }
+
+    SECTION("a partial region refines only there, and the boundary is still crack-free")
+    {
+        // Refine only the triangles whose centroid is in the upper (z > 5) half of the cube.
+        std::vector<uint8_t> region(cube.indices.size(), 0);
+        size_t               region_count = 0;
+        for (size_t i = 0; i < cube.indices.size(); ++i) {
+            const auto &t = cube.indices[i];
+            const float cz = (cube.vertices[t[0]].z() + cube.vertices[t[1]].z() + cube.vertices[t[2]].z()) / 3.f;
+            if (cz > 5.f) {
+                region[i] = 1;
+                ++region_count;
+            }
+        }
+        REQUIRE(region_count > 0);
+
+        std::vector<int>           source;
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 2.f, 12, &source);
+
+        CHECK(out.indices.size() > cube.indices.size());
+        CHECK(every_edge_used_twice(out)); // the refined/coarse seam has no T-junction
+
+        // The region's own triangles came down in size; count how big the largest region-sourced
+        // output triangle is versus the largest region-sourced input triangle.
+        float max_in = 0.f, max_out = 0.f;
+        for (size_t i = 0; i < cube.indices.size(); ++i)
+            if (region[i])
+                max_in = std::max(max_in, longest_edge(cube, cube.indices[i]));
+        for (size_t i = 0; i < out.indices.size(); ++i)
+            if (region[source[i]])
+                max_out = std::max(max_out, longest_edge(out, out.indices[i]));
+        CHECK(max_out < max_in); // refinement genuinely happened inside the region
+    }
+
+    SECTION("an empty region is a no-op")
+    {
+        std::vector<uint8_t>       region(cube.indices.size(), 0);
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 1.f, 12, nullptr);
+        CHECK(out.indices.size() == cube.indices.size());
+        CHECK(out.vertices.size() == cube.vertices.size());
+    }
+}

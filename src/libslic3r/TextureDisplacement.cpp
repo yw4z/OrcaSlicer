@@ -1346,4 +1346,148 @@ indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, fl
     return current;
 }
 
+indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
+                                             const std::vector<uint8_t> &refine_region,
+                                             float target_edge_length_mm, int max_iterations,
+                                             std::vector<int> *out_source)
+{
+    // Each triangle carries the input-triangle index it descends from, so children inherit it and
+    // the caller can remap per-triangle data (paint masks) for free.
+    struct Tri { int v[3]; int src; };
+
+    std::vector<Vec3f> verts = mesh.vertices;
+    std::vector<Tri>   tris;
+    tris.reserve(mesh.indices.size());
+    for (size_t i = 0; i < mesh.indices.size(); ++i)
+        tris.push_back({ { mesh.indices[i][0], mesh.indices[i][1], mesh.indices[i][2] }, int(i) });
+
+    auto emit = [&](std::vector<Tri> &t) -> indexed_triangle_set {
+        indexed_triangle_set out;
+        out.vertices = verts;
+        out.indices.reserve(t.size());
+        if (out_source) {
+            out_source->clear();
+            out_source->reserve(t.size());
+        }
+        for (const Tri &tr : t) {
+            out.indices.emplace_back(tr.v[0], tr.v[1], tr.v[2]);
+            if (out_source)
+                out_source->push_back(tr.src);
+        }
+        return out;
+    };
+
+    // refine_region is indexed by input-triangle index, and every triangle's src stays in that range
+    // (children inherit their parent's src), so a wrong size would be an out-of-bounds read. Guard it.
+    if (target_edge_length_mm <= 0.f || refine_region.size() != mesh.indices.size())
+        return emit(tris);
+    if (std::none_of(refine_region.begin(), refine_region.end(), [](uint8_t v) { return v != 0; }))
+        return emit(tris); // nothing flagged: no-op
+    const float target_sq = target_edge_length_mm * target_edge_length_mm;
+
+    auto edge_key = [](int a, int b) -> uint64_t {
+        if (a > b)
+            std::swap(a, b);
+        return (uint64_t(uint32_t(a)) << 32) | uint32_t(b);
+    };
+    auto edge_len_sq = [&](uint64_t k) -> float {
+        return (verts[int(k >> 32)] - verts[int(uint32_t(k))]).squaredNorm();
+    };
+    // The one edge of a triangle chosen as its "longest": greatest squared length, ties broken by the
+    // smaller edge key. The tie-break is by mesh-vertex indices, which both triangles sharing an edge
+    // compute identically - so they never disagree about whether that shared edge is "the" longest,
+    // which is what the conformality argument rests on.
+    auto longest_key = [&](const Tri &t) -> uint64_t {
+        uint64_t best_k   = edge_key(t.v[0], t.v[1]);
+        float    best_len = edge_len_sq(best_k);
+        for (int e = 1; e < 3; ++e) {
+            const uint64_t k = edge_key(t.v[e], t.v[(e + 1) % 3]);
+            const float    l = edge_len_sq(k);
+            if (l > best_len || (l == best_len && k < best_k)) {
+                best_len = l;
+                best_k   = k;
+            }
+        }
+        return best_k;
+    };
+
+    for (int iter = 0; iter < max_iterations; ++iter) {
+        // edge -> the (up to two) triangles sharing it. A third triangle on an edge means a
+        // non-manifold input; it is left in the second slot's place and simply not treated as
+        // terminal, so such an edge is never bisected (better a missed refinement than a torn mesh).
+        std::unordered_map<uint64_t, std::array<int, 2>> edge_tris;
+        edge_tris.reserve(tris.size() * 3);
+        for (int ti = 0; ti < int(tris.size()); ++ti)
+            for (int e = 0; e < 3; ++e) {
+                const uint64_t k  = edge_key(tris[ti].v[e], tris[ti].v[(e + 1) % 3]);
+                auto           it = edge_tris.find(k);
+                if (it == edge_tris.end())
+                    edge_tris.emplace(k, std::array<int, 2>{ ti, -1 });
+                else if (it->second[1] == -1)
+                    it->second[1] = ti;
+                else
+                    it->second[0] = -2; // >2 triangles: poison this edge (never terminal)
+            }
+
+        std::vector<uint64_t> tri_longest(tris.size());
+        for (int ti = 0; ti < int(tris.size()); ++ti)
+            tri_longest[ti] = longest_key(tris[ti]);
+
+        // Which edges to bisect this pass: terminal (the longest edge of every triangle on it) AND
+        // long enough AND wanted by the region (either side in it). Terminal-ness is exactly what
+        // guarantees both sides split together, so no hanging node is ever produced.
+        std::unordered_set<uint64_t> to_bisect;
+        for (const auto &[k, slot] : edge_tris) {
+            const int t0 = slot[0], t1 = slot[1];
+            if (t0 < 0)
+                continue; // poisoned (non-manifold)
+            if (tri_longest[t0] != k)
+                continue;
+            if (t1 >= 0 && tri_longest[t1] != k)
+                continue;
+            if (edge_len_sq(k) <= target_sq)
+                continue;
+            const bool in_region = (refine_region[tris[t0].src] != 0) ||
+                                   (t1 >= 0 && refine_region[tris[t1].src] != 0);
+            if (in_region)
+                to_bisect.insert(k);
+        }
+        if (to_bisect.empty())
+            break;
+
+        // One midpoint per bisected edge, shared by both sides.
+        std::unordered_map<uint64_t, int> mid;
+        mid.reserve(to_bisect.size());
+        for (const uint64_t k : to_bisect) {
+            const int a = int(k >> 32), b = int(uint32_t(k));
+            mid.emplace(k, int(verts.size()));
+            verts.push_back((verts[a] + verts[b]) * 0.5f);
+        }
+
+        std::vector<Tri> next;
+        next.reserve(tris.size() + to_bisect.size());
+        for (const Tri &t : tris) {
+            // At most one of a triangle's edges can be terminal (only its own longest can be), so at
+            // most one is in to_bisect - find that one.
+            int be = -1;
+            for (int e = 0; e < 3; ++e)
+                if (to_bisect.count(edge_key(t.v[e], t.v[(e + 1) % 3])) != 0) {
+                    be = e;
+                    break;
+                }
+            if (be == -1) {
+                next.push_back(t);
+                continue;
+            }
+            const int a = t.v[be], b = t.v[(be + 1) % 3], c = t.v[(be + 2) % 3];
+            const int m = mid.at(edge_key(a, b));
+            next.push_back({ { a, m, c }, t.src }); // both children keep the original winding a->b->c
+            next.push_back({ { m, b, c }, t.src });
+        }
+        tris.swap(next);
+    }
+
+    return emit(tris);
+}
+
 } // namespace Slic3r

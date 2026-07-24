@@ -307,6 +307,20 @@ private:
     void    rebuild_subdivide_preview();
     void    render_subdivide_preview();
 
+    // Adaptive subdivision: refine only the painted area, down to a target edge length, via
+    // conformal longest-edge bisection (subdivide_mesh_adaptive()). Unlike the count-based uniform
+    // path it does not touch the unpainted rest of the model, and - because it is driven by the paint
+    // - it can carry that paint forward across the topology change (children of a painted triangle
+    // are painted), so the region survives the subdivision instead of being dropped.
+    bool  m_subdivide_adaptive   = false;
+    float m_subdivide_target_mm  = 0.f; // 0 = not yet seeded; filled from the mesh on first show
+    void  subdivide_model_adaptive();
+    // Fills `region` (per current-mesh triangle, 1 = refine) from the union of every layer's painted
+    // area. If `painted_tri` is non-null, also fills, per layer, the fully-painted triangles to carry
+    // forward. Returns false when nothing is painted at all. Shared by the preview and the commit.
+    bool  collect_paint_region(std::vector<uint8_t> &region,
+                               std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> *painted_tri) const;
+
     // Isotropic remeshing (CGAL) to even out wildly varying triangle sizes so displacement has a
     // consistent density to work with. Target edge length in mm; 0 means "not yet initialised", filled
     // with the mesh's mean edge length the first time the control is shown. Like subdivide, it replaces
@@ -326,8 +340,11 @@ private:
     // mouse button driving the drag hasn't been released yet - see on_render_input_window().
     bool m_preview_params_dirty = false;
 
-    // See rebuild_bump_preview_mesh()/render_bump_preview_mesh().
-    bool    m_use_bump_preview = false;
+    // See rebuild_bump_preview_mesh()/render_bump_preview_mesh(). On by default: it is the cheap,
+    // instant-updating preview, so it is the better first impression while painting. The true-
+    // displacement view (a background CPU remesh) is one click away in the View row when the user
+    // wants an exact look at what Bake will produce.
+    bool    m_use_bump_preview = true;
     // Set from the UV editor's per-move island edits instead of rebuilding the (potentially large) bump
     // mesh synchronously inside that mouse handler - doing the rebuild there stalled both the UV pane
     // and the 3D view. The rebuild is instead coalesced to once per 3D frame (render_painter_gizmo).

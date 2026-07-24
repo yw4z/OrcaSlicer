@@ -511,6 +511,35 @@ indexed_triangle_set build_texture_displacement(const ModelVolume &volume);
 // during baking.
 indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, float max_edge_length_mm, int max_iterations = 6);
 
+// Adaptive subdivision by Rivara longest-edge bisection, restricted to a region.
+//
+// Unlike subdivide_mesh_uniform() this only densifies where asked - a triangle is refined when its
+// source is flagged in `refine_region` and its longest edge exceeds target_edge_length_mm - so a
+// small painted patch on a large model does not quadruple the whole model's triangle count. It is
+// nonetheless *conformal*: it never leaves a T-junction/crack at the boundary between the refined
+// and coarse regions (the trap that made subdivide_mesh_uniform() deliberately whole-mesh).
+//
+// How it stays crack-free: each pass bisects only "terminal" edges - an edge that is the longest
+// edge of *every* triangle sharing it. Bisecting such an edge splits both its triangles 1->2 along
+// the same new midpoint at once, so no hanging node is ever created. Because only a triangle's own
+// longest edge can be terminal, each triangle is split by at most one terminal edge per pass. When
+// a triangle that needs refining has a longest edge that is *not* yet terminal, the neighbour across
+// it has a strictly longer edge and is refined first; that propagation is what grades the mesh down
+// into the region and closes what would otherwise be cracks (Rivara, "New longest-edge algorithms").
+// The transition triangles it pulls in just outside the region are a thin, bounded band.
+//
+// `refine_region` is indexed by input-triangle index (empty or all-false => no-op). If `out_source`
+// is non-null it is resized to the output triangle count and out_source[i] receives the input
+// triangle that output triangle i descends from (children inherit their parent's index), so a caller
+// can carry per-triangle data - e.g. a paint mask - across the topology change without a geometric
+// remap. `max_iterations` bounds the worst case; ties in "longest edge" are broken by a mesh-vertex
+// key so both triangles on an edge always agree, at the cost of occasionally stopping one pass early
+// on a pathologically tie-heavy mesh (a quality shortfall, never a crack).
+indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
+                                             const std::vector<uint8_t> &refine_region,
+                                             float target_edge_length_mm, int max_iterations = 12,
+                                             std::vector<int> *out_source = nullptr);
+
 } // namespace Slic3r
 
 #endif // slic3r_TextureDisplacement_hpp_

@@ -1153,6 +1153,11 @@ void GLGizmoTextureDisplacement::rebuild_preview()
     rebuild_bump_preview_mesh();
     rebuild_uvcheck_mesh();
     rebuild_seam_overlay();
+    // The adaptive subdivision preview is driven by the painted area, so it has to follow the paint
+    // while it is open - a plain stroke changes which triangles would be refined. The uniform preview
+    // depends only on the mesh, so it is left to its own controls.
+    if (m_subdivide_editing && m_subdivide_adaptive)
+        rebuild_subdivide_preview();
 
     const ModelVolume *mv = texture_volume();
     if (mv == nullptr || !mv->is_texture_displacement_painted()) {
@@ -2655,6 +2660,143 @@ void GLGizmoTextureDisplacement::subdivide_model()
     m_parent.set_as_dirty();
 }
 
+bool GLGizmoTextureDisplacement::collect_paint_region(
+    std::vector<uint8_t> &region,
+    std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> *painted_tri) const
+{
+    const ModelVolume *mv = texture_volume();
+    if (mv == nullptr)
+        return false;
+    const indexed_triangle_set &its  = mv->mesh().its;
+    const size_t                ntri = its.indices.size();
+    const size_t                nvert = its.vertices.size();
+
+    region.assign(ntri, 0);
+    if (painted_tri)
+        for (auto &pt : *painted_tri)
+            pt.clear();
+
+    // Sorted-vertex-triple -> triangle index, so a fully-painted patch sub-triangle (which comes
+    // back with the original mesh's own three vertex indices) can be mapped to its source triangle.
+    // A sub-triangle produced by a *partial* brush stroke has at least one appended (split) vertex,
+    // so "all three indices are original" is exactly the test for a whole, fully-painted triangle.
+    std::map<std::array<int, 3>, int> tri_by_verts;
+    for (size_t i = 0; i < ntri; ++i) {
+        std::array<int, 3> k{ its.indices[i][0], its.indices[i][1], its.indices[i][2] };
+        std::sort(k.begin(), k.end());
+        tri_by_verts.emplace(k, int(i));
+    }
+
+    bool any_paint = false;
+    for (int slot = 0; slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++slot) {
+        const TriangleSelector::TriangleSplittingData &data = mv->texture_displacement_facet(slot).get_data();
+        if (!TriangleSelector::has_facets(data, EnforcerBlockerType::ENFORCER))
+            continue;
+
+        TriangleSelector sel(mv->mesh());
+        sel.deserialize(data, false);
+        const indexed_triangle_set patch = sel.get_facets_strict(EnforcerBlockerType::ENFORCER);
+
+        std::vector<uint8_t> painted_vertex(nvert, 0);
+        if (painted_tri)
+            (*painted_tri)[slot].assign(ntri, 0);
+
+        for (const stl_triangle_vertex_indices &t : patch.indices) {
+            bool all_original = true;
+            for (int k = 0; k < 3; ++k) {
+                if (size_t(t[k]) < nvert)
+                    painted_vertex[t[k]] = 1; // marks the refine region (any coverage, plus a ring)
+                else
+                    all_original = false; // a split vertex -> this is a partial sub-triangle
+            }
+            if (all_original && painted_tri) {
+                std::array<int, 3> k{ t[0], t[1], t[2] };
+                std::sort(k.begin(), k.end());
+                if (auto it = tri_by_verts.find(k); it != tri_by_verts.end())
+                    (*painted_tri)[slot][it->second] = 1;
+            }
+        }
+
+        // A triangle is in the refine region if any of its vertices is painted. That deliberately
+        // over-includes a one-triangle ring just outside the strict patch, which is exactly the
+        // transition band the conformal bisection would pull in anyway - and it makes sure the patch
+        // boundary itself gets refined rather than staying coarse right where the relief ends.
+        for (size_t i = 0; i < ntri; ++i)
+            for (int k = 0; k < 3; ++k)
+                if (painted_vertex[its.indices[i][k]]) {
+                    region[i] = 1;
+                    break;
+                }
+        any_paint = true;
+    }
+    return any_paint;
+}
+
+void GLGizmoTextureDisplacement::subdivide_model_adaptive()
+{
+    ModelVolume *mv = texture_volume();
+    ModelObject *mo = m_c->selection_info()->model_object();
+    if (mv == nullptr || mo == nullptr || m_subdivide_target_mm <= 0.f)
+        return;
+
+    update_model_object(); // flush any in-progress stroke into the committed masks first
+
+    std::vector<uint8_t>                                              region;
+    std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> painted_tri;
+    if (!collect_paint_region(region, &painted_tri)) {
+        show_error(nullptr, _u8L("Paint the area you want to subdivide first - adaptive subdivision only "
+                                 "refines where you have painted."));
+        return;
+    }
+
+    // Do the (potentially slow) refinement before taking the snapshot, so a no-op leaves no empty
+    // undo step - mirrors remesh_model().
+    std::vector<int>     source;
+    indexed_triangle_set refined;
+    {
+        wxBusyCursor wait;
+        refined = subdivide_mesh_adaptive(mv->mesh().its, region, m_subdivide_target_mm, 12, &source);
+    }
+    if (refined.indices.size() == mv->mesh().its.indices.size()) {
+        show_error(nullptr, _u8L("Nothing to subdivide - the painted area is already at or below the target "
+                                 "edge length."));
+        return;
+    }
+
+    Plater *plater = wxGetApp().plater();
+    Plater::TakeSnapshot snapshot(plater, _u8L("Adaptive subdivide for texture displacement"), UndoRedo::SnapshotType::GizmoAction);
+
+    // Other paint channels ride across via the standard remap; texture-displacement paint is rebuilt
+    // by hand below from the source map, which is the whole point of driving this by the paint.
+    std::optional<TriangleSelector::SavedPainting> saved_painting = mv->save_painting();
+    mv->set_mesh(TriangleMesh(std::move(refined))); // refined is not needed past here; source carries the paint map
+    mv->set_new_unique_id();
+    mv->calculate_convex_hull();
+    mv->restore_painting(saved_painting); // resets extra facets (incl. texture-displacement) + remaps the rest
+
+    // Carry each layer's paint onto the new mesh: a new triangle is painted iff its source triangle
+    // was fully painted in that layer. Children inherit their parent's source, so this is exact.
+    for (int slot = 0; slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++slot) {
+        if (painted_tri[slot].empty())
+            continue;
+        TriangleSelector sel(mv->mesh());
+        for (size_t i = 0; i < source.size(); ++i)
+            if (painted_tri[slot][source[i]])
+                sel.set_facet(int(i), EnforcerBlockerType::ENFORCER);
+        mv->texture_displacement_facet(slot).set(sel);
+    }
+
+    if (ObjectList *obj_list = wxGetApp().obj_list()) {
+        const ModelObjectPtrs &objs = plater->model().objects;
+        auto it = std::find(objs.begin(), objs.end(), mo);
+        if (it != objs.end())
+            obj_list->update_info_items(size_t(it - objs.begin()));
+    }
+    plater->changed_object(*mo);
+    update_from_model_object(false); // reload selectors/preview against the new mesh + carried paint
+    m_parent.set_as_dirty();
+}
+
 void GLGizmoTextureDisplacement::remesh_model()
 {
     ModelVolume *mv = texture_volume();
@@ -2712,12 +2854,24 @@ void GLGizmoTextureDisplacement::rebuild_subdivide_preview()
     m_subdivide_preview_glmodel.reset();
     m_subdivide_preview_count = -1;
     const ModelVolume *mv = texture_volume();
-    if (mv == nullptr || m_subdivide_count < 1)
+    if (mv == nullptr)
         return;
 
-    // The same subdivision Apply would commit, but kept in a throwaway mesh and shown only as a
+    // The same subdivision Apply would commit, kept in a throwaway mesh and shown only as a
     // wireframe - the model itself is not touched until Apply.
-    const indexed_triangle_set its = subdivide_mesh_uniform(mv->mesh().its, 0.f, m_subdivide_count);
+    indexed_triangle_set its;
+    if (m_subdivide_adaptive) {
+        if (m_subdivide_target_mm <= 0.f)
+            return;
+        std::vector<uint8_t> region;
+        if (!collect_paint_region(region, nullptr))
+            return; // nothing painted yet: nothing to preview
+        its = subdivide_mesh_adaptive(mv->mesh().its, region, m_subdivide_target_mm, 12, nullptr);
+    } else {
+        if (m_subdivide_count < 1)
+            return;
+        its = subdivide_mesh_uniform(mv->mesh().its, 0.f, m_subdivide_count);
+    }
     if (its.indices.empty())
         return;
     m_subdivide_preview_count = m_subdivide_count;
@@ -3558,20 +3712,66 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
 
     ImGui::Separator();
     m_imgui->text(_u8L("Not enough vertices for fine detail?"));
-    ImGui::PushItemWidth(m_imgui->scaled(8.4f));
-    if (ImGui::SliderInt(_u8L("Subdivide steps").c_str(), &m_subdivide_count, 0, 5)) {
-        m_subdivide_count = std::clamp(m_subdivide_count, 0, 5);
+
+    if (ImGui::Checkbox(_u8L("Only painted area (adaptive)").c_str(), &m_subdivide_adaptive)) {
         if (m_subdivide_editing)
-            rebuild_subdivide_preview(); // a count of 0 clears the preview, it doesn't compute one
+            rebuild_subdivide_preview(); // switch the wireframe between the uniform and adaptive result
         m_parent.set_as_dirty();
     }
-    ImGui::PopItemWidth();
     if (ImGui::IsItemHovered())
-        m_imgui->tooltip(_u8L("How many times to split every triangle into four. Each step roughly quadruples the "
-                              "triangle count, so there are enough vertices for the height texture to displace. "
-                              "0 means no subdivision."),
+        m_imgui->tooltip(_u8L("Refine only where you have painted, down to a target edge length, instead of splitting "
+                              "the whole model. Keeps the triangle count down on a big part with a small decal, and - "
+                              "unlike whole-model subdivision - your paint is carried onto the finer mesh instead of "
+                              "being cleared."),
                           m_imgui->scaled(20.f));
 
+    if (m_subdivide_adaptive) {
+        if (m_subdivide_target_mm <= 0.f && mv != nullptr) {
+            // Seed the target at about half the mesh's mean edge length, so the default already adds
+            // a useful amount of detail rather than landing on "no change".
+            const indexed_triangle_set &its = mv->mesh().its;
+            double sum = 0.0; size_t cnt = 0;
+            for (const stl_triangle_vertex_indices &tri : its.indices)
+                for (int i = 0; i < 3; ++i) {
+                    sum += (its.vertices[tri[i]] - its.vertices[tri[(i + 1) % 3]]).norm();
+                    ++cnt;
+                }
+            m_subdivide_target_mm = cnt > 0 ? std::clamp(float(sum / double(cnt)) * 0.5f, 0.1f, 20.f) : 1.f;
+        }
+        ImGui::PushItemWidth(m_imgui->scaled(8.4f));
+        // "##subdiv" keeps the visible label "Target edge (mm)" but gives it an ImGui ID distinct
+        // from the remesh slider below, which shows the same text - same label == same widget to
+        // ImGui, so without this the two would collide.
+        if (m_imgui->slider_float(std::string(_u8L("Target edge (mm)")) + "##subdiv", &m_subdivide_target_mm,
+                                  0.1f, 20.f, "%.2f", ImGuiLogSlider)) {
+            if (m_subdivide_editing && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                rebuild_subdivide_preview();
+            m_parent.set_as_dirty();
+        }
+        ImGui::PopItemWidth();
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("Triangles in the painted area are split until every edge is at or below this "
+                                  "length. Smaller means finer detail and more triangles."),
+                              m_imgui->scaled(20.f));
+    } else {
+        ImGui::PushItemWidth(m_imgui->scaled(8.4f));
+        if (ImGui::SliderInt(_u8L("Subdivide steps").c_str(), &m_subdivide_count, 0, 5)) {
+            m_subdivide_count = std::clamp(m_subdivide_count, 0, 5);
+            if (m_subdivide_editing)
+                rebuild_subdivide_preview(); // a count of 0 clears the preview, it doesn't compute one
+            m_parent.set_as_dirty();
+        }
+        ImGui::PopItemWidth();
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("How many times to split every triangle into four. Each step roughly quadruples the "
+                                  "triangle count, so there are enough vertices for the height texture to displace. "
+                                  "0 means no subdivision."),
+                              m_imgui->scaled(20.f));
+    }
+
+    // Apply is a no-op when there is nothing to commit: 0 uniform passes, or an adaptive target that
+    // is not set (the preview covers the painted-area check itself).
+    const bool subdivide_ready = m_subdivide_adaptive ? (m_subdivide_target_mm > 0.f) : (m_subdivide_count >= 1);
     if (!m_subdivide_editing) {
         if (m_imgui->button(_u8L("Preview subdivision"))) {
             m_subdivide_editing = true;
@@ -3583,22 +3783,28 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
                                   "commit it, or Done to leave the model as it is."),
                               m_imgui->scaled(20.f));
     } else {
-        m_imgui->disabled_begin(m_subdivide_count < 1);
+        m_imgui->disabled_begin(!subdivide_ready);
         if (m_imgui->button(_u8L("Apply"))) {
-            subdivide_model(); // commits m_subdivide_count passes (takes its own snapshot)
-            // Back to 0 rather than staying at the count just applied: the mesh is now up to 4^N
-            // times denser, so re-previewing the same N passes on top of it is both pointless (the
-            // density asked for is already committed) and by far the slowest thing this panel does.
-            // rebuild_subdivide_preview() at 0 just drops the wireframe.
-            m_subdivide_count = 0;
+            if (m_subdivide_adaptive) {
+                subdivide_model_adaptive(); // refines only the painted area, carrying the paint forward
+            } else {
+                subdivide_model(); // commits m_subdivide_count passes (takes its own snapshot)
+                // Back to 0 rather than staying at the count just applied: the mesh is now up to 4^N
+                // times denser, so re-previewing the same N passes on top of it is both pointless (the
+                // density asked for is already committed) and by far the slowest thing this panel does.
+                m_subdivide_count = 0;
+            }
             rebuild_subdivide_preview();
             m_parent.set_as_dirty();
         }
         m_imgui->disabled_end();
         if (ImGui::IsItemHovered())
-            m_imgui->tooltip(_u8L("Replaces the model's geometry with the subdivided mesh and clears any not-yet-baked "
-                                  "paint on it (already-baked bumps are unaffected)."),
-                              m_imgui->scaled(20.f));
+            m_imgui->tooltip(m_subdivide_adaptive ?
+                                 _u8L("Refines the painted area to the target edge length and carries your paint onto "
+                                      "the finer mesh. The rest of the model is left as it is.") :
+                                 _u8L("Replaces the model's geometry with the subdivided mesh and clears any not-yet-baked "
+                                      "paint on it (already-baked bumps are unaffected)."),
+                             m_imgui->scaled(20.f));
         ImGui::SameLine();
         if (m_imgui->button(_u8L("Done"))) {
             m_subdivide_editing       = false;

@@ -188,24 +188,43 @@ directly** - clamping the *coordinate* into range (what an earlier version did) 
 border row/column of pixels outward to infinity in every direction, which is a real bug that was
 reported and fixed (visually: streaky lines radiating out from the painted patch).
 
-### Subdivision (`subdivide_mesh_uniform()`)
+### Subdivision — two modes
 
-Deliberately **whole-mesh and uniform**, not limited to the painted patch. A patch-only /
-adaptive subdivision would create a classic T-junction/cracking problem where the denser
-(subdivided) and sparser (untouched) regions meet - the fine side has edge midpoints the coarse
-side doesn't know about, producing a real (non-manifold-looking) crack in the baked geometry. This
-was consciously scoped down from the original plan's "adaptive per-patch subdivider" idea to avoid
-that correctness risk (a subtly-cracked mesh is a much worse outcome than "not implemented yet").
-Algorithm: recursive 1-to-4 triangle split via edge midpoints, with a shared per-pass midpoint cache
-(keyed by sorted vertex-index pair) so triangles sharing an edge get the *same* new vertex - capped
-at `max_iterations` (default 6) passes to bound worst-case triangle-count explosion.
+**Uniform (`subdivide_mesh_uniform()`)** — whole-mesh, 1-to-4 split. Recursive edge-midpoint split with
+a shared per-pass midpoint cache (keyed by sorted vertex-index pair) so triangles sharing an edge get
+the *same* new vertex - capped at `max_iterations` (default 6). Whole-mesh so it never leaves a
+T-junction, at the cost of densifying everywhere. Wired as a "Subdivide steps" slider (**0–5**, 0 =
+no subdivision), Apply snaps back to 0. Drops texture-displacement paint (no remap) via the standard
+`save_painting()`/`set_mesh()`/`restore_painting()` dance; the other four channels are remapped.
 
-Wired as a "Subdivide steps" slider (**0–5**, where 0 means no subdivision and previews nothing) plus
-Preview/Apply/Done in the gizmo panel. **Apply snaps the slider back to 0**. A real, committed geometry change (like
-Bake), using the same `save_painting()`/`set_mesh()`/`restore_painting()` dance `GLGizmoSimplify`
-uses: supported/seam/mmu/fuzzy-skin masks get remapped onto the new triangles, texture-displacement
-paint does not (no remap support yet) and is dropped rather than left pointing at now-meaningless
-triangle indices.
+**Adaptive (`subdivide_mesh_adaptive()`)** — refine **only the painted area**, down to a target edge
+length, by **Rivara longest-edge bisection**. This is the algorithm that was "scoped out" originally
+for fear of the T-junction/crack problem; it is safe because it is *conformal by construction*. Each
+pass bisects only **terminal** edges - an edge that is the longest edge of *every* triangle sharing it
+- which splits both those triangles along one shared midpoint at once, so a hanging node is never
+created. Only a triangle's own longest edge can be terminal, so each triangle is split by at most one
+bisection per pass. When a triangle that still needs refining has a longest edge that is not yet
+terminal, the neighbour across it has a strictly longer edge and is refined first; that propagation
+grades the mesh down into the region and closes what would be cracks (pulling a thin, bounded band of
+transition triangles just outside the painted patch). Tie-broken by mesh-vertex key so both sides of
+an edge always agree on "the" longest.
+
+The win: a small decal on a big model no longer quadruples the *whole* model's triangle count.
+
+**It carries the paint forward**, which is what makes it usable (uniform/remesh both drop paint). Because
+the refinement is *driven by* the paint, the remap is trivial: `subdivide_mesh_adaptive()` fills an
+`out_source[new_tri] = input_tri` map (children inherit their parent), and the gizmo rebuilds each
+layer's mask on the new mesh - a new triangle is painted iff its source was fully painted in that
+layer. `collect_paint_region()` derives both the union refine-region (any vertex of a painted patch,
+i.e. patch + a one-ring, so the boundary itself refines) and the per-layer fully-painted-triangle sets
+(a `get_facets_strict(ENFORCER)` sub-triangle with all three *original* vertex indices == a whole,
+fully-painted original triangle; a partial stroke's sub-triangles always carry a split vertex). The
+other four channels still ride the normal `restore_painting()` remap. Covered by a conformality unit
+test (`every_edge_used_twice` on a partially-refined cube - an exact crack detector for a closed mesh).
+
+Both share the gizmo's Preview/Apply/Done flow; the **"Only painted area (adaptive)"** checkbox picks
+the mode, and the adaptive preview follows the paint live (`rebuild_preview()` refreshes the wireframe
+while the subdivide preview is open in adaptive mode).
 
 ### Fast bump preview (GPU-only, no CPU meshing)
 
@@ -353,11 +372,16 @@ of. Toolbar commands the canvas can't service itself (Average scale) are forward
   part of the mesh via the existing mesh serialization path) - what does *not* survive a project
   save/reload is any *unbaked* paint stroke and texture layer definition.
 - **No remap-across-topology-change** for texture-displacement paint (`ModelObject::split()`, mesh
-  boolean ops, Simplify, and now `subdivide_mesh_uniform()` all drop it via `reset_extra_facets()`).
-  The other four paint channels (supported/seam/mmu/fuzzy) do get remapped in these cases.
+  boolean ops, Simplify, uniform subdivide, and remesh all drop it via `reset_extra_facets()`). The
+  other four paint channels (supported/seam/mmu/fuzzy) do get remapped in these cases. The lone
+  exception is **adaptive subdivide**, which carries texture-displacement paint forward itself via its
+  source map (see the Subdivision section) - a targeted remap that only works because the operation is
+  driven by the paint.
 - **Cylindrical/Spherical axis/center are auto-picked heuristically**, not user-controllable - no
   UI to override the auto-detected wrap axis if it picks the "wrong" one for an odd shape.
-- **Fast preview covers the active layer only**
+- **Fast preview covers the active layer only** — and is now the **default** view when the gizmo
+  opens (`m_use_bump_preview = true`): it is the instant, no-CPU-meshing preview, so it is the better
+  first impression while painting. The exact true-displacement view is one click away in the View row.
 - **Displacement resolution is capped by the mesh's own vertex density.** Baking only ever *moves*
   existing vertices (it never inserts any), so a coarse patch cannot show fine texture detail no
   matter how high-resolution the height map is - that is what the "Subdivide model" button is for.
@@ -368,7 +392,8 @@ of. Toolbar commands the canvas can't service itself (Average scale) are forward
 
 **libslic3r (core, no GUI dependency):**
 - `src/libslic3r/TextureDisplacement.hpp/.cpp` - data model, bake algorithm, projection methods,
-  tiling, subdivision. See doc comments throughout, they're kept accurate and up to date.
+  tiling, subdivision (uniform + adaptive longest-edge bisection). See doc comments throughout,
+  they're kept accurate and up to date.
 - `src/libslic3r/MeshBoolean.hpp/.cpp` - added `parameterize_lscm()` and `remesh_isotropic()`
   in the `cgal` sub-namespace,
   reusing the existing `CGALMesh`/`_EpicMesh`/conversion-helper infrastructure already there for
