@@ -1066,7 +1066,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             // Auto switch selection if user clicked on empty sides of track
             const ImRect higher_label_rc = range_label_rect(higher_handle, higher_text_content_size, true);
             const ImRect lower_label_rc  = range_label_rect(lower_handle, lower_text_content_size, false);
-            const ImRect clickable_region(ImVec2(higher_label_rc.Min.x, region.Min.y), region.Max);
+            const ImRect clickable_region(ImVec2(higher_label_rc.Min.x, region.Min.y), ImVec2(draw_region.Max.x, region.Max.y));
             if (context.IO.MouseClicked[0] 
                 && clickable_region.Contains(context.IO.MousePos) 
                 && !higher_label_rc.Contains(context.IO.MousePos) 
