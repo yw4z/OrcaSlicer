@@ -998,6 +998,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         std::string change_filament_gcode = gcodegen.config().change_filament_gcode.value;
 
         bool is_used_travel_avoid_perimeter = gcodegen.m_config.prime_tower_skip_points.value;
+        if (is_nozzle_change && !tcr.nozzle_change_result.is_extruder_change) is_used_travel_avoid_perimeter = false;
 
         // add nozzle change gcode into change filament gcode
         std::string nozzle_change_gcode_trans;
@@ -1307,20 +1308,23 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         }
 
         // do unretract after setting current extruder_id
-        // PETG filaments on a device with a filament switcher get a small (2 mm) pre-extrusion
-        // before the tool change. has_filament_switcher is a develop-only key read defensively from the
-        // full config (Orca does not carry it as a static PrintConfig member — same convention as
-        // enable_filament_dynamic_map); no shipping profile sets it (grep resources/profiles = 0), so
-        // is_petg_pre_extrusion is always false -> extra_unretract stays 0 -> byte-identical to the plain
-        // unretract() fleet-wide. The tower-interface contact pre-extrusion length (the
-        // is_contact_pre_extrusion branch) is NOT applied here; it is only computed as the guard used to
-        // give the contact path priority over PETG.
+        // BBS pattern: the wipe tower shifts the toolchange start position outward for the
+        // tower-interface (contact) pre-extrusion and for the PETG-with-filament-switcher case;
+        // the pre-extrusion material itself is laid down here as extra unretract on the approach.
+        // has_filament_switcher is a develop-only key read defensively from the full config (Orca
+        // does not carry it as a static PrintConfig member — same convention as
+        // enable_filament_dynamic_map); no shipping profile sets it, so is_petg_pre_extrusion is
+        // always false fleet-wide.
         const ConfigOptionBool* has_filament_switcher_opt = gcodegen.m_print->full_print_config().option<ConfigOptionBool>("has_filament_switcher");
         bool is_contact_pre_extrusion = tcr.is_contact && gcodegen.m_config.enable_tower_interface_features;
         bool is_petg_pre_extrusion    = !is_contact_pre_extrusion
                                         && gcodegen.config().filament_type.get_at(tcr.new_tool) == "PETG"
                                         && has_filament_switcher_opt && has_filament_switcher_opt->value;
-        float extra_unretract = is_petg_pre_extrusion ? 2.f : 0.f;
+        float extra_unretract = 0.f;
+        if (is_contact_pre_extrusion)
+            extra_unretract = gcodegen.m_config.filament_tower_interface_pre_extrusion_length.get_at(tcr.new_tool);
+        else if (is_petg_pre_extrusion)
+            extra_unretract = 2.f;
         std::string toolchange_unretract_str = (extra_unretract > 0.f) ? gcodegen.unretract(extra_unretract) : gcodegen.unretract();
         check_add_eol(toolchange_unretract_str);
 
