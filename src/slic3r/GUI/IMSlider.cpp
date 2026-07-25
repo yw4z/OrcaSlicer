@@ -1063,20 +1063,21 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             if (ImGui::ItemHoverable(lower_handle, id) && context.IO.MouseClicked[0]) {
                 selection = ssLower;
             }
-            // Auto switch selection if user clicked on empty sides of track
-            const ImRect higher_label_rc = range_label_rect(higher_handle, higher_text_content_size, true);
-            const ImRect lower_label_rc  = range_label_rect(lower_handle, lower_text_content_size, false);
-            const ImRect clickable_region(ImVec2(higher_label_rc.Min.x, region.Min.y), ImVec2(draw_region.Max.x, region.Max.y));
-            if (context.IO.MouseClicked[0] 
-                && clickable_region.Contains(context.IO.MousePos) 
-                && !higher_label_rc.Contains(context.IO.MousePos) 
-                && !lower_label_rc.Contains(context.IO.MousePos)
-            ) {
-                const int clicked_value = get_tick_near_point(v_min, v_max, context.IO.MousePos, region);
-                if (clicked_value > *higher_value && selection == ssLower)
-                    selection = ssHigher;
-                else if (clicked_value < *lower_value && selection == ssHigher)
-                    selection = ssLower;
+            // Auto switch nearest thumb when clicking on track
+            if (wxGetApp().app_config->get_bool("layers_slider_auto_switch_to_nearest")) {
+                const ImRect higher_label_rc = range_label_rect(higher_handle, higher_text_content_size, true);
+                const ImRect lower_label_rc  = range_label_rect(lower_handle, lower_text_content_size, false);
+                const ImRect clickable_region(ImVec2(higher_label_rc.Min.x, region.Min.y), ImVec2(draw_region.Max.x, region.Max.y));
+                if (context.IO.MouseClicked[0] 
+                    && clickable_region.Contains(context.IO.MousePos) 
+                    && !higher_label_rc.Contains(context.IO.MousePos) 
+                    && !lower_label_rc.Contains(context.IO.MousePos)
+                ) {
+                    const int clicked_value = get_tick_near_point(v_min, v_max, context.IO.MousePos, region);
+                    const int dist_to_higher = std::abs(clicked_value - *higher_value);
+                    const int dist_to_lower  = std::abs(clicked_value - *lower_value);
+                    selection = dist_to_higher <= dist_to_lower ? ssHigher : ssLower;
+                }
             }
         }
         bool h_selected = selection != ssLower;
