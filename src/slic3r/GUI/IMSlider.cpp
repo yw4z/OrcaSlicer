@@ -1074,9 +1074,18 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
                     && !lower_label_rc.Contains(context.IO.MousePos)
                 ) {
                     const int clicked_value = get_tick_near_point(v_min, v_max, context.IO.MousePos, region);
-                    const int dist_to_higher = std::abs(clicked_value - *higher_value);
-                    const int dist_to_lower  = std::abs(clicked_value - *lower_value);
-                    selection = dist_to_higher <= dist_to_lower ? ssHigher : ssLower;
+                    if (*higher_value == *lower_value){
+                        if (clicked_value > *higher_value && selection == ssLower)
+                            selection = ssHigher;
+                        else if (clicked_value < *lower_value && selection == ssHigher)
+                            selection = ssLower;
+                    } 
+                    else {
+                        const int dist_to_higher = std::abs(clicked_value - *higher_value);
+                        const int dist_to_lower  = std::abs(clicked_value - *lower_value);
+                        selection = dist_to_higher <= dist_to_lower ? ssHigher : ssLower;
+                    }
+
                 }
             }
         }
