@@ -1142,9 +1142,14 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         }
 
         // judge whether to open menu
-        if (!menu_open && ImGui::ItemHoverable(h_selected ? higher_handle : lower_handle, id) && context.IO.MouseClicked[1])
+        bool any_handle_hovering = (ImGui::ItemHoverable(higher_handle, id) || ImGui::ItemHoverable(lower_handle, id));
+        if (!menu_open && any_handle_hovering && context.IO.MouseClicked[1]){
+            if(ImGui::ItemHoverable(!h_selected ? higher_handle : lower_handle, id))
+                selection = !h_selected ? ssHigher : ssLower; // select non active one when non selected handle right clicked
             m_show_menu = true;
-        if (!menu_open && ((!ImGui::ItemHoverable(h_selected ? higher_handle : lower_handle, id) && context.IO.MouseClicked[1]) ||
+        }
+            
+        if (!menu_open && ((!any_handle_hovering && context.IO.MouseClicked[1]) ||
             context.IO.MouseClicked[0]))
             m_show_menu = false;
 
