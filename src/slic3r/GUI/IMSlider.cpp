@@ -982,13 +982,13 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
             handle.GetCenter().y - 0.5f * text_size.y);
         return ImRect(text_start, text_start + text_size);
     };
-    auto draw_label = [&](const ImRect& rect, const ImVec2& content_size, const std::string& label, bool hovered, bool active) {
+    auto draw_label = [&](const ImRect& rect, const ImVec2& content_size, const std::string& label, bool hovered, bool active, bool current) {
         const float rounding = 5.0f * m_scale;
         const ImU32 bg_clr = active ? label_bg_active_clr : label_bg_clr;
         const ImVec2 shadow_offset = ImVec2(2.0f, 2.0f) * m_scale;
         window->DrawList->AddRectFilled(rect.Min + shadow_offset, rect.Max + shadow_offset, label_shadow_clr, rounding + shadow_offset.x);
         ImGui::RenderFrame(rect.Min, rect.Max, bg_clr, false, rounding);
-        window->DrawList->AddRect(rect.Min, rect.Max, hovered ? handle_clr : label_border_clr, rounding, 0, hovered ? 1.5f * m_scale : 1.0f * m_scale);
+        window->DrawList->AddRect(rect.Min, rect.Max, (hovered || (current && menu_open)) ? handle_clr : label_border_clr, rounding, 0, hovered ? 1.5f * m_scale : 1.0f * m_scale);
         const ImVec2 rect_size = rect.GetSize();
         ImGui::RenderText(rect.Min + ImVec2((rect_size.x - content_size.x) * 0.5f,
             (rect_size.y - content_size.y) * 0.5f), label.c_str());
@@ -1172,14 +1172,14 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         ImRect higher_text_rect(text_start, text_start + text_size);
         const bool higher_label_active = active_label == ssHigher;
         draw_label(higher_text_rect, higher_text_content_size, higher_label,
-            hovered_label == ssHigher || higher_label_active || ImGui::ItemHoverable(higher_handle, id), higher_label_active);
+            hovered_label == ssHigher || higher_label_active || ImGui::ItemHoverable(higher_handle, id), higher_label_active, selection == ssHigher);
         // draw lower label
         text_size = ImVec2(max_label_width, lower_text_content_size.y) + text_padding * 2;
         text_start        = ImVec2(lower_handle.Min.x - text_size.x - label_width_margin, lower_handle_center.y);
         ImRect lower_text_rect(text_start, text_start + text_size);
         const bool lower_label_active = active_label == ssLower;
         draw_label(lower_text_rect, lower_text_content_size, lower_label,
-            hovered_label == ssLower || lower_label_active || ImGui::ItemHoverable(lower_handle, id), lower_label_active);
+            hovered_label == ssLower || lower_label_active || ImGui::ItemHoverable(lower_handle, id), lower_label_active, selection == ssLower);
 
         // Allow opening context menu with right clicking to labels 
         if (!menu_open && ImGui::ItemHoverable(h_selected ? higher_text_rect : lower_text_rect, id) && context.IO.MouseClicked[1])
@@ -1232,7 +1232,7 @@ bool IMSlider::vertical_slider(const char* str_id, int* higher_value, int* lower
         ImVec2 text_start = ImVec2(one_handle.Min.x - text_size.x - label_width_margin, handle_center.y - 0.5 * text_size.y);
         ImRect text_rect = ImRect(text_start, text_start + text_size);
         const bool label_active = context.ActiveId == id && context.IO.MouseDown[0];
-        draw_label(text_rect, higher_text_content_size, higher_label, hovered_label == ssHigher || label_active || ImGui::ItemHoverable(one_handle, id), label_active);
+        draw_label(text_rect, higher_text_content_size, higher_label, hovered_label == ssHigher || label_active || ImGui::ItemHoverable(one_handle, id), label_active, true);
 
         // Allow opening context menu with right clicking to label
         if (!menu_open && ImGui::ItemHoverable(text_rect, id) && context.IO.MouseClicked[1])
