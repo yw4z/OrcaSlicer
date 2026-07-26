@@ -69,9 +69,9 @@ public:
         const float brim = m_wipe_tower_brim_width_real;
         return BoundingBoxf(Vec2d(-brim, -brim), Vec2d(double(m_wipe_tower_width) + brim, double(m_wipe_tower_depth) + brim));
     }
-    // WT2 doesn't currently compute a rib-origin compensation like WipeTower (m_rib_offset),
-    // so expose a zero offset for consistency purposes (to maintain API parity).
-    Vec2f get_rib_offset() const { return Vec2f::Zero(); }
+    // Tower-local shift that puts the rib wall's first-layer min corner at the configured
+    // tower position, like WipeTower::get_rib_offset(). Zero unless the rib wall is used.
+    Vec2f get_rib_offset() const { return m_rib_offset; }
     float get_rib_width() const { return m_rib_width; }
     float get_rib_length() const { return m_rib_length; }
 
@@ -231,6 +231,7 @@ private:
     float  m_rib_width                    = 10;
     float  m_extra_rib_length             = 0;
     float  m_rib_length                   = 0;
+    Vec2f  m_rib_offset                   = Vec2f::Zero();
 
     bool   m_enable_arc_fitting           = false;
 
@@ -372,6 +373,10 @@ private:
 		float spacing);
 
     Polygon generate_rib_polygon(const WipeTower::box_coordinates& wt_box);
+
+    // Computes the depth reserved for a toolchange (shared by plan_toolchange() and the
+    // rib-wall square-tower replanning in generate()).
+    WipeTowerInfo::ToolChange set_toolchange(size_t old_tool, size_t new_tool, float layer_height, float wipe_volume, bool first_layer_plan);
 };
 
 

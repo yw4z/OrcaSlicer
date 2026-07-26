@@ -2228,15 +2228,21 @@ void WipeTower2::plan_toolchange(float z_par, float layer_height_par, unsigned i
         return;
 
     // this is an actual toolchange - let's calculate depth to reserve on the wipe tower
-    float width = m_wipe_tower_width - 3*m_perimeter_width; 
+    const bool first_layer_plan = (m_plan.size() - 1) == m_first_layer_idx;
+    m_plan.back().tool_changes.push_back(set_toolchange(old_tool, new_tool, layer_height_par, wipe_volume, first_layer_plan));
+}
+
+WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool, size_t new_tool, float layer_height, float wipe_volume, bool first_layer_plan)
+{
+    float width = m_wipe_tower_width - 3*m_perimeter_width;
 	float length_to_extrude = volume_to_length(0.25f * std::accumulate(m_filpar[old_tool].ramming_speed.begin(), m_filpar[old_tool].ramming_speed.end(), 0.f),
 										m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator,
-										layer_height_par);
+										layer_height);
     // Orca: Set ramming depth to 0 if ramming is disabled.
     float ramming_depth = m_enable_filament_ramming ? ((int(length_to_extrude / width) + 1) * (m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator) * m_extra_spacing_ramming) : 0;
     float first_wipe_line = - (width*((length_to_extrude / width)-int(length_to_extrude / width)) - width);
 
-    float first_wipe_volume = length_to_volume(first_wipe_line, m_perimeter_width * m_extra_flow, layer_height_par);
+    float first_wipe_volume = length_to_volume(first_wipe_line, m_perimeter_width * m_extra_flow, layer_height);
 
     // ORCA: Keep wipe-depth planning consistent with toolchange_Wipe().
     // ORCA: On the first layer, toolchange_Wipe() advances purge rows using
@@ -2245,12 +2251,11 @@ void WipeTower2::plan_toolchange(float z_par, float layer_height_par, unsigned i
     // ORCA: float dy = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
     // ORCA: Use the same spacing here so reserved depth matches consumed depth
     // ORCA: and first-layer purge segments do not leave visible gaps.
-    const bool first_layer_plan = (m_plan.size() - 1) == m_first_layer_idx;
     const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
 
-    float wiping_depth = get_wipe_depth(wipe_volume - first_wipe_volume, layer_height_par, m_perimeter_width, m_extra_flow, planning_spacing, width);
-    
-	m_plan.back().tool_changes.push_back(WipeTowerInfo::ToolChange(old_tool, new_tool, ramming_depth + wiping_depth, ramming_depth, first_wipe_line, wipe_volume));
+    float wiping_depth = get_wipe_depth(wipe_volume - first_wipe_volume, layer_height, m_perimeter_width, m_extra_flow, planning_spacing, width);
+
+	return WipeTowerInfo::ToolChange(old_tool, new_tool, ramming_depth + wiping_depth, ramming_depth, first_wipe_line, wipe_volume);
 }
 
 
@@ -2378,9 +2383,35 @@ void WipeTower2::generate(std::vector<std::vector<WipeTower::ToolChangeResult>> 
     }
 #endif
 
-    m_rib_length = std::max({m_rib_length, sqrt(m_wipe_tower_depth * m_wipe_tower_depth + m_wipe_tower_width * m_wipe_tower_width)});
+    if (m_wall_type == (int)wtwRib) {
+        // Rib wall: force a square tower like WipeTower::plan_tower_new(), ignoring the
+        // configured prime_tower_width (the GUI greys it out in rib mode). The planned depths
+        // already include the extra-spacing factors, so sqrt(depth * width) preserves the
+        // purge area. Replan every toolchange for the new width, then re-derive the depths.
+        float max_depth = 0.f;
+        for (const auto& current_plan : m_plan)
+            max_depth = std::max(max_depth, current_plan.depth);
+        if (max_depth > EPSILON) {
+            m_wipe_tower_width = align_ceil(std::sqrt(max_depth * m_wipe_tower_width), m_perimeter_width);
+            for (size_t idx = 0; idx < m_plan.size(); ++idx)
+                for (auto& toolchange : m_plan[idx].tool_changes)
+                    toolchange = set_toolchange(toolchange.old_tool, toolchange.new_tool,
+                                                m_plan[idx].height, toolchange.wipe_volume,
+                                                idx == m_first_layer_idx);
+            plan_tower();
+        }
+
+        // Like WipeTower::plan_tower_new(): extend the ribs instead of the tower when the
+        // tower is smaller than the height-based stability minimum.
+        const float min_depth = WipeTower::get_limit_depth_by_height(m_wipe_tower_height);
+        if (m_wipe_tower_depth + EPSILON < min_depth)
+            m_rib_length = std::max(m_rib_length, min_depth * (float)std::sqrt(2.f));
+    }
+
+    const float diagonal = std::sqrt(m_wipe_tower_depth * m_wipe_tower_depth + m_wipe_tower_width * m_wipe_tower_width);
+    m_rib_length = std::max(m_rib_length, diagonal);
     m_rib_length += m_extra_rib_length;
-    m_rib_length = std::max(0.f, m_rib_length);
+    m_rib_length = std::max(diagonal, m_rib_length); // a negative extra length must not shrink the ribs below the diagonal
     m_rib_width  = std::min(m_rib_width, std::min(m_wipe_tower_depth, m_wipe_tower_width) /
                                              2.f); // Ensure that the rib wall of the wipetower are attached to the infill.
 
@@ -2532,10 +2563,12 @@ Polygon WipeTower2::generate_support_rib_wall(WipeTowerWriter2&                 
         insert_skip_polygon = wall_polygon;
     }
     writer.generate_path(result_wall, feedrate, retract_length, retract_speed, m_used_fillet);
-    //if (m_cur_layer_id == 0) {
-    //    BoundingBox bbox = get_extents(result_wall);
-    //    m_rib_offset     = Vec2f(-unscaled<float>(bbox.min.x()), -unscaled<float>(bbox.min.y()));
-    //}
+    // Tower-local shift that puts the rib wall's protruding first-layer min corner at the
+    // configured tower position, like WipeTower::generate_support_wall_new().
+    if (rib_wall && is_first_layer()) {
+        BoundingBox bbox = get_extents(result_wall);
+        m_rib_offset     = Vec2f(-unscaled<float>(bbox.min.x()), -unscaled<float>(bbox.min.y()));
+    }
 
     return insert_skip_polygon;
 }

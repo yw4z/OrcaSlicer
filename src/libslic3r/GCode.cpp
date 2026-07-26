@@ -1422,8 +1422,10 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         // We want to rotate and shift all extrusions (gcode postprocessing) and starting and ending position
         float alpha = m_wipe_tower_rotation / 180.f * float(M_PI);
 
+        // The rib-wall offset is tower-local, so it rotates with the tower (unlike the BBL
+        // tower in append_tcr, which never rotates). Priming lines are absolute bed moves.
         auto transform_wt_pt = [&alpha, this](const Vec2f &pt) -> Vec2f {
-            Vec2f out = Eigen::Rotation2Df(alpha) * pt;
+            Vec2f out = Eigen::Rotation2Df(alpha) * (pt + m_rib_offset);
             out += m_wipe_tower_pos;
             return out;
         };
@@ -1435,7 +1437,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
             end_pos   = transform_wt_pt(end_pos);
         }
 
-        Vec2f wipe_tower_offset   = tcr.priming ? Vec2f::Zero() : m_wipe_tower_pos;
+        Vec2f wipe_tower_offset   = tcr.priming ? Vec2f::Zero() : Vec2f(m_wipe_tower_pos + Eigen::Rotation2Df(alpha) * m_rib_offset);
         float wipe_tower_rotation = tcr.priming ? 0.f : alpha;
         Vec2f plate_origin_2d(m_plate_origin(0), m_plate_origin(1));
 
