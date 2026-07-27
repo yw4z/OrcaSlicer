@@ -888,6 +888,50 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         return res;
     }
 
+    // With skip points enabled the Type2 tower wall has an opening at each toolchange's
+    // entry (tcr.start_pos): route the approach around the tower's bounding box so the
+    // nozzle enters through that opening instead of dragging across the printed wall
+    // (append_tcr parity). Emits only the waypoints leading up to the opening — the
+    // caller still travels to start_wipe_pos itself. Returns an empty string when the
+    // option is off, the cone wall is active (it has no gap machinery), or the approach
+    // already starts inside the tower: such hops never cross the wall and must stay direct.
+    std::string WipeTowerIntegration::travel_to_tower_gap(GCode &gcodegen, const Point &route_start, const Point &start_wipe_pos) const
+    {
+        if (!gcodegen.m_config.prime_tower_skip_points.value
+            || gcodegen.m_config.wipe_tower_wall_type.value == WipeTowerWallType::wtwCone)
+            return {};
+        const Vec2f plate_origin_2d(m_plate_origin(0), m_plate_origin(1));
+        BoundingBox printer_bbx;
+        if (is_multi_nozzle_printer(gcodegen.m_config)) {
+            printer_bbx     = get_extents(gcodegen.m_print->get_extruder_shared_printable_polygon());
+            printer_bbx.min = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.min) + plate_origin_2d);
+            printer_bbx.max = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.max) + plate_origin_2d);
+        } else {
+            Points bed_points;
+            for (const auto& p : gcodegen.m_config.printable_area.values)
+                bed_points.push_back(wipe_tower_point_to_object_point(gcodegen, p.cast<float>() + plate_origin_2d));
+            printer_bbx = BoundingBox(bed_points);
+        }
+        // Transform the tower-local bbx corners exactly like the tcr points (rib
+        // offset, rotation, tower position); a rotated tower gets a conservative
+        // axis-aligned envelope.
+        const float alpha        = m_wipe_tower_rotation / 180.f * float(M_PI);
+        Polygon     avoid_points = scaled(m_wipe_tower_bbx).polygon();
+        for (auto& p : avoid_points.points) {
+            Vec2f pp = Eigen::Rotation2Df(alpha) * (unscale(p).cast<float>() + m_rib_offset) + m_wipe_tower_pos;
+            p        = wipe_tower_point_to_object_point(gcodegen, pp + plate_origin_2d);
+        }
+        BoundingBox avoid_bbx(avoid_points.points);
+        if (avoid_bbx.contains(route_start))
+            return {};
+        Polyline    travel_polyline = generate_path_to_wipe_tower(route_start, start_wipe_pos, avoid_bbx, printer_bbx);
+        std::string gcode;
+        // The polyline's last point is start_wipe_pos itself — emitted by the caller.
+        for (size_t i = 0; i + 1 < travel_polyline.points.size(); ++i)
+            gcode += gcodegen.travel_to(travel_polyline.points[i], erMixed, "Travel to a Wipe Tower");
+        return gcode;
+    }
+
     std::string WipeTowerIntegration::append_tcr(GCode& gcodegen, const WipeTower::ToolChangeResult& tcr, int new_filament_id, double z) const
     {
         if (new_filament_id != -1 && new_filament_id != tcr.new_tool)
@@ -1467,51 +1511,22 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                                                              || is_ramming
                                                              || tool_change_on_wipe_tower);
 
-        if (should_travel_to_tower || gcodegen.m_need_change_layer_lift_z) {
+        const bool travel_to_tower_now = should_travel_to_tower || gcodegen.m_need_change_layer_lift_z;
+        if (travel_to_tower_now) {
             // FIXME: It would be better if the wipe tower set the force_travel flag for all toolchanges,
             // then we could simplify the condition and make it more readable.
             gcode += gcodegen.retract();
             gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
             const Point start_wipe_pos = wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d);
-            // With skip points enabled the tower wall has an opening at this tcr's start
-            // position: approach around the tower's bounding box and enter through it instead
-            // of dragging the oozing nozzle across the printed wall (append_tcr parity).
-            // Hops that already start inside the tower stay direct — they never cross the wall.
-            if (gcodegen.m_config.prime_tower_skip_points.value
-                && gcodegen.m_config.wipe_tower_wall_type.value != WipeTowerWallType::wtwCone
-                && !tcr.priming && gcodegen.last_pos_defined()) {
-                BoundingBox printer_bbx;
-                if (is_multi_nozzle_printer(gcodegen.m_config)) {
-                    printer_bbx     = get_extents(gcodegen.m_print->get_extruder_shared_printable_polygon());
-                    printer_bbx.min = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.min) + plate_origin_2d);
-                    printer_bbx.max = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.max) + plate_origin_2d);
-                } else {
-                    Points bed_points;
-                    for (const auto& p : gcodegen.m_config.printable_area.values)
-                        bed_points.push_back(wipe_tower_point_to_object_point(gcodegen, p.cast<float>() + plate_origin_2d));
-                    printer_bbx = BoundingBox(bed_points);
-                }
-                // Transform the tower-local bbx corners exactly like the tcr points (rib
-                // offset, rotation, tower position); a rotated tower gets a conservative
-                // axis-aligned envelope.
-                Polygon avoid_points = scaled(m_wipe_tower_bbx).polygon();
-                for (auto& p : avoid_points.points) {
-                    Vec2f pp = transform_wt_pt(unscale(p).cast<float>());
-                    p        = wipe_tower_point_to_object_point(gcodegen, pp + plate_origin_2d);
-                }
-                BoundingBox avoid_bbx(avoid_points.points);
-                if (!avoid_bbx.contains(gcodegen.last_pos())) {
-                    Polyline travel_polyline = generate_path_to_wipe_tower(gcodegen.last_pos(), start_wipe_pos, avoid_bbx, printer_bbx);
-                    // The polyline's last point is start_wipe_pos itself — emitted below.
-                    for (size_t i = 0; i + 1 < travel_polyline.points.size(); ++i)
-                        gcode += gcodegen.travel_to(travel_polyline.points[i], erMixed, "Travel to a Wipe Tower");
-                }
-            }
+            if (!tcr.priming && gcodegen.last_pos_defined())
+                gcode += travel_to_tower_gap(gcodegen, gcodegen.last_pos(), start_wipe_pos);
             gcode += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
             gcode += gcodegen.unretract();
         } else {
             // When this is multiextruder printer without any ramming, we can just change
-            // the tool without travelling to the tower.
+            // the tool without travelling to the tower. The tower entry travel then lives
+            // inside the tcr gcode; with skip points on it is rerouted below, once the
+            // toolchange gcode (and the head position it ends at) is known.
         }
 
         if (will_go_down) {
@@ -1534,6 +1549,39 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 toolchange_temp_override = interface_temp;
             }
             toolchange_gcode_str = gcodegen.set_extruder(new_extruder_id, tcr.print_z, false, toolchange_temp_override); // TODO: toolchange_z vs print_z
+            if (!travel_to_tower_now && !tcr.priming && needs_toolchange
+                && gcodegen.m_config.prime_tower_skip_points.value
+                && gcodegen.m_config.wipe_tower_wall_type.value != WipeTowerWallType::wtwCone) {
+                // The tool changed in place (multi-tool printer without ramming), so the
+                // tower entry is the tcr's own positioning move — a straight line across
+                // the printed wall. Route it around the tower and in through the wall
+                // opening instead, riding at the end of the change_filament_gcode
+                // substitution so the generator's positioning move degrades to a
+                // zero-length one (append_tcr parity: travel after the filament change,
+                // retracted, with the new filament).
+                Vec3f last_gcode_pos = gcodegen.writer().get_position().cast<float>();
+                Point route_start;
+                bool  have_start = false;
+                if (GCodeProcessor::get_last_position_from_gcode(toolchange_gcode_str, last_gcode_pos)) {
+                    // A custom change_filament_gcode may have moved the head (tool docks
+                    // etc.); recover the real position from the emitted gcode.
+                    route_start = gcodegen.gcode_to_point(Vec2d(last_gcode_pos.x(), last_gcode_pos.y()) + plate_origin_2d.cast<double>());
+                    have_start  = true;
+                } else if (gcodegen.last_pos_defined()) {
+                    route_start = gcodegen.last_pos();
+                    have_start  = true;
+                }
+                if (have_start) {
+                    gcodegen.set_last_pos(route_start);
+                    gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
+                    const Point start_wipe_pos = wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d);
+                    std::string travel         = travel_to_tower_gap(gcodegen, route_start, start_wipe_pos);
+                    travel += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
+                    check_add_eol(travel);
+                    toolchange_gcode_str += travel;
+                    gcodegen.set_last_pos(start_wipe_pos);
+                }
+            }
             if (gcodegen.config().enable_prime_tower) {
                 deretraction_str += gcodegen.writer().travel_to_z(z, "Force restore layer Z", true);
                 Vec3d position{gcodegen.writer().get_position()};
