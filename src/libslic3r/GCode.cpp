@@ -1472,7 +1472,42 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
             // then we could simplify the condition and make it more readable.
             gcode += gcodegen.retract();
             gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
-            gcode += gcodegen.travel_to(wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d), erMixed, "Travel to a Wipe Tower");
+            const Point start_wipe_pos = wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d);
+            // With skip points enabled the tower wall has an opening at this tcr's start
+            // position: approach around the tower's bounding box and enter through it instead
+            // of dragging the oozing nozzle across the printed wall (append_tcr parity).
+            // Hops that already start inside the tower stay direct — they never cross the wall.
+            if (gcodegen.m_config.prime_tower_skip_points.value
+                && gcodegen.m_config.wipe_tower_wall_type.value != WipeTowerWallType::wtwCone
+                && !tcr.priming && gcodegen.last_pos_defined()) {
+                BoundingBox printer_bbx;
+                if (is_multi_nozzle_printer(gcodegen.m_config)) {
+                    printer_bbx     = get_extents(gcodegen.m_print->get_extruder_shared_printable_polygon());
+                    printer_bbx.min = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.min) + plate_origin_2d);
+                    printer_bbx.max = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.max) + plate_origin_2d);
+                } else {
+                    Points bed_points;
+                    for (const auto& p : gcodegen.m_config.printable_area.values)
+                        bed_points.push_back(wipe_tower_point_to_object_point(gcodegen, p.cast<float>() + plate_origin_2d));
+                    printer_bbx = BoundingBox(bed_points);
+                }
+                // Transform the tower-local bbx corners exactly like the tcr points (rib
+                // offset, rotation, tower position); a rotated tower gets a conservative
+                // axis-aligned envelope.
+                Polygon avoid_points = scaled(m_wipe_tower_bbx).polygon();
+                for (auto& p : avoid_points.points) {
+                    Vec2f pp = transform_wt_pt(unscale(p).cast<float>());
+                    p        = wipe_tower_point_to_object_point(gcodegen, pp + plate_origin_2d);
+                }
+                BoundingBox avoid_bbx(avoid_points.points);
+                if (!avoid_bbx.contains(gcodegen.last_pos())) {
+                    Polyline travel_polyline = generate_path_to_wipe_tower(gcodegen.last_pos(), start_wipe_pos, avoid_bbx, printer_bbx);
+                    // The polyline's last point is start_wipe_pos itself — emitted below.
+                    for (size_t i = 0; i + 1 < travel_polyline.points.size(); ++i)
+                        gcode += gcodegen.travel_to(travel_polyline.points[i], erMixed, "Travel to a Wipe Tower");
+                }
+            }
+            gcode += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
             gcode += gcodegen.unretract();
         } else {
             // When this is multiextruder printer without any ramming, we can just change

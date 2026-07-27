@@ -233,6 +233,11 @@ private:
     float  m_extra_rib_length             = 0;
     float  m_rib_length                   = 0;
     Vec2f  m_rib_offset                   = Vec2f::Zero();
+    bool   m_use_gap_wall                 = false;
+    // Per plan layer, each toolchange's entry position (tower-local, un-shifted frame):
+    // where the wall is cut open so the entry travel does not cross the printed wall.
+    // Filled by compute_wall_skip_points() once the plan is final.
+    std::vector<std::vector<Vec2f>> m_wall_skip_points;
 
     bool   m_enable_arc_fitting           = false;
 
@@ -375,6 +380,8 @@ private:
 		float spacing);
 
     Polygon generate_rib_polygon(const WipeTower::box_coordinates& wt_box);
+
+    void compute_wall_skip_points();
 
     // Computes the depth reserved for a toolchange (shared by plan_toolchange() and the
     // rib-wall square-tower replanning in generate()).
