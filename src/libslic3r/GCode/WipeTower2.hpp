@@ -149,6 +149,7 @@ public:
     struct FilamentParameters {
         std::string 	    material = "PLA";
         bool                is_soluble = false;
+        bool                is_support = false;
         int  			    temperature = 0;
         int  			    first_layer_temperature = 0;
         int                 interface_print_temperature = 0;
@@ -329,9 +330,10 @@ private:
     std::vector<float> m_used_filament_length;
 	std::vector<std::pair<float, std::vector<float>>> m_used_filament_length_until_layer;
 
-    // Return index of first toolchange that switches to non-soluble extruder
-    // ot -1 if there is no such toolchange.
-    int first_toolchange_to_nonsoluble(
+    // Return the index of the toolchange whose new filament should print the layer's
+    // finish extrusions (sparse infill + wall + brim), or -1 to print them with the
+    // layer's incoming filament before any toolchange happens.
+    int first_toolchange_to_nonsoluble_nonsupport(
             const std::vector<WipeTowerInfo::ToolChange>& tool_changes) const;
 
 	void toolchange_Unload(

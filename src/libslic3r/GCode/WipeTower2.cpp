@@ -1342,6 +1342,7 @@ void WipeTower2::set_extruder(size_t idx, const PrintConfig& config)
         m_filpar[idx].is_soluble = (idx != size_t(m_wipe_tower_filament - 1));
     else
         m_filpar[idx].is_soluble = config.filament_soluble.get_at(idx);
+    m_filpar[idx].is_support = config.filament_is_support.get_at(idx);
     m_filpar[idx].temperature = config.nozzle_temperature.get_at(idx);
     m_filpar[idx].first_layer_temperature = config.nozzle_temperature_initial_layer.get_at(idx);
     m_filpar[idx].filament_minimal_purge_on_wipe_tower = config.filament_minimal_purge_on_wipe_tower.get_at(idx);
@@ -2293,49 +2294,64 @@ void WipeTower2::save_on_last_wipe()
             continue;
 
         // Which toolchange will finish_layer extrusions be subtracted from?
-        int idx = first_toolchange_to_nonsoluble(m_layer_info->tool_changes);
+        int idx = first_toolchange_to_nonsoluble_nonsupport(m_layer_info->tool_changes);
 
         if (idx == -1) {
             // In this case, finish_layer will be called at the very beginning.
             finish_layer().total_extrusion_length_in_plane();
         }
 
+        const float width = m_wipe_tower_width - 3*m_perimeter_width; // width we draw into
+        auto recompute_toolchange = [this, width](WipeTowerInfo::ToolChange& toolchange, float volume_to_save) {
+            float volume_left_to_wipe = std::max(m_filpar[toolchange.new_tool].filament_minimal_purge_on_wipe_tower, toolchange.wipe_volume_total - volume_to_save);
+            float volume_we_need_depth_for = std::max(0.f, volume_left_to_wipe - length_to_volume(toolchange.first_wipe_line, m_perimeter_width*m_extra_flow, m_layer_info->height));
+
+            // ORCA: Keep wipe-depth planning consistent with toolchange_Wipe().
+            // ORCA: On the first layer, toolchange_Wipe() advances purge rows using
+            // ORCA: m_extra_flow * m_perimeter_width, while later layers use
+            // ORCA: m_extra_spacing_wipe * m_perimeter_width.
+            // ORCA: float dy = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
+            // ORCA: Use the same spacing here so reserved depth matches consumed depth
+            // ORCA: and first-layer purge segments do not leave visible gaps.
+            const bool first_layer_plan = size_t(m_layer_info - m_plan.begin()) == m_first_layer_idx;
+            const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
+
+            float depth_to_wipe = get_wipe_depth(volume_we_need_depth_for, m_layer_info->height, m_perimeter_width, m_extra_flow, planning_spacing, width);
+
+            toolchange.required_depth = toolchange.ramming_depth + depth_to_wipe;
+            toolchange.wipe_volume = volume_left_to_wipe;
+        };
+
         for (int i=0; i<int(m_layer_info->tool_changes.size()); ++i) {
             auto& toolchange = m_layer_info->tool_changes[i];
             tool_change(toolchange.new_tool);
 
             if (i == idx) {
-                float width = m_wipe_tower_width - 3*m_perimeter_width; // width we draw into
-
-                float volume_to_save = length_to_volume(finish_layer().total_extrusion_length_in_plane(), m_perimeter_width, m_layer_info->height);
-                float volume_left_to_wipe = std::max(m_filpar[toolchange.new_tool].filament_minimal_purge_on_wipe_tower, toolchange.wipe_volume_total - volume_to_save);
-                float volume_we_need_depth_for = std::max(0.f, volume_left_to_wipe - length_to_volume(toolchange.first_wipe_line, m_perimeter_width*m_extra_flow, m_layer_info->height));
-                
-                // ORCA: Keep wipe-depth planning consistent with toolchange_Wipe().
-                // ORCA: On the first layer, toolchange_Wipe() advances purge rows using
-                // ORCA: m_extra_flow * m_perimeter_width, while later layers use
-                // ORCA: m_extra_spacing_wipe * m_perimeter_width.
-                // ORCA: float dy = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
-                // ORCA: Use the same spacing here so reserved depth matches consumed depth
-                // ORCA: and first-layer purge segments do not leave visible gaps.
-                const bool first_layer_plan = size_t(m_layer_info - m_plan.begin()) == m_first_layer_idx;
-                const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
-                
-                float depth_to_wipe = get_wipe_depth(volume_we_need_depth_for, m_layer_info->height, m_perimeter_width, m_extra_flow, planning_spacing, width);
-
-                toolchange.required_depth = toolchange.ramming_depth + depth_to_wipe;
-                toolchange.wipe_volume = volume_left_to_wipe;
+                recompute_toolchange(toolchange, length_to_volume(finish_layer().total_extrusion_length_in_plane(), m_perimeter_width, m_layer_info->height));
+            } else if (toolchange.wipe_volume < m_filpar[toolchange.new_tool].filament_minimal_purge_on_wipe_tower) {
+                // Keep filament_minimal_purge_on_wipe_tower enforced for toolchanges that get
+                // no finish-layer saving, e.g. a support/soluble filament skipped as the
+                // finish filament above. Recomputing only when the clamp binds leaves all
+                // other toolchanges with their planned values bit-for-bit.
+                recompute_toolchange(toolchange, 0.f);
             }
         }
     }
 }
 
 
-// Return index of first toolchange that switches to non-soluble extruder
-// ot -1 if there is no such toolchange.
-int WipeTower2::first_toolchange_to_nonsoluble(
+// Return the index of the toolchange whose new filament should print the layer's
+// finish extrusions (sparse infill + wall + brim), or -1 to print them with the
+// layer's incoming filament before any toolchange happens.
+// Like WipeTower::first_toolchange_to_nonsoluble_nonsupport(): support and soluble
+// filaments bond poorly to the material printed on top of them, so they must not
+// print the tower's shell when another filament is available on the layer.
+int WipeTower2::first_toolchange_to_nonsoluble_nonsupport(
         const std::vector<WipeTowerInfo::ToolChange>& tool_changes) const
 {
+    if (tool_changes.empty())
+        return -1;
+
     // If a specific wipe tower filament is forced, use it to decide where to finish the layer.
     if (m_wipe_tower_filament > 0) {
         for (size_t idx = 0; idx < tool_changes.size(); ++idx) {
@@ -2344,8 +2360,19 @@ int WipeTower2::first_toolchange_to_nonsoluble(
         }
         return -1;
     }
-    // Orca: allow calculation of the required depth and wipe volume for soluble toolchanges as well.
-    return tool_changes.empty() ? -1 : 0;
+
+    auto is_wall_filament = [this](size_t tool) {
+        return !m_filpar[tool].is_soluble && !m_filpar[tool].is_support;
+    };
+    for (size_t idx = 0; idx < tool_changes.size(); ++idx)
+        if (is_wall_filament(tool_changes[idx].new_tool))
+            return idx;
+    if (is_wall_filament(tool_changes.front().old_tool))
+        return -1;
+    // Only support/soluble filaments on this layer: keep the first toolchange so the
+    // finish-layer saving and the minimal-purge clamp still apply to it (Orca depth
+    // and wipe volume accounting, see save_on_last_wipe()).
+    return 0;
 }
 
 static WipeTower::ToolChangeResult merge_tcr(WipeTower::ToolChangeResult& first,
@@ -2441,7 +2468,7 @@ void WipeTower2::generate(std::vector<std::vector<WipeTower::ToolChangeResult>> 
         if (m_layer_info->depth < m_wipe_tower_depth - m_perimeter_width)
 			m_y_shift = (m_wipe_tower_depth-m_layer_info->depth-m_perimeter_width)/2.f;
 
-        int idx = first_toolchange_to_nonsoluble(layer.tool_changes);
+        int idx = first_toolchange_to_nonsoluble_nonsupport(layer.tool_changes);
         WipeTower::ToolChangeResult finish_layer_tcr;
 
         if (idx == -1) {
