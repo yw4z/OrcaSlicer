@@ -48,7 +48,6 @@ public:
     int        GetCornerRadius() const { return m_radius; }
     int        GetBorderWidth() const  { return m_border_width; }
     StateColor GetBorderColor() const  { return border_color; }
-    float      GetScale() const        { return m_scale; }
 
 private:
     void calc_label_size(int& w, int& h) const;

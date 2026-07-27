@@ -266,9 +266,4 @@ void CustomWidgetsPlugin::addLabeledStaticBoxProps(LabeledStaticBox* lsb,
             lsb->SetBorderColor(StateColor(c));
             return true;
         }});
-
-    props.push_back({"Scale", "LabeledStaticBox", PropertyType::ReadOnly,
-        wxString::Format("%.2f", lsb->GetScale()), true, {},
-        [lsb]() { return wxString::Format("%.2f", lsb->GetScale()); },
-        nullptr});
 }
