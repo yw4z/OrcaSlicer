@@ -5530,7 +5530,9 @@ LayerResult GCode::process_layer(
     //Calibration Layer-specific GCode
     switch (print.calib_mode()) {
         case CalibMode::Calib_PA_Tower: {
-            gcode += writer().set_pressure_advance(print.calib_params().start + static_cast<int>(print_z) * print.calib_params().step);
+            gcode += writer().set_pressure_advance(this->interpolate_value_across_layers(static_cast<float>(print.calib_params().start),
+                                                                                         static_cast<float>(print.calib_params().end),
+                                                                                         static_cast<float>(print.calib_params().step)));
             break;
         }
         case CalibMode::Calib_Temp_Tower: {
@@ -5538,7 +5540,12 @@ LayerResult GCode::process_layer(
             break;
         }
         case CalibMode::Calib_VFA_Tower: {
-            auto _speed = print.calib_params().start + std::floor(print_z / 5.0) * print.calib_params().step;
+            // Step the outer wall speed from start to end across the tower's layers. Plater::calib_VFA sizes the
+            // geometry so each speed step spans one visual block (a fixed number of layers), so the layer-based
+            // stepping stays aligned with the blocks regardless of nozzle size / layer height.
+            float _speed = this->interpolate_value_across_layers(static_cast<float>(print.calib_params().start),
+                                                                 static_cast<float>(print.calib_params().end),
+                                                                 static_cast<float>(print.calib_params().step));
             m_calib_config.set_key_value("outer_wall_speed", new ConfigOptionFloatsNullable({std::round(_speed)}));
             break;
         }
@@ -8343,29 +8350,22 @@ std::string GCode::extrusion_role_to_string_for_parser(const ExtrusionRole & rol
 }
 
 // Calculate the interpolated value for the current layer between start_value and end_value.
-// Step will create equal layers steps from first to last value.
+// Step > 0 splits the range into equal-width bands from first to last value (both inclusive).
 // Step = 0 means gradual interpolation finishing at last value.
 float GCode::interpolate_value_across_layers(float start_value, float end_value, float step) const
 {
     if (m_layer_index <= 1) {
         return start_value;
     }
-    else {
-        bool use_steps = step > 0.f;
-        if (use_steps) {
-            if (start_value > end_value) {
-                start_value += step;
-            } else {
-                end_value += step;
-            }
-        }
-        float ratio = m_layer_index / (m_layer_count - 1.f);
-        float value = start_value + ratio * (end_value - start_value);
-        if (use_steps) {
-            value = trunc(value / step) * step;
-        }
-        return value;
+    const float ratio = m_layer_index / (m_layer_count - 1.f);
+    if (step > 0.f) {
+        // Discrete equal-width bands. band is clamped to the last band so the result can't overshoot the range:
+        // at the top layer ratio * n_bands == n_bands, which would otherwise index one band past the end.
+        const int n_bands = std::lround(std::abs(end_value - start_value) / step) + 1;
+        const int band    = std::min(n_bands - 1, static_cast<int>(ratio * n_bands));
+        return start_value + (end_value >= start_value ? 1.f : -1.f) * band * step;
     }
+    return start_value + ratio * (end_value - start_value);
 }
 
 std::string encodeBase64(uint64_t value)
