@@ -4188,6 +4188,17 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             m_canvas->SetFocus();
         m_mouse.position = evt.Leaving() ? Vec2d(-1.0, -1.0) : pos.cast<double>();
         m_tooltip.set_in_imgui(true);
+
+        // keep tracking an active ImGui drag (e.g. IMSlider handle/label) even once the mouse leaves the canvas window bounds.
+        const bool imgui_dragging_active_item = GImGui != nullptr && ImGui::GetIO().MouseDown[0] && GImGui->ActiveId != 0;
+        if (m_canvas != nullptr && imgui_dragging_active_item && !m_canvas->HasCapture())
+            m_canvas->CaptureMouse();
+
+        // release capture as soon as the button goes up. Without this, on_mouse() may return below before ever reaching the LeftUp branch
+        // further down (since m_mouse.dragging is false for pure ImGui drags), leaving the canvas stuck with mouse capture.
+        if (evt.LeftUp() || evt.MiddleUp() || evt.RightUp())
+            mouse_up_cleanup();
+
         render();
 #ifdef SLIC3R_DEBUG_MOUSE_EVENTS
         printf((format_mouse_event_debug_message(evt) + " - Consumed by ImGUI\n").c_str());
