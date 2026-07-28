@@ -81,7 +81,7 @@ TEST_CASE("Plugin audit denies app config and token filenames anywhere", "[audit
     }
 }
 
-TEST_CASE("Plugin audit deny beats allowed roots and the Loading read exemption", "[audit]")
+TEST_CASE("Plugin audit deny beats allowed roots", "[audit]")
 {
     ScopedDataDir data_dir_guard("plugin-audit-deny");
     seed_denied_names();
@@ -91,8 +91,8 @@ TEST_CASE("Plugin audit deny beats allowed roots and the Loading read exemption"
     // config and the token would otherwise be reachable simply by living inside it.
     mgr.add_global_allowed_root(data_dir());
 
-    // Enter a plugin context. The deny must hold in Loading mode, which every scope runs in.
-    ScopedPluginAuditContext ctx("test_plugin", "", PluginAuditManager::AuditMode::Loading);
+    // Enter a plugin context. The deny must hold even inside a globally allowed root.
+    ScopedPluginAuditContext ctx("test_plugin", "");
 
     const fs::path conf  = fs::path(data_dir()) / (SLIC3R_APP_KEY ".conf");
     const fs::path token = fs::path(data_dir()) / secret_constants::USER_SECRET_FILENAME;
@@ -103,6 +103,13 @@ TEST_CASE("Plugin audit deny beats allowed roots and the Loading read exemption"
         CHECK(decision.allowed);
     }
 
+    SECTION("a file outside the allowed root is blocked for reads as well as writes")
+    {
+        AuditDecision decision = mgr.check_open((fs::path(data_dir()).parent_path() / "outside.txt").string(), "r");
+        CHECK_FALSE(decision.allowed);
+        CHECK(decision.reason == "outside allowed root");
+    }
+
     SECTION("writing the app config is blocked despite data_dir() being allowed")
     {
         AuditDecision decision = mgr.check_open(conf.string(), "w");
@@ -110,16 +117,14 @@ TEST_CASE("Plugin audit deny beats allowed roots and the Loading read exemption"
         CHECK(decision.reason == "denied filename");
     }
 
-    SECTION("reading the app config is blocked even though Loading exempts reads")
+    SECTION("reading the app config is blocked despite the allowed root")
     {
-        // Without the deny, a read in Loading mode short-circuits to allow. The deny sits above
-        // that exemption, so this must still be blocked.
         AuditDecision decision = mgr.check_open(conf.string(), "r");
         CHECK_FALSE(decision.allowed);
         CHECK(decision.reason == "denied filename");
     }
 
-    SECTION("reading the cloud refresh token is blocked in Loading mode")
+    SECTION("reading the cloud refresh token is blocked")
     {
         AuditDecision decision = mgr.check_open(token.string(), "r");
         CHECK_FALSE(decision.allowed);
@@ -150,7 +155,7 @@ TEST_CASE("Plugin audit deny beats a plugin's own scoped root", "[audit]")
     const fs::path plugin_dir = fs::path(data_dir()) / "plugins" / "test_plugin";
     fs::create_directories(plugin_dir);
 
-    ScopedPluginAuditContext ctx("test_plugin", "", PluginAuditManager::AuditMode::Loading);
+    ScopedPluginAuditContext ctx("test_plugin", "");
     mgr.add_scoped_allowed_root(plugin_dir);
 
     SECTION("the plugin's own non-denied file opens for read and write")

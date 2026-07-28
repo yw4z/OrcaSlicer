@@ -112,6 +112,18 @@ TEST_CASE("install-state sidecar is the source of truth for a cloud plugin's ins
     REQUIRE(read_install_state(plugin_dir, state));
     CHECK(state.installed_version == "1.2.0");
 
+    state.permissions.networking = {"api.example.com", "192.168.45.6"};
+    state.permissions.fs_read     = {"/path/to/read"};
+    state.permissions.fs_write    = {"/path/to/write"};
+    REQUIRE(write_install_state(plugin_dir, state));
+
+    // Permission data is persisted in the same sidecar as the installation metadata.
+    PluginInstallState persisted;
+    REQUIRE(read_install_state(plugin_dir, persisted));
+    CHECK(persisted.permissions.networking == state.permissions.networking);
+    CHECK(persisted.permissions.fs_read == state.permissions.fs_read);
+    CHECK(persisted.permissions.fs_write == state.permissions.fs_write);
+
     // Reading the sidecar back onto a freshly-scanned descriptor (whose header version is still
     // 1.0.0) must surface the cloud-installed 1.2.0. This is what lets update_cloud_metadata compare
     // the cloud's latest version against the installed version instead of the stale header, so an
