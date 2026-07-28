@@ -1110,6 +1110,7 @@ void MainFrame::update_edge_panels()
 void MainFrame::shutdown()
 {
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "MainFrame::shutdown enter";
+    m_plugin_pages.shutdown();
 #ifdef __WXGTK__
     // Edge panels are child windows — wxWidgets destroys them automatically.
     m_edge_bottom = nullptr;
@@ -1355,6 +1356,9 @@ void MainFrame::init_tabpanel() {
     m_calibration->SetBackgroundColour(*wxWHITE);
     m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration, _L("Calibration"), std::string("tab_calibration_active"), std::string("tab_calibration_active"), false);
 
+    // Plugin pages are appended after the built-in tabs; their ids are namespaced
+    // (plugin.<plugin_key>.<name>) so they can't collide with the built-in TAB_ID_* constants.
+    m_plugin_pages.initialize(m_tabpanel);
 
     if (m_plater) {
         // load initial config

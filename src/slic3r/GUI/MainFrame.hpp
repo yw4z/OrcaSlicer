@@ -35,6 +35,7 @@
 #include "PrinterWebView.hpp"
 #include "calib_dlg.hpp"
 #include "MultiMachinePage.hpp"
+#include "slic3r/plugin/host/PluginPages.hpp"
 
 // Stable identifiers for MainFrame::m_tabpanel's built-in pages. These are
 // names rather than positional indices so optional pages cannot shift them.
@@ -357,6 +358,7 @@ public:
     //SoftFever
     void show_device(bool bBBLPrinter);
     void fit_tab_labels(); // ORCA
+    PluginPages& plugin_pages() { return m_plugin_pages; }
 
     PA_Calibration_Dlg* m_pa_calib_dlg{ nullptr };
     FlowRateCalibrationDialog* m_flow_rate_calib_dlg{ nullptr };
@@ -382,6 +384,7 @@ public:
     CalibrationPanel*     m_calibration{ nullptr };
     WebViewPanel*         m_webview { nullptr };
     PrinterWebView*       m_printer_view{nullptr};
+    PluginPages           m_plugin_pages;
     wxLogWindow*          m_log_window { nullptr };
     // BBS
     //wxBookCtrlBase*       m_tabpanel { nullptr };

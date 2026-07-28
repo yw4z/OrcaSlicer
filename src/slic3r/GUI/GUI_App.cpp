@@ -2799,6 +2799,16 @@ void GUI_App::init_plugin_gui_wiring()
     plugin_mgr.subscribe_on_unload_callback([refresh_plugins_dialog](const std::string&) { refresh_plugins_dialog(); });
     plugin_mgr.subscribe_on_load_callback(NetworkAgentFactory::register_python_plugin);
     plugin_mgr.subscribe_on_unload_callback(NetworkAgentFactory::deregister_python_plugin);
+    plugin_mgr.subscribe_on_load_callback([](const std::string& plugin_key) {
+        if (wxTheApp == nullptr || wxGetApp().is_closing() || wxGetApp().mainframe == nullptr)
+            return;
+        wxGetApp().mainframe->plugin_pages().on_plugin_register(plugin_key);
+    });
+    plugin_mgr.subscribe_on_unload_callback([](const std::string& plugin_key) {
+        if (wxTheApp == nullptr || wxGetApp().is_closing() || wxGetApp().mainframe == nullptr)
+            return;
+        wxGetApp().mainframe->plugin_pages().on_plugin_deregister(plugin_key);
+    });
     plugin_mgr.subscribe_on_capability_load_callback(
         [refresh_plugins_dialog](const PluginCapabilityId& capability) {
             if (capability.type == PluginCapabilityType::PrinterConnection)
@@ -2811,11 +2821,15 @@ void GUI_App::init_plugin_gui_wiring()
                     if (Plater* plater = wxGetApp().plater())
                         plater->revalidate_current_plate_if_plugins_missing();
                 });
+            if (capability.type == PluginCapabilityType::Pages && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
+                wxGetApp().mainframe->plugin_pages().on_cap_register(capability);
         });
     plugin_mgr.subscribe_on_capability_unload_callback(
         [refresh_plugins_dialog](const PluginCapabilityId& capability) {
             if (capability.type == PluginCapabilityType::PrinterConnection)
                 NetworkAgentFactory::deregister_python_printer_agent(capability.plugin_key, capability.name);
+            if (capability.type == PluginCapabilityType::Pages && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
+                wxGetApp().mainframe->plugin_pages().on_cap_deregister(capability);
             refresh_plugins_dialog();
         });
 }

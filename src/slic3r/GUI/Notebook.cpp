@@ -120,11 +120,11 @@ void ButtonsListCtrl::Rescale()
 
 void ButtonsListCtrl::SetSelection(int sel)
 {
-    if (m_selection == sel)
+    if (m_selection == sel && sel >= 0 && sel < static_cast<int>(m_pageButtons.size()))
         return;
     // BBS: change button color
     wxColour selected_btn_bg("#009688");    // Gradient #009688
-    if (m_selection >= 0) {
+    if (m_selection >= 0 && m_selection < static_cast<int>(m_pageButtons.size())) {
         StateColor bg_color = StateColor(
         std::pair{wxColour(107, 107, 107), (int) StateColor::Hovered},
         std::pair{wxColour(59, 68, 70), (int) StateColor::Normal});
@@ -135,6 +135,13 @@ void ButtonsListCtrl::SetSelection(int sel)
         m_pageButtons[m_selection]->SetSelected(false);
         m_pageButtons[m_selection]->SetTextColor(text_color);
     }
+
+    if (sel < 0 || sel >= static_cast<int>(m_pageButtons.size())) {
+        m_selection = -1;
+        Refresh();
+        return;
+    }
+
     m_selection = sel;
 
     StateColor bg_color = StateColor(
@@ -192,6 +199,14 @@ bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /*
 
 void ButtonsListCtrl::RemovePage(size_t n)
 {
+    if (n >= m_pageButtons.size())
+        return;
+
+    if (m_selection == static_cast<int>(n))
+        m_selection = -1;
+    else if (m_selection > static_cast<int>(n))
+        --m_selection;
+
     Button* btn = m_pageButtons[n];
     m_pageButtons.erase(m_pageButtons.begin() + n);
     m_pageLabels.erase(m_pageLabels.begin() + n); // ORCA
