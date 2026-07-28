@@ -784,6 +784,23 @@ bool read_install_state(const boost::filesystem::path& plugin_dir, PluginInstall
             parsed.plugin_name = state["plugin_name"].get<std::string>();
         if (state.contains("cloud_uuid") && state["cloud_uuid"].is_string())
             parsed.cloud_uuid = state["cloud_uuid"].get<std::string>();
+
+        if (state.contains("permissions") && state["permissions"].is_object()) {
+            const auto& permissions = state["permissions"];
+            if (permissions.contains("networking") && permissions["networking"].is_array())
+                for (const auto& host : permissions["networking"])
+                    if (host.is_string())
+                        parsed.permissions.networking.push_back(host.get<std::string>());
+            if (permissions.contains("fs_read") && permissions["fs_read"].is_array())
+                for (const auto& path : permissions["fs_read"])
+                    if (path.is_string())
+                        parsed.permissions.fs_read.push_back(path.get<std::string>());
+            if (permissions.contains("fs_write") && permissions["fs_write"].is_array())
+                for (const auto& path : permissions["fs_write"])
+                    if (path.is_string())
+                        parsed.permissions.fs_write.push_back(path.get<std::string>());
+        }
+
         if (state.contains("enabled") && state["enabled"].is_boolean())
             parsed.enabled = state["enabled"].get<bool>();
 
@@ -819,6 +836,12 @@ bool write_install_state(const boost::filesystem::path& plugin_dir, const Plugin
     if (!state.cloud_uuid.empty())
         json["cloud_uuid"] = state.cloud_uuid;
 
+    json["permissions"] = {
+        {"networking", state.permissions.networking},
+        {"fs_read", state.permissions.fs_read},
+        {"fs_write", state.permissions.fs_write},
+    };
+
     nlohmann::json capabilities = nlohmann::json::array();
     for (const auto& [name, enabled] : state.capabilities)
         capabilities.push_back(nlohmann::json{{name, enabled}});
@@ -836,6 +859,9 @@ bool write_install_state(const boost::filesystem::path& plugin_dir, const Plugin
                          const std::vector<std::pair<std::string, bool>>& capabilities)
 {
     PluginInstallState state;
+    // Loading a plugin updates its lifecycle/capability state, but must retain permissions granted
+    // during register_capabilities() or by a previous runtime audit prompt.
+    read_install_state(plugin_dir, state);
     state.installed_from    = entry.is_cloud_plugin() ? "cloud" : "local";
     // Prefer the descriptor's recorded installed_version (the version fetched from the cloud
     // at install time, preserved across sidecar re-writes) so a stale manifest/PEP723 header
@@ -852,10 +878,16 @@ bool write_install_state(const boost::filesystem::path& plugin_dir, const Plugin
 bool write_install_state(const boost::filesystem::path& plugin_dir, const PluginDescriptor& entry)
 {
     // Install-time writer: the package is not loaded, so its capabilities are not known yet and the
-    // sidecar is (re)initialized to "auto-load, nothing disabled". PluginManager writes the real
-    // per-capability flags once the package is loaded, via the (dir, entry, enabled, capabilities)
-    // overload.
-    return write_install_state(plugin_dir, entry, true, {});
+    // sidecar is (re)initialized to "auto-load, nothing disabled". This intentionally resets
+    // permissions on a fresh install/reinstall. PluginManager writes the real per-capability flags
+    // while preserving permissions once the package is loaded, via the overload above.
+    PluginInstallState state;
+    state.installed_from    = entry.is_cloud_plugin() ? "cloud" : "local";
+    state.installed_version = !entry.installed_version.empty() ? entry.installed_version : entry.version;
+    state.plugin_name       = entry.name;
+    state.cloud_uuid        = entry.cloud_uuid();
+    state.enabled           = true;
+    return write_install_state(plugin_dir, state);
 }
 
 bool read_python_plugin_metadata(const boost::filesystem::path& py_path, PluginDescriptor& descriptor, std::string& error)

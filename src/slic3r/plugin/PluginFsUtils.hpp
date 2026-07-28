@@ -81,11 +81,21 @@ inline nlohmann::json py_to_json(const pybind11::handle& o)
     return py::str(o).cast<std::string>(); // fallback: str()
 }
 
+struct PluginPermissions
+{
+    std::vector<std::string> networking;
+    std::vector<std::string> fs_read;
+    std::vector<std::string> fs_write;
+};
+
 struct PluginInstallState {
     std::string installed_from;      // "local" | "cloud"
     std::string installed_version;
     std::string plugin_name;
     std::string cloud_uuid;          // empty for local
+
+    PluginPermissions permissions;
+
     bool enabled = true;
     std::vector<std::pair<std::string, bool>> capabilities; // name -> enabled, ordered
 };

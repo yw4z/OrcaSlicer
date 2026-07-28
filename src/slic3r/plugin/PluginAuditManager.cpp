@@ -7,8 +7,16 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/log/trivial.hpp>
 
+#include <algorithm>
 #include <cstdlib>
+#include <future>
+#include <slic3r/GUI/BindDialog.hpp>
+#include <slic3r/GUI/GUI_App.hpp>
+#include <slic3r/plugin/PluginFsUtils.hpp>
+#include <slic3r/plugin/PluginManager.hpp>
 #include <utility>
+#include <wx/event.h>
+#include <wx/msgdlg.h>
 
 namespace Slic3r {
 
@@ -78,24 +86,21 @@ bool is_inside_allowed_root(const boost::filesystem::path& candidate, const boos
 // ScopedPluginAuditContext
 // ---------------------------------------------------------------------------
 
-thread_local std::string PluginAuditManager::m_current_plugin_key           = "";
-thread_local std::string PluginAuditManager::m_current_capability_name     = "";
-thread_local PluginAuditManager::AuditMode PluginAuditManager::m_audit_mode = PluginAuditManager::AuditMode::Loading;
+thread_local std::string PluginAuditManager::m_current_plugin_key = "";
+thread_local std::string PluginAuditManager::m_current_capability_name = "";
 thread_local std::vector<boost::filesystem::path> PluginAuditManager::m_scoped_allowed_roots;
+thread_local bool PluginAuditManager::m_audit_denial_pending = false;
 thread_local bool PluginAuditManager::m_has_last_violation = false;
 thread_local AuditViolation PluginAuditManager::m_last_violation;
 
 ScopedPluginAuditContext::ScopedPluginAuditContext(const std::string& plugin_key,
-                                                   const std::string& capability_name,
-                                                   PluginAuditManager::AuditMode mode)
+                                                   const std::string& capability_name)
     : m_previous_id(PluginAuditManager::instance().current_plugin())
     , m_previous_capability(PluginAuditManager::instance().current_capability())
-    , m_previous_mode(PluginAuditManager::instance().audit_mode())
     , m_previous_scoped_roots(PluginAuditManager::m_scoped_allowed_roots)
 {
     PluginAuditManager::instance().set_current_plugin(plugin_key);
     PluginAuditManager::instance().set_current_capability(capability_name);
-    PluginAuditManager::instance().set_audit_mode(mode);
     PluginAuditManager::m_scoped_allowed_roots.clear();
 }
 
@@ -103,7 +108,6 @@ ScopedPluginAuditContext::~ScopedPluginAuditContext()
 {
     PluginAuditManager::instance().set_current_plugin(m_previous_id);
     PluginAuditManager::instance().set_current_capability(m_previous_capability);
-    PluginAuditManager::instance().set_audit_mode(m_previous_mode);
     PluginAuditManager::m_scoped_allowed_roots = std::move(m_previous_scoped_roots);
 }
 
@@ -199,14 +203,6 @@ bool PluginAuditManager::is_denied_filename(const boost::filesystem::path& candi
 }
 
 // ---------------------------------------------------------------------------
-// Audit mode
-// ---------------------------------------------------------------------------
-
-void PluginAuditManager::set_audit_mode(AuditMode mode) { m_audit_mode = mode; }
-
-PluginAuditManager::AuditMode PluginAuditManager::audit_mode() const { return m_audit_mode; }
-
-// ---------------------------------------------------------------------------
 // Policy checks
 // ---------------------------------------------------------------------------
 
@@ -219,20 +215,14 @@ AuditDecision PluginAuditManager::check_path_access(const boost::filesystem::pat
     if (plugin_key.empty())
         return {true, ""}; // not running inside a plugin context
 
-    // Denied filenames are checked first, above both the Loading exemption below and the
-    // allowed roots.  The app config and the cloud refresh token live directly inside
-    // data_dir(), which is a global allowed root, and no scope ever sets Enforcing — so a
-    // deny placed any lower would be unreachable for reads.
+    // Denied filenames are checked before the allowed roots.  The app config and the cloud
+    // refresh token live directly inside data_dir(), which is a global allowed root, so a deny
+    // placed any lower would be unreachable.
     if (is_denied_filename(path)) {
         BOOST_LOG_TRIVIAL(warning) << "[AUDIT] block path=" << path.string() << " is_write=" << is_write
                                    << " plugin=" << plugin_key << " reason=denied filename";
         return {false, "denied filename"};
     }
-
-    // During import/loading, only block writes.  Python must be able to read
-    // stdlib modules and the plugin file itself during import.
-    if (m_audit_mode == AuditMode::Loading && !is_write)
-        return {true, ""};
 
     namespace fs = boost::filesystem;
     fs::path candidate = path;
@@ -261,7 +251,6 @@ AuditDecision PluginAuditManager::check_path_access(const boost::filesystem::pat
     }
 
     BOOST_LOG_TRIVIAL(warning) << "[AUDIT] block path=" << candidate.string() << " is_write=" << is_write
-                               << " audit_mode=" << (m_audit_mode == AuditMode::Loading ? "Loading" : "Enforcing")
                                << " plugin=" << plugin_key;
     return {false, "outside allowed root"};
 }
@@ -269,18 +258,98 @@ AuditDecision PluginAuditManager::check_path_access(const boost::filesystem::pat
 AuditDecision PluginAuditManager::check_open(const std::string& path_str, const std::string& mode)
 {
     const bool is_write = mode.find('w') != std::string::npos || mode.find('a') != std::string::npos ||
-                          mode.find('+') != std::string::npos;
+                          mode.find('+') != std::string::npos || mode.find('x') != std::string::npos;
     return check_path_access(boost::filesystem::path(path_str), is_write);
+}
+
+bool PluginAuditManager::request_filesystem_read_permissions(const std::string&              plugin_key,
+                                                              const std::vector<std::string>& paths)
+{
+    if (plugin_key.empty() || paths.empty())
+        return true;
+
+    PluginDescriptor descriptor;
+    if (!PluginManager::instance().try_get_plugin_descriptor(plugin_key, descriptor) || descriptor.plugin_root.empty())
+        return false;
+
+    PluginInstallState state;
+    read_install_state(boost::filesystem::path(descriptor.plugin_root), state);
+
+    std::vector<std::string> missing;
+    for (const std::string& path : paths) {
+        if (std::find(state.permissions.fs_read.begin(), state.permissions.fs_read.end(), path) == state.permissions.fs_read.end())
+            missing.push_back(path);
+    }
+    if (missing.empty())
+        return true;
+
+    if (wxTheApp == nullptr || GUI::wxGetApp().is_closing())
+        return false;
+
+    auto show_dialog = [&descriptor, &missing]() {
+        wxString requested_paths;
+        for (const std::string& path : missing)
+            requested_paths += wxString::FromUTF8(path.c_str()) + "\n";
+
+        wxMessageDialog dialog(
+            nullptr,
+            wxString::Format("Plugin \"%s\" requests filesystem read access to:\n%s",
+                             wxString::FromUTF8(descriptor.name.c_str()), requested_paths),
+            "Plugin permissions",
+            wxYES_NO | wxICON_WARNING);
+        return dialog.ShowModal() == wxID_YES;
+    };
+
+    bool granted = false;
+    if (wxIsMainThread()) {
+        granted = show_dialog();
+    } else {
+        auto result = std::make_shared<std::promise<bool>>();
+        auto future = result->get_future();
+        GUI::wxGetApp().CallAfter([result, descriptor_name = descriptor.name, missing]() {
+            wxString requested_paths;
+            for (const std::string& path : missing)
+                requested_paths += wxString::FromUTF8(path.c_str()) + "\n";
+
+            wxMessageDialog dialog(
+                nullptr,
+                wxString::Format("Plugin \"%s\" requests filesystem read access to:\n%s",
+                                 wxString::FromUTF8(descriptor_name.c_str()), requested_paths),
+                "Plugin permissions",
+                wxYES_NO | wxICON_WARNING);
+            result->set_value(dialog.ShowModal() == wxID_YES);
+        });
+        granted = future.get();
+    }
+
+    if (!granted)
+        return false;
+
+    if (state.plugin_name.empty()) {
+        state.installed_from    = descriptor.is_cloud_plugin() ? "cloud" : "local";
+        state.installed_version = !descriptor.installed_version.empty() ? descriptor.installed_version : descriptor.version;
+        state.plugin_name       = descriptor.name;
+        state.cloud_uuid        = descriptor.cloud_uuid();
+        state.enabled            = true;
+    }
+
+    state.permissions.fs_read.insert(state.permissions.fs_read.end(), missing.begin(), missing.end());
+    return write_install_state(boost::filesystem::path(descriptor.plugin_root), state);
 }
 
 void PluginAuditManager::report_violation(const AuditViolation& violation)
 {
     m_last_violation     = violation;
     m_has_last_violation = true;
+    m_audit_denial_pending = true;
 
     BOOST_LOG_TRIVIAL(warning) << "[AUDIT BLOCKED] plugin=" << violation.plugin_key << " event=" << violation.event_name
                                << " path=" << violation.path.string() << " reason=" << violation.reason;
 }
+
+bool PluginAuditManager::audit_denial_pending() const { return m_audit_denial_pending; }
+
+void PluginAuditManager::clear_audit_denial() { m_audit_denial_pending = false; }
 
 void PluginAuditManager::clear_last_violation()
 {
@@ -301,27 +370,106 @@ bool PluginAuditManager::last_violation(AuditViolation& violation) const
 // The C-level audit hook
 // ---------------------------------------------------------------------------
 
-namespace {
+namespace PluginAuditDetail {
 
-// Records a blocked event and raises PermissionError in the calling interpreter.  Returns -1
-// so an event branch can `return report_denied(...)` directly.
+PyObject* tuple_item(PyObject* args, Py_ssize_t index)
+{
+    if (!args || !PyTuple_Check(args) || index < 0 || index >= PyTuple_GET_SIZE(args))
+        return nullptr;
+    return PyTuple_GET_ITEM(args, index);
+}
+
+std::string python_path(PyObject* object)
+{
+    if (!object)
+        return {};
+
+    PyObject* path_object = PyOS_FSPath(object);
+    if (!path_object) {
+        PyErr_Clear();
+        return {};
+    }
+
+    const char* path = PyUnicode_Check(path_object) ? PyUnicode_AsUTF8(path_object) : PyBytes_AsString(path_object);
+    std::string result = path ? path : "";
+    Py_DECREF(path_object);
+    if (!path)
+        PyErr_Clear();
+    return result;
+}
+
+void add_filesystem_path(std::vector<boost::filesystem::path>& paths, PyObject* object)
+{
+    const std::string path = python_path(object);
+    if (!path.empty())
+        paths.emplace_back(path);
+}
+
+std::vector<boost::filesystem::path> filesystem_paths(const std::string& event_name, PyObject* args)
+{
+    std::vector<boost::filesystem::path> paths;
+
+    if (event_name == "open") {
+        add_filesystem_path(paths, tuple_item(args, 0));
+    } else if (event_name == "os.rename") {
+        add_filesystem_path(paths, tuple_item(args, 0));
+        add_filesystem_path(paths, tuple_item(args, 1));
+    } else if (event_name == "os.remove") {
+        add_filesystem_path(paths, tuple_item(args, 0));
+    }
+
+    return paths;
+}
+
+bool has_filesystem_permission(const PluginInstallState& state, const boost::filesystem::path& path)
+{
+    return std::find(state.permissions.fs_read.begin(), state.permissions.fs_read.end(), path.string()) !=
+           state.permissions.fs_read.end();
+}
+
+bool persist_filesystem_permission(const std::string& plugin_key,
+                                   PluginInstallState& state,
+                                   const boost::filesystem::path& path)
+{
+    PluginDescriptor descriptor;
+    if (!PluginManager::instance().try_get_plugin_descriptor(plugin_key, descriptor) || descriptor.plugin_root.empty())
+        return false;
+
+    // A sandbox plugin may not have a sidecar yet.  Seed the small amount of install metadata
+    // needed by the writer so clicking Yes still creates the JSON file.
+    if (state.plugin_name.empty()) {
+        state.installed_from    = descriptor.is_cloud_plugin() ? "cloud" : "local";
+        state.installed_version = !descriptor.installed_version.empty() ? descriptor.installed_version : descriptor.version;
+        state.plugin_name       = descriptor.name;
+        state.cloud_uuid        = descriptor.cloud_uuid();
+        state.enabled            = true;
+    }
+
+    const std::string path_string = path.string();
+    if (std::find(state.permissions.fs_read.begin(), state.permissions.fs_read.end(), path_string) ==
+        state.permissions.fs_read.end())
+        state.permissions.fs_read.push_back(path_string);
+    return write_install_state(boost::filesystem::path(descriptor.plugin_root), state);
+}
+
+// Records a blocked event and raises PermissionError in the calling interpreter.
 int report_denied(PluginAuditManager&            mgr,
                   const std::string&             event_name,
-                  const boost::filesystem::path& path,
+                  const boost::filesystem::path& target,
                   const AuditDecision&           decision)
 {
     AuditViolation violation;
     violation.plugin_key = mgr.current_plugin();
     violation.event_name = event_name;
-    violation.path       = path;
+    violation.path       = target;
     violation.reason     = decision.reason;
     mgr.report_violation(violation);
 
-    PyErr_SetString(PyExc_PermissionError, "Plugin attempted to access a blocked file path");
+    PyErr_SetString(PyExc_PermissionError, "Plugin attempted an audited operation without permission");
     return -1;
 }
 
-} // namespace
+} // namespace PluginAuditDetail
 
 int PluginAuditManager::audit_hook(const char* event, PyObject* args, void* user_data)
 {
@@ -336,73 +484,53 @@ int PluginAuditManager::audit_hook(const char* event, PyObject* args, void* user
         BOOST_LOG_TRIVIAL(debug) << "[AUDIT EVENT] " << event_name;
     }
 
-    // extensive list of audit events can be found at https://docs.python.org/3/library/audit_events.html
-
-    // --- open event ---
-    if (event_name == "open") {
-        const char* path_cstr = nullptr;
-        const char* mode_cstr = nullptr;
-        int flags             = 0;
-
-        // open(path, mode, flags) — path may be str, bytes, or int fd
-        if (!PyArg_ParseTuple(args, "s|si", &path_cstr, &mode_cstr, &flags)) {
-            PyErr_Clear(); // couldn't parse; allow
-            return 0;
-        }
-
-        std::string path_str(path_cstr ? path_cstr : "");
-        std::string mode_str(mode_cstr ? mode_cstr : "r");
-
-        AuditDecision decision = mgr->check_open(path_str, mode_str);
-        if (!decision.allowed)
-            return report_denied(*mgr, event_name, path_str, decision);
+    if (mgr->current_plugin().empty())
         return 0;
+
+    PluginInstallState state;
+    const bool have_install_state = PluginManager::instance().get_install_state(mgr->current_plugin(), state);
+    if (!have_install_state) {
+        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << " Failed to get install state for " << mgr->current_plugin();
     }
 
-    // --- os.rename event (raised by os.rename and os.replace) ---
-    if (event_name == "os.rename") {
-        const char* src_cstr   = nullptr;
-        const char* dst_cstr   = nullptr;
-        PyObject*   src_dir_fd = nullptr;
-        PyObject*   dst_dir_fd = nullptr;
+    const std::string plugin_name = state.plugin_name.empty() ? mgr->current_plugin() : state.plugin_name;
+    const std::vector<boost::filesystem::path> paths = PluginAuditDetail::filesystem_paths(event_name, args);
+    for (const auto& path : paths) {
+        if (PluginAuditDetail::has_filesystem_permission(state, path))
+            continue;
 
-        // os.rename(src, dst, src_dir_fd, dst_dir_fd) — paths may be str, bytes, or int fd.
-        // The dir_fd arguments are unused, but must be accepted for the tuple to parse.
-        if (!PyArg_ParseTuple(args, "ss|OO", &src_cstr, &dst_cstr, &src_dir_fd, &dst_dir_fd)) {
-            PyErr_Clear(); // couldn't parse; allow
-            return 0;
-        }
+        wxMessageDialog dialog(
+            nullptr,
+            wxString::Format(_L("Plugin \"%s\" is requesting filesystem access to:\n%s"),
+                             wxString::FromUTF8(plugin_name.c_str()),
+                             wxString::FromUTF8(path.string().c_str())),
+            _L("Plugin permission request"),
+            wxYES_NO | wxICON_WARNING);
+        if (dialog.ShowModal() == wxID_YES &&
+            PluginAuditDetail::persist_filesystem_permission(mgr->current_plugin(), state, path))
+            continue;
 
-        // A rename writes at both ends, so either end being denied blocks the call.
-        for (const char* path_cstr : {src_cstr, dst_cstr}) {
-            std::string   path_str(path_cstr ? path_cstr : "");
-            AuditDecision decision = mgr->check_path_access(path_str, /* is_write */ true);
-            if (!decision.allowed)
-                return report_denied(*mgr, event_name, path_str, decision);
-        }
-        return 0;
+        return PluginAuditDetail::report_denied(
+            *mgr, event_name, path, {false, "filesystem permission required"});
     }
 
-    // --- os.remove event (raised by os.remove and os.unlink) ---
-    if (event_name == "os.remove") {
-        const char* path_cstr = nullptr;
-        PyObject*   dir_fd    = nullptr;
-
-        // os.remove(path, dir_fd) — path may be str, bytes, or int fd
-        if (!PyArg_ParseTuple(args, "s|O", &path_cstr, &dir_fd)) {
-            PyErr_Clear(); // couldn't parse; allow
-            return 0;
-        }
-
-        std::string   path_str(path_cstr ? path_cstr : "");
-        AuditDecision decision = mgr->check_path_access(path_str, /* is_write */ true);
-        if (!decision.allowed)
-            return report_denied(*mgr, event_name, path_str, decision);
+    if (!paths.empty())
         return 0;
-    }
 
-    // Unknown event — allow by default
-    return 0;
+    wxMessageDialog dialog(
+        nullptr,
+        wxString::Format(
+            _L("Plugin \"%s\" is requesting permission for the Python audit event \"%s\".\n\n"
+                "This operation does not expose a filesystem path to the audit hook."),
+            wxString::FromUTF8(plugin_name.c_str()),
+            wxString::FromUTF8(event_name.c_str())),
+        _L("Plugin permission request"),
+        wxYES_NO | wxICON_WARNING);
+    if (dialog.ShowModal() == wxID_YES)
+        return 0;
+
+    return PluginAuditDetail::report_denied(
+        *mgr, event_name, boost::filesystem::path(), {false, "audit permission required"});
 }
 
 void PluginAuditManager::install_hook()
@@ -413,10 +541,10 @@ void PluginAuditManager::install_hook()
     }
     BOOST_LOG_TRIVIAL(info) << "[AUDIT] CPython audit hook installed successfully";
 
-    // data_dir() is the only globally-allowed root during enforced plugin execution.
+    // data_dir() is the only globally-allowed root during plugin execution.
     // The executable directory and resources directory are intentionally NOT allowed
-    // here: plugins must not write outside data_dir() (G-code plugins additionally get
-    // the temp G-code folder via a scoped root). Reads remain permissive in Loading mode.
+    // here: plugins must not access outside data_dir() (G-code plugins additionally get
+    // the temp G-code folder via a scoped root).
     add_global_allowed_root(data_dir());
 
     // The user's app config and cloud credentials live directly inside data_dir(), so the
