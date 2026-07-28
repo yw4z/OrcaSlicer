@@ -2,6 +2,7 @@
 #define slic3r_TextureDisplacement_hpp_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -493,6 +494,25 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
 // and forwards to the overload above.
 indexed_triangle_set build_texture_displacement(const ModelVolume &volume);
 
+// Returns a scalar height (in mm - a displacement magnitude) at a surface point, given that point's
+// position and interpolated normal. This is what feature-adaptive subdivision samples to decide
+// where the displaced surface has *curvature* worth spending triangles on. Called serially from the
+// subdivider, so it only needs to be safe on the calling thread.
+using HeightFieldSampler = std::function<float(const Vec3f &pos, const Vec3f &normal)>;
+
+// Builds a sampler of the *combined* (all-layers) displacement height in mm at an arbitrary surface
+// point, for feature-adaptive subdivision. It mirrors build_texture_displacement()'s per-layer setup
+// (decode, patch centroid, cylinder axis, blend order, "lowest layer folds additively") but evaluates
+// per point instead of per vertex. Two deliberate simplifications, both erring toward *more* detail
+// (safe - over-refinement is never a crack): every sampleable layer is evaluated at every point (no
+// per-point paint-mask test, so a point sees all layers' textures, not only the ones painted there),
+// and edge-smoothing's boundary falloff is ignored. LSCM layers have no per-point UV and are skipped.
+// Returns a null sampler (bool false) when no layer can be sampled - the caller then falls back to
+// uniform adaptive subdivision.
+HeightFieldSampler make_combined_displacement_sampler(const indexed_triangle_set                  &base_mesh,
+                                                      const std::vector<TextureDisplacementLayer> &layers,
+                                                      const TextureDisplacementFacetsData         &facets_data);
+
 // Uniformly subdivides `mesh` (every triangle recursively split into 4 via edge midpoints, using a
 // shared cache so a midpoint is computed once and reused by both triangles on either side of that
 // edge) until every edge is at or below max_edge_length_mm, or max_iterations passes have run,
@@ -513,32 +533,57 @@ indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, fl
 
 // Adaptive subdivision by Rivara longest-edge bisection, restricted to a region.
 //
-// Unlike subdivide_mesh_uniform() this only densifies where asked - a triangle is refined when its
-// source is flagged in `refine_region` and its longest edge exceeds target_edge_length_mm - so a
-// small painted patch on a large model does not quadruple the whole model's triangle count. It is
-// nonetheless *conformal*: it never leaves a T-junction/crack at the boundary between the refined
-// and coarse regions (the trap that made subdivide_mesh_uniform() deliberately whole-mesh).
+// Unlike subdivide_mesh_uniform() this only densifies where asked - `refine_region` (indexed by
+// input-triangle index; empty or all-false => no-op) flags the triangles allowed to drive refinement
+// - so a small painted patch on a large model does not quadruple the whole model's triangle count.
+// It is nonetheless *conformal*: it never leaves a T-junction/crack at the boundary between the
+// refined and coarse regions (the trap that made subdivide_mesh_uniform() deliberately whole-mesh).
 //
-// How it stays crack-free: each pass bisects only "terminal" edges - an edge that is the longest
-// edge of *every* triangle sharing it. Bisecting such an edge splits both its triangles 1->2 along
-// the same new midpoint at once, so no hanging node is ever created. Because only a triangle's own
-// longest edge can be terminal, each triangle is split by at most one terminal edge per pass. When
-// a triangle that needs refining has a longest edge that is *not* yet terminal, the neighbour across
-// it has a strictly longer edge and is refined first; that propagation is what grades the mesh down
-// into the region and closes what would otherwise be cracks (Rivara, "New longest-edge algorithms").
-// The transition triangles it pulls in just outside the region are a thin, bounded band.
+// A triangle wants refining while it is over at least one of these, whichever applies:
+//   - length:  its longest edge exceeds `target_edge_length_mm` (a *baseline* - it applies in feature
+//              mode too, and is what stops a coarse triangle from being declared flat merely because
+//              the four points the chord test samples happened to land at similar heights on a
+//              high-frequency texture: the classic aliasing stall);
+//   - feature: (only when `sampler` is set and `chord_tolerance_mm > 0`) the *displaced* surface
+//              departs from the flat triangle by more than `chord_tolerance_mm`, measured as the max
+//              over the three edge midpoints AND the centroid of |sampled displacement - the flat
+//              triangle's barycentric interpolation|. Sampling the interior, not just edge midpoints,
+//              is what catches a bump that sits inside a triangle. This is a *curvature* test: it is
+//              exactly zero on a plane or a linear ramp (barycentric interpolation is exact there, so
+//              those stay coarse - the case a gradient criterion would over-refine) and large on a
+//              bump/ridge/noise.
+// `min_edge_length_mm` is a hard floor under both: no triangle whose longest edge is already at or
+// below it is ever refined, which is also what guarantees termination across a sharp texture step
+// (where the chord error never falls below the tolerance no matter how fine the mesh gets).
 //
-// `refine_region` is indexed by input-triangle index (empty or all-false => no-op). If `out_source`
-// is non-null it is resized to the output triangle count and out_source[i] receives the input
-// triangle that output triangle i descends from (children inherit their parent's index), so a caller
-// can carry per-triangle data - e.g. a paint mask - across the topology change without a geometric
-// remap. `max_iterations` bounds the worst case; ties in "longest edge" are broken by a mesh-vertex
-// key so both triangles on an edge always agree, at the cost of occasionally stopping one pass early
-// on a pathologically tie-heavy mesh (a quality shortfall, never a crack).
+// Refinement runs to completion, not for a fixed number of passes: triangles are taken worst-first
+// from a max-heap keyed by how many times over its criteria each one is, so a run that hits the
+// `max_triangles` budget has spent it on the largest errors rather than wherever a sweep happened to
+// reach. The budget is the only bound on a pathological height field; stopping on it leaves a
+// perfectly valid, still-conformal mesh.
+//
+// How it stays crack-free: only "terminal" edges are ever bisected - an edge that is the longest edge
+// of *both* triangles sharing it (or a boundary edge that is the longest of its one triangle).
+// Bisecting such an edge splits both its triangles 1->2 around the same new midpoint, so a hanging
+// node is never created. The edge to split for a triangle that wants refining is found by Rivara
+// longest-edge propagation (LEPP): walk to the longest edge of ever-longer-edged neighbours until a
+// terminal edge is reached, and bisect that. Edge length strictly increases along the path (ties
+// broken by a mesh-vertex key, which both sides of an edge compute identically), so the walk cannot
+// cycle, and Rivara's result is that repeating it refines the original triangle in a bounded number
+// of bisections - closing the propagation gap a plain per-edge test leaves behind. The transition
+// triangles this pulls in just outside the region are the graded band that makes the size change
+// conformal; they are a bounded cost paid once, not a per-pass tax.
+//
+// If `out_source` is non-null it is resized to the output triangle count and out_source[i] receives
+// the input triangle that output triangle i descends from (children inherit their parent's index), so
+// a caller can carry per-triangle data - e.g. a paint mask - across the topology change without a
+// geometric remap.
 indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                              const std::vector<uint8_t> &refine_region,
-                                             float target_edge_length_mm, int max_iterations = 12,
-                                             std::vector<int> *out_source = nullptr);
+                                             float target_edge_length_mm, int max_triangles = 1000000,
+                                             std::vector<int> *out_source = nullptr,
+                                             const HeightFieldSampler &sampler = nullptr,
+                                             float chord_tolerance_mm = 0.f, float min_edge_length_mm = 0.f);
 
 } // namespace Slic3r
 

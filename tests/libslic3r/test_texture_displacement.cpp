@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include <catch2/catch_all.hpp>
 
+#include <cmath>
 #include <fstream>
 #include <boost/filesystem.hpp>
 
@@ -270,10 +271,19 @@ TEST_CASE("TextureDisplacement: adaptive subdivision is conformal and region-res
     {
         std::vector<uint8_t> region(cube.indices.size(), 1);
         std::vector<int>     source;
-        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 3.f, 12, &source);
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 3.f, 100000, &source);
 
         CHECK(out.indices.size() > cube.indices.size()); // it actually refined
         CHECK(every_edge_used_twice(out));               // ... without opening a single crack
+
+        // Refinement runs to completion, not for a fixed number of passes: with the whole mesh in the
+        // region and budget to spare, *every* edge really does end up at or below the target. This is
+        // the regression that matters - an earlier version quietly stopped a long way short, having
+        // spent its pass budget grading the coarse surroundings.
+        float worst = 0.f;
+        for (const auto &t : out.indices)
+            worst = std::max(worst, longest_edge(out, t));
+        CHECK(worst <= 3.f);
 
         REQUIRE(source.size() == out.indices.size());
         for (int s : source)
@@ -296,28 +306,133 @@ TEST_CASE("TextureDisplacement: adaptive subdivision is conformal and region-res
         REQUIRE(region_count > 0);
 
         std::vector<int>           source;
-        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 2.f, 12, &source);
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 2.f, 100000, &source);
 
         CHECK(out.indices.size() > cube.indices.size());
         CHECK(every_edge_used_twice(out)); // the refined/coarse seam has no T-junction
 
-        // The region's own triangles came down in size; count how big the largest region-sourced
-        // output triangle is versus the largest region-sourced input triangle.
+        // Inside the region the target is actually met - refinement is not cut short by a pass budget.
+        // Outside it, only the graded transition band conformality requires is touched, so plenty of
+        // the unpainted mesh is still coarser than the target: the region was not a suggestion.
         float max_in = 0.f, max_out = 0.f;
-        for (size_t i = 0; i < cube.indices.size(); ++i)
-            if (region[i])
-                max_in = std::max(max_in, longest_edge(cube, cube.indices[i]));
-        for (size_t i = 0; i < out.indices.size(); ++i)
-            if (region[source[i]])
-                max_out = std::max(max_out, longest_edge(out, out.indices[i]));
-        CHECK(max_out < max_in); // refinement genuinely happened inside the region
+        for (size_t i = 0; i < out.indices.size(); ++i) {
+            float &acc = region[source[i]] ? max_in : max_out;
+            acc        = std::max(acc, longest_edge(out, out.indices[i]));
+        }
+        CHECK(max_in <= 2.f);
+        CHECK(max_out > 2.f);
+
+        std::vector<uint8_t>       all(cube.indices.size(), 1);
+        const indexed_triangle_set whole = subdivide_mesh_adaptive(cube, all, 2.f, 100000);
+        CHECK(out.indices.size() < whole.indices.size()); // ... and it cost less than doing the lot
+    }
+
+    SECTION("the triangle budget caps the result and still leaves a conformal mesh")
+    {
+        std::vector<uint8_t>       region(cube.indices.size(), 1);
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 0.05f, /*max_triangles*/ 500);
+        CHECK(out.indices.size() <= 500);
+        CHECK(out.indices.size() > cube.indices.size()); // it spent the budget rather than giving up
+        CHECK(every_edge_used_twice(out));               // stopping on the budget is not a crack
     }
 
     SECTION("an empty region is a no-op")
     {
         std::vector<uint8_t>       region(cube.indices.size(), 0);
-        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 1.f, 12, nullptr);
+        const indexed_triangle_set out = subdivide_mesh_adaptive(cube, region, 1.f, 100000, nullptr);
         CHECK(out.indices.size() == cube.indices.size());
         CHECK(out.vertices.size() == cube.vertices.size());
+    }
+}
+
+TEST_CASE("TextureDisplacement: feature-adaptive subdivision follows curvature, not slope", "[TextureDisplacement]")
+{
+    // A flat sheet, tessellated into a regular grid to give the bisector something to work with.
+    indexed_triangle_set plane;
+    plane.vertices = { { 0.f, 0.f, 0.f }, { 1.f, 0.f, 0.f }, { 1.f, 1.f, 0.f }, { 0.f, 1.f, 0.f } };
+    plane.indices  = { { 0, 1, 2 }, { 0, 2, 3 } };
+    const indexed_triangle_set grid = subdivide_mesh_uniform(plane, 0.15f, 5); // ~uniform grid of small triangles
+    REQUIRE(grid.indices.size() > 32);
+
+    const std::vector<uint8_t> region(grid.indices.size(), 1);
+
+    auto longest_edge = [](const indexed_triangle_set &its, const stl_triangle_vertex_indices &t) {
+        float m = 0.f;
+        for (int e = 0; e < 3; ++e)
+            m = std::max(m, (its.vertices[t[e]] - its.vertices[t[(e + 1) % 3]]).norm());
+        return m;
+    };
+    auto centroid_xy = [](const indexed_triangle_set &its, const stl_triangle_vertex_indices &t) {
+        return Vec2f((its.vertices[t[0]].x() + its.vertices[t[1]].x() + its.vertices[t[2]].x()) / 3.f,
+                     (its.vertices[t[0]].y() + its.vertices[t[1]].y() + its.vertices[t[2]].y()) / 3.f);
+    };
+
+    SECTION("a sharp bump refines densely at its center and leaves flat corners coarse")
+    {
+        // A tight Gaussian bump at the sheet's center: strong curvature near (0.5, 0.5), flat far away.
+        HeightFieldSampler bump = [](const Vec3f &p, const Vec3f &) {
+            const float r2 = (p.x() - 0.5f) * (p.x() - 0.5f) + (p.y() - 0.5f) * (p.y() - 0.5f);
+            return 1.0f * std::exp(-r2 / 0.02f);
+        };
+
+        // Baseline max edge 0.3 is coarser than the grid's own edges, so the baseline adds nothing
+        // here - this isolates the *curvature* contribution (the grid already meets the baseline).
+        std::vector<int>           source;
+        const indexed_triangle_set out =
+            subdivide_mesh_adaptive(grid, region, /*max edge*/ 0.3f, 200000, &source, bump, /*tol*/ 0.02f,
+                                    /*min_edge*/ 0.01f);
+
+        CHECK(out.indices.size() > grid.indices.size()); // the bump forced real refinement
+
+        // The largest triangle near the bump's center must be much smaller than the largest in a flat
+        // corner - i.e. triangles went where the curvature is, not spread evenly.
+        float near_max = 0.f, far_max = 0.f;
+        for (const auto &t : out.indices) {
+            const Vec2f c   = centroid_xy(out, t);
+            const float r   = (c - Vec2f(0.5f, 0.5f)).norm();
+            const float len = longest_edge(out, t);
+            if (r < 0.1f)
+                near_max = std::max(near_max, len);
+            else if (r > 0.45f)
+                far_max = std::max(far_max, len);
+        }
+        REQUIRE(near_max > 0.f);
+        REQUIRE(far_max > 0.f);
+        CHECK(near_max < far_max); // finer at the hill than on the flats
+    }
+
+    SECTION("a linear ramp has zero curvature and is left untouched")
+    {
+        // Height varies, but linearly - a flat triangle represents it exactly, so the chord error is
+        // zero everywhere and nothing should be split. This is the case a gradient-based criterion
+        // would wrongly over-refine.
+        HeightFieldSampler ramp = [](const Vec3f &p, const Vec3f &) { return 2.0f * p.x(); };
+
+        // Same coarse baseline (0.3) that the grid already meets, so any split would be curvature-
+        // driven - and a ramp has none.
+        const indexed_triangle_set out =
+            subdivide_mesh_adaptive(grid, region, /*max edge*/ 0.3f, 200000, nullptr, ramp, /*tol*/ 0.02f,
+                                    /*min_edge*/ 0.01f);
+
+        CHECK(out.indices.size() == grid.indices.size()); // not one extra triangle
+    }
+
+    SECTION("the max-edge baseline still applies in feature mode")
+    {
+        // A height field that is flat everywhere the four sample points of a coarse triangle happen to
+        // land, but not in between - the aliasing case where a chord test alone reports no error and
+        // refinement stalls before it ever starts. The baseline is what stops that: it guarantees a
+        // sampling density fine enough for the curvature test to see the texture at all.
+        HeightFieldSampler flat = [](const Vec3f &, const Vec3f &) { return 0.f; };
+
+        const indexed_triangle_set out =
+            subdivide_mesh_adaptive(grid, region, /*max edge*/ 0.03f, 200000, nullptr, flat, /*tol*/ 0.02f,
+                                    /*min_edge*/ 0.001f);
+
+        CHECK(out.indices.size() > grid.indices.size());
+        float worst = 0.f;
+        for (const auto &t : out.indices)
+            worst = std::max(worst, longest_edge(out, t));
+        CHECK(worst <= 0.03f);
     }
 }

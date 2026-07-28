@@ -302,7 +302,7 @@ private:
     // committed, i.e. the most expensive thing the panel can do, on every Apply.
     int     m_subdivide_count         = 1;
     bool    m_subdivide_editing       = false;
-    int     m_subdivide_preview_count = -1; // the count m_subdivide_preview_glmodel was built for
+    int     m_subdivide_preview_tris  = -1; // triangle count of the previewed result, shown in the panel
     GLModel m_subdivide_preview_glmodel;
     void    rebuild_subdivide_preview();
     void    render_subdivide_preview();
@@ -314,6 +314,20 @@ private:
     // are painted), so the region survives the subdivision instead of being dropped.
     bool  m_subdivide_adaptive   = false;
     float m_subdivide_target_mm  = 0.f; // 0 = not yet seeded; filled from the mesh on first show
+    // Feature-adaptive sub-mode: put the triangles where the *displaced surface* bends (texture
+    // curvature) rather than spreading them evenly. `detail_mm` is the chord-error tolerance ("Detail"
+    // slider: how far the true surface may sit off the flat triangle before it is split); the target
+    // above stays in play as a coarse baseline ("Max edge"), and `min_edge_mm` is the hard floor
+    // ("Min edge"). See subdivide_mesh_adaptive().
+    bool  m_subdivide_feature     = false;
+    float m_subdivide_detail_mm   = 0.05f;
+    float m_subdivide_min_edge_mm = 0.1f;
+    // How many thousand triangles refinement may *add* (the mesh's own count is added on before it is
+    // passed as subdivide_mesh_adaptive()'s absolute cap, so the control still means something on a
+    // dense model). Refinement is worst-error-first, so hitting the budget still yields the best mesh
+    // that many triangles can buy - and it is what keeps a fine "Detail" over a noisy texture from
+    // turning into an out-of-memory, or an unrenderable preview wireframe.
+    int   m_subdivide_budget_k    = 200;
     void  subdivide_model_adaptive();
     // Fills `region` (per current-mesh triangle, 1 = refine) from the union of every layer's painted
     // area. If `painted_tri` is non-null, also fills, per layer, the fully-painted triangles to carry

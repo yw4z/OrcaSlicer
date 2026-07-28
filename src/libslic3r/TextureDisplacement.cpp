@@ -1289,6 +1289,94 @@ indexed_triangle_set build_texture_displacement(const ModelVolume &volume)
     return build_texture_displacement(volume.mesh().its, volume.texture_displacement_layers, facets_data);
 }
 
+HeightFieldSampler make_combined_displacement_sampler(const indexed_triangle_set                  &base_mesh,
+                                                      const std::vector<TextureDisplacementLayer> &layers,
+                                                      const TextureDisplacementFacetsData         &facets_data)
+{
+    // One decoded texture + placement per sampleable layer, in blend (slot) order. Held by shared_ptr
+    // so the returned closure owns it for as long as the subdivider keeps calling back.
+    struct Prepared {
+        DecodedHeightTexture     tex;
+        TextureDisplacementLayer layer;  // a copy of the params (depth/tiling/rotation/offset/blend/...)
+        Vec3f                    center; // patch centroid, for Cylindrical/Spherical
+        Vec3f                    axis;   // cylinder axis, for Cylindrical
+    };
+    auto prepared = std::make_shared<std::vector<Prepared>>();
+
+    if (base_mesh.indices.empty())
+        return nullptr;
+
+    std::vector<const TextureDisplacementLayer *> ordered;
+    for (const TextureDisplacementLayer &l : layers)
+        if (l.slot >= 0 && l.slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS))
+            ordered.push_back(&l);
+    std::sort(ordered.begin(), ordered.end(),
+              [](const TextureDisplacementLayer *a, const TextureDisplacementLayer *b) { return a->slot < b->slot; });
+
+    const std::vector<Vec3f> vertex_normals = texture_displacement_vertex_normals(base_mesh);
+    const TriangleMesh       selector_mesh(base_mesh);
+
+    for (const TextureDisplacementLayer *layer : ordered) {
+        if (layer->projection_method == TextureProjectionMethod::LSCM)
+            continue; // no per-point UV -> not sampleable here (caller falls back to uniform for these)
+        const TriangleSelector::TriangleSplittingData &data = facets_data[size_t(layer->slot)];
+        if (data.triangles_to_split.empty())
+            continue;
+        const DecodedHeightTexture tex = decode_height_texture(*layer);
+        if (tex.empty())
+            continue;
+
+        TriangleSelector selector(selector_mesh);
+        selector.deserialize(data, false);
+        const indexed_triangle_set patch = selector.get_facets_strict(EnforcerBlockerType::ENFORCER);
+        if (patch.indices.empty())
+            continue;
+
+        // Patch centroid + cylinder axis, computed exactly as build_texture_displacement() does, so a
+        // Cylindrical/Spherical layer's detach criterion matches the geometry the bake will produce.
+        Vec3f average_normal = Vec3f::Zero();
+        Vec3f centroid       = Vec3f::Zero();
+        int   count          = 0;
+        for (const stl_triangle_vertex_indices &tri : patch.indices)
+            for (int i = 0; i < 3; ++i) {
+                const int vi = tri[i];
+                centroid += patch.vertices[size_t(vi)];
+                ++count;
+                if (vi < int(vertex_normals.size()))
+                    average_normal += vertex_normals[size_t(vi)];
+            }
+        average_normal = (average_normal.norm() > 1e-8f) ? Vec3f(average_normal.normalized()) : Vec3f::UnitZ();
+        centroid       = (count > 0) ? Vec3f(centroid / float(count)) : Vec3f::Zero();
+
+        Vec3f       axis = Vec3f::UnitZ();
+        const Vec3f an   = average_normal.cwiseAbs();
+        if (an.x() <= an.y() && an.x() <= an.z())
+            axis = Vec3f::UnitX();
+        else if (an.y() <= an.x() && an.y() <= an.z())
+            axis = Vec3f::UnitY();
+
+        prepared->push_back({ tex, *layer, centroid, axis });
+    }
+
+    if (prepared->empty())
+        return nullptr;
+
+    return [prepared](const Vec3f &pos, const Vec3f &normal) -> float {
+        float total = 0.f;
+        bool  any   = false;
+        for (const Prepared &p : *prepared) {
+            const float h        = sample_layer_height(p.tex, p.layer, pos, normal, p.center, p.axis, nullptr);
+            const float sign     = p.layer.invert ? -1.f : 1.f;
+            const float signed_h = (h - p.layer.midlevel) * p.layer.depth_mm * sign;
+            // The first (lowest) sampleable layer folds additively; the rest use their own blend mode -
+            // same rule build_texture_displacement() applies per vertex.
+            total = blend_displacement(total, signed_h, any ? p.layer.blend_mode : TextureBlendMode::Add);
+            any   = true;
+        }
+        return total;
+    };
+}
+
 indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, float max_edge_length_mm, int max_iterations)
 {
     indexed_triangle_set current   = mesh;
@@ -1348,146 +1436,340 @@ indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, fl
 
 indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                              const std::vector<uint8_t> &refine_region,
-                                             float target_edge_length_mm, int max_iterations,
-                                             std::vector<int> *out_source)
+                                             float target_edge_length_mm, int max_triangles,
+                                             std::vector<int> *out_source, const HeightFieldSampler &sampler,
+                                             float chord_tolerance_mm, float min_edge_length_mm)
 {
-    // Each triangle carries the input-triangle index it descends from, so children inherit it and
-    // the caller can remap per-triangle data (paint masks) for free.
-    struct Tri { int v[3]; int src; };
+    // Neighbour slots that are not a triangle index.
+    constexpr int NB_BOUNDARY    = -1; // open edge: terminal on its own, bisected from this side alone
+    constexpr int NB_NONMANIFOLD = -2; // >2 triangles on the edge: never bisected, that would tear it
+
+    // v[] and nb[] are parallel: nb[e] is the triangle across edge (v[e], v[(e+1)%3]). `src` is the
+    // input triangle this one descends from - children inherit it, so a caller can carry per-triangle
+    // data (a paint mask) across the topology change with no geometric remap.
+    struct Tri { int v[3]; int nb[3]; int src; };
 
     std::vector<Vec3f> verts = mesh.vertices;
-    std::vector<Tri>   tris;
-    tris.reserve(mesh.indices.size());
+    std::vector<Tri>   tris(mesh.indices.size());
     for (size_t i = 0; i < mesh.indices.size(); ++i)
-        tris.push_back({ { mesh.indices[i][0], mesh.indices[i][1], mesh.indices[i][2] }, int(i) });
+        tris[i] = { { mesh.indices[i][0], mesh.indices[i][1], mesh.indices[i][2] },
+                    { NB_BOUNDARY, NB_BOUNDARY, NB_BOUNDARY }, int(i) };
 
-    auto emit = [&](std::vector<Tri> &t) -> indexed_triangle_set {
+    auto emit = [&]() -> indexed_triangle_set {
         indexed_triangle_set out;
         out.vertices = verts;
-        out.indices.reserve(t.size());
+        out.indices.reserve(tris.size());
         if (out_source) {
             out_source->clear();
-            out_source->reserve(t.size());
+            out_source->reserve(tris.size());
         }
-        for (const Tri &tr : t) {
-            out.indices.emplace_back(tr.v[0], tr.v[1], tr.v[2]);
+        for (const Tri &t : tris) {
+            out.indices.emplace_back(t.v[0], t.v[1], t.v[2]);
             if (out_source)
-                out_source->push_back(tr.src);
+                out_source->push_back(t.src);
         }
         return out;
     };
 
+    // Feature-adaptive when a sampler and a positive tolerance are supplied; otherwise refinement is
+    // driven by the length baseline alone.
+    const bool  feature_mode = bool(sampler) && chord_tolerance_mm > 0.f;
+    const float min_floor_sq = min_edge_length_mm > 0.f ? min_edge_length_mm * min_edge_length_mm : 0.f;
+    const float target_sq    = target_edge_length_mm > 0.f ? target_edge_length_mm * target_edge_length_mm : 0.f;
+
     // refine_region is indexed by input-triangle index, and every triangle's src stays in that range
     // (children inherit their parent's src), so a wrong size would be an out-of-bounds read. Guard it.
-    if (target_edge_length_mm <= 0.f || refine_region.size() != mesh.indices.size())
-        return emit(tris);
+    if (refine_region.size() != mesh.indices.size() || int(tris.size()) + 2 > max_triangles)
+        return emit();
+    if (!feature_mode && target_sq <= 0.f)
+        return emit(); // no criterion at all
     if (std::none_of(refine_region.begin(), refine_region.end(), [](uint8_t v) { return v != 0; }))
-        return emit(tris); // nothing flagged: no-op
-    const float target_sq = target_edge_length_mm * target_edge_length_mm;
+        return emit(); // nothing flagged: no-op
 
     auto edge_key = [](int a, int b) -> uint64_t {
         if (a > b)
             std::swap(a, b);
         return (uint64_t(uint32_t(a)) << 32) | uint32_t(b);
     };
-    auto edge_len_sq = [&](uint64_t k) -> float {
-        return (verts[int(k >> 32)] - verts[int(uint32_t(k))]).squaredNorm();
-    };
-    // The one edge of a triangle chosen as its "longest": greatest squared length, ties broken by the
-    // smaller edge key. The tie-break is by mesh-vertex indices, which both triangles sharing an edge
-    // compute identically - so they never disagree about whether that shared edge is "the" longest,
-    // which is what the conformality argument rests on.
-    auto longest_key = [&](const Tri &t) -> uint64_t {
-        uint64_t best_k   = edge_key(t.v[0], t.v[1]);
-        float    best_len = edge_len_sq(best_k);
-        for (int e = 1; e < 3; ++e) {
-            const uint64_t k = edge_key(t.v[e], t.v[(e + 1) % 3]);
-            const float    l = edge_len_sq(k);
-            if (l > best_len || (l == best_len && k < best_k)) {
-                best_len = l;
-                best_k   = k;
-            }
-        }
-        return best_k;
-    };
 
-    for (int iter = 0; iter < max_iterations; ++iter) {
-        // edge -> the (up to two) triangles sharing it. A third triangle on an edge means a
-        // non-manifold input; it is left in the second slot's place and simply not treated as
-        // terminal, so such an edge is never bisected (better a missed refinement than a torn mesh).
-        std::unordered_map<uint64_t, std::array<int, 2>> edge_tris;
-        edge_tris.reserve(tris.size() * 3);
+    // Edge adjacency, built once here and then maintained incrementally by bisect() below. Rebuilding
+    // it per refinement pass is what made the previous version's cost scale with the whole model
+    // instead of with the refined region, and what forced the tiny pass budget that stopped
+    // refinement short.
+    {
+        struct EdgeRec { int he[2]; int count; }; // he = encoded half-edge (triangle * 3 + local edge)
+        std::unordered_map<uint64_t, EdgeRec> edges;
+        edges.reserve(tris.size() * 2);
         for (int ti = 0; ti < int(tris.size()); ++ti)
             for (int e = 0; e < 3; ++e) {
-                const uint64_t k  = edge_key(tris[ti].v[e], tris[ti].v[(e + 1) % 3]);
-                auto           it = edge_tris.find(k);
-                if (it == edge_tris.end())
-                    edge_tris.emplace(k, std::array<int, 2>{ ti, -1 });
-                else if (it->second[1] == -1)
-                    it->second[1] = ti;
-                else
-                    it->second[0] = -2; // >2 triangles: poison this edge (never terminal)
+                EdgeRec &r = edges.try_emplace(edge_key(tris[ti].v[e], tris[ti].v[(e + 1) % 3]),
+                                               EdgeRec{ { -1, -1 }, 0 })
+                                 .first->second;
+                if (r.count < 2)
+                    r.he[r.count] = ti * 3 + e;
+                ++r.count;
             }
-
-        std::vector<uint64_t> tri_longest(tris.size());
         for (int ti = 0; ti < int(tris.size()); ++ti)
-            tri_longest[ti] = longest_key(tris[ti]);
-
-        // Which edges to bisect this pass: terminal (the longest edge of every triangle on it) AND
-        // long enough AND wanted by the region (either side in it). Terminal-ness is exactly what
-        // guarantees both sides split together, so no hanging node is ever produced.
-        std::unordered_set<uint64_t> to_bisect;
-        for (const auto &[k, slot] : edge_tris) {
-            const int t0 = slot[0], t1 = slot[1];
-            if (t0 < 0)
-                continue; // poisoned (non-manifold)
-            if (tri_longest[t0] != k)
-                continue;
-            if (t1 >= 0 && tri_longest[t1] != k)
-                continue;
-            if (edge_len_sq(k) <= target_sq)
-                continue;
-            const bool in_region = (refine_region[tris[t0].src] != 0) ||
-                                   (t1 >= 0 && refine_region[tris[t1].src] != 0);
-            if (in_region)
-                to_bisect.insert(k);
-        }
-        if (to_bisect.empty())
-            break;
-
-        // One midpoint per bisected edge, shared by both sides.
-        std::unordered_map<uint64_t, int> mid;
-        mid.reserve(to_bisect.size());
-        for (const uint64_t k : to_bisect) {
-            const int a = int(k >> 32), b = int(uint32_t(k));
-            mid.emplace(k, int(verts.size()));
-            verts.push_back((verts[a] + verts[b]) * 0.5f);
-        }
-
-        std::vector<Tri> next;
-        next.reserve(tris.size() + to_bisect.size());
-        for (const Tri &t : tris) {
-            // At most one of a triangle's edges can be terminal (only its own longest can be), so at
-            // most one is in to_bisect - find that one.
-            int be = -1;
-            for (int e = 0; e < 3; ++e)
-                if (to_bisect.count(edge_key(t.v[e], t.v[(e + 1) % 3])) != 0) {
-                    be = e;
-                    break;
-                }
-            if (be == -1) {
-                next.push_back(t);
-                continue;
+            for (int e = 0; e < 3; ++e) {
+                const EdgeRec &r = edges.at(edge_key(tris[ti].v[e], tris[ti].v[(e + 1) % 3]));
+                if (r.count > 2)
+                    tris[ti].nb[e] = NB_NONMANIFOLD;
+                else if (r.count == 2)
+                    tris[ti].nb[e] = (r.he[0] == ti * 3 + e ? r.he[1] : r.he[0]) / 3;
             }
-            const int a = t.v[be], b = t.v[(be + 1) % 3], c = t.v[(be + 2) % 3];
-            const int m = mid.at(edge_key(a, b));
-            next.push_back({ { a, m, c }, t.src }); // both children keep the original winding a->b->c
-            next.push_back({ { m, b, c }, t.src });
-        }
-        tris.swap(next);
     }
 
-    return emit(tris);
+    // Feature mode: per-vertex surface normal, and the sampled displacement height at each vertex.
+    // Heights are filled in lazily - on a big model only a small painted region is ever looked at, and
+    // a sampler call is a texture fetch (plus trig) per layer, so sampling every vertex of the whole
+    // mesh up front was pure waste. Both arrays grow in lockstep with `verts`.
+    std::vector<Vec3f>   vnormal;
+    std::vector<float>   vheight;
+    std::vector<uint8_t> vheight_valid;
+    if (feature_mode) {
+        vnormal.assign(verts.size(), Vec3f::Zero());
+        for (const Tri &t : tris) {
+            const Vec3f fn = (verts[t.v[1]] - verts[t.v[0]]).cross(verts[t.v[2]] - verts[t.v[0]]); // area-weighted
+            for (int i = 0; i < 3; ++i)
+                vnormal[t.v[i]] += fn;
+        }
+        for (Vec3f &n : vnormal) {
+            const float l = n.norm();
+            n = (l > 1e-12f) ? Vec3f(n / l) : Vec3f(Vec3f::UnitZ());
+        }
+        vheight.assign(verts.size(), 0.f);
+        vheight_valid.assign(verts.size(), 0);
+    }
+    auto height_of = [&](int v) -> float {
+        if (!vheight_valid[v]) {
+            vheight[v]       = sampler(verts[v], vnormal[v]);
+            vheight_valid[v] = 1;
+        }
+        return vheight[v];
+    };
+
+    auto elen_sq = [&](int a, int b) -> float { return (verts[a] - verts[b]).squaredNorm(); };
+
+    // The one edge of a triangle taken as its "longest": greatest squared length, exact ties broken by
+    // the smaller (sorted) vertex-index key. Both triangles sharing an edge compute the same key for
+    // it, so they can never disagree about which of them is longest - the property the conformality
+    // argument and the LEPP walk's termination both rest on.
+    auto longest_local = [&](int ti) -> int {
+        const Tri &t    = tris[ti];
+        int        best = 0;
+        float      bl   = elen_sq(t.v[0], t.v[1]);
+        uint64_t   bk   = edge_key(t.v[0], t.v[1]);
+        for (int e = 1; e < 3; ++e) {
+            const float    l = elen_sq(t.v[e], t.v[(e + 1) % 3]);
+            const uint64_t k = edge_key(t.v[e], t.v[(e + 1) % 3]);
+            if (l > bl || (l == bl && k < bk)) {
+                bl   = l;
+                bk   = k;
+                best = e;
+            }
+        }
+        return best;
+    };
+
+    // How far the *displaced* surface departs from the flat triangle, sampled across the WHOLE
+    // triangle - the three edge midpoints and the centroid - not just one edge midpoint. Sampling the
+    // interior is what catches a bump that sits inside a triangle (the blind spot of an edge-only
+    // test). Cached per triangle: it can only change when the triangle is split, and then both
+    // children are fresh entries.
+    std::vector<float> tri_err;
+    if (feature_mode)
+        tri_err.assign(tris.size(), -1.f);
+    auto detail_error = [&](int ti) -> float {
+        if (tri_err[ti] >= 0.f)
+            return tri_err[ti];
+        const Tri  &t  = tris[ti];
+        const Vec3f pa = verts[t.v[0]], pb = verts[t.v[1]], pc = verts[t.v[2]];
+        const Vec3f na = vnormal[t.v[0]], nb = vnormal[t.v[1]], nc = vnormal[t.v[2]];
+        const float ha = height_of(t.v[0]), hb = height_of(t.v[1]), hc = height_of(t.v[2]);
+        static const float BARY[4][3] = { { 0.5f, 0.5f, 0.f }, { 0.f, 0.5f, 0.5f },
+                                          { 0.5f, 0.f, 0.5f }, { 1.f / 3, 1.f / 3, 1.f / 3 } };
+        float maxerr = 0.f;
+        for (const auto &w : BARY) {
+            Vec3f       n  = w[0] * na + w[1] * nb + w[2] * nc;
+            const float nl = n.norm();
+            n = (nl > 1e-12f) ? Vec3f(n / nl) : na;
+            const float actual = sampler(w[0] * pa + w[1] * pb + w[2] * pc, n);
+            maxerr = std::max(maxerr, std::abs(actual - (w[0] * ha + w[1] * hb + w[2] * hc)));
+        }
+        tri_err[ti] = maxerr;
+        return maxerr;
+    };
+
+    // How many times over its criteria a triangle is: <= 1 means "good enough, leave it alone", and
+    // the larger the value the more a split buys. Driving the heap with this is what makes a run that
+    // runs out of budget spend it on the worst offenders instead of wherever a sweep happened to
+    // reach. Triangles outside the region always score 0 - they are only ever touched by the conformal
+    // closure below, never refined on their own account.
+    auto priority = [&](int ti) -> float {
+        const Tri &t = tris[ti];
+        if (refine_region[t.src] == 0)
+            return 0.f;
+        const int   le = longest_local(ti);
+        const float ll = elen_sq(t.v[le], t.v[(le + 1) % 3]);
+        if (ll <= min_floor_sq)
+            return 0.f; // at the resolution floor - also what stops a sharp texture step going forever
+        float p = (target_sq > 0.f) ? ll / target_sq : 0.f;
+        if (feature_mode)
+            p = std::max(p, detail_error(ti) / chord_tolerance_mm);
+        return p;
+    };
+
+    auto set_nb = [&](int ti, int u, int v, int val) {
+        if (ti < 0)
+            return;
+        Tri &t = tris[ti];
+        for (int e = 0; e < 3; ++e)
+            if ((t.v[e] == u && t.v[(e + 1) % 3] == v) || (t.v[e] == v && t.v[(e + 1) % 3] == u)) {
+                t.nb[e] = val;
+                return;
+            }
+    };
+
+    // Bisects triangle `ti` across its local edge `e`, which the caller has established is terminal.
+    // Both triangles on that edge are split in the one operation, around a single shared midpoint -
+    // which is exactly why a hanging node (and so a crack) can never appear. `ti` and the opposite
+    // triangle are each reused as one of their own children, so only two back-pointers in the
+    // surrounding mesh need repointing. Triangles whose geometry changed are left in `touched`.
+    std::vector<int> touched;
+    auto bisect = [&](int ti, int e) -> bool {
+        const int a = tris[ti].v[e], b = tris[ti].v[(e + 1) % 3], c = tris[ti].v[(e + 2) % 3];
+        const int n = tris[ti].nb[e];
+        // Locate the shared edge from the far side before touching anything: bailing out half way
+        // through would be the one way this could leave a crack.
+        int f = -1;
+        if (n >= 0) {
+            for (int k = 0; k < 3; ++k) {
+                const int u = tris[n].v[k], w = tris[n].v[(k + 1) % 3];
+                if ((u == a && w == b) || (u == b && w == a)) {
+                    f = k;
+                    break;
+                }
+            }
+            if (f < 0) {
+                tris[ti].nb[e] = NB_NONMANIFOLD; // inconsistent adjacency: refuse to split across it
+                return false;
+            }
+        }
+
+        const int m = int(verts.size());
+        verts.push_back(0.5f * (verts[a] + verts[b]));
+        if (feature_mode) {
+            const Vec3f mn = vnormal[a] + vnormal[b];
+            const float ml = mn.norm();
+            vnormal.push_back(ml > 1e-12f ? Vec3f(mn / ml) : vnormal[a]);
+            vheight.push_back(0.f);
+            vheight_valid.push_back(0);
+        }
+
+        // Near side: ti becomes (a, m, c), the new triangle is (m, b, c). Both keep the original
+        // a->b->c winding.
+        const int nb_bc = tris[ti].nb[(e + 1) % 3];
+        const int nb_ca = tris[ti].nb[(e + 2) % 3];
+        const int src   = tris[ti].src;
+        const int t2    = int(tris.size());
+        tris.push_back(Tri{ { m, b, c }, { NB_BOUNDARY, nb_bc, ti }, src });
+        {
+            Tri &t1 = tris[ti];
+            t1.v[0] = a; t1.v[1] = m; t1.v[2] = c;
+            t1.nb[0] = NB_BOUNDARY; t1.nb[1] = t2; t1.nb[2] = nb_ca;
+        }
+        set_nb(nb_bc, b, c, t2); // that outer neighbour borders the second child now, not ti
+        if (feature_mode) {
+            tri_err.push_back(-1.f);
+            tri_err[ti] = -1.f;
+        }
+        touched.assign({ ti, t2 });
+
+        if (n < 0) {
+            return true; // boundary edge: nothing on the far side to split
+        }
+
+        // Far side, same shape: n becomes (p, m, d), the new triangle is (m, q, d).
+        const int p = tris[n].v[f], q = tris[n].v[(f + 1) % 3], d = tris[n].v[(f + 2) % 3];
+        const int nb_qd = tris[n].nb[(f + 1) % 3];
+        const int nb_dp = tris[n].nb[(f + 2) % 3];
+        const int nsrc  = tris[n].src;
+        const int n2    = int(tris.size());
+        tris.push_back(Tri{ { m, q, d }, { NB_BOUNDARY, nb_qd, n }, nsrc });
+        {
+            Tri &n1 = tris[n];
+            n1.v[0] = p; n1.v[1] = m; n1.v[2] = d;
+            n1.nb[0] = NB_BOUNDARY; n1.nb[1] = n2; n1.nb[2] = nb_dp;
+        }
+        set_nb(nb_qd, q, d, n2);
+        if (feature_mode) {
+            tri_err.push_back(-1.f);
+            tri_err[n] = -1.f;
+        }
+
+        // Stitch the two sides back together: whichever far child holds `a` borders the near child
+        // that holds `a`. (Which one that is depends on how n happens to be wound.)
+        const int side_a = (p == a) ? n : n2;
+        const int side_b = (p == a) ? n2 : n;
+        tris[ti].nb[0] = side_a; // near child (a, m, c), edge (a, m)
+        tris[t2].nb[0] = side_b; // near child (m, b, c), edge (m, b)
+        set_nb(side_a, a, m, ti);
+        set_nb(side_b, b, m, t2);
+        touched.assign({ ti, t2, n, n2 });
+        return true;
+    };
+
+    // Worst-first. Entries go stale as their triangle is split; a stale entry is harmless - it is
+    // re-scored on pop and dropped or re-pushed. The ordering is a budget-allocation heuristic only:
+    // neither correctness nor conformality depends on it.
+    std::priority_queue<std::pair<float, int>> queue;
+    for (int ti = 0; ti < int(tris.size()); ++ti)
+        if (const float p = priority(ti); p > 1.f)
+            queue.emplace(p, ti);
+
+    // Every iteration either drops one satisfied triangle from the queue or performs exactly one
+    // bisection, and bisections are capped by the triangle budget, so this always terminates.
+    while (!queue.empty() && int(tris.size()) + 2 <= max_triangles) {
+        const int ti = queue.top().second;
+        queue.pop();
+        if (priority(ti) <= 1.f)
+            continue; // stale: already refined past its criteria
+
+        // Longest-Edge Propagation Path: step to the neighbour across the current longest edge for as
+        // long as that neighbour has a strictly longer one, then bisect the terminal edge we land on.
+        // Length strictly increases along the path, so it cannot cycle.
+        int cur = ti, split_edge = -1;
+        for (size_t guard = 0; guard <= tris.size(); ++guard) {
+            const int le  = longest_local(cur);
+            const int nbr = tris[cur].nb[le];
+            if (nbr == NB_NONMANIFOLD)
+                break; // cannot split across it without tearing the mesh: give up on this path
+            if (nbr == NB_BOUNDARY) {
+                split_edge = le; // boundary longest edge -> terminal
+                break;
+            }
+            const int nle = longest_local(nbr);
+            if (edge_key(tris[nbr].v[nle], tris[nbr].v[(nle + 1) % 3]) ==
+                edge_key(tris[cur].v[le], tris[cur].v[(le + 1) % 3])) {
+                split_edge = le; // mutual longest edge -> terminal
+                break;
+            }
+            cur = nbr;
+        }
+        if (split_edge < 0 || !bisect(cur, split_edge))
+            continue; // ti sits in a non-manifold neighbourhood and cannot be refined safely
+
+        for (const int t : touched)
+            if (const float p = priority(t); p > 1.f)
+                queue.emplace(p, t);
+        // The bisection may have been a step on the way to ti rather than ti itself, in which case ti
+        // is not in `touched` and has to go back on the heap to be walked again.
+        if (cur != ti)
+            if (const float p = priority(ti); p > 1.f)
+                queue.emplace(p, ti);
+    }
+
+    return emit();
 }
 
 } // namespace Slic3r

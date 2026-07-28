@@ -197,34 +197,92 @@ T-junction, at the cost of densifying everywhere. Wired as a "Subdivide steps" s
 no subdivision), Apply snaps back to 0. Drops texture-displacement paint (no remap) via the standard
 `save_painting()`/`set_mesh()`/`restore_painting()` dance; the other four channels are remapped.
 
-**Adaptive (`subdivide_mesh_adaptive()`)** — refine **only the painted area**, down to a target edge
-length, by **Rivara longest-edge bisection**. This is the algorithm that was "scoped out" originally
-for fear of the T-junction/crack problem; it is safe because it is *conformal by construction*. Each
-pass bisects only **terminal** edges - an edge that is the longest edge of *every* triangle sharing it
-- which splits both those triangles along one shared midpoint at once, so a hanging node is never
-created. Only a triangle's own longest edge can be terminal, so each triangle is split by at most one
-bisection per pass. When a triangle that still needs refining has a longest edge that is not yet
-terminal, the neighbour across it has a strictly longer edge and is refined first; that propagation
-grades the mesh down into the region and closes what would be cracks (pulling a thin, bounded band of
-transition triangles just outside the painted patch). Tie-broken by mesh-vertex key so both sides of
-an edge always agree on "the" longest.
+**Adaptive (`subdivide_mesh_adaptive()`)** — refine **only the painted area**, by **Rivara longest-edge
+bisection**. This is the algorithm that was "scoped out" originally for fear of the T-junction/crack
+problem; it is safe because it is *conformal by construction*. Only **terminal** edges are ever bisected
+- an edge that is the longest edge of *every* triangle sharing it - which splits both those triangles
+along one shared midpoint at once, so a hanging node is never created. The edge to split for a triangle
+that wants refining is found by **longest-edge propagation (LEPP)**: walk to the longest edge of
+ever-longer-edged neighbours until a terminal one is reached, and bisect that. Edge length strictly
+increases along the path (ties broken by mesh-vertex key, which both sides of an edge compute
+identically), so the walk cannot cycle, and Rivara's result is that repeating it refines the original
+triangle in a bounded number of bisections. The transition triangles it pulls in just outside the
+painted patch are the graded band that makes the size change conformal.
 
 The win: a small decal on a big model no longer quadruples the *whole* model's triangle count.
+
+**Run to completion, worst-first, against a triangle budget.** The refinement loop is not a fixed number
+of sweeps: it holds every triangle that is over its criteria in a max-heap keyed by *how many times over*
+it is, pops the worst, walks its LEPP, bisects, and re-scores. Edge adjacency (`nb[e]`, the triangle
+across each edge) is built **once** and maintained incrementally through each bisection, so the cost
+scales with the refined region rather than with the whole model. `max_triangles` is the only bound;
+stopping on it leaves a perfectly valid, still-conformal mesh that spent its budget on the largest errors.
+
+This shape replaced a first version that ran a fixed 12 sweeps, each rebuilding a whole-mesh edge map and
+bisecting one terminal edge per active triangle. Two failure modes came out of that, and they are worth
+remembering because they look like separate bugs and are not: the sweeps were consumed grading the
+*coarse surroundings* (whose edges are the longest, so they win every terminal-edge contest), which both
+**stopped refinement of the painted patch far short** of the requested detail and left the band outside
+it looking wildly over-refined relative to the patch itself.
 
 **It carries the paint forward**, which is what makes it usable (uniform/remesh both drop paint). Because
 the refinement is *driven by* the paint, the remap is trivial: `subdivide_mesh_adaptive()` fills an
 `out_source[new_tri] = input_tri` map (children inherit their parent), and the gizmo rebuilds each
 layer's mask on the new mesh - a new triangle is painted iff its source was fully painted in that
-layer. `collect_paint_region()` derives both the union refine-region (any vertex of a painted patch,
-i.e. patch + a one-ring, so the boundary itself refines) and the per-layer fully-painted-triangle sets
-(a `get_facets_strict(ENFORCER)` sub-triangle with all three *original* vertex indices == a whole,
-fully-painted original triangle; a partial stroke's sub-triangles always carry a split vertex). The
-other four channels still ride the normal `restore_painting()` remap. Covered by a conformality unit
-test (`every_edge_used_twice` on a partially-refined cube - an exact crack detector for a closed mesh).
+layer. `collect_paint_region()` derives both:
+- the union refine-region: **exactly** the original triangles the brush touched, read straight off
+  `TriangleSplittingData::triangles_to_split` (`serialize()` records an entry per original triangle that
+  is either split - i.e. partially painted, the patch boundary - or carries a non-default state). No
+  dilation. An earlier version marked every triangle sharing a *vertex* with the patch, which drags in a
+  whole fan of huge unpainted neighbours and then refines *those* down to the resolution floor, since the
+  height field the detail test samples is not restricted to the painted area. The conformal closure
+  already grades the size change outward on its own; it does not need help.
+- the per-layer fully-painted-triangle sets (a `get_facets_strict(ENFORCER)` sub-triangle with all three
+  *original* vertex indices == a whole, fully-painted original triangle; a partial stroke's sub-triangles
+  always carry a split vertex).
+
+The other four channels still ride the normal `restore_painting()` remap. Covered by a conformality unit
+test (`every_edge_used_twice` on a partially-refined cube - an exact crack detector for a closed mesh),
+plus tests that the target edge length is actually *reached* and that the budget caps the result without
+opening a crack.
 
 Both share the gizmo's Preview/Apply/Done flow; the **"Only painted area (adaptive)"** checkbox picks
 the mode, and the adaptive preview follows the paint live (`rebuild_preview()` refreshes the wireframe
-while the subdivide preview is open in adaptive mode).
+while the subdivide preview is open in adaptive mode). The panel shows the previewed triangle count.
+
+**Feature-adaptive (follow texture detail).** A sub-mode of adaptive (the **"Follow texture detail"**
+checkbox) that puts triangles where the *displaced surface actually bends*, not evenly. The insight:
+a flat region or a linear **ramp** needs no extra vertices (linear interpolation is exact for a ramp);
+what needs them is **curvature** - the *second* derivative, not the gradient. So the extra predicate is a
+**chord-error** test: sample the combined displacement at the triangle's three edge midpoints *and its
+centroid* (sampling the interior is what catches a bump sitting inside a triangle, the blind spot of an
+edge-only test) and take the largest departure from the flat triangle's barycentric interpolation. Refine
+while that exceeds `chord_tolerance_mm` ("Detail (mm)"). Zero chord error on a ramp ⇒ untouched; high on
+a bump/ridge/noise ⇒ refined until captured. Same conformal machinery, so still crack-free. The
+per-triangle error is cached and recomputed only for the children of a split.
+
+Four knobs bracket it, and all four matter:
+- **"Max edge (mm)"** (`target_edge_length_mm`) is a **baseline that applies in feature mode too**.
+  Without it the chord test aliases: a big triangle over a fine pattern can sample four points that all
+  land at similar heights, report no error, and stall before refinement ever starts. The baseline
+  guarantees a sampling density fine enough for the curvature test to see the texture at all.
+- **"Detail (mm)"** is the chord tolerance above.
+- **"Min edge (mm)"** is a hard floor under both, and is what guarantees termination across a sharp
+  texture *step*, where the error never falls however fine the mesh gets.
+- **"Added triangles (k)"** is the budget, passed as `max_triangles` (the model's own triangle count plus
+  the slider, so the control still means something on an already-dense model).
+
+The height field is `make_combined_displacement_sampler()` - it mirrors `build_texture_displacement()`'s
+per-layer setup (decode, patch centroid, cylinder axis, blend order, "lowest layer folds additively")
+but evaluated per point. Two deliberate simplifications, both erring toward *more* detail (safe -
+over-refinement is never a crack): every sampleable layer is sampled at every point (no per-point paint
+test), and edge-smoothing falloff is ignored. Note the first one is *why* the refine region must not be
+dilated - outside the paint the sampler still reports full relief. **LSCM layers are skipped** (no
+per-point UV); a purely LSCM stack yields a null sampler and the code falls back to the length baseline
+alone. Per-vertex heights are sampled lazily, so a small patch on a huge model never pays for the rest of
+it. Covered by unit tests: a Gaussian bump refines densely at its center and leaves flat corners coarse,
+a linear ramp produces *zero* extra triangles (the case a gradient criterion would over-refine), and a
+flat field still honours the max-edge baseline.
 
 ### Fast bump preview (GPU-only, no CPU meshing)
 
@@ -384,9 +442,10 @@ of. Toolbar commands the canvas can't service itself (Average scale) are forward
   first impression while painting. The exact true-displacement view is one click away in the View row.
 - **Displacement resolution is capped by the mesh's own vertex density.** Baking only ever *moves*
   existing vertices (it never inserts any), so a coarse patch cannot show fine texture detail no
-  matter how high-resolution the height map is - that is what the "Subdivide model" button is for.
-  Since the rewrite the bake is topology-preserving, so this is now a hard, explicit property rather
-  than something partly papered over by the old per-layer re-meshing.
+  matter how high-resolution the height map is - that is what the subdivision controls are for
+  (uniform, adaptive, or feature-adaptive; see the Subdivision section). Since the rewrite the bake is
+  topology-preserving, so this is now a hard, explicit property rather than something partly papered
+  over by the old per-layer re-meshing.
 
 ## File map
 
