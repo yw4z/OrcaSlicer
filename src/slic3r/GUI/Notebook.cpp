@@ -253,6 +253,8 @@ void Notebook::Init()
 
     m_showTimeout = m_hideTimeout = 0;
 
+    m_pageNames.clear();
+
     /* On Linux, Gstreamer wxMediaCtrl does not seem to get along well with
      * 32-bit X11 visuals (the overlay does not work).  Is this a wxWindows
      * bug?  Is this a Gstreamer bug?  No idea, but it is our problem ... 

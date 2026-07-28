@@ -798,12 +798,12 @@ void GUI_App::post_init()
             m_open_method = "url";
         } else {
             if (this->init_params->input_gcode) {
-                mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+                mainframe->select_tab(TAB_ID_PREPARE);
                 plater_->select_view_3D("3D");
                 this->plater()->load_gcode(from_u8(this->init_params->input_files.front()));
                 m_open_method = "gcode";
             } else {
-                mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+                mainframe->select_tab(TAB_ID_PREPARE);
                 plater_->select_view_3D("3D");
                 wxArrayString input_files;
                 for (auto& file : this->init_params->input_files) {
@@ -837,7 +837,7 @@ void GUI_App::post_init()
         mainframe->Freeze();
 #endif
         plater_->canvas3D()->enable_render(false);
-        mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+        mainframe->select_tab(TAB_ID_PREPARE);
         plater_->select_view_3D("3D");
         //BBS init the opengl resource here
         if (!plater_->canvas3D()->get_wxglcanvas()->IsShownOnScreen() ||
@@ -875,9 +875,9 @@ void GUI_App::post_init()
             }
         }
         if (is_editor())
-            mainframe->select_tab(size_t(0));
+            mainframe->select_tab(TAB_ID_HOME);
         if (app_config->get("default_page") == "1")
-            mainframe->select_tab(size_t(1));
+            mainframe->select_tab(TAB_ID_PREPARE);
 #ifndef __linux__
         mainframe->Thaw();
 #endif
@@ -1814,10 +1814,10 @@ bool GUI_App::hot_reload_network_plugin()
     wxWindowDisabler disabler;
 
     if (mainframe) {
-        int current_tab = mainframe->m_tabpanel->GetSelection();
-        if (current_tab == MainFrame::TabPosition::tpMonitor) {
+        wxString current_tab = mainframe->m_tabpanel->GetSelectedPageName();
+        if (current_tab == TAB_ID_MONITOR) {
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": navigating away from Monitor tab before unload";
-            mainframe->m_tabpanel->SetSelection(MainFrame::TabPosition::tp3DEditor);
+            mainframe->m_tabpanel->SelectPageByName(TAB_ID_PREPARE);
         }
     }
 
@@ -3323,7 +3323,7 @@ bool GUI_App::on_init_inner()
     mainframe = new MainFrame();
     // hide settings tabs after first Layout
     if (is_editor()) {
-        mainframe->select_tab(size_t(0));
+        mainframe->select_tab(TAB_ID_HOME);
     }
 
     sidebar().obj_list()->init();
@@ -4487,7 +4487,7 @@ void GUI_App::recreate_GUI(const wxString &msg_name)
     mainframe = new MainFrame();
     if (is_editor())
         // hide settings tabs after first Layout
-        mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+        mainframe->select_tab(TAB_ID_PREPARE);
     // Propagate model objects to object list.
     sidebar().obj_list()->init();
     //sidebar().aux_list()->init_auxiliary();

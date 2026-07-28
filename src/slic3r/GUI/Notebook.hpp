@@ -3,6 +3,7 @@
 
 //#ifdef _WIN32
 
+#include <vector>
 #include <wx/bookctrl.h>
 #include <wx/sizer.h>
 
@@ -42,7 +43,7 @@ private:
     std::vector<wxString>           m_pageLabels; // ORCA
 };
 
-class Notebook: public wxBookCtrlBase
+class Notebook : public wxBookCtrlBase
 {
 public:
     Notebook(wxWindow * parent,
@@ -103,7 +104,7 @@ public:
     // by this control) and show it immediately.
     bool ShowNewPage(wxWindow * page)
     {
-        return AddPage(page, wxString(), "", "");
+        return AddPage(wxString(), page, wxString(), "", "");
     }
 
 
@@ -136,14 +137,15 @@ public:
     // Implement base class pure virtual methods.
 
     // adds a new page to the control
-    bool AddPage(wxWindow* page,
+    bool AddPage(const wxString& id,
+                 wxWindow* page,
                  const wxString& text,
                  const std::string& bmp_name,
                  const std::string& inactive_bmp_name,
                  bool bSelect = false)
     {
         DoInvalidateBestSize();
-        return InsertPage(GetPageCount(), page, text, bmp_name, inactive_bmp_name, bSelect);
+        return InsertPage(GetPageCount(), id, page, text, bmp_name, inactive_bmp_name, bSelect);
     }
 
     // Page management
@@ -156,6 +158,7 @@ public:
         if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect, imageId))
             return false;
 
+        m_pageNames.insert(m_pageNames.begin() + n, wxString());
         GetBtnsListCtrl()->InsertPage(n, text, bSelect);
 
         if (!DoSetSelectionAfterInsertion(n, bSelect))
@@ -165,6 +168,7 @@ public:
     }
 
     bool InsertPage(size_t n,
+                    const wxString& id,
                     wxWindow * page,
                     const wxString & text,
                     const std::string& bmp_name = "",
@@ -174,10 +178,17 @@ public:
         if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect))
             return false;
 
+        m_pageNames.insert(m_pageNames.begin() + n, id);
         GetBtnsListCtrl()->InsertPage(n, text, bSelect, bmp_name, inactive_bmp_name);
 
-        if (bSelect)
-            SetSelection(n);
+        // wxBookCtrlBase::InsertPage() only inserts into the page list and sizes the
+        // new page to the current page's rect — it never touches visibility. A freshly
+        // constructed page defaults to shown, so without this it renders on top of
+        // whatever page is currently selected until the next SetSelection() call hides
+        // it. Mirrors the pure-virtual InsertPage() override above, which already does
+        // this correctly.
+        if (!DoSetSelectionAfterInsertion(n, bSelect))
+            page->Hide();
 
         return true;
     }
@@ -251,7 +262,57 @@ public:
             page->SetFocus();
     }
 
+    // wxBookCtrlBase::DeleteAllPages() clears its page list directly rather than
+    // going through DoRemovePage() per page, so it would otherwise leave
+    // m_pageNames desynchronized (a mutation path outside the four this class
+    // already keeps in sync). Not currently called on a Notebook anywhere in
+    // this codebase, but kept correct for the same reason the rest of this
+    // bookkeeping exists.
+    virtual bool DeleteAllPages() override
+    {
+        m_pageNames.clear();
+        return wxBookCtrlBase::DeleteAllPages();
+    }
+
     ButtonsListCtrl* GetBtnsListCtrl() const { return static_cast<ButtonsListCtrl*>(m_bookctrl); }
+
+    int FindPageByName(const wxString& id) const
+    {
+        if (id.empty())
+            return wxNOT_FOUND;
+        for (size_t i = 0; i < m_pageNames.size(); ++i)
+            if (m_pageNames[i] == id)
+                return static_cast<int>(i);
+        return wxNOT_FOUND;
+    }
+
+    wxWindow* GetPageByName(const wxString& id) const
+    {
+        const int idx = FindPageByName(id);
+        return idx == wxNOT_FOUND ? nullptr : GetPage(static_cast<size_t>(idx));
+    }
+
+    bool SelectPageByName(const wxString& id)
+    {
+        const int idx = FindPageByName(id);
+        if (idx == wxNOT_FOUND)
+            return false;
+        SetSelection(static_cast<size_t>(idx));
+        return true;
+    }
+
+    // Inverse of FindPageByName: index -> id. Empty string for an out-of-range
+    // index or a page that was never given an id (e.g. settings Tab pages).
+    wxString GetPageName(size_t n) const
+    {
+        return n < m_pageNames.size() ? m_pageNames[n] : wxString();
+    }
+
+    wxString GetSelectedPageName() const
+    {
+        const int sel = GetSelection();
+        return sel < 0 ? wxString() : GetPageName(static_cast<size_t>(sel));
+    }
 
     void UpdateMode()
     {
@@ -369,6 +430,7 @@ protected:
         wxWindow* const win = wxBookCtrlBase::DoRemovePage(page);
         if (win)
         {
+            m_pageNames.erase(m_pageNames.begin() + page);
             GetBtnsListCtrl()->RemovePage(page);
             DoSetSelectionAfterRemoval(page);
         }
@@ -393,6 +455,8 @@ protected:
 
 private:
     void Init();
+
+    std::vector<wxString> m_pageNames;   // index-parallel to wxBookCtrlBase::m_pages
 
     wxShowEffect m_showEffect,
                  m_hideEffect;

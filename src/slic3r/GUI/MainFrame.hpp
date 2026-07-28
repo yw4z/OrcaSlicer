@@ -36,6 +36,16 @@
 #include "calib_dlg.hpp"
 #include "MultiMachinePage.hpp"
 
+// Stable identifiers for MainFrame::m_tabpanel's built-in pages. These are
+// names rather than positional indices so optional pages cannot shift them.
+#define TAB_ID_HOME          "home"
+#define TAB_ID_PREPARE       "prepare"
+#define TAB_ID_PREVIEW       "preview"
+#define TAB_ID_MONITOR       "monitor"
+#define TAB_ID_MULTI_DEVICE  "multi_device"
+#define TAB_ID_PROJECT       "project"
+#define TAB_ID_CALIBRATION   "calibration"
+
 #define ENABEL_PRINT_ALL 0
 
 class Notebook;
@@ -115,7 +125,7 @@ class MainFrame : public DPIFrame
     wxMenuItem* m_menu_item_reslice_now { nullptr };
     wxSizer*    m_main_sizer{ nullptr };
 
-    size_t      m_last_selected_tab;
+    wxString    m_last_selected_tab;
 
     std::string     get_base_name(const wxString &full_name, const char *extension = nullptr) const;
     std::string     get_dir_name(const wxString &full_name) const;
@@ -214,19 +224,6 @@ public:
 #ifdef __APPLE__
     bool get_mac_full_screen() { return m_mac_fullscreen; }
 #endif
-    //BBS GUI refactor
-    enum TabPosition
-    {
-        tpHome          = 0,
-        tp3DEditor      = 1,
-        tpPreview       = 2,
-        tpMonitor       = 3,
-        tpMultiDevice   = 4,
-        tpProject       = 5,
-        tpCalibration   = 6,
-        tpAuxiliary     = 7,
-        toDebugTool     = 8,
-    };
 
     //BBS: add slice&&print status update logic
     enum SlicePrintEventType
@@ -326,8 +323,8 @@ public:
     // When tab == -1, will be selected last selected tab
     //BBS: GUI refactor
     void        select_tab(wxPanel* panel);
-    void        select_tab(size_t tab = size_t(-1));
-    void        request_select_tab(TabPosition pos);
+    void        select_tab(const wxString& id = wxString());
+    void        request_select_tab(const wxString& id);
     int         get_calibration_curr_tab();
     void        select_view(const std::string& direction);
     // Propagate changed configuration from the Tab to the Plater and save changes to the AppConfig

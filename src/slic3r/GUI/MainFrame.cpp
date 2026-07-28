@@ -493,9 +493,8 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
     });
 
     //BBS
-    Bind(EVT_SELECT_TAB, [this](wxCommandEvent&evt) {
-        TabPosition pos = (TabPosition)evt.GetInt();
-        m_tabpanel->SetSelection(pos);
+    Bind(EVT_SELECT_TAB, [this](wxCommandEvent& evt) {
+        m_tabpanel->SelectPageByName(evt.GetString());
     });
 
     Bind(EVT_SYNC_CLOUD_PRESET, &MainFrame::on_select_default_preset, this);
@@ -702,7 +701,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
             }
             return;}
 #endif
-        if (evt.CmdDown() && evt.GetKeyCode() == 'R') { if (m_slice_enable) { wxGetApp().plater()->update(true, true); wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SLICE_PLATE)); this->m_tabpanel->SetSelection(tpPreview); } return; }
+        if (evt.CmdDown() && evt.GetKeyCode() == 'R') { if (m_slice_enable) { wxGetApp().plater()->update(true, true); wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SLICE_PLATE)); this->m_tabpanel->SelectPageByName(TAB_ID_PREVIEW); } return; }
         if (evt.CmdDown() && evt.ShiftDown() && evt.GetKeyCode() == 'G') {
             m_plater->apply_background_progress();
             m_print_enable = get_enable_print_status();
@@ -723,7 +722,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
         if (evt.CmdDown() && evt.ShiftDown() && evt.GetKeyCode() == 'S') { if (can_save_as()) m_plater->save_project(true); return;}
         else if (evt.CmdDown() && evt.GetKeyCode() == 'S') { if (can_save()) m_plater->save_project(); return;}
         if (evt.CmdDown() && evt.GetKeyCode() == 'F') {
-            if (m_plater && (m_tabpanel->GetSelection() == TabPosition::tp3DEditor || m_tabpanel->GetSelection() == TabPosition::tpPreview)) {
+            if (m_plater && (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW)) {
                 m_plater->sidebar().can_search();
             }
         }
@@ -1007,8 +1006,8 @@ void MainFrame::update_layout()
     m_layout = layout;
 
     // From the very beginning the Print settings should be selected
-    //m_last_selected_tab = m_layout == ESettingsLayout::Dlg ? 0 : 1;
-    m_last_selected_tab = 1;
+    //m_last_selected_tab = m_layout == ESettingsLayout::Dlg ? TAB_ID_HOME : TAB_ID_PREPARE;
+    m_last_selected_tab = TAB_ID_PREPARE;
 
     // Set new settings
     switch (m_layout)
@@ -1016,14 +1015,18 @@ void MainFrame::update_layout()
     case ESettingsLayout::Old:
     {
         m_plater->Reparent(m_tabpanel);
-        m_tabpanel->InsertPage(tp3DEditor, m_plater, _L("Prepare"), std::string("tab_3d_active"), std::string("tab_3d_active"), false);
-        m_tabpanel->InsertPage(tpPreview, m_plater, _L("Preview"), std::string("tab_preview_active"), std::string("tab_preview_active"), false);
+        {
+            const int home_idx = m_tabpanel->FindPageByName(TAB_ID_HOME);
+            const size_t prepare_pos = (home_idx == wxNOT_FOUND) ? 0 : static_cast<size_t>(home_idx) + 1;
+            m_tabpanel->InsertPage(prepare_pos, TAB_ID_PREPARE, m_plater, _L("Prepare"), std::string("tab_3d_active"), std::string("tab_3d_active"), false);
+            m_tabpanel->InsertPage(prepare_pos + 1, TAB_ID_PREVIEW, m_plater, _L("Preview"), std::string("tab_preview_active"), std::string("tab_preview_active"), false);
+        }
         m_main_sizer->Add(m_tabpanel, 1, wxEXPAND | wxTOP, 0);
 
         m_tabpanel->Bind(wxCUSTOMEVT_NOTEBOOK_SEL_CHANGED, [this](wxCommandEvent& evt)
         {
             // jump to 3deditor under preview_only mode
-            if (evt.GetId() == tp3DEditor){
+            if (evt.GetId() == m_tabpanel->FindPageByName(TAB_ID_PREPARE)) {
                 Sidebar& sidebar = GUI::wxGetApp().sidebar();
                 if (sidebar.need_auto_sync_after_connect_printer()) {
                     sidebar.set_need_auto_sync_after_connect_printer(false);
@@ -1252,15 +1255,14 @@ void MainFrame::init_tabpanel() {
 #endif
         //BBS
         wxWindow* panel = m_tabpanel->GetCurrentPage();
-        int sel = m_tabpanel->GetSelection();
         //wxString page_text = m_tabpanel->GetPageText(sel);
-        m_last_selected_tab = m_tabpanel->GetSelection();
+        m_last_selected_tab = m_tabpanel->GetSelectedPageName();
         if (panel == m_plater) {
-            if (sel == tp3DEditor) {
+            if (m_last_selected_tab == TAB_ID_PREPARE) {
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLVIEWTOOLBAR_3D));
                 m_param_panel->OnActivate();
             }
-            else if (sel == tpPreview) {
+            else if (m_last_selected_tab == TAB_ID_PREVIEW) {
                 m_plater->reset_check_status();
                 if (!m_plater->check_ams_status(m_slice_select == eSliceAll))
                     return;
@@ -1275,7 +1277,7 @@ void MainFrame::init_tabpanel() {
             //monitor
         }
 #ifndef __APPLE__
-        if (sel == tp3DEditor) {
+        if (m_last_selected_tab == TAB_ID_PREPARE) {
             m_topbar->EnableUndoRedoItems();
         }
         else {
@@ -1309,10 +1311,10 @@ void MainFrame::init_tabpanel() {
         m_webview         = new WebViewPanel(m_tabpanel);
         Bind(EVT_LOAD_URL, [this](wxCommandEvent &evt) {
             wxString url = evt.GetString();
-            select_tab(MainFrame::tpHome);
+            select_tab(TAB_ID_HOME);
             m_webview->load_url(url);
         });
-        m_tabpanel->AddPage(m_webview, "", "tab_home_active", "tab_home_active", false);
+        m_tabpanel->AddPage(TAB_ID_HOME, m_webview, "", "tab_home_active", "tab_home_active", false);
         m_param_panel = new ParamsPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
     }
 
@@ -1327,7 +1329,7 @@ void MainFrame::init_tabpanel() {
         //BBS add pages
     m_monitor = new MonitorPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_monitor->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);
+    m_tabpanel->AddPage(TAB_ID_MONITOR, m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);
 
     m_printer_view = new PrinterWebView(m_tabpanel);
     Bind(EVT_LOAD_PRINTER_URL, [this](LoadPrinterViewEvent &evt) {
@@ -1342,16 +1344,17 @@ void MainFrame::init_tabpanel() {
         m_multi_machine = new MultiMachinePage(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
         m_multi_machine->SetBackgroundColour(*wxWHITE);
         // TODO: change the bitmap
-        m_tabpanel->AddPage(m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"), std::string("tab_multi_active"), false);
+        m_tabpanel->AddPage(TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"), std::string("tab_multi_active"), false);
     }
 
     m_project = new ProjectPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_project->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_project, _L("Project"), std::string("tab_auxiliary_active"), std::string("tab_auxiliary_active"), false);
+    m_tabpanel->AddPage(TAB_ID_PROJECT, m_project, _L("Project"), std::string("tab_auxiliary_active"), std::string("tab_auxiliary_active"), false);
 
     m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_calibration->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_calibration, _L("Calibration"), std::string("tab_calibration_active"), std::string("tab_calibration_active"), false);
+    m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration, _L("Calibration"), std::string("tab_calibration_active"), std::string("tab_calibration_active"), false);
+
 
     if (m_plater) {
         // load initial config
@@ -1387,7 +1390,11 @@ void MainFrame::show_device(bool bBBLPrinter) {
             m_monitor->SetBackgroundColour(*wxWHITE);
         }
         m_monitor->Show(false);
-        m_tabpanel->InsertPage(tpMonitor, m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"));
+        {
+            const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
+            const size_t monitor_pos = (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
+            m_tabpanel->InsertPage(monitor_pos, TAB_ID_MONITOR, m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"));
+        }
 
         if (wxGetApp().is_enable_multi_machine()) {
             if (!m_multi_machine) {
@@ -1396,17 +1403,22 @@ void MainFrame::show_device(bool bBBLPrinter) {
             }
             // TODO: change the bitmap
             m_multi_machine->Show(false);
-            m_tabpanel->InsertPage(tpMultiDevice, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"),
-                                   std::string("tab_multi_active"), false);
+            {
+                const int monitor_idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR);
+                const size_t multi_pos = (monitor_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(monitor_idx) + 1;
+                m_tabpanel->InsertPage(multi_pos, TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"),
+                                       std::string("tab_multi_active"), false);
+            }
         }
         if (!m_calibration) {
             m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
             m_calibration->SetBackgroundColour(*wxWHITE);
         }
         m_calibration->Show(false);
-        // Calibration is always the last page, so don't use InsertPage here. Otherwise, if multi_machine page is not enabled,
-        // the calibration tab won't be properly added as well, due to the TabPosition::tpCalibration no longer matches the real tab position.
-        m_tabpanel->AddPage(m_calibration, _L("Calibration"), std::string("tab_calibration_active"),
+        // Calibration is always appended last (AddPage), so it lands after whichever of Monitor/Multi-device
+        // actually got inserted above — no longer position-sensitive now that insertion position is computed
+        // from FindPageByName rather than a fixed TabPosition index.
+        m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration, _L("Calibration"), std::string("tab_calibration_active"),
                                std::string("tab_calibration_active"), false);
 
 #ifdef _MSW_DARK_MODE
@@ -1440,8 +1452,12 @@ void MainFrame::show_device(bool bBBLPrinter) {
             });
         }
         m_printer_view->Show(false);
-        m_tabpanel->InsertPage(tpMonitor, m_printer_view, _L("Device"), std::string("tab_monitor_active"),
-                               std::string("tab_monitor_active"));
+        {
+            const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
+            const size_t monitor_pos = (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
+            m_tabpanel->InsertPage(monitor_pos, TAB_ID_MONITOR, m_printer_view, _L("Device"), std::string("tab_monitor_active"),
+                                   std::string("tab_monitor_active"));
+        }
     }
     fit_tab_labels(); // ORCA on printer change
 }
@@ -1475,7 +1491,7 @@ void MainFrame::fit_tab_labels()
 bool MainFrame::preview_only_hint()
 {
     if (m_plater && (m_plater->only_gcode_mode() || (m_plater->using_exported_file()))) {
-        BOOST_LOG_TRIVIAL(info) << boost::format("skipped tab switch from %1% to %2% in preview mode")%m_tabpanel->GetSelection() %tp3DEditor;
+        BOOST_LOG_TRIVIAL(info) << boost::format("skipped tab switch from %1% to %2% in preview mode")%m_tabpanel->GetSelectedPageName() %wxString(TAB_ID_PREPARE);
 
         ConfirmBeforeSendDialog confirm_dlg(this, wxID_ANY, _L("Warning"));
         confirm_dlg.Bind(EVT_SECONDARY_CHECK_CONFIRM, [this](wxCommandEvent& e) {
@@ -1793,22 +1809,22 @@ bool MainFrame::can_clone() const {
 
 bool MainFrame::can_select() const
 {
-    return (m_plater != nullptr) && (m_tabpanel->GetSelection() == TabPosition::tp3DEditor) && !m_plater->model().objects.empty();
+    return (m_plater != nullptr) && (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE) && !m_plater->model().objects.empty();
 }
 
 bool MainFrame::can_deselect() const
 {
-    return (m_plater != nullptr) && (m_tabpanel->GetSelection() == TabPosition::tp3DEditor) && !m_plater->is_selection_empty();
+    return (m_plater != nullptr) && (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE) && !m_plater->is_selection_empty();
 }
 
 bool MainFrame::can_delete() const
 {
-    return (m_plater != nullptr) && (m_tabpanel->GetSelection() == TabPosition::tp3DEditor) && !m_plater->is_selection_empty();
+    return (m_plater != nullptr) && (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE) && !m_plater->is_selection_empty();
 }
 
 bool MainFrame::can_delete_all() const
 {
-    return (m_plater != nullptr) && (m_tabpanel->GetSelection() == TabPosition::tp3DEditor) && !m_plater->model().objects.empty();
+    return (m_plater != nullptr) && (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE) && !m_plater->model().objects.empty();
 }
 
 bool MainFrame::can_reslice() const
@@ -1917,7 +1933,7 @@ wxBoxSizer* MainFrame::create_side_tools()
                     wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SLICE_ALL));
                 else
                     wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SLICE_PLATE));
-                this->m_tabpanel->SetSelection(tpPreview);
+                this->m_tabpanel->SelectPageByName(TAB_ID_PREVIEW);
             }
         });
 
@@ -3063,7 +3079,7 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().app_config->set_bool("auto_perspective", !wxGetApp().app_config->get_bool("auto_perspective"));
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
-            this, [this]() { return m_tabpanel->GetSelection() == TabPosition::tp3DEditor || m_tabpanel->GetSelection() == TabPosition::tpPreview; },
+            this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
             [this]() { return wxGetApp().app_config->get_bool("auto_perspective"); }, this);
 
         viewMenu->AppendSeparator();
@@ -3072,7 +3088,7 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().toggle_show_gcode_window();
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
-            this, [this]() { return m_tabpanel->GetSelection() == tpPreview; },
+            this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
             [this]() { return wxGetApp().show_gcode_window(); }, this);
 
         append_menu_check_item(
@@ -3081,7 +3097,7 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().toggle_show_3d_navigator();
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
-            this, [this]() { return m_tabpanel->GetSelection() == TabPosition::tp3DEditor || m_tabpanel->GetSelection() == TabPosition::tpPreview; },
+            this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
             [this]() { return wxGetApp().show_3d_navigator(); }, this);
 
         append_menu_check_item(viewMenu, wxID_ANY, _L("Show Gridlines"), _L("Show Gridlines on plate"),
@@ -3089,14 +3105,14 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().toggle_show_plate_gridlines();
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             }, this,
-            [this]() { return m_tabpanel->GetSelection() == TabPosition::tp3DEditor || m_tabpanel->GetSelection() == TabPosition::tpPreview; },
+            [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
             [this]() { return wxGetApp().show_plate_gridlines(); }, this);
 
         append_menu_item(
             viewMenu, wxID_ANY, _L("Reset Window Layout"), _L("Reset to default window layout"),
             [this](wxCommandEvent&) { m_plater->reset_window_layout(); }, "", this,
             [this]() {
-                return (m_tabpanel->GetSelection() == TabPosition::tp3DEditor || m_tabpanel->GetSelection() == TabPosition::tpPreview) &&
+                return (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW) &&
                        m_plater->is_sidebar_enabled();
             },
             this);
@@ -3119,7 +3135,7 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().toggle_show_outline();
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
-            this, [this]() { return m_tabpanel->GetSelection() == TabPosition::tp3DEditor; },
+            this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE; },
             [this]() { return wxGetApp().show_outline(); }, this);
 
         /*viewMenu->AppendSeparator();
@@ -3920,13 +3936,18 @@ void MainFrame::select_tab(wxPanel* panel)
         wxGetApp().params_dialog()->Popup();
         return;
     }
+    // page_name cannot be resolved via panel->GetName() — Prepare and Preview
+    // share the single m_plater window, so the window itself has no single correct
+    // name (see Global Constraints). Resolve via Notebook's per-slot m_pageNames
+    // instead, via the index -> id lookup, which works for any page (built-in or not).
     int page_idx = m_tabpanel->FindPage(panel);
-    if (page_idx == tp3DEditor && m_tabpanel->GetSelection() == tpPreview)
+    wxString page_name = (page_idx == wxNOT_FOUND) ? wxString() : m_tabpanel->GetPageName(static_cast<size_t>(page_idx));
+    if (page_name == TAB_ID_PREPARE && m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW)
         return;
     //BBS GUI refactor: remove unused layout new/dlg
     /*if (page_idx != wxNOT_FOUND && m_layout == ESettingsLayout::Dlg)
         page_idx++;*/
-    select_tab(size_t(page_idx));
+    select_tab(page_name);
 }
 
 //BBS
@@ -3934,7 +3955,7 @@ void MainFrame::jump_to_monitor(std::string dev_id)
 {
     if(!m_monitor)
         return;
-    m_tabpanel->SetSelection(tpMonitor);
+    m_tabpanel->SelectPageByName(TAB_ID_MONITOR);
     if (!dev_id.empty()) {
         ((MonitorPanel*)m_monitor)->select_machine(dev_id);
     }
@@ -3944,26 +3965,26 @@ void MainFrame::jump_to_multipage()
 {
     if(!m_multi_machine)
         return;
-    m_tabpanel->SetSelection(tpMultiDevice);
+    m_tabpanel->SelectPageByName(TAB_ID_MULTI_DEVICE);
     ((MultiMachinePage*)m_multi_machine)->jump_to_send_page();
 }
 
 
 //BBS GUI refactor: remove unused layout new/dlg
-void MainFrame::select_tab(size_t tab/* = size_t(-1)*/)
+void MainFrame::select_tab(const wxString& id/* = wxString()*/)
 {
     //bool tabpanel_was_hidden = false;
 
     // Controls on page are created on active page of active tab now.
     // We should select/activate tab before its showing to avoid an UI-flickering
-    auto select = [this, tab](bool was_hidden) {
-        // when tab == -1, it means we should show the last selected tab
+    auto select = [this, id](bool was_hidden) {
+        // when id is empty, it means we should show the last selected tab
         //BBS GUI refactor: remove unused layout new/dlg
         //size_t new_selection = tab == (size_t)(-1) ? m_last_selected_tab : (m_layout == ESettingsLayout::Dlg && tab != 0) ? tab - 1 : tab;
-        size_t new_selection = tab == (size_t)(-1) ? m_last_selected_tab : tab;
+        wxString new_selection = id.empty() ? m_last_selected_tab : id;
 
-        if (m_tabpanel->GetSelection() != (int)new_selection)
-            m_tabpanel->SetSelection(new_selection);
+        if (m_tabpanel->GetSelectedPageName() != new_selection)
+            m_tabpanel->SelectPageByName(new_selection);
 #ifdef _MSW_DARK_MODE
         /*if (wxGetApp().tabs_as_menu()) {
             if (Tab* cur_tab = dynamic_cast<Tab*>(m_tabpanel->GetPage(new_selection)))
@@ -3972,10 +3993,14 @@ void MainFrame::select_tab(size_t tab/* = size_t(-1)*/)
                 m_plater->get_current_canvas3D()->render();
         }*/
 #endif
-        if (tab == MainFrame::tp3DEditor && m_layout == ESettingsLayout::Old)
+        // NOTE: this checks the ORIGINAL parameter (id), not the resolved new_selection —
+        // preserving that the fallback-to-last-tab path never triggers this render call
+        // even if the last selected tab happened to be Prepare. Do not "simplify" to
+        // new_selection == TAB_ID_PREPARE, that changes behavior.
+        if (id == TAB_ID_PREPARE && m_layout == ESettingsLayout::Old)
             m_plater->canvas3D()->render();
         else if (was_hidden) {
-            Tab* cur_tab = dynamic_cast<Tab*>(m_tabpanel->GetPage(new_selection));
+            Tab* cur_tab = dynamic_cast<Tab*>(m_tabpanel->GetPageByName(new_selection));
             if (cur_tab)
                 cur_tab->OnActivate();
         }
@@ -3984,10 +4009,10 @@ void MainFrame::select_tab(size_t tab/* = size_t(-1)*/)
     select(false);
 }
 
-void MainFrame::request_select_tab(TabPosition pos)
+void MainFrame::request_select_tab(const wxString& id)
 {
     wxCommandEvent* evt = new wxCommandEvent(EVT_SELECT_TAB);
-    evt->SetInt(pos);
+    evt->SetString(id);
     wxQueueEvent(this, evt);
 }
 
@@ -4267,7 +4292,7 @@ void MainFrame::load_printer_url()
     }
 }
 
-bool MainFrame::is_printer_view() const { return m_tabpanel->GetSelection() == TabPosition::tpMonitor; }
+bool MainFrame::is_printer_view() const { return m_tabpanel->GetSelectedPageName() == TAB_ID_MONITOR; }
 
 
 void MainFrame::refresh_plugin_tips()
