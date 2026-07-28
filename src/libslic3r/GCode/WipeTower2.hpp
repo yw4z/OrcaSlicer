@@ -361,7 +361,8 @@ private:
 		WipeTowerWriter2 &writer,
 		const WipeTower::box_coordinates  &cleaning_box,
 		float wipe_volume,
-        bool interface_layer);
+        bool interface_layer,
+        bool priming = false);
 
 
     Polygon generate_support_rib_wall(WipeTowerWriter2&                 writer,

@@ -1571,11 +1571,11 @@ std::vector<WipeTower::ToolChangeResult> WipeTower2::prime(
         toolchange_Load(writer, cleaning_box); // Prime the tool.
         if (idx_tool + 1 == tools.size()) {
             // Last tool should not be unloaded, but it should be wiped enough to become of a pure color.
-            toolchange_Wipe(writer, cleaning_box, wipe_volumes[tools[idx_tool-1]][tool], false);
+            toolchange_Wipe(writer, cleaning_box, wipe_volumes[tools[idx_tool-1]][tool], false, true);
         } else {
             // Ram the hot material out of the melt zone, retract the filament into the cooling tubes and let it cool.
             //writer.travel(writer.x(), writer.y() + m_perimeter_width, 7200);
-            toolchange_Wipe(writer, cleaning_box , 20.f, false);
+            toolchange_Wipe(writer, cleaning_box , 20.f, false, true);
             WipeTower::box_coordinates box = cleaning_box;
             box.translate(0.f, writer.y() - cleaning_box.ld.y() + m_perimeter_width);
             toolchange_Unload(writer, box , m_filpar[m_current_tool].material, m_filpar[m_current_tool].first_layer_temperature, m_filpar[tools[idx_tool + 1]].first_layer_temperature);
@@ -2013,7 +2013,8 @@ void WipeTower2::toolchange_Wipe(
 	WipeTowerWriter2 &writer,
 	const WipeTower::box_coordinates  &cleaning_box,
 	float wipe_volume,
-    bool interface_layer)
+    bool interface_layer,
+    bool priming)
 {
 	// Increase flow on first layer, slow down print.
     writer.set_extrusion_flow(m_extrusion_flow * (is_first_layer() ? 1.18f : 1.f))
@@ -2056,6 +2057,26 @@ void WipeTower2::toolchange_Wipe(
 		}
 
 		float traversed_x = writer.x();
+
+        // BBS gap wall: iron the first few mm of the purge, then drag the retracted nozzle
+        // back out through the wall gap so the toolchange start blob is not left on the wall.
+        // WT2's entry gap always sits at the left-edge entry point, so only iron when the
+        // purge actually starts there heading right (in-place toolchangers do; SEMM
+        // ram/cooling moves leave the nozzle mid-box, far from any gap).
+        if (i == 0 && m_use_gap_wall && !interface_layer && !priming && m_left_to_right &&
+            writer.x() - xl < 2.5f * line_width) {
+            float ironing_length = 3.f;
+            if (xr - writer.x() < ironing_length)
+                ironing_length = std::max(xr - writer.x(), 0.f);
+            const float retract_length = m_filpar[m_current_tool].retract_length;
+            const float retract_speed  = m_filpar[m_current_tool].retract_speed * 60.f;
+            writer.extrude(writer.x() + ironing_length, writer.y(), wipe_speed);
+            writer.retract(retract_length, retract_speed);
+            writer.travel(writer.x() - 1.5f * ironing_length, writer.y(), 600.f);
+            writer.travel(writer.x() + 1.5f * ironing_length, writer.y(), 240.f);
+            writer.retract(-retract_length, retract_speed);
+        }
+
 		if (m_left_to_right)
             writer.extrude(xr - (i % 4 == 0 ? 0 : 1.5f*line_width), writer.y(), wipe_speed);
 		else
