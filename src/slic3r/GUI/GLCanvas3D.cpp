@@ -4198,8 +4198,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         if (!has_mouse_capture() && imgui_dragging_active)
             m_canvas->CaptureMouse();
 
-        // release capture as soon as the button goes up. Without this, on_mouse() may return below before ever reaching the LeftUp branch
-        // further down (since m_mouse.dragging is false for pure ImGui drags), leaving the canvas stuck with mouse capture.
+        // release capture as soon as the button goes up
         if (evt.LeftUp() || evt.MiddleUp() || evt.RightUp())
             mouse_up_cleanup();
 
@@ -4408,6 +4407,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             // Start editing the layer height.
             m_layers_editing.state = LayersEditing::Editing;
             _perform_layer_editing_action(&evt);
+
+            if (!has_mouse_capture()) // ORCA keep tracking mouse position while drag active and cursor not in window bounds
+                m_canvas->CaptureMouse();
         }
 
         else {
@@ -4571,6 +4573,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
 
         if (m_layers_editing.state != LayersEditing::Unknown && layer_editing_object_idx != -1) {
             if (m_layers_editing.state == LayersEditing::Editing) {
+                if (!has_mouse_capture()) // ORCA keep tracking mouse position while drag active and cursor not in window bounds
+                    m_canvas->CaptureMouse();
+
                 _perform_layer_editing_action(&evt);
                 m_mouse.position = pos.cast<double>();
             }
@@ -6080,7 +6085,7 @@ void GLCanvas3D::_render_3d_navigator()
     }
 
     // Fix stealing capture event from other drag events
-    const bool other_drag_active = !m_navigator_dragging && (m_moving || m_rectangle_selection.is_dragging() || m_gizmos.is_dragging());
+    const bool other_drag_active = !m_navigator_dragging && (m_moving || m_rectangle_selection.is_dragging() || m_gizmos.is_dragging() || m_layers_editing.state == LayersEditing::Editing);
 
     ImGuiIO& io = ImGui::GetIO();
     const bool saved_mouse_down0 = io.MouseDown[0];
