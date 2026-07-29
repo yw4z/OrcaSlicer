@@ -1673,6 +1673,11 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
 
     // Ram the hot material out of the melt zone, retract the filament into the cooling tubes and let it cool.
     if (tool != (unsigned int)-1){ 			// This is not the last change.
+        // Without a ram the box was planned as whole wipe rows; the wipe then fills it
+        // completely so adjacent purge blocks stay contiguous. Uses the old tool
+        // (m_current_tool before toolchange_Change), same condition as
+        // toolchange_Unload()'s do_ramming.
+        const bool fill_box = !((m_semm && m_enable_filament_ramming) || m_filpar[m_current_tool].multitool_ramming);
         auto new_tool_temp = is_first_layer() ? m_filpar[tool].first_layer_temperature : m_filpar[tool].temperature;
         toolchange_Unload(writer, cleaning_box, m_filpar[m_current_tool].material,
                           (is_first_layer() ? m_filpar[m_current_tool].first_layer_temperature : m_filpar[m_current_tool].temperature),
@@ -1695,7 +1700,7 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
                 writer.extrude_explicit(target_x, writer.y(), pre_len, 600.f);
             }
         }
-        toolchange_Wipe(writer, cleaning_box, wipe_volume, interface_layer);     // Wipe the newly loaded filament until the end of the assigned wipe area.
+        toolchange_Wipe(writer, cleaning_box, wipe_volume, interface_layer, false, fill_box);     // Wipe the newly loaded filament until the end of the assigned wipe area.
         if (interface_layer) {
             int interface_temp = m_filpar[tool].interface_print_temperature;
             if (!m_enable_tower_interface_cooldown_during_tower && interface_temp > 0 && interface_temp != base_temp)
@@ -1933,8 +1938,18 @@ void WipeTower2::toolchange_Unload(
     Vec2f pos = Vec2f(end_of_ramming.x(), end_of_ramming.y() + (y_step/m_extra_spacing_ramming-m_perimeter_width) / 2.f + m_perimeter_width);
     if (do_ramming)
         writer.travel(pos, 2400.f);
-    else
-        writer.set_position(pos);
+    else {
+        // Orca: with no ram printed there is no ramming geometry to align with. Start the
+        // first wipe row so the purge row lattice continues across the block boundary
+        // (previous box's last row top edge sits at its box top): with the planned depth
+        // of rows * dy, the last row's top edge then lands exactly on this box's top and
+        // no blank band is left between adjacent purge blocks. Mirrors dy/line_width in
+        // toolchange_Wipe().
+        const float wipe_dy         = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
+        const float wipe_line_width = m_perimeter_width * m_extra_flow;
+        writer.set_position(Vec2f(end_of_ramming.x(),
+            cleaning_box.ld.y() + m_depth_traversed + wipe_dy - (m_perimeter_width + wipe_line_width) / 2.f + m_perimeter_width));
+    }
 
     writer.resume_preview()
           .flush_planner_queue();
@@ -2014,7 +2029,8 @@ void WipeTower2::toolchange_Wipe(
 	const WipeTower::box_coordinates  &cleaning_box,
 	float wipe_volume,
     bool interface_layer,
-    bool priming)
+    bool priming,
+    bool fill_box)
 {
 	// Increase flow on first layer, slow down print.
     writer.set_extrusion_flow(m_extrusion_flow * (is_first_layer() ? 1.18f : 1.f))
@@ -2092,7 +2108,10 @@ void WipeTower2::toolchange_Wipe(
 
 		traversed_x -= writer.x();
         x_to_wipe -= std::abs(traversed_x);
-		if (x_to_wipe < WT_EPSILON) {
+        // Orca: with no ram printed the box was planned as whole wipe rows; fill it
+        // completely (quantizing the purge up to the planned rows) so the next block
+        // can start right above it without a blank band in between.
+        if (!fill_box && x_to_wipe < WT_EPSILON) {
             writer.travel(m_left_to_right ? xl + 1.5f*line_width : xr - 1.5f*line_width, writer.y(), 7200);
 			break;
 		}
@@ -2346,14 +2365,6 @@ void WipeTower2::plan_toolchange(float z_par, float layer_height_par, unsigned i
     m_plan.back().tool_changes.push_back(set_toolchange(old_tool, new_tool, layer_height_par, wipe_volume, first_layer_plan));
 }
 
-float WipeTower2::wipe_start_depth_offset(size_t old_tool) const
-{
-    const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[old_tool].multitool_ramming;
-    if (do_ramming)
-        return 0.f;
-    return 0.5f * m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator * m_extra_spacing_ramming;
-}
-
 WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool, size_t new_tool, float layer_height, float wipe_volume, bool first_layer_plan)
 {
     float width = m_wipe_tower_width - 3*m_perimeter_width;
@@ -2381,8 +2392,7 @@ WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool
     // ORCA: and first-layer purge segments do not leave visible gaps.
     const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
 
-    float wiping_depth = get_wipe_depth(wipe_volume - first_wipe_volume, layer_height, m_perimeter_width, m_extra_flow, planning_spacing, width)
-                       + wipe_start_depth_offset(old_tool);
+    float wiping_depth = get_wipe_depth(wipe_volume - first_wipe_volume, layer_height, m_perimeter_width, m_extra_flow, planning_spacing, width);
 
 	return WipeTowerInfo::ToolChange(old_tool, new_tool, ramming_depth + wiping_depth, ramming_depth, first_wipe_line, wipe_volume);
 }
@@ -2444,8 +2454,7 @@ void WipeTower2::save_on_last_wipe()
             const bool first_layer_plan = size_t(m_layer_info - m_plan.begin()) == m_first_layer_idx;
             const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
 
-            float depth_to_wipe = get_wipe_depth(volume_we_need_depth_for, m_layer_info->height, m_perimeter_width, m_extra_flow, planning_spacing, width)
-                                + wipe_start_depth_offset(toolchange.old_tool);
+            float depth_to_wipe = get_wipe_depth(volume_we_need_depth_for, m_layer_info->height, m_perimeter_width, m_extra_flow, planning_spacing, width);
 
             toolchange.required_depth = toolchange.ramming_depth + depth_to_wipe;
             toolchange.wipe_volume = volume_left_to_wipe;
