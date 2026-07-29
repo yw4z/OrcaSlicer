@@ -589,6 +589,7 @@ private:
     bool m_toolpath_outside{ false };
     ECursorType m_cursor_type;
     GLSelectionRectangle m_rectangle_selection;
+    bool m_navigator_dragging{ false };
 
     //BBS:add plate related logic
     mutable std::vector<int> m_hover_volume_idxs;

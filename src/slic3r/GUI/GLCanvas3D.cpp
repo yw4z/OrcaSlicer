@@ -4190,7 +4190,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         m_tooltip.set_in_imgui(true);
 
         // keep tracking an active ImGui drag (e.g. IMSlider handle/label) even once the mouse leaves the canvas window bounds.
-        const bool imgui_dragging_active_item = GImGui != nullptr && ImGui::GetIO().MouseDown[0] && GImGui->ActiveId != 0;
+        const bool imgui_dragging_active_item =
+            (GImGui != nullptr && ImGui::GetIO().MouseDown[0] && GImGui->ActiveId != 0) || // UI controls
+            m_navigator_dragging; // Navigation Cube
         if (m_canvas != nullptr && imgui_dragging_active_item && !m_canvas->HasCapture())
             m_canvas->CaptureMouse();
 
@@ -6044,6 +6046,7 @@ void GLCanvas3D::_render_3d_navigator()
 {
     if (!wxGetApp().show_3d_navigator()) {
         m_canvas_toolbar_pos[0] = 0;
+        m_navigator_dragging = false;
         return;
     }
 
@@ -6126,6 +6129,8 @@ void GLCanvas3D::_render_3d_navigator()
 
         request_extra_frame();
     }
+
+    m_navigator_dragging = result.dragging;
 }
 
 #define ENABLE_THUMBNAIL_GENERATOR_DEBUG_OUTPUT 0
