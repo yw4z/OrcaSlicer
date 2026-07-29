@@ -1671,11 +1671,13 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
 
     // Ram the hot material out of the melt zone, retract the filament into the cooling tubes and let it cool.
     if (tool != (unsigned int)-1){ 			// This is not the last change.
-        // Without a ram the box was planned as whole wipe rows; the wipe then fills it
-        // completely so adjacent purge blocks stay contiguous. Uses the old tool
-        // (m_current_tool before toolchange_Change), same condition as
-        // toolchange_Unload()'s do_ramming.
-        const bool fill_box = !((m_semm && m_enable_filament_ramming) || m_filpar[m_current_tool].multitool_ramming);
+        // Without a ram — or with the boundary wipe start, where the ram band is
+        // quantized to whole rows — the box is planned as whole wipe rows; the wipe
+        // then fills it completely so adjacent purge blocks stay contiguous. Uses the
+        // old tool (m_current_tool before toolchange_Change), same conditions as
+        // toolchange_Unload()'s do_ramming / boundary_wipe_start.
+        const bool do_ram_old = (m_semm && m_enable_filament_ramming) || m_filpar[m_current_tool].multitool_ramming;
+        const bool fill_box   = !do_ram_old || (!m_semm && m_use_gap_wall);
         auto new_tool_temp = is_first_layer() ? m_filpar[tool].first_layer_temperature : m_filpar[tool].temperature;
         toolchange_Unload(writer, cleaning_box, m_filpar[m_current_tool].material,
                           (is_first_layer() ? m_filpar[m_current_tool].first_layer_temperature : m_filpar[m_current_tool].temperature),
@@ -1756,6 +1758,12 @@ void WipeTower2::toolchange_Unload(
     // Orca: Do ramming when SEMM and ramming is enabled or when multi tool head when ramming is enabled on the multi tool.
     const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[m_current_tool].multitool_ramming;
     const bool cold_ramming = m_is_mk4mmu3;
+    // Orca: see set_toolchange() — quantized ram band + wipe restart at the boundary.
+    const bool boundary_wipe_start = do_ramming && !m_semm && m_use_gap_wall;
+    float planned_ramming_depth = 0.f;
+    if (boundary_wipe_start && m_layer_info != m_plan.end())
+        for (const auto& tch : m_layer_info->tool_changes)
+            if (tch.old_tool == m_current_tool) { planned_ramming_depth = tch.ramming_depth; break; }
 
     if (do_ramming) {
         writer.travel(ramming_start_pos); // move to starting position
@@ -1768,7 +1776,8 @@ void WipeTower2::toolchange_Unload(
         writer.set_position(ramming_start_pos);
 
     // if the ending point of the ram would end up in mid air, align it with the end of the wipe tower:
-    if (do_ramming && (m_layer_info > m_plan.begin() && m_layer_info < m_plan.end() && (m_layer_info-1!=m_plan.begin() || !m_adhesion ))) {
+    // (with a boundary wipe start the band is quantized to whole rows below, so no phase alignment is needed)
+    if (do_ramming && !boundary_wipe_start && (m_layer_info > m_plan.begin() && m_layer_info < m_plan.end() && (m_layer_info-1!=m_plan.begin() || !m_adhesion ))) {
 
         // this is y of the center of previous sparse infill border
         float sparse_beginning_y = 0.f;
@@ -1827,6 +1836,28 @@ void WipeTower2::toolchange_Unload(
 			e_done = 0;
 		}
 	}
+
+    // Orca: quantize the ram band up to the whole reserved rows (BBL quantizes the
+    // old-tool purge the same way) so no unprinted void is left between the band and
+    // the wipe restarting at the boundary below it.
+    if (planned_ramming_depth > 0.f) {
+        const int   reserved_rows = std::max(1, int(std::round(planned_ramming_depth / y_step)));
+        const float last_row_y    = ramming_start_pos.y() + (reserved_rows - 1) * y_step;
+        // Same bead model as the ramming segments above: E per mm of ram line.
+        const float e_per_mm      = 1.f / (volume_to_length(1.f, line_width, m_layer_height) * filament_area());
+        const float fill_feed     = m_filpar[m_current_tool].ramming_speed.empty() ? 3000.f :
+            60.f * volume_to_length(m_filpar[m_current_tool].ramming_speed.back(), line_width, m_layer_height);
+        while (true) {
+            const float target_x = m_left_to_right ? xr : xl;
+            if (std::abs(target_x - writer.x()) > WT_EPSILON)
+                writer.ram(writer.x(), target_x, 0.f, 0.f, e_per_mm * std::abs(target_x - writer.x()), fill_feed);
+            if (writer.y() + 0.5f * y_step > last_row_y)
+                break;
+            writer.travel(writer.x(), writer.y() + y_step, 7200);
+            m_left_to_right = !m_left_to_right;
+        }
+    }
+
 	Vec2f end_of_ramming(writer.x(),writer.y());
     writer.change_analyzer_line_width(m_perimeter_width);   // so the next lines are not affected by ramming_line_width_multiplier
 
@@ -1934,7 +1965,18 @@ void WipeTower2::toolchange_Unload(
     // this is to align ramming and future wiping extrusions, so the future y-steps can be uniform from the start:
     // the perimeter_width will later be subtracted, it is there to not load while moving over just extruded material
     Vec2f pos = Vec2f(end_of_ramming.x(), end_of_ramming.y() + (y_step/m_extra_spacing_ramming-m_perimeter_width) / 2.f + m_perimeter_width);
-    if (do_ramming)
+    if (planned_ramming_depth > 0.f) {
+        // Orca: restart the wipe at the left-edge boundary on a fresh row below the
+        // quantized ram band so the entry scrub always runs at the wall gap (BBL keeps
+        // CP_TOOLCHANGE_WIPE starting at a box corner the same way). Same lattice
+        // formula as the no-ram branch below, offset by the ram band.
+        const float wipe_dy         = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
+        const float wipe_line_width = m_perimeter_width * m_extra_flow;
+        writer.travel(Vec2f(ramming_start_pos.x(),
+            cleaning_box.ld.y() + m_depth_traversed + planned_ramming_depth + wipe_dy - (m_perimeter_width + wipe_line_width) / 2.f + m_perimeter_width), 2400.f);
+        m_left_to_right = true;
+    }
+    else if (do_ramming)
         writer.travel(pos, 2400.f);
     else {
         // Orca: with no ram printed there is no ramming geometry to align with. Start the
@@ -2370,11 +2412,18 @@ WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool
     // (same condition as its do_ramming), otherwise the unprinted reservation
     // leaves blank bands between the purge boxes.
     const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[old_tool].multitool_ramming;
+    // Orca: with the gap wall on a multi-tool printer the ram band is quantized up to
+    // the whole reserved rows and the wipe restarts at the left-edge boundary on a
+    // fresh row below it (BBL parity: the old-tool purge is whole rows and the wipe
+    // always starts at the box corner, where the entry scrub runs). SEMM keeps the
+    // stock continue-from-ram-end behavior. Must match toolchange_Unload()/tool_change().
+    const bool boundary_wipe_start = do_ramming && !m_semm && m_use_gap_wall;
     float ramming_depth = do_ramming ? ((int(length_to_extrude / width) + 1) * (m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator) * m_extra_spacing_ramming) : 0;
     // first_wipe_line rides for free on the last (partially used) ramming row, which
-    // is already covered by ramming_depth. Without ramming that row does not exist,
-    // so the whole wipe volume needs reserved wiping depth.
-    float first_wipe_line = do_ramming ? - (width*((length_to_extrude / width)-int(length_to_extrude / width)) - width) : 0.f;
+    // is already covered by ramming_depth. Without ramming that row does not exist
+    // (and with a boundary wipe start the ram band is quantized to whole rows), so
+    // the whole wipe volume needs reserved wiping depth.
+    float first_wipe_line = (do_ramming && !boundary_wipe_start) ? - (width*((length_to_extrude / width)-int(length_to_extrude / width)) - width) : 0.f;
 
     float first_wipe_volume = length_to_volume(first_wipe_line, m_perimeter_width * m_extra_flow, layer_height);
 
