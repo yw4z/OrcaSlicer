@@ -21,6 +21,7 @@ struct TextureDisplacementBakeInput
     indexed_triangle_set                  base_mesh;
     std::vector<TextureDisplacementLayer> layers;
     TextureDisplacementFacetsData         facets_data;
+    TextureDisplacementOptions            options;
 };
 
 // Bakes a volume's painted texture-displacement layers into real mesh geometry in the background,

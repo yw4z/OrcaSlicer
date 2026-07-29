@@ -1117,7 +1117,8 @@ std::vector<float> patch_boundary_distance(const indexed_triangle_set &patch, co
 
 indexed_triangle_set build_texture_displacement(const indexed_triangle_set                  &base_mesh,
                                                  const std::vector<TextureDisplacementLayer> &layers,
-                                                 const TextureDisplacementFacetsData         &facets_data)
+                                                 const TextureDisplacementFacetsData         &facets_data,
+                                                 const TextureDisplacementOptions            &options)
 {
     indexed_triangle_set mesh = base_mesh;
     // TriangleSelector's vertex array starts with the mesh's own vertices (any extra ones, created
@@ -1144,10 +1145,51 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
     // rather than against whatever the previous layer left behind. That is what lets all the layers
     // be evaluated independently and merged per vertex, instead of having to re-mesh and remap the
     // paint masks between them (see the header for why that earlier design was dropped).
-    const std::vector<Vec3f> vertex_normals = texture_displacement_vertex_normals(mesh);
+    std::vector<Vec3f> vertex_normals = texture_displacement_vertex_normals(mesh);
+
+    // ... with one correction, applied where the painted area does not cover every triangle around a
+    // vertex: there the direction to move in is the normal of the *painted* surface, not of the whole
+    // mesh. On the rim of a fully painted top face the whole-mesh normal is the 45 degrees bisector
+    // between the face and the side wall it meets, so displacing along it flares the rim outwards
+    // instead of raising it. Taken over the union of every layer's paint (triangles_to_split is
+    // exactly the set of original triangles a layer's brush touched - serialize() records an entry for
+    // each one that is split or carries a non-default state), so a vertex still has one single
+    // direction however many layers cover it. Interior vertices are unaffected: all their triangles
+    // are painted, so the two normals coincide.
+    {
+        std::vector<uint8_t> painted_face(mesh.indices.size(), 0);
+        bool                 any_paint = false;
+        for (const TextureDisplacementLayer *layer : ordered_layers)
+            for (const TriangleSelector::TriangleBitStreamMapping &m : facets_data[size_t(layer->slot)].triangles_to_split)
+                if (size_t(m.triangle_idx) < mesh.indices.size()) {
+                    painted_face[size_t(m.triangle_idx)] = 1;
+                    any_paint                            = true;
+                }
+        if (any_paint) {
+            std::vector<Vec3f> painted_normals(mesh.vertices.size(), Vec3f::Zero());
+            for (size_t i = 0; i < mesh.indices.size(); ++i) {
+                if (!painted_face[i])
+                    continue;
+                const stl_triangle_vertex_indices &t = mesh.indices[i];
+                const Vec3f fn = (mesh.vertices[t[1]] - mesh.vertices[t[0]]).cross(mesh.vertices[t[2]] - mesh.vertices[t[0]]);
+                for (int k = 0; k < 3; ++k)
+                    painted_normals[size_t(t[k])] += fn; // area-weighted, same convention as the full normals
+            }
+            for (size_t v = 0; v < vertex_normals.size(); ++v)
+                if (const float l = painted_normals[v].norm(); l > 1e-8f)
+                    vertex_normals[v] = painted_normals[v] / l;
+                // else: no painted triangle touches this vertex, so it will not be displaced anyway -
+                // leave the whole-mesh normal in place rather than zeroing it.
+        }
+    }
 
     std::vector<float> displacement(mesh.vertices.size(), 0.f);
     std::vector<bool>  displaced(mesh.vertices.size(), false);
+    // Union, over every layer, of that layer's patch border - the vertices the post-process smoothing
+    // holds when TextureDisplacementOptions::smooth_skip_border is set. A vertex on any patch's edge
+    // counts, which is the conservative choice: hold it rather than let one layer's smoothing melt the
+    // rim another layer put there.
+    std::vector<bool>  on_patch_border(mesh.vertices.size(), false);
     bool               any_displacement = false;
 
     const TriangleMesh selector_mesh(mesh);
@@ -1171,13 +1213,19 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
         // compactify above, it is our own.
         const indexed_triangle_set rest = selector.get_facets_strict(EnforcerBlockerType::NONE);
 
-        // A vertex used by even one *unpainted* triangle sits on this layer's boundary: it belongs
-        // to both the painted patch and the untouched surface, so displacing it would tear the two
-        // apart. Pinning it is what keeps the result seamless with no remeshing at the seam.
+        // A vertex used by even one *unpainted* triangle sits on this layer's boundary. It is still
+        // needed either way - the edge-smoothing falloff measures distance from it - but whether it is
+        // held flat is now the user's call (TextureDisplacementOptions::displace_border), because
+        // nothing can tear: the bake is topology-preserving, so a border vertex is one vertex shared
+        // by both regions and moving it just tilts the unpainted triangles that use it.
         std::vector<bool> is_boundary(patch.vertices.size(), false);
         for (const stl_triangle_vertex_indices &tri : rest.indices)
-            for (int i = 0; i < 3; ++i)
+            for (int i = 0; i < 3; ++i) {
                 is_boundary[tri[i]] = true;
+                if (tri[i] < int(mesh.vertices.size()))
+                    on_patch_border[size_t(tri[i])] = true;
+            }
+        const bool pin_boundary = !options.displace_border;
 
         // Only the Cylindrical/Spherical methods need these; Triplanar blends each vertex's own
         // normal and LSCM solves the patch globally.
@@ -1246,7 +1294,7 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
                 const int vi = tri[i];
                 // Split vertices the brush introduced live past the end of our own vertex array;
                 // they carry no displacement of their own and are not part of the output mesh.
-                if (vi >= int(mesh.vertices.size()) || is_boundary[vi] || visited[vi])
+                if (vi >= int(mesh.vertices.size()) || (pin_boundary && is_boundary[vi]) || visited[vi])
                     continue;
                 visited[vi] = true;
 
@@ -1277,6 +1325,19 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
         if (displaced[vi])
             mesh.vertices[vi] += vertex_normals[vi] * displacement[vi];
 
+    // Post-process relaxation of what the height maps left behind, restricted to the vertices that
+    // actually moved - the untouched part of the model keeps its exact geometry, and the ring of
+    // vertices just outside the displaced set stays put and anchors the smoothing so the relief does
+    // not creep outward. `smooth_skip_border` additionally holds the patch's own outermost ring, whose
+    // neighbours are those pinned outsiders: relaxing it would drag the rim of the relief back down and
+    // leave the pattern looking half-melted right where it meets the edge.
+    if (options.smooth_enabled && options.smooth_strength > 0.f && options.smooth_iterations > 0) {
+        std::vector<uint8_t> movable(mesh.vertices.size(), 0);
+        for (size_t vi = 0; vi < mesh.vertices.size(); ++vi)
+            movable[vi] = (displaced[vi] && !(options.smooth_skip_border && on_patch_border[vi])) ? 1 : 0;
+        smooth_mesh_vertices(mesh, movable, options.smooth_strength, options.smooth_iterations);
+    }
+
     return mesh;
 }
 
@@ -1286,7 +1347,60 @@ indexed_triangle_set build_texture_displacement(const ModelVolume &volume)
     for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
         facets_data[size_t(i)] = volume.texture_displacement_facet(i).get_data();
 
-    return build_texture_displacement(volume.mesh().its, volume.texture_displacement_layers, facets_data);
+    return build_texture_displacement(volume.mesh().its, volume.texture_displacement_layers, facets_data,
+                                      volume.texture_displacement_options);
+}
+
+void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t> &movable, float strength,
+                          int iterations)
+{
+    if (iterations <= 0 || mesh.vertices.empty() || movable.size() != mesh.vertices.size())
+        return;
+    strength = std::clamp(strength, 0.f, 1.f);
+    if (strength <= 0.f)
+        return;
+    if (std::none_of(movable.begin(), movable.end(), [](uint8_t m) { return m != 0; }))
+        return;
+
+    // One-ring neighbours as a CSR-style pair of arrays: counted, prefix-summed, then filled. A
+    // triangle contributes each of its edges to both endpoints, so a shared edge is listed once per
+    // incident triangle - the duplicates are harmless here, they just weight an interior edge the same
+    // way from both sides, and dropping them would cost a sort per vertex for no visible difference.
+    const size_t       nv = mesh.vertices.size();
+    std::vector<int>   start(nv + 1, 0);
+    for (const stl_triangle_vertex_indices &t : mesh.indices)
+        for (int e = 0; e < 3; ++e) {
+            ++start[size_t(t[e]) + 1];
+            ++start[size_t(t[(e + 1) % 3]) + 1];
+        }
+    for (size_t v = 0; v < nv; ++v)
+        start[v + 1] += start[v];
+    const size_t     total_refs = size_t(start[nv]);
+    std::vector<int> nbr(total_refs, 0);
+    std::vector<int> fill(start.begin(), start.begin() + nv);
+    for (const stl_triangle_vertex_indices &t : mesh.indices)
+        for (int e = 0; e < 3; ++e) {
+            const int a = t[e], b = t[(e + 1) % 3];
+            nbr[size_t(fill[size_t(a)]++)] = b;
+            nbr[size_t(fill[size_t(b)]++)] = a;
+        }
+
+    // Read every pass from a snapshot of the previous one, so the result does not depend on the order
+    // vertices happen to be visited in (a Gauss-Seidel sweep would smooth several times as hard at the
+    // end of the array as at the start).
+    std::vector<Vec3f> prev;
+    for (int it = 0; it < iterations; ++it) {
+        prev = mesh.vertices;
+        for (size_t v = 0; v < nv; ++v) {
+            if (!movable[v] || start[v] == start[v + 1])
+                continue;
+            Vec3f sum = Vec3f::Zero();
+            for (int k = start[v]; k < start[v + 1]; ++k)
+                sum += prev[size_t(nbr[size_t(k)])];
+            const Vec3f avg = sum / float(start[v + 1] - start[v]);
+            mesh.vertices[v] = prev[v] + (avg - prev[v]) * strength;
+        }
+    }
 }
 
 HeightFieldSampler make_combined_displacement_sampler(const indexed_triangle_set                  &base_mesh,

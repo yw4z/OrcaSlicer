@@ -19,6 +19,7 @@ struct TextureDisplacementPreviewInput
     indexed_triangle_set                  base_mesh;
     std::vector<TextureDisplacementLayer> layers;
     TextureDisplacementFacetsData         facets_data;
+    TextureDisplacementOptions            options;
 };
 
 // Computes the true (unbaked) displaced-mesh preview in the background. With several painted

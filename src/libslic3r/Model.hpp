@@ -938,6 +938,11 @@ public:
     // see build_texture_displacement()); it only reflects UI insertion order.
     std::vector<TextureDisplacementLayer> texture_displacement_layers;
 
+    // Whole-stack displacement settings (border handling, post-process smoothing) - see
+    // TextureDisplacementOptions. They live beside the layers rather than on one of them because
+    // they are not a property of any single layer.
+    TextureDisplacementOptions texture_displacement_options;
+
     // Save painting data before reset_extra_facets() discards it.
     // Used for replacing mesh without losing painting data.
     // Only for model parts (not modifiers/connectors).
@@ -1190,6 +1195,7 @@ private:
         texture_displacement_facets_4(other.texture_displacement_facets_4), texture_displacement_facets_5(other.texture_displacement_facets_5),
         texture_displacement_facets_6(other.texture_displacement_facets_6), texture_displacement_facets_7(other.texture_displacement_facets_7),
         texture_displacement_layers(other.texture_displacement_layers),
+        texture_displacement_options(other.texture_displacement_options),
         cut_info(other.cut_info), text_configuration(other.text_configuration), emboss_shape(other.emboss_shape)
     {
 		assert(this->id().valid());
@@ -1288,7 +1294,7 @@ private:
             cereal::load_by_value(ar, f);
             mesh_changed |= tf != f.timestamp();
         }
-        ar(texture_displacement_layers);
+        ar(texture_displacement_layers, texture_displacement_options);
         cereal::load_by_value(ar, config);
         cereal::load(ar, text_configuration);
         cereal::load(ar, emboss_shape);
@@ -1312,7 +1318,7 @@ private:
         cereal::save_by_value(ar, fuzzy_skin_facets);
         for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
             cereal::save_by_value(ar, texture_displacement_facet(i));
-        ar(texture_displacement_layers);
+        ar(texture_displacement_layers, texture_displacement_options);
         cereal::save_by_value(ar, config);
         cereal::save(ar, text_configuration);
         cereal::save(ar, emboss_shape);

@@ -16,7 +16,7 @@ void TextureDisplacementPreviewJob::process(Ctl &ctl)
 
     // Only ever touches m_input (captured by value before this job was queued) and local state -
     // never the live Model - so this is safe to run concurrently with the UI thread.
-    m_result = build_texture_displacement(m_input.base_mesh, m_input.layers, m_input.facets_data);
+    m_result = build_texture_displacement(m_input.base_mesh, m_input.layers, m_input.facets_data, m_input.options);
 }
 
 void TextureDisplacementPreviewJob::finalize(bool canceled, std::exception_ptr &eptr)

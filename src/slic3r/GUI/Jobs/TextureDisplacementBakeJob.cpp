@@ -24,7 +24,8 @@ void TextureDisplacementBakeJob::process(Ctl &ctl)
 
     // Only ever touches m_input (captured by value before this job was queued) and local state -
     // never the live Model - so this is safe to run concurrently with the UI thread.
-    m_result = TriangleMesh(build_texture_displacement(m_input.base_mesh, m_input.layers, m_input.facets_data));
+    m_result = TriangleMesh(build_texture_displacement(m_input.base_mesh, m_input.layers, m_input.facets_data,
+                                                       m_input.options));
 }
 
 void TextureDisplacementBakeJob::finalize(bool canceled, std::exception_ptr &eptr)
@@ -78,6 +79,7 @@ void queue_texture_displacement_bake(const ModelVolume &volume, std::function<vo
     input.volume_id  = volume.id();
     input.base_mesh  = volume.mesh().its;
     input.layers     = volume.texture_displacement_layers;
+    input.options    = volume.texture_displacement_options;
     for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
         input.facets_data[size_t(i)] = volume.texture_displacement_facet(i).get_data();
 

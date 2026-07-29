@@ -1192,6 +1192,7 @@ void GLGizmoTextureDisplacement::rebuild_preview()
     TextureDisplacementPreviewInput input;
     input.base_mesh = mv->mesh().its;
     input.layers    = mv->texture_displacement_layers;
+    input.options   = mv->texture_displacement_options;
     for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
         input.facets_data[size_t(i)] = mv->texture_displacement_facet(i).get_data();
 
@@ -2836,6 +2837,90 @@ void GLGizmoTextureDisplacement::subdivide_model_adaptive()
     m_parent.set_as_dirty();
 }
 
+void GLGizmoTextureDisplacement::smooth_model()
+{
+    ModelVolume *mv = texture_volume();
+    ModelObject *mo = m_c->selection_info()->model_object();
+    if (mv == nullptr || mo == nullptr)
+        return;
+    const TextureDisplacementOptions &opts = mv->texture_displacement_options;
+    if (opts.smooth_strength <= 0.f || opts.smooth_iterations <= 0)
+        return;
+
+    update_model_object(); // flush any in-progress stroke, so the painted region below is current
+
+    // Movable = the vertices of the painted triangles, so the first ring of purely unpainted vertices
+    // outside them stays put and anchors the result. Restricted rather than whole-model on purpose:
+    // this runs on geometry that has already been baked, and relaxing the whole thing would quietly
+    // round off every unrelated feature on the part. With "Ignore outer ring" the patch's own rim is
+    // held as well - see TextureDisplacementOptions::smooth_skip_border.
+    const indexed_triangle_set &its = mv->mesh().its;
+    std::vector<uint8_t>        painted_face(its.indices.size(), 0);
+    bool                        any = false;
+    for (int slot = 0; slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++slot)
+        for (const TriangleSelector::TriangleBitStreamMapping &m : mv->texture_displacement_facet(slot).get_data().triangles_to_split)
+            if (size_t(m.triangle_idx) < its.indices.size()) {
+                painted_face[size_t(m.triangle_idx)] = 1;
+                any                                  = true;
+            }
+    if (!any) {
+        show_error(nullptr, _u8L("Paint the area you want to smooth first - smoothing only touches the "
+                                 "painted part of the model."));
+        return;
+    }
+    std::vector<uint8_t> movable(its.vertices.size(), 0);
+    for (size_t i = 0; i < its.indices.size(); ++i)
+        if (painted_face[i])
+            for (int k = 0; k < 3; ++k)
+                movable[size_t(its.indices[i][k])] = 1;
+    if (opts.smooth_skip_border)
+        for (size_t i = 0; i < its.indices.size(); ++i)
+            if (!painted_face[i])
+                for (int k = 0; k < 3; ++k)
+                    movable[size_t(its.indices[i][k])] = 0; // also used by unpainted geometry -> the rim
+    if (std::none_of(movable.begin(), movable.end(), [](uint8_t m) { return m != 0; })) {
+        // Every painted vertex is on the patch's rim, so "Ignore outer ring" leaves nothing to move.
+        show_error(nullptr, _u8L("Nothing to smooth - the painted area is only one triangle deep, so with "
+                                 "\"Ignore outer ring\" on there are no interior vertices to relax."));
+        return;
+    }
+
+    indexed_triangle_set smoothed = its;
+    {
+        wxBusyCursor wait;
+        smooth_mesh_vertices(smoothed, movable, opts.smooth_strength, opts.smooth_iterations);
+    }
+
+    Plater *plater = wxGetApp().plater();
+    Plater::TakeSnapshot snapshot(plater, _u8L("Smooth texture displacement"), UndoRedo::SnapshotType::GizmoAction);
+
+    // No save/restore-painting dance here, unlike subdivide and remesh: smoothing only moves vertices,
+    // it does not touch the triangle list, so every paint channel still refers to exactly the triangles
+    // it did before. set_mesh() clears the extra facets, so this saves and puts back the
+    // texture-displacement masks verbatim - no remap needed, and none of them is lost.
+    std::optional<TriangleSelector::SavedPainting>                    saved_painting = mv->save_painting();
+    std::array<TriangleSelector::TriangleSplittingData, TEXTURE_DISPLACEMENT_MAX_LAYERS> saved_texture;
+    for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
+        saved_texture[size_t(i)] = mv->texture_displacement_facet(i).get_data();
+
+    mv->set_mesh(TriangleMesh(std::move(smoothed)));
+    mv->set_new_unique_id();
+    mv->calculate_convex_hull();
+    mv->restore_painting(saved_painting);
+    for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
+        mv->texture_displacement_facet(i).set_data(std::move(saved_texture[size_t(i)]));
+
+    if (ObjectList *obj_list = wxGetApp().obj_list()) {
+        const ModelObjectPtrs &objs = plater->model().objects;
+        auto it = std::find(objs.begin(), objs.end(), mo);
+        if (it != objs.end())
+            obj_list->update_info_items(size_t(it - objs.begin()));
+    }
+    plater->changed_object(*mo);
+    update_from_model_object(false);
+    m_parent.set_as_dirty();
+}
+
 void GLGizmoTextureDisplacement::remesh_model()
 {
     ModelVolume *mv = texture_volume();
@@ -3768,6 +3853,63 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
         m_preview_params_dirty = false;
     }
     // (The "Add layer" button now lives next to the "Texture layers" heading, as an icon.)
+
+    // Settings for the whole stack rather than one layer, so they sit outside the layer list.
+    if (mv != nullptr) {
+        TextureDisplacementOptions &opts = mv->texture_displacement_options;
+        ImGui::Separator();
+
+        m_preview_params_dirty |= ImGui::Checkbox(_u8L("Displace up to the border").c_str(), &opts.displace_border);
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("Move the outermost ring of painted vertices as well, so the relief runs all the "
+                                  "way to the edge of the painted area. Turn this off to hold that ring flat, which "
+                                  "keeps the displacement strictly inside the paint but flattens the pattern right "
+                                  "at the border."),
+                              m_imgui->scaled(20.f));
+
+        m_preview_params_dirty |= ImGui::Checkbox(_u8L("Smooth result").c_str(), &opts.smooth_enabled);
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("Relax the displaced surface after the textures have been applied, to round off "
+                                  "the hard steps a bitmap height map leaves behind. Only the vertices the "
+                                  "displacement moved are touched. This is geometry smoothing - the per-layer "
+                                  "\"Blur\" slider instead softens the height map before it is sampled."),
+                              m_imgui->scaled(20.f));
+        if (opts.smooth_enabled) {
+            ImGui::PushItemWidth(m_imgui->scaled(8.4f));
+            float percent = opts.smooth_strength * 100.f;
+            if (m_imgui->slider_float(std::string(_u8L("Smoothing (%)")) + "##dispsmooth", &percent, 1.f, 100.f, "%.0f", 1.f)) {
+                opts.smooth_strength   = std::clamp(percent / 100.f, 0.01f, 1.f);
+                m_preview_params_dirty = true;
+            }
+            if (ImGui::SliderInt((_u8L("Passes") + "##dispsmoothit").c_str(), &opts.smooth_iterations, 1, 10)) {
+                opts.smooth_iterations = std::clamp(opts.smooth_iterations, 1, 10);
+                m_preview_params_dirty = true;
+            }
+            if (ImGui::IsItemHovered())
+                m_imgui->tooltip(_u8L("How many relaxation passes to run. More passes reach further across the "
+                                      "surface; strength controls how much each one moves a vertex."),
+                                  m_imgui->scaled(20.f));
+            ImGui::PopItemWidth();
+
+            m_preview_params_dirty |= ImGui::Checkbox(_u8L("Ignore outer ring").c_str(), &opts.smooth_skip_border);
+            if (ImGui::IsItemHovered())
+                m_imgui->tooltip(_u8L("Leave the outermost ring of painted vertices out of the smoothing. Their "
+                                      "neighbours outside the paint never move, so relaxing them drags the relief "
+                                      "back down and the pattern comes out half-melted right at the edge. Turn this "
+                                      "off only if you want that edge softened on purpose."),
+                                  m_imgui->scaled(20.f));
+
+            // The settings above ride along with Preview/Bake. This button is for geometry that has
+            // *already* been baked, where there is no displacement left to fold the smoothing into.
+            if (m_imgui->button(_u8L("Smooth baked mesh now")))
+                smooth_model();
+            if (ImGui::IsItemHovered())
+                m_imgui->tooltip(_u8L("Apply the smoothing above to the model's real geometry right now, using the "
+                                      "painted area to decide what to touch. For relief that is already baked in - "
+                                      "unbaked displacement is smoothed by Bake itself."),
+                                  m_imgui->scaled(20.f));
+        }
+    }
 
     ImGui::Separator();
     m_imgui->text(_u8L("Not enough vertices for fine detail?"));

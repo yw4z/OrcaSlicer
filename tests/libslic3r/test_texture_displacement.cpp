@@ -1,8 +1,10 @@
 #define NOMINMAX
 #include <catch2/catch_all.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <boost/filesystem.hpp>
 
 #include "libslic3r/TextureDisplacement.hpp"
@@ -19,6 +21,30 @@ using Catch::Matchers::WithinAbs;
 static std::shared_ptr<std::vector<unsigned char>> make_flat_gray_png(uint8_t value, size_t w = 4, size_t h = 4)
 {
     std::vector<uint8_t> pixels(w * h, value);
+    const boost::filesystem::path tmp_path = boost::filesystem::temp_directory_path()
+        / boost::filesystem::unique_path("texdisp_test_%%%%%%%%.png");
+    REQUIRE(Slic3r::png::write_gray_to_file(tmp_path.string(), w, h, pixels));
+
+    std::vector<unsigned char> bytes;
+    {
+        std::ifstream ifs(tmp_path.string(), std::ios::binary);
+        bytes.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+    }
+    boost::system::error_code ec;
+    boost::filesystem::remove(tmp_path, ec);
+
+    REQUIRE_FALSE(bytes.empty());
+    return std::make_shared<std::vector<unsigned char>>(std::move(bytes));
+}
+
+// A hard-edged black/white checkerboard, the worst case for a height map: every texel boundary is a
+// step, which is precisely the relief the post-process smoothing exists to round off.
+static std::shared_ptr<std::vector<unsigned char>> make_checkerboard_png(size_t w = 16, size_t h = 16)
+{
+    std::vector<uint8_t> pixels(w * h);
+    for (size_t y = 0; y < h; ++y)
+        for (size_t x = 0; x < w; ++x)
+            pixels[y * w + x] = ((x / 2 + y / 2) % 2) ? 255 : 0;
     const boost::filesystem::path tmp_path = boost::filesystem::temp_directory_path()
         / boost::filesystem::unique_path("texdisp_test_%%%%%%%%.png");
     REQUIRE(Slic3r::png::write_gray_to_file(tmp_path.string(), w, h, pixels));
@@ -188,15 +214,15 @@ TEST_CASE("TextureDisplacement: the lowest layer ignores its blend mode", "[Text
         CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(2.0f, 1e-3f));
 }
 
-TEST_CASE("TextureDisplacement: boundary vertices shared with unpainted triangles are pinned", "[TextureDisplacement]")
+TEST_CASE("TextureDisplacement: the patch border is displaced by default and pinned on request", "[TextureDisplacement]")
 {
     // A small triangle fan around a central vertex O, with 4 outer points A/B/C/D forming 4
-    // triangles T0..T3 in the XY plane. Only T0, T1, T2 are painted, T3 is left unpainted:
-    //   O: touches all 4 triangles (incl. unpainted T3)      -> boundary, must NOT move
-    //   A: touches T0 (painted) and T3 (unpainted)           -> boundary, must NOT move
-    //   D: touches T2 (painted) and T3 (unpainted)           -> boundary, must NOT move
-    //   B: touches only T0 and T1 (both painted)              -> interior, SHOULD move
-    //   C: touches only T1 and T2 (both painted)              -> interior, SHOULD move
+    // triangles T0..T3 in the XY plane. Only T0, T1, T2 are painted, T3 is left unpainted, so:
+    //   O: touches all 4 triangles (incl. unpainted T3)      -> patch border
+    //   A: touches T0 (painted) and T3 (unpainted)           -> patch border
+    //   D: touches T2 (painted) and T3 (unpainted)           -> patch border
+    //   B: touches only T0 and T1 (both painted)              -> interior
+    //   C: touches only T1 and T2 (both painted)              -> interior
     indexed_triangle_set fan;
     fan.vertices = { {0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {-1.f, 0.f, 0.f}, {0.f, -1.f, 0.f} };
     fan.indices  = { {0, 1, 2}, {0, 2, 3}, {0, 3, 4}, {0, 4, 1} };
@@ -217,22 +243,189 @@ TEST_CASE("TextureDisplacement: boundary vertices shared with unpainted triangle
     layer.tiling_scale = 5.0f;
     layer.image_data  = make_flat_gray_png(255);
 
-    const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets);
-
-    // Find each named vertex's post-bake position by matching the original (pinned vertices keep
-    // their exact original position; moved ones won't match any original position anymore).
-    auto still_at_original_position = [&](const Vec3f &original) {
-        for (const Vec3f &v : result.vertices)
-            if ((v - original).norm() < 1e-6f)
-                return true;
-        return false;
+    // The bake is topology-preserving, so it only ever moves fan's own vertices, in order.
+    auto moved = [&](const indexed_triangle_set &result, size_t i) {
+        return (result.vertices[i] - fan.vertices[i]).norm() > 1e-6f;
     };
 
-    CHECK(still_at_original_position(fan.vertices[0])); // O: boundary
-    CHECK(still_at_original_position(fan.vertices[1])); // A: boundary
-    CHECK(still_at_original_position(fan.vertices[4])); // D: boundary
-    CHECK_FALSE(still_at_original_position(fan.vertices[2])); // B: interior, must have moved
-    CHECK_FALSE(still_at_original_position(fan.vertices[3])); // C: interior, must have moved
+    SECTION("by default the whole painted patch moves, border included")
+    {
+        const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets);
+        REQUIRE(result.vertices.size() == fan.vertices.size());
+        for (size_t i = 0; i < fan.vertices.size(); ++i)
+            CHECK(moved(result, i));
+        // ... straight along the painted surface's own normal (+Z here), by the full depth. Nothing
+        // has torn: the unpainted triangle T3 simply shares the moved vertices.
+        for (size_t i = 0; i < fan.vertices.size(); ++i)
+            CHECK_THAT(result.vertices[i].z() - fan.vertices[i].z(), WithinAbs(1.0f, 1e-3f));
+        CHECK(result.indices == fan.indices);
+    }
+
+    SECTION("pinning the border holds exactly the vertices an unpainted triangle also uses")
+    {
+        TextureDisplacementOptions options;
+        options.displace_border = false;
+        const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets, options);
+        CHECK_FALSE(moved(result, 0)); // O: border
+        CHECK_FALSE(moved(result, 1)); // A: border
+        CHECK_FALSE(moved(result, 4)); // D: border
+        CHECK(moved(result, 2));       // B: interior
+        CHECK(moved(result, 3));       // C: interior
+    }
+
+}
+
+TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved", "[TextureDisplacement]")
+{
+    // A checkerboard height map on a fine grid gives a relief full of hard steps - exactly what the
+    // smoothing pass is for. Measure it as the spread of the displaced heights: relaxing the surface
+    // must pull the extremes in without touching the mesh's topology.
+    indexed_triangle_set plane;
+    plane.vertices = { { 0.f, 0.f, 0.f }, { 20.f, 0.f, 0.f }, { 20.f, 20.f, 0.f }, { 0.f, 20.f, 0.f } };
+    plane.indices  = { { 0, 1, 2 }, { 0, 2, 3 } };
+    const indexed_triangle_set grid = subdivide_mesh_uniform(plane, 1.f, 6);
+    REQUIRE(grid.indices.size() > 256);
+
+    // Paint only the central square, so the patch has a real border to test against.
+    std::vector<uint8_t> painted(grid.indices.size(), 0);
+    const TriangleMesh   grid_mesh(grid);
+    TriangleSelector     selector(grid_mesh);
+    for (int i = 0; i < int(grid.indices.size()); ++i) {
+        const auto &t = grid.indices[i];
+        float       cx = 0.f, cy = 0.f;
+        for (int k = 0; k < 3; ++k) {
+            cx += grid.vertices[t[k]].x() / 3.f;
+            cy += grid.vertices[t[k]].y() / 3.f;
+        }
+        if (cx > 5.f && cx < 15.f && cy > 5.f && cy < 15.f) {
+            selector.set_facet(i, EnforcerBlockerType::ENFORCER);
+            painted[size_t(i)] = 1;
+        }
+    }
+    REQUIRE(std::count(painted.begin(), painted.end(), uint8_t(1)) > 32);
+    TextureDisplacementFacetsData facets{};
+    facets[0] = selector.serialize();
+
+    TextureDisplacementLayer layer;
+    layer.slot         = 0;
+    layer.depth_mm     = 2.0f;
+    layer.tiling_scale = 6.0f;
+    layer.image_data   = make_checkerboard_png();
+
+    auto z_spread = [](const indexed_triangle_set &its) {
+        float lo = its.vertices.front().z(), hi = lo;
+        for (const Vec3f &v : its.vertices) {
+            lo = std::min(lo, v.z());
+            hi = std::max(hi, v.z());
+        }
+        return hi - lo;
+    };
+
+    const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets);
+    REQUIRE(z_spread(raw) > 1.f); // the checkerboard really did produce relief to smooth
+
+    TextureDisplacementOptions options;
+    options.smooth_enabled    = true;
+    options.smooth_strength   = 0.5f;
+    options.smooth_iterations = 4;
+
+    SECTION("it rounds off the steps without touching the topology")
+    {
+        const indexed_triangle_set smoothed = build_texture_displacement(grid, { layer }, facets, options);
+        CHECK(z_spread(smoothed) < z_spread(raw));
+        CHECK(smoothed.indices == raw.indices);
+        CHECK(smoothed.vertices.size() == raw.vertices.size());
+    }
+
+    SECTION("\"ignore outer ring\" leaves the patch rim at the depth the texture asked for")
+    {
+        // The rim: vertices shared by a painted and an unpainted triangle. Their neighbours outside
+        // the paint never move, so relaxing them drags the relief back down toward the flat surface -
+        // which is what makes the pattern look half-melted right at the edge.
+        std::vector<uint8_t> rim(grid.vertices.size(), 0), inside(grid.vertices.size(), 0);
+        for (size_t i = 0; i < grid.indices.size(); ++i)
+            for (int k = 0; k < 3; ++k)
+                (painted[i] ? inside : rim)[size_t(grid.indices[i][k])] = 1;
+        size_t rim_count = 0;
+        for (size_t v = 0; v < rim.size(); ++v) {
+            rim[v] = (rim[v] && inside[v]) ? 1 : 0;
+            rim_count += rim[v];
+        }
+        REQUIRE(rim_count > 8);
+
+        // The tallest point of the rim. Laplacian relaxation is a convex average, so no vertex can ever
+        // exceed the mesh's current maximum - and a rim vertex sitting at that maximum has at least one
+        // neighbour outside the paint at zero, so it must come down. That makes this a strict, not a
+        // statistical, comparison.
+        auto rim_peak = [&](const indexed_triangle_set &its) {
+            float peak = 0.f;
+            for (size_t v = 0; v < rim.size(); ++v)
+                if (rim[v])
+                    peak = std::max(peak, its.vertices[v].z());
+            return peak;
+        };
+
+        options.smooth_skip_border         = true;
+        const indexed_triangle_set kept    = build_texture_displacement(grid, { layer }, facets, options);
+        options.smooth_skip_border         = false;
+        const indexed_triangle_set relaxed = build_texture_displacement(grid, { layer }, facets, options);
+
+        // Held out of the smoothing, the rim is bit-for-bit the un-smoothed displacement.
+        for (size_t v = 0; v < rim.size(); ++v)
+            if (rim[v])
+                CHECK_THAT(kept.vertices[v].z(), WithinAbs(raw.vertices[v].z(), 1e-6f));
+        CHECK(rim_peak(relaxed) < rim_peak(kept)); // ... and melted back down without it
+        // ... while the interior really was smoothed - this is not just "smoothing turned off".
+        CHECK_FALSE(kept.vertices == raw.vertices);
+    }
+}
+
+TEST_CASE("TextureDisplacement: smooth_mesh_vertices holds everything outside its mask", "[TextureDisplacement]")
+{
+    // A single spike on a flat sheet: relaxing it must pull the spike down and leave every vertex
+    // that is not flagged movable at exactly the coordinates it started at.
+    indexed_triangle_set plane;
+    plane.vertices = { { 0.f, 0.f, 0.f }, { 8.f, 0.f, 0.f }, { 8.f, 8.f, 0.f }, { 0.f, 8.f, 0.f } };
+    plane.indices  = { { 0, 1, 2 }, { 0, 2, 3 } };
+    indexed_triangle_set grid = subdivide_mesh_uniform(plane, 1.f, 4);
+
+    // Raise one interior vertex, and let only it and its immediate neighbours move.
+    size_t spike = 0;
+    float  best  = std::numeric_limits<float>::max();
+    for (size_t i = 0; i < grid.vertices.size(); ++i)
+        if (const float d = (grid.vertices[i] - Vec3f(4.f, 4.f, 0.f)).norm(); d < best) {
+            best  = d;
+            spike = i;
+        }
+    grid.vertices[spike].z() = 5.f;
+
+    std::vector<uint8_t> movable(grid.vertices.size(), 0);
+    movable[spike] = 1;
+    for (const auto &t : grid.indices)
+        for (int e = 0; e < 3; ++e)
+            if (size_t(t[e]) == spike)
+                for (int k = 0; k < 3; ++k)
+                    movable[size_t(t[k])] = 1;
+
+    const indexed_triangle_set before = grid;
+    smooth_mesh_vertices(grid, movable, 0.5f, 3);
+
+    CHECK(grid.vertices[spike].z() < before.vertices[spike].z()); // the spike came down
+    CHECK(grid.vertices[spike].z() > 0.f);                        // but was not flattened outright
+    CHECK(grid.indices == before.indices);                        // topology untouched
+    for (size_t i = 0; i < grid.vertices.size(); ++i)
+        if (!movable[i])
+            CHECK_THAT((grid.vertices[i] - before.vertices[i]).norm(), WithinAbs(0.f, 1e-9f));
+
+    // Guard rails: each of these must leave the mesh byte-identical.
+    for (const auto &noop : { std::make_pair(0.f, 3), std::make_pair(0.5f, 0) }) {
+        indexed_triangle_set copy = before;
+        smooth_mesh_vertices(copy, movable, noop.first, noop.second);
+        CHECK(copy.vertices == before.vertices);
+    }
+    indexed_triangle_set copy = before;
+    smooth_mesh_vertices(copy, std::vector<uint8_t>(3, 1), 0.5f, 3); // mis-sized mask
+    CHECK(copy.vertices == before.vertices);
 }
 
 // Every undirected edge of a closed manifold mesh is shared by exactly two triangles. A T-junction

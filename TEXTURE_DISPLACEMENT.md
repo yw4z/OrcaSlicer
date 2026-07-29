@@ -35,16 +35,21 @@ semantics).
 
 ### Bake algorithm (`libslic3r/TextureDisplacement.cpp`)
 
-`build_texture_displacement(base_mesh, layers, facets_data)` is **accumulate-then-displace, and
-topology-preserving**: the returned mesh has exactly the input's vertices and triangles, in the same
-order - only the positions of displaced vertices differ.
+`build_texture_displacement(base_mesh, layers, facets_data, options)` is **accumulate-then-displace,
+and topology-preserving**: the returned mesh has exactly the input's vertices and triangles, in the
+same order - only the positions of displaced vertices differ.
 
 1. `its_compactify_vertices()` on a copy of the input. In practice a no-op (it only drops
    *unreferenced* vertices, and preserves the order and indices of the rest). It is there to
    guarantee the index alignment step 3 depends on.
 2. Area-weighted vertex normals of the **undisplaced** mesh, computed once. Every layer both
    projects and displaces along these, so a vertex covered by several layers moves along one single
-   well-defined direction.
+   well-defined direction. Where the paint does *not* cover every triangle around a vertex, the normal
+   is recomputed from the painted triangles alone (the union over all layers, so it stays one direction
+   per vertex). On the rim of a fully painted top face the whole-mesh normal is the 45 degrees bisector
+   it shares with the side wall, and displacing along that flares the rim outwards instead of raising
+   it. Interior vertices are unaffected - all their triangles are painted, so the two coincide. Paint
+   coverage per original triangle comes straight off `TriangleSplittingData::triangles_to_split`.
 3. For each layer in slot order: deserialize its stored paint mask into a `TriangleSelector` against
    the **base mesh** (never against a previous layer's output), then
    `selector.get_facets_strict(ENFORCER)` → the painted patch. Two facts are exploited:
@@ -57,16 +62,55 @@ order - only the positions of displaced vertices differ.
      referenced ones in order. Combined with step 1, **selector vertex index `i` is our vertex `i`**.
      Split vertices live past the end of our array and are simply skipped - they sit on the paint
      boundary anyway (splitting only happens at partial coverage), so they would be pinned regardless.
-4. A vertex used by at least one **unpainted** triangle is a boundary vertex - pinned, never
-   displaced (its final position is ambiguous, it belongs to both regions). Only vertices used
-   exclusively by painted triangles get displaced. This is what keeps bakes seamless with zero
-   remeshing/hole-filling at the seam.
+4. A vertex used by at least one **unpainted** triangle is a border vertex. Whether it moves is
+   `TextureDisplacementOptions::displace_border`, and it **does by default**. The original design
+   pinned it, justified as stopping the patch tearing away from the surrounding surface - which stopped
+   being true the moment the bake became topology-preserving. There is no seam to tear: a border vertex
+   is *one* vertex shared by both regions, and moving it simply tilts the unpainted triangles that use
+   it. What pinning actually does is clamp the outermost ring of relief to zero, so on a fully painted
+   face the pattern collapses into a ring of steep ramps right at the edge - the reported "it doesn't
+   extrude at the border" artifact. Pinning is kept as an option for the case where the relief must not
+   spill past the paint at all. Either way the border still drives the `edge_smoothing` falloff.
 5. Per interior vertex: sample the height texture (`sample_layer_height()`, see Projection methods)
    and fold `height * depth_mm * (invert ? -1 : 1)` into that vertex's running total via the layer's
    `TextureBlendMode` (see Blend modes). A `visited` set makes each layer fold in exactly **once**
    per vertex, no matter how many of the patch's triangles share it - otherwise a Multiply/Subtract
    layer would apply two or three times over depending on local triangle fan-out.
 6. Finally, move each touched vertex along its (step 2) normal by its accumulated total.
+7. Optionally (`TextureDisplacementOptions::smooth_*`) relax the result - see Post-process smoothing.
+
+### Post-process smoothing
+
+`smooth_mesh_vertices(mesh, movable, strength, iterations)` - plain Laplacian relaxation, run after all
+layers have been folded in, restricted to the vertices flagged in `movable`. Each pass moves a movable
+vertex a `strength` fraction of the way to the average of its one-ring, read from a **snapshot** of the
+previous pass so the result does not depend on vertex order (a Gauss-Seidel sweep would smooth several
+times as hard at the end of the array as at the start). Neighbours come from a CSR-style adjacency built
+once per call.
+
+Its job is to round off the hard steps a bitmap height map leaves behind, which is a different knob from
+`TextureDisplacementLayer::smoothing` - that blurs the *height map* before it is ever sampled, this
+relaxes the *geometry* afterwards. Topology-preserving, like the bake.
+
+Two ways in, sharing one set of settings on the volume:
+- The **"Smooth result"** checkbox + "Smoothing (%)" / "Passes" ride along with Preview and Bake.
+  `movable` is exactly the set of vertices the displacement moved, so the untouched part of the model
+  keeps its exact geometry and the ring just outside the displaced set anchors the relaxation (the
+  relief cannot creep outward).
+- **"Smooth baked mesh now"** (`GLGizmoTextureDisplacement::smooth_model()`) applies the same settings to
+  the volume's *committed* geometry, for relief that is already baked in. `movable` there is the painted
+  triangles' vertices. Because smoothing never touches the triangle list, this is the one geometry
+  operation in the gizmo that keeps **every** paint channel verbatim - it saves and restores the eight
+  texture-displacement masks around `set_mesh()` rather than remapping or dropping them.
+
+**"Ignore outer ring"** (`smooth_skip_border`, **on by default**) drops the patch's own outermost ring of
+vertices from `movable`. That ring's neighbours *outside* the paint never move, so relaxing it drags the
+rim of the relief back down toward the flat surface and the pattern comes out half-melted exactly where
+it meets the edge - crisp everywhere else, which is what makes it look like a bug rather than a setting.
+Held out, the border keeps the full depth the texture asked for and only the interior relaxes. Turning it
+off softens the outer edge deliberately (a blunter version of the per-layer edge-smoothing falloff).
+Note this is the *smoothing* rim, a separate question from whether that rim is displaced at all
+(`displace_border`, step 4 above) - the two are independent and both default to "keep the border sharp".
 
 ### Blend modes
 
@@ -451,8 +495,9 @@ of. Toolbar commands the canvas can't service itself (Average scale) are forward
 
 **libslic3r (core, no GUI dependency):**
 - `src/libslic3r/TextureDisplacement.hpp/.cpp` - data model, bake algorithm, projection methods,
-  tiling, subdivision (uniform + adaptive longest-edge bisection). See doc comments throughout,
-  they're kept accurate and up to date.
+  tiling, subdivision (uniform + adaptive longest-edge bisection), post-process smoothing
+  (`smooth_mesh_vertices()`), and `TextureDisplacementOptions` (the whole-stack settings). See doc
+  comments throughout, they're kept accurate and up to date.
 - `src/libslic3r/MeshBoolean.hpp/.cpp` - added `parameterize_lscm()` and `remesh_isotropic()`
   in the `cgal` sub-namespace,
   reusing the existing `CGALMesh`/`_EpicMesh`/conversion-helper infrastructure already there for
@@ -461,7 +506,8 @@ of. Toolbar commands the canvas can't service itself (Average scale) are forward
   LSCM_parameterizer_3, parameterize}.h`. No new dependency - CGAL 5.6.3 is already vendored and
   the `Surface_mesh_parameterization` package headers were already present, just unused before now.
 - `src/libslic3r/Model.hpp/.cpp` - the 8 named `FacetsAnnotation` fields + accessor,
-  `texture_displacement_layers`, and all the mirrored touch points (see Data model above).
+  `texture_displacement_layers`, `texture_displacement_options`, and all the mirrored touch points
+  (see Data model above).
 
 **GUI:**
 - `src/slic3r/GUI/Gizmos/GLGizmoTextureDisplacement.hpp/.cpp` - the gizmo. Panel controls: dock/

@@ -335,6 +335,13 @@ private:
     bool  collect_paint_region(std::vector<uint8_t> &region,
                                std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> *painted_tri) const;
 
+    // Runs the volume's TextureDisplacementOptions smoothing over the *already committed* geometry,
+    // restricted to the painted area. The same settings are folded into Preview/Bake automatically;
+    // this is the escape hatch for relief that has already been baked in, where there is no
+    // displacement pass left to attach them to. Topology-preserving, so unlike subdivide and remesh it
+    // keeps every paint channel - including texture displacement - exactly as it was.
+    void  smooth_model();
+
     // Isotropic remeshing (CGAL) to even out wildly varying triangle sizes so displacement has a
     // consistent density to work with. Target edge length in mm; 0 means "not yet initialised", filled
     // with the mesh's mean edge length the first time the control is shown. Like subdivide, it replaces

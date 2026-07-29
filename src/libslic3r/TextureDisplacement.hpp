@@ -295,6 +295,47 @@ struct TextureDisplacementLayer
     }
 };
 
+// Settings that apply to the whole layer stack rather than to one layer, held per ModelVolume next
+// to texture_displacement_layers and consumed by build_texture_displacement().
+struct TextureDisplacementOptions
+{
+    // Whether the painted patch's *border* vertices - the ones also used by unpainted triangles -
+    // are displaced along with the rest, or pinned flat.
+    //
+    // Pinning them was originally justified as keeping the patch from tearing away from the
+    // surrounding surface. That reasoning no longer applies: since the bake became
+    // topology-preserving it only ever *moves* the input's own vertices, so a border vertex is one
+    // vertex shared by both regions and moving it simply tilts the unpainted triangles that use it -
+    // nothing can come apart. What pinning actually does is clamp the outermost ring of the relief to
+    // zero, which on a fully painted face collapses the pattern into a ring of steep ramps right at
+    // the edge (the "it doesn't extrude at the border" artifact). Displacing it is the default;
+    // pinning is kept for the case where the relief must not spill past the paint at all.
+    bool displace_border = true;
+
+    // Optional Laplacian relaxation of the displaced surface, run after all layers have been folded
+    // in - a post-process, not a texture filter (TextureDisplacementLayer::smoothing blurs the height
+    // map instead, before it is ever sampled). Rounds off the hard steps a bitmap height map leaves
+    // behind. Restricted to vertices the displacement actually moved, so the rest of the model keeps
+    // its exact geometry. `smooth_strength` in [0, 1] is how far each pass moves a vertex toward the
+    // average of its neighbours.
+    bool  smooth_enabled    = false;
+    float smooth_strength   = 0.3f;
+    int   smooth_iterations = 2;
+
+    // Hold the painted patch's outermost ring of vertices out of the smoothing. Those vertices sit
+    // next to unpainted ones that are pinned by definition, so relaxing them drags the rim of the
+    // relief back down toward the undisplaced surface - the pattern looks half-melted exactly where it
+    // meets the edge, however crisp the rest of it is. Excluding them keeps the border extruded at
+    // full depth and smooths only the interior. On by default; turn it off to soften the outer edge
+    // deliberately (which is a blunter version of the per-layer edge-smoothing falloff).
+    bool  smooth_skip_border = true;
+
+    template<class Archive> void serialize(Archive &ar)
+    {
+        ar(displace_border, smooth_enabled, smooth_strength, smooth_iterations, smooth_skip_border);
+    }
+};
+
 // Decoded 8-bit grayscale height sample, independent of any GUI/OpenGL texture object so it can
 // be evaluated from a background bake Job as well as from GUI-side preview code.
 struct DecodedHeightTexture
@@ -473,9 +514,14 @@ using TextureDisplacementFacetsData = std::array<TriangleSelector::TriangleSplit
 // welding, one pass over the mesh), and - because the output keeps the input's exact vertex
 // indexing - lets the GUI overlay a preview on the base mesh without any index translation.
 //
-// A vertex used by even one *unpainted* triangle of a layer's mask is that layer's boundary: its
-// displacement is pinned to zero, so the patch never tears away from the surrounding surface. Only
-// vertices used exclusively by painted triangles move.
+// A vertex used by even one *unpainted* triangle of a layer's mask sits on that layer's boundary.
+// Whether it moves is TextureDisplacementOptions::displace_border; see that field for why displacing
+// it is safe (and the default). Either way the *direction* every vertex moves in is the area-weighted
+// normal of the triangles that are painted in at least one layer - not of the whole mesh - so a
+// border vertex travels along the painted surface's own normal instead of a blend with whatever
+// unpainted geometry meets it there. Without that, the rim of a fully painted face would displace
+// along the 45 degrees bisector it shares with the side wall and flare outwards. Interior vertices
+// have every incident triangle painted, so for them the two are the same normal.
 //
 // Takes plain copied data rather than a ModelVolume reference so it is safe to call from a
 // background thread (e.g. a bake Job's process() method) on a snapshot captured on the main
@@ -486,13 +532,27 @@ using TextureDisplacementFacetsData = std::array<TriangleSelector::TriangleSplit
 // mesh-boolean ops) the way TriangleSelector::remap_painting() does for the other paint channels.
 // Such operations will silently drop any unbaked texture-displacement paint on the affected
 // volume. This is an explicit extension point for a later phase, not an oversight.
-indexed_triangle_set build_texture_displacement(const indexed_triangle_set              &base_mesh,
+indexed_triangle_set build_texture_displacement(const indexed_triangle_set                  &base_mesh,
                                                  const std::vector<TextureDisplacementLayer> &layers,
-                                                 const TextureDisplacementFacetsData         &facets_data);
+                                                 const TextureDisplacementFacetsData         &facets_data,
+                                                 const TextureDisplacementOptions            &options = {});
 
-// Convenience overload for main-thread callers: extracts the mesh/layers/paint data from `volume`
-// and forwards to the overload above.
+// Convenience overload for main-thread callers: extracts the mesh/layers/paint data/options from
+// `volume` and forwards to the overload above.
 indexed_triangle_set build_texture_displacement(const ModelVolume &volume);
+
+// Laplacian relaxation of `mesh` in place, restricted to the vertices flagged in `movable` (sized to
+// the mesh's vertex count; anything else is held exactly where it is and still acts as an anchor for
+// its neighbours). Each of `iterations` passes moves a movable vertex a `strength` fraction of the
+// way to the average of the vertices it shares an edge with, computed from the positions at the
+// start of that pass so the result does not depend on vertex order.
+//
+// Topology-preserving like the bake itself, so it composes with it: this is what "smooth the relief
+// after displacing it" runs, and it is also safe to run standalone on an already baked mesh.
+// `strength` is clamped to [0, 1]; 0 iterations, an empty/mis-sized `movable`, or an all-false one
+// leave the mesh untouched.
+void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t> &movable, float strength,
+                          int iterations);
 
 // Returns a scalar height (in mm - a displacement magnitude) at a surface point, given that point's
 // position and interpolated normal. This is what feature-adaptive subdivision samples to decide
