@@ -4492,6 +4492,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                             m_mouse.drag.start_position_3D = m_mouse.scene_position;
                             m_sequential_print_clearance_first_displacement = true;
                             m_moving = true;
+
+                            if (!has_mouse_capture()) // ORCA keep tracking mouse position while drag active and cursor not in window bounds
+                                m_canvas->CaptureMouse();
                         }
                     }
                 }
@@ -4500,6 +4503,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
     }
     else if (evt.Dragging() && evt.LeftIsDown() && m_mouse.drag.move_volume_idx != -1 && m_layers_editing.state == LayersEditing::Unknown) {
         if (m_canvas_type != ECanvasType::CanvasAssembleView) {
+
+            if (!has_mouse_capture()) // ORCA keep tracking mouse position while drag active and cursor not in window bounds
+                m_canvas->CaptureMouse();
+
             if (!m_mouse.drag.move_requires_threshold) {
                 m_mouse.dragging = true;
                 Vec3d cur_pos = m_mouse.drag.start_position_3D;
