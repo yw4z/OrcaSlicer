@@ -24,7 +24,6 @@
 namespace Slic3r
 {
 
-static constexpr float      flat_iron_area                 = 4.f;
 constexpr float         flat_iron_speed                = 10.f * 60.f;
 static const double     wipe_tower_wall_infill_overlap = 0.0;
 static constexpr double WIPE_TOWER_RESOLUTION          = 0.1;
@@ -1364,7 +1363,6 @@ WipeTower2::WipeTower2(const PrintConfig& config, const PrintRegionConfig& defau
     m_wall_type((int)config.wipe_tower_wall_type),
     // The cone wall has its own fully separate generator with no gap machinery.
     m_use_gap_wall(config.prime_tower_skip_points.value && config.wipe_tower_wall_type.value != wtwCone),
-    m_flat_ironing(config.prime_tower_flat_ironing.value),
     m_enable_tower_interface_features(config.enable_tower_interface_features.value),
     m_enable_tower_interface_cooldown_during_tower(config.enable_tower_interface_cooldown_during_tower.value)
 {
@@ -2060,9 +2058,6 @@ void WipeTower2::toolchange_Wipe(
         m_left_to_right = !m_left_to_right;
     }
     
-    const bool do_ironing = m_flat_ironing && (!interface_layer || !m_enable_tower_interface_features);
-    const float ironing_area = m_filpar[m_current_tool].tower_ironing_area;
-
     // now the wiping itself:
 	for (int i = 0; true; ++i)	{
 		if (i!=0) {
@@ -2075,10 +2070,12 @@ void WipeTower2::toolchange_Wipe(
 		float traversed_x = writer.x();
 
         // BBS gap wall: iron the first few mm of the purge, then drag the retracted nozzle
-        // back out through the wall gap so the toolchange start blob is not left on the wall.
-        // WT2's entry gap always sits at the left-edge entry point, so only iron when the
-        // purge actually starts there heading right (in-place toolchangers do; SEMM
-        // ram/cooling moves leave the nozzle mid-box, far from any gap).
+        // back out through the wall gap and scrub it with a dry spiral centred on the entry
+        // point so the toolchange start blob is not left on the wall (same sequence as the
+        // BBL tower's toolchange_wipe_new; the spiral self-disables when the filament's
+        // tower ironing area is 0). WT2's entry gap always sits at the left-edge entry
+        // point, so only iron when the purge actually starts there heading right (in-place
+        // toolchangers do; SEMM ram/cooling moves leave the nozzle mid-box, far from any gap).
         if (i == 0 && m_use_gap_wall && !interface_layer && !priming && m_left_to_right &&
             writer.x() - xl < 2.5f * line_width) {
             float ironing_length = 3.f;
@@ -2089,7 +2086,10 @@ void WipeTower2::toolchange_Wipe(
             writer.extrude(writer.x() + ironing_length, writer.y(), wipe_speed);
             writer.retract(retract_length, retract_speed);
             writer.travel(writer.x() - 1.5f * ironing_length, writer.y(), 600.f);
-            writer.travel(writer.x() + 1.5f * ironing_length, writer.y(), 240.f);
+            writer.travel(writer.x() + 0.5f * ironing_length, writer.y(), 240.f);
+            const Vec2f iron_end(writer.x() + ironing_length, writer.y());
+            writer.spiral_flat_ironing(writer.pos(), m_filpar[m_current_tool].tower_ironing_area, m_perimeter_width, flat_iron_speed);
+            writer.travel(iron_end, wipe_speed);
             writer.retract(-retract_length, retract_speed);
         }
 
@@ -2097,11 +2097,6 @@ void WipeTower2::toolchange_Wipe(
             writer.extrude(xr - (i % 4 == 0 ? 0 : 1.5f*line_width), writer.y(), wipe_speed);
 		else
             writer.extrude(xl + (i % 4 == 1 ? 0 : 1.5f*line_width), writer.y(), wipe_speed);
-
-        if (i == 0 && do_ironing && ironing_area > 0.f) {
-            writer.travel(writer.x(), writer.y(), 600.f);
-            writer.spiral_flat_ironing(writer.pos(), ironing_area, m_perimeter_width, 10.f * 60.f);
-        }
 
         if (writer.y()+float(EPSILON) > cleaning_box.lu.y()-0.5f*line_width)
             break;		// in case next line would not fit

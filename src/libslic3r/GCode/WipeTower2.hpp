@@ -221,7 +221,6 @@ private:
 	float  m_perimeter_speed    = 0.f;
     float  m_first_layer_speed  = 0.f;
     size_t m_first_layer_idx    = size_t(-1);
-    bool   m_flat_ironing       = false;
     bool   m_enable_tower_interface_features = false;
     bool   m_enable_tower_interface_cooldown_during_tower = false;
     bool   m_prev_layer_had_interface = false;
