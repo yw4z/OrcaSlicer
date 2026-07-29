@@ -1842,6 +1842,10 @@ void GLCanvas3D::enable_separator_toolbar(bool enable)
     m_separator_toolbar.set_enabled(enable);
 }
 
+bool GLCanvas3D::has_mouse_capture() const {
+    return m_canvas != nullptr && m_canvas->HasCapture();
+}
+
 void GLCanvas3D::zoom_to_bed()
 {
     BoundingBoxf3 box = m_bed.build_volume().bounding_volume();
@@ -4189,11 +4193,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         m_mouse.position = evt.Leaving() ? Vec2d(-1.0, -1.0) : pos.cast<double>();
         m_tooltip.set_in_imgui(true);
 
-        // keep tracking an active ImGui drag (e.g. IMSlider handle/label) even once the mouse leaves the canvas window bounds.
-        const bool imgui_dragging_active_item =
-            (GImGui != nullptr && ImGui::GetIO().MouseDown[0] && GImGui->ActiveId != 0) || // UI controls
-            m_navigator_dragging; // Navigation Cube
-        if (m_canvas != nullptr && imgui_dragging_active_item && !m_canvas->HasCapture())
+        // keep tracking an active ImGui drag even once the mouse leaves the canvas window bounds.
+        const bool imgui_dragging_active = (GImGui != nullptr && ImGui::GetIO().MouseDown[0] && GImGui->ActiveId != 0) || m_navigator_dragging;
+        if (!has_mouse_capture() && imgui_dragging_active)
             m_canvas->CaptureMouse();
 
         // release capture as soon as the button goes up. Without this, on_mouse() may return below before ever reaching the LeftUp branch
@@ -4296,6 +4298,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             evt2.SetLeftDown(false);
             m_main_toolbar.on_mouse(evt2, *this);
         }
+
+        // keep tracking past the window edge while a gizmo grabber is actively held
+        if (!has_mouse_capture() && evt.LeftIsDown() && m_gizmos.is_dragging())
+            m_canvas->CaptureMouse();
 
         if (evt.LeftUp() || evt.MiddleUp() || evt.RightUp())
             mouse_up_cleanup();

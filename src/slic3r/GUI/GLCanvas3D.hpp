@@ -917,6 +917,7 @@ public:
     void update_volumes_colors_by_extruder();
 
     bool is_dragging() const { return m_gizmos.is_dragging() || m_moving; }
+    bool has_mouse_capture() const;
 
     void render(bool only_init = false);
     bool is_rendering_enabled()

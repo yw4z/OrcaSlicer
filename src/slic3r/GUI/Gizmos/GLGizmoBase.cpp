@@ -442,7 +442,7 @@ bool GLGizmoBase::use_grabbers(const wxMouseEvent &mouse_event) {
         }
     } else if (m_dragging) {
         // when mouse cursor leave window than finish actual dragging operation
-        bool is_leaving = mouse_event.Leaving();
+        bool is_leaving = mouse_event.Leaving() && !m_parent.has_mouse_capture(); // keep tracking past the window edge while a gizmo grabber is actively held
         if (mouse_event.Dragging()) {
             Point      mouse_coord(mouse_event.GetX(), mouse_event.GetY());
             auto       ray = m_parent.mouse_ray(mouse_coord);
