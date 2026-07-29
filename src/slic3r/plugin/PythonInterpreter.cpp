@@ -87,6 +87,12 @@ void log_python_exception_keep(pybind11::error_already_set& err)
     if (!gil)
         return;
 
+    // Traceback output is host-owned work.  In particular, the stderr tee opens the Python log
+    // file on every write.  Keep that open outside the plugin audit context, otherwise an ordinary
+    // exception raised by a plugin can recursively trigger the filesystem permission dialog while
+    // its original exception is being reported.
+    ScopedPluginAuditContext audit_suppression("");
+
     // Non-destructive: print the traceback to sys.stderr (tee'd to the session log)
     // WITHOUT consuming err, so the caller can rethrow it intact. For example, downstream C++
     // catchers can still read err.what() for the user-facing dialog. We must NOT use
