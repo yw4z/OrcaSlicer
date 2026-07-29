@@ -284,6 +284,15 @@ private:
 
     bool is_first_layer() const { return size_t(m_layer_info - m_plan.begin()) == m_first_layer_idx; }
 
+    // With a boundary wipe start (multitool ram, non-SEMM, gap wall) the wipe begins on a
+    // fresh row below the quantized ram band. Y offset from the box start to that first
+    // wipe row; must stay in sync with the alignment travel in toolchange_Unload().
+    float wipe_start_offset_after_ram(float ramming_depth, bool first_layer) const
+    {
+        const float wipe_dy = (first_layer ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
+        return ramming_depth + wipe_dy - (m_perimeter_width + m_perimeter_width * m_extra_flow) / 2.f;
+    }
+
 	// Calculates extrusion flow needed to produce required line width for given layer height
 	float extrusion_flow(float layer_height = -1.f) const	// negative layer_height - return current m_extrusion_flow
 	{

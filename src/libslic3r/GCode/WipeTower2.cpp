@@ -1616,8 +1616,9 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
 
     float wipe_area = 0.f;
 	float wipe_volume = 0.f;
+    float ramming_depth = 0.f;
     bool interface_layer = m_enable_tower_interface_features && m_current_layer_has_interface;
-	
+
 	// Finds this toolchange info
 	if (tool != (unsigned int)(-1))
 	{
@@ -1625,6 +1626,7 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
 			if ( b.new_tool == tool ) {
                 wipe_volume = b.wipe_volume;
 				wipe_area = b.required_depth;
+                ramming_depth = b.ramming_depth;
 				break;
 			}
 	}
@@ -1663,6 +1665,12 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
 	writer.speed_override(100);
 
 	Vec2f initial_position = cleaning_box.ld + Vec2f(0.f, m_depth_traversed);
+    // With a boundary wipe start the wall gap sits at the first wipe row below the
+    // quantized ram band; enter there too so the routed entry, the gap and the wipe
+    // scrub all share one opening. toolchange_Unload() climbs back up to the ram band
+    // along the box interior.
+    if (!m_semm && m_use_gap_wall && ramming_depth > 0.f)
+        initial_position.y() += wipe_start_offset_after_ram(ramming_depth, is_first_layer());
     writer.set_initial_position(initial_position, m_wipe_tower_width, m_wipe_tower_depth, m_internal_rotation);
 
     // Increase the extruder driver current to allow fast ramming.
@@ -1766,6 +1774,10 @@ void WipeTower2::toolchange_Unload(
             if (tch.old_tool == m_current_tool) { planned_ramming_depth = tch.ramming_depth; break; }
 
     if (do_ramming) {
+        if (boundary_wipe_start)
+            // The entry sits at the wall gap on the first wipe row past the reserved
+            // ram band; step inward first, then move to the band clear of the wall.
+            writer.travel(Vec2f(ramming_start_pos.x(), writer.y()));
         writer.travel(ramming_start_pos); // move to starting position
         if (! m_is_mk4mmu3)
             writer.disable_linear_advance();
@@ -1970,10 +1982,9 @@ void WipeTower2::toolchange_Unload(
         // quantized ram band so the entry scrub always runs at the wall gap (BBL keeps
         // CP_TOOLCHANGE_WIPE starting at a box corner the same way). Same lattice
         // formula as the no-ram branch below, offset by the ram band.
-        const float wipe_dy         = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
-        const float wipe_line_width = m_perimeter_width * m_extra_flow;
         writer.travel(Vec2f(ramming_start_pos.x(),
-            cleaning_box.ld.y() + m_depth_traversed + planned_ramming_depth + wipe_dy - (m_perimeter_width + wipe_line_width) / 2.f + m_perimeter_width), 2400.f);
+            cleaning_box.ld.y() + m_depth_traversed +
+                wipe_start_offset_after_ram(planned_ramming_depth, is_first_layer()) + m_perimeter_width), 2400.f);
         m_left_to_right = true;
     }
     else if (do_ramming)
@@ -2584,13 +2595,18 @@ static WipeTower::ToolChangeResult merge_tcr(WipeTower::ToolChangeResult& first,
 // starts: cleaning_box.ld + (0, m_depth_traversed), with m_depth_traversed advancing by
 // required_depth per toolchange — reproduced here from the finalized plan so each gap
 // coincides with the entry travel's target (tcr.start_pos, pre-rotation frame).
+// With a boundary wipe start the entry, the wipe and its scrub sit on the first wipe row
+// below the quantized ram band, so the gap moves there with them (BBL cuts its gap at the
+// CP_TOOLCHANGE_WIPE start row too, never at the ram band).
 void WipeTower2::compute_wall_skip_points()
 {
     m_wall_skip_points.assign(m_plan.size(), std::vector<Vec2f>());
     for (size_t layer_id = 0; layer_id < m_plan.size(); ++layer_id) {
         float depth_traversed = 0.f;
         for (const auto& toolchange : m_plan[layer_id].tool_changes) {
-            m_wall_skip_points[layer_id].emplace_back(m_perimeter_width / 2.f, m_perimeter_width / 2.f + depth_traversed);
+            const float ram_offset = (!m_semm && toolchange.ramming_depth > 0.f) ?
+                wipe_start_offset_after_ram(toolchange.ramming_depth, layer_id == m_first_layer_idx) : 0.f;
+            m_wall_skip_points[layer_id].emplace_back(m_perimeter_width / 2.f, m_perimeter_width / 2.f + depth_traversed + ram_offset);
             depth_traversed += toolchange.required_depth;
         }
     }
