@@ -387,6 +387,11 @@ private:
     // Computes the depth reserved for a toolchange (shared by plan_toolchange() and the
     // rib-wall square-tower replanning in generate()).
     WipeTowerInfo::ToolChange set_toolchange(size_t old_tool, size_t new_tool, float layer_height, float wipe_volume, bool first_layer_plan);
+
+    // Depth consumed before the first wipe row when no ramming is printed (the wipe
+    // still starts y_step/2 into the box, see toolchange_Unload()); 0 with ramming,
+    // whose planned rows already carry the slack for it.
+    float wipe_start_depth_offset(size_t old_tool) const;
 };
 
 

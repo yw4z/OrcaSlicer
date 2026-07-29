@@ -2346,15 +2346,29 @@ void WipeTower2::plan_toolchange(float z_par, float layer_height_par, unsigned i
     m_plan.back().tool_changes.push_back(set_toolchange(old_tool, new_tool, layer_height_par, wipe_volume, first_layer_plan));
 }
 
+float WipeTower2::wipe_start_depth_offset(size_t old_tool) const
+{
+    const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[old_tool].multitool_ramming;
+    if (do_ramming)
+        return 0.f;
+    return 0.5f * m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator * m_extra_spacing_ramming;
+}
+
 WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool, size_t new_tool, float layer_height, float wipe_volume, bool first_layer_plan)
 {
     float width = m_wipe_tower_width - 3*m_perimeter_width;
-	float length_to_extrude = volume_to_length(0.25f * std::accumulate(m_filpar[old_tool].ramming_speed.begin(), m_filpar[old_tool].ramming_speed.end(), 0.f),
+	float length_to_extrude = volume_to_length((m_semm ? 0.25f : m_filpar[old_tool].multitool_ramming_time) * std::accumulate(m_filpar[old_tool].ramming_speed.begin(), m_filpar[old_tool].ramming_speed.end(), 0.f),
 										m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator,
 										layer_height);
-    // Orca: Set ramming depth to 0 if ramming is disabled.
-    float ramming_depth = m_enable_filament_ramming ? ((int(length_to_extrude / width) + 1) * (m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator) * m_extra_spacing_ramming) : 0;
-    float first_wipe_line = - (width*((length_to_extrude / width)-int(length_to_extrude / width)) - width);
+    // Orca: Reserve ramming depth only when toolchange_Unload() will actually ram
+    // (same condition as its do_ramming), otherwise the unprinted reservation
+    // leaves blank bands between the purge boxes.
+    const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[old_tool].multitool_ramming;
+    float ramming_depth = do_ramming ? ((int(length_to_extrude / width) + 1) * (m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator) * m_extra_spacing_ramming) : 0;
+    // first_wipe_line rides for free on the last (partially used) ramming row, which
+    // is already covered by ramming_depth. Without ramming that row does not exist,
+    // so the whole wipe volume needs reserved wiping depth.
+    float first_wipe_line = do_ramming ? - (width*((length_to_extrude / width)-int(length_to_extrude / width)) - width) : 0.f;
 
     float first_wipe_volume = length_to_volume(first_wipe_line, m_perimeter_width * m_extra_flow, layer_height);
 
@@ -2367,7 +2381,8 @@ WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool
     // ORCA: and first-layer purge segments do not leave visible gaps.
     const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
 
-    float wiping_depth = get_wipe_depth(wipe_volume - first_wipe_volume, layer_height, m_perimeter_width, m_extra_flow, planning_spacing, width);
+    float wiping_depth = get_wipe_depth(wipe_volume - first_wipe_volume, layer_height, m_perimeter_width, m_extra_flow, planning_spacing, width)
+                       + wipe_start_depth_offset(old_tool);
 
 	return WipeTowerInfo::ToolChange(old_tool, new_tool, ramming_depth + wiping_depth, ramming_depth, first_wipe_line, wipe_volume);
 }
@@ -2429,7 +2444,8 @@ void WipeTower2::save_on_last_wipe()
             const bool first_layer_plan = size_t(m_layer_info - m_plan.begin()) == m_first_layer_idx;
             const float planning_spacing = first_layer_plan ? m_extra_flow : m_extra_spacing_wipe;
 
-            float depth_to_wipe = get_wipe_depth(volume_we_need_depth_for, m_layer_info->height, m_perimeter_width, m_extra_flow, planning_spacing, width);
+            float depth_to_wipe = get_wipe_depth(volume_we_need_depth_for, m_layer_info->height, m_perimeter_width, m_extra_flow, planning_spacing, width)
+                                + wipe_start_depth_offset(toolchange.old_tool);
 
             toolchange.required_depth = toolchange.ramming_depth + depth_to_wipe;
             toolchange.wipe_volume = volume_left_to_wipe;
