@@ -233,24 +233,6 @@ static Polygon rounding_rectangle(Polygon& polygon, double rounding = 2., double
     return res;
 }
 
-static std::pair<bool, Vec2f> ray_intersetion_line(const Vec2f& a, const Vec2f& v1, const Vec2f& b, const Vec2f& c)
-{
-    const Vec2f v2    = c - b;
-    double      denom = cross2(v1, v2);
-    if (fabs(denom) < EPSILON)
-        return {false, Vec2f(0, 0)};
-    const Vec2f v12    = (a - b);
-    double      nume_a = cross2(v2, v12);
-    double      nume_b = cross2(v1, v12);
-    double      t1     = nume_a / denom;
-    double      t2     = nume_b / denom;
-    if (t1 >= 0 && t2 >= 0 && t2 <= 1.) {
-        // Get the intersection point.
-        Vec2f res = a + t1 * v1;
-        return std::pair<bool, Vec2f>(true, res);
-    }
-    return std::pair<bool, Vec2f>(false, Vec2f{0, 0});
-}
 static Polygon scale_polygon(const std::vector<Vec2f>& points)
 {
     Polygon res;
@@ -295,6 +277,7 @@ static Polygon generate_rectange(const Line& line, coord_t offset)
     return poly;
 };
 
+// Straight or arc-fitted wall segment used by WipeTowerWriter2::generate_path().
 struct Segment
 {
     Vec2f      start;
@@ -303,324 +286,6 @@ struct Segment
     ArcSegment arcsegment;
     Segment(const Vec2f& s, const Vec2f& e) : start(s), end(e) {}
     bool is_valid() const { return start.y() < end.y(); }
-};
-
-static std::vector<Segment> remove_points_from_segment(const Segment& segment, const std::vector<Vec2f>& skip_points, double range)
-{
-    std::vector<Segment> result;
-    result.push_back(segment);
-    float x = segment.start.x();
-
-    for (const Vec2f& point : skip_points) {
-        std::vector<Segment> newResult;
-        for (const auto& seg : result) {
-            if (point.y() + range <= seg.start.y() || point.y() - range >= seg.end.y()) {
-                newResult.push_back(seg);
-            } else {
-                if (point.y() - range > seg.start.y()) {
-                    newResult.push_back(Segment(Vec2f(x, seg.start.y()), Vec2f(x, point.y() - range)));
-                }
-                if (point.y() + range < seg.end.y()) {
-                    newResult.push_back(Segment(Vec2f(x, point.y() + range), Vec2f(x, seg.end.y())));
-                }
-            }
-        }
-
-        result = newResult;
-    }
-
-    result.erase(std::remove_if(result.begin(), result.end(), [](const Segment& seg) { return !seg.is_valid(); }), result.end());
-    return result;
-}
-
-struct IntersectionInfo
-{
-    Vec2f pos;
-    int   idx;
-    int   pair_idx; // gap_pair idx
-    float dis_from_idx;
-    bool  is_forward;
-};
-
-struct PointWithFlag
-{
-    Vec2f pos;
-    int   pair_idx; // gap_pair idx
-    bool  is_forward;
-};
-static IntersectionInfo move_point_along_polygon(
-    const std::vector<Vec2f>& points, const Vec2f& startPoint, int startIdx, float offset, bool forward, int pair_idx)
-{
-    float            remainingDistance = offset;
-    IntersectionInfo res;
-    int              mod = points.size();
-    if (forward) {
-        int next = (startIdx + 1) % mod;
-        remainingDistance -= (points[next] - startPoint).norm();
-        if (remainingDistance <= 0) {
-            res.idx          = startIdx;
-            res.pos          = startPoint + (points[next] - startPoint).normalized() * offset;
-            res.pair_idx     = pair_idx;
-            res.dis_from_idx = (points[startIdx] - res.pos).norm();
-            return res;
-        } else {
-            for (int i = (startIdx + 1) % mod; i != startIdx; i = (i + 1) % mod) {
-                float segmentLength = (points[(i + 1) % mod] - points[i]).norm();
-                if (remainingDistance <= segmentLength) {
-                    float ratio      = remainingDistance / segmentLength;
-                    res.idx          = i;
-                    res.pos          = points[i] + ratio * (points[(i + 1) % mod] - points[i]);
-                    res.dis_from_idx = remainingDistance;
-                    res.pair_idx     = pair_idx;
-                    return res;
-                }
-                remainingDistance -= segmentLength;
-            }
-            res.idx          = (startIdx - 1 + mod) % mod;
-            res.pos          = points[startIdx];
-            res.pair_idx     = pair_idx;
-            res.dis_from_idx = (res.pos - points[res.idx]).norm();
-        }
-    } else {
-        int next = (startIdx + 1) % mod;
-        remainingDistance -= (points[startIdx] - startPoint).norm();
-        if (remainingDistance <= 0) {
-            res.idx          = startIdx;
-            res.pos          = startPoint - (points[next] - points[startIdx]).normalized() * offset;
-            res.dis_from_idx = (res.pos - points[startIdx]).norm();
-            res.pair_idx     = pair_idx;
-            return res;
-        }
-        for (int i = (startIdx - 1 + mod) % mod; i != startIdx; i = (i - 1 + mod) % mod) {
-            float segmentLength = (points[(i + 1) % mod] - points[i]).norm();
-            if (remainingDistance <= segmentLength) {
-                float ratio      = remainingDistance / segmentLength;
-                res.idx          = i;
-                res.pos          = points[(i + 1) % mod] - ratio * (points[(i + 1) % mod] - points[i]);
-                res.dis_from_idx = segmentLength - remainingDistance;
-                res.pair_idx     = pair_idx;
-                return res;
-            }
-            remainingDistance -= segmentLength;
-        }
-        res.idx          = startIdx;
-        res.pos          = points[res.idx];
-        res.pair_idx     = pair_idx;
-        res.dis_from_idx = 0;
-    }
-    return res;
-};
-
-static void insert_points(std::vector<PointWithFlag>& pl, int idx, Vec2f pos, int pair_idx, bool is_forward)
-{
-    int   next = (idx + 1) % pl.size();
-    Vec2f pos1 = pl[idx].pos;
-    Vec2f pos2 = pl[next].pos;
-    if ((pos - pos1).squaredNorm() < EPSILON) {
-        pl[idx].pair_idx   = pair_idx;
-        pl[idx].is_forward = is_forward;
-    } else if ((pos - pos2).squaredNorm() < EPSILON) {
-        pl[next].pair_idx   = pair_idx;
-        pl[next].is_forward = is_forward;
-    } else {
-        pl.insert(pl.begin() + idx + 1, PointWithFlag{pos, pair_idx, is_forward});
-    }
-}
-
-// For skip_point
-// TODO: Optimize the skip_point algorithm itself instead of adding guards here
-static Polygon add_extra_point(const Polygon& polygon, int scale_range)
-{
-    Polygon res;
-    if (polygon.size() < 2) return polygon;
-
-    // Compute bounding box of the polygon
-    auto polygon_box = get_extents(polygon);
-
-    // Anchor point: X at bbox center, Y at bbox bottom
-    Vec2f anchor_point(float(polygon_box.center()[0]), float(polygon_box.min[1]));
-
-    // Find the edge whose midpoint is closest to the anchor point
-    size_t closest_edge_idx = 0;
-    float  min_dist_sq      = std::numeric_limits<float>::max();
-
-    for (size_t i = 0; i < polygon.size(); ++i) {
-        const Point &a_i = polygon[i];
-        const Point &b_i = polygon[(i + 1) % polygon.size()];
-
-        Vec2f a(float(a_i.x()), float(a_i.y()));
-        Vec2f b(float(b_i.x()), float(b_i.y()));
-        Vec2f mid = (a + b) * 0.5f;
-
-        float dist_sq = (anchor_point - mid).squaredNorm();
-        if (dist_sq < min_dist_sq) {
-            min_dist_sq      = dist_sq;
-            closest_edge_idx = i;
-        }
-    }
-
-    // Edge endpoints (integer space)
-    const Point &a_i = polygon[closest_edge_idx];
-    const Point &b_i = polygon[(closest_edge_idx + 1) % polygon.size()];
-
-    // Convert to float for geometric computation
-    Vec2f a(float(a_i.x()), float(a_i.y()));
-    Vec2f b(float(b_i.x()), float(b_i.y()));
-
-    Vec2f mid = (a + b) * 0.5f;
-
-    // Direction vectors from midpoint towards A and B
-    Vec2f dir_to_a = a - mid;
-    Vec2f dir_to_b = b - mid;
-
-    float len_a = dir_to_a.norm();
-    float len_b = dir_to_b.norm();
-
-    // Guard against degenerated edges
-    if (len_a < EPSILON || len_b < EPSILON) return polygon;
-
-    dir_to_a /= len_a;
-    dir_to_b /= len_b;
-
-    // Clamp range to avoid overshooting the edge
-    float max_range = std::min(len_a, len_b) * 0.9f;
-    float range     = std::min(float(scale_range), max_range);
-
-    // Offset points (float space)
-    Vec2f offset_to_a_f = mid + dir_to_a * range;
-    Vec2f offset_to_b_f = mid + dir_to_b * range;
-
-    // Safe cast back to scaled integer Point
-    auto to_int_point = [](const Vec2f &p) {
-        auto clamp = [](float v) -> coord_t {
-            constexpr float kMin = float(std::numeric_limits<coord_t>::min());
-            constexpr float kMax = float(std::numeric_limits<coord_t>::max());
-            v                    = std::clamp(v, kMin, kMax);
-            return static_cast<coord_t>(std::lround(v));
-        };
-        return Point(clamp(p.x()), clamp(p.y()));
-    };
-
-    Point mid_i         = to_int_point(mid);
-    Point offset_to_a_i = to_int_point(offset_to_a_f);
-    Point offset_to_b_i = to_int_point(offset_to_b_f);
-
-    // Rebuild polygon with inserted points
-    for (size_t i = 0; i < polygon.size(); ++i) {
-        res.points.push_back(polygon[i]);
-
-        // Insert points right after the selected edge start vertex
-        if (i == closest_edge_idx) {
-            res.points.push_back(offset_to_a_i);
-            res.points.push_back(mid_i);
-            res.points.push_back(offset_to_b_i);
-        }
-    }
-
-    return res;
-}
-
-static Polylines remove_points_from_polygon(
-    const Polygon& polygon_ori, const std::vector<Vec2f>& skip_points, double range, float wt_width, Polygon& insert_skip_pg)
-{
-    Polygon polygon = add_extra_point(polygon_ori, scale_(range));
-    if (polygon.size() < 2) return Polylines{to_polyline(polygon)};
-    Polylines                     result;
-    std::vector<PointWithFlag>    new_pl; // add intersection points for gaps, where bool indicates whether it's a gap point.
-    std::vector<IntersectionInfo> inter_info;
-    auto                          polygon_box  = get_extents(polygon);
-    Point                         anchor_point = Point{polygon_box.center()[0], polygon_box.min[1]}; // for next reconnect
-    std::vector<Vec2f>            points;
-    {
-        points.reserve(polygon.points.size());
-        int      idx      = polygon.closest_point_index(anchor_point);
-        Polyline tmp_poly = polygon.split_at_index(idx);
-        for (auto& p : tmp_poly)
-            points.push_back(unscale(p).cast<float>());
-        points.pop_back();
-    }
-
-    for (int i = 0; i < skip_points.size(); i++) {
-        bool  is_left = abs(skip_points[i].x()) < wt_width / 2.f;
-        Vec2f ray     = is_left ? Vec2f(-1, 0) : Vec2f(1, 0);
-        for (int j = 0; j < points.size(); j++) {
-            Vec2f& p1                  = points[j];
-            Vec2f& p2                  = points[(j + 1) % points.size()];
-            auto [is_inter, inter_pos] = ray_intersetion_line(skip_points[i], ray, p1, p2);
-            if (is_inter) {
-                IntersectionInfo forward  = move_point_along_polygon(points, inter_pos, j, range, true, i);
-                IntersectionInfo backward = move_point_along_polygon(points, inter_pos, j, range, false, i);
-                backward.is_forward       = false;
-                forward.is_forward        = true;
-                inter_info.push_back(backward);
-                inter_info.push_back(forward);
-                break;
-            }
-        }
-    }
-
-    // insert point to new_pl
-    for (const auto& p : points)
-        new_pl.push_back({p, -1});
-    std::sort(inter_info.begin(), inter_info.end(), [](const IntersectionInfo& lhs, const IntersectionInfo& rhs) {
-        if (rhs.idx == lhs.idx)
-            return lhs.dis_from_idx < rhs.dis_from_idx;
-        return lhs.idx < rhs.idx;
-    });
-    for (int i = inter_info.size() - 1; i >= 0; i--) {
-        insert_points(new_pl, inter_info[i].idx, inter_info[i].pos, inter_info[i].pair_idx, inter_info[i].is_forward);
-    }
-
-    {
-        // set insert_pg for wipe_path
-        for (auto& p : new_pl)
-            insert_skip_pg.points.push_back(scaled(p.pos));
-    }
-
-    int      beg  = 0;
-    bool     skip = true;
-    int      i    = beg;
-    Polyline pl;
-
-    do {
-        if (skip || new_pl[i].pair_idx == -1) {
-            pl.points.push_back(scaled(new_pl[i].pos));
-            i    = (i + 1) % new_pl.size();
-            skip = false;
-        } else {
-            if (!pl.points.empty()) {
-                pl.points.push_back(scaled(new_pl[i].pos));
-                result.push_back(pl);
-                pl.points.clear();
-            }
-            int left = new_pl[i].pair_idx;
-            int j    = (i + 1) % new_pl.size();
-            while (j != beg && new_pl[j].pair_idx != left) {
-                if (new_pl[j].pair_idx != -1 && !new_pl[j].is_forward)
-                    left = new_pl[j].pair_idx;
-                j = (j + 1) % new_pl.size();
-            }
-            i    = j;
-            skip = true;
-        }
-    } while (i != beg);
-
-    if (!pl.points.empty()) {
-        if (new_pl[i].pair_idx == -1)
-            pl.points.push_back(scaled(new_pl[i].pos));
-        result.push_back(pl);
-    }
-    return result;
-}
-
-static Polylines contrust_gap_for_skip_points(
-    const Polygon& polygon, const std::vector<Vec2f>& skip_points, float wt_width, float gap_length, Polygon& insert_skip_polygon)
-{
-    if (skip_points.empty()) {
-        insert_skip_polygon = polygon;
-        return Polylines{to_polyline(polygon)};
-    }
-    return remove_points_from_polygon(polygon, skip_points, gap_length, wt_width, insert_skip_polygon);
 };
 
 static Polygon generate_rectange_polygon(const Vec2f& wt_box_min, const Vec2f& wt_box_max)
@@ -1334,6 +999,12 @@ WipeTower::ToolChangeResult WipeTower2::construct_tcr(WipeTowerWriter2& writer,
 
 
 
+bool WipeTower2::use_gap_wall(const PrintConfig& config)
+{
+    // The cone wall has its own fully separate generator with no gap machinery.
+    return config.prime_tower_skip_points.value && config.wipe_tower_wall_type.value != wtwCone;
+}
+
 WipeTower2::WipeTower2(const PrintConfig& config, const PrintRegionConfig& default_region_config,int plate_idx, Vec3d plate_origin, const std::vector<std::vector<float>>& wiping_matrix, size_t initial_tool) :
     m_semm(config.single_extruder_multi_material.value),
     m_enable_filament_ramming(config.enable_filament_ramming.value),
@@ -1361,8 +1032,7 @@ WipeTower2::WipeTower2(const PrintConfig& config, const PrintRegionConfig& defau
     m_rib_width(config.wipe_tower_rib_width), 
     m_extra_rib_length(config.wipe_tower_extra_rib_length),
     m_wall_type((int)config.wipe_tower_wall_type),
-    // The cone wall has its own fully separate generator with no gap machinery.
-    m_use_gap_wall(config.prime_tower_skip_points.value && config.wipe_tower_wall_type.value != wtwCone),
+    m_use_gap_wall(use_gap_wall(config)),
     m_enable_tower_interface_features(config.enable_tower_interface_features.value),
     m_enable_tower_interface_cooldown_during_tower(config.enable_tower_interface_cooldown_during_tower.value)
 {
@@ -1664,13 +1334,9 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
     writer.speed_override_backup();
 	writer.speed_override(100);
 
-	Vec2f initial_position = cleaning_box.ld + Vec2f(0.f, m_depth_traversed);
-    // With a boundary wipe start the wall gap sits at the first wipe row below the
-    // quantized ram band; enter there too so the routed entry, the gap and the wipe
-    // scrub all share one opening. toolchange_Unload() climbs back up to the ram band
-    // along the box interior.
-    if (!m_semm && m_use_gap_wall && ramming_depth > 0.f)
-        initial_position.y() += wipe_start_offset_after_ram(ramming_depth, is_first_layer());
+    // On a boundary wipe start this enters at the wall gap on the first wipe row;
+    // toolchange_Unload() then climbs back up to the ram band along the box interior.
+    Vec2f initial_position = toolchange_entry_pos(m_depth_traversed, ramming_depth, is_first_layer());
     writer.set_initial_position(initial_position, m_wipe_tower_width, m_wipe_tower_depth, m_internal_rotation);
 
     // Increase the extruder driver current to allow fast ramming.
@@ -1682,10 +1348,8 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
         // Without a ram — or with the boundary wipe start, where the ram band is
         // quantized to whole rows — the box is planned as whole wipe rows; the wipe
         // then fills it completely so adjacent purge blocks stay contiguous. Uses the
-        // old tool (m_current_tool before toolchange_Change), same conditions as
-        // toolchange_Unload()'s do_ramming / boundary_wipe_start.
-        const bool do_ram_old = (m_semm && m_enable_filament_ramming) || m_filpar[m_current_tool].multitool_ramming;
-        const bool fill_box   = !do_ram_old || (!m_semm && m_use_gap_wall);
+        // old tool (m_current_tool before toolchange_Change).
+        const bool fill_box = !tool_ramming_enabled(m_current_tool) || boundary_wipe_start_enabled(m_current_tool);
         auto new_tool_temp = is_first_layer() ? m_filpar[tool].first_layer_temperature : m_filpar[tool].temperature;
         toolchange_Unload(writer, cleaning_box, m_filpar[m_current_tool].material,
                           (is_first_layer() ? m_filpar[m_current_tool].first_layer_temperature : m_filpar[m_current_tool].temperature),
@@ -1763,11 +1427,10 @@ void WipeTower2::toolchange_Unload(
 	float remaining = xr - xl ;							// keeps track of distance to the next turnaround
 	float e_done = 0;									// measures E move done from each segment   
 
-    // Orca: Do ramming when SEMM and ramming is enabled or when multi tool head when ramming is enabled on the multi tool.
-    const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[m_current_tool].multitool_ramming;
+    const bool do_ramming = tool_ramming_enabled(m_current_tool);
     const bool cold_ramming = m_is_mk4mmu3;
     // Orca: see set_toolchange() — quantized ram band + wipe restart at the boundary.
-    const bool boundary_wipe_start = do_ramming && !m_semm && m_use_gap_wall;
+    const bool boundary_wipe_start = boundary_wipe_start_enabled(m_current_tool);
     float planned_ramming_depth = 0.f;
     if (boundary_wipe_start && m_layer_info != m_plan.end())
         for (const auto& tch : m_layer_info->tool_changes)
@@ -1994,12 +1657,9 @@ void WipeTower2::toolchange_Unload(
         // first wipe row so the purge row lattice continues across the block boundary
         // (previous box's last row top edge sits at its box top): with the planned depth
         // of rows * dy, the last row's top edge then lands exactly on this box's top and
-        // no blank band is left between adjacent purge blocks. Mirrors dy/line_width in
-        // toolchange_Wipe().
-        const float wipe_dy         = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
-        const float wipe_line_width = m_perimeter_width * m_extra_flow;
+        // no blank band is left between adjacent purge blocks.
         writer.set_position(Vec2f(end_of_ramming.x(),
-            cleaning_box.ld.y() + m_depth_traversed + wipe_dy - (m_perimeter_width + wipe_line_width) / 2.f + m_perimeter_width));
+            cleaning_box.ld.y() + m_depth_traversed + wipe_start_offset_after_ram(0.f, is_first_layer()) + m_perimeter_width));
     }
 
     writer.resume_preview()
@@ -2090,7 +1750,7 @@ void WipeTower2::toolchange_Wipe(
 	const float& xr = cleaning_box.rd.x();
 
     writer.set_extrusion_flow(m_extrusion_flow * m_extra_flow);
-    const float line_width = m_perimeter_width * m_extra_flow;
+    const float line_width = wipe_line_width();
     writer.change_analyzer_line_width(line_width);
 
 	// Variables x_to_wipe and traversed_x are here to be able to make sure it always wipes at least
@@ -2098,7 +1758,7 @@ void WipeTower2::toolchange_Wipe(
     // wipe until the end of the assigned area.
 
 	float x_to_wipe = volume_to_length(wipe_volume, m_perimeter_width, m_layer_height) / m_extra_flow;
-	float dy = (is_first_layer() ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width; // Don't use the extra spacing for the first layer, but do use the spacing resulting from increased flow.
+	float dy = wipe_row_spacing(is_first_layer()); // Don't use the extra spacing for the first layer, but do use the spacing resulting from increased flow.
     // All the calculations in all other places take the spacing into account for all the layers.
 
 	// If spare layers are excluded->if 1 or less toolchange has been done, it must be sill the first layer, too.So slow down.
@@ -2291,7 +1951,7 @@ WipeTower::ToolChangeResult WipeTower2::finish_layer()
         poly = generate_support_cone_wall(writer, wt_box, feedrate, infill_cone, spacing);
     } else {
         WipeTower::box_coordinates wt_box(Vec2f(0.f, 0.f), m_wipe_tower_width, m_layer_info->depth + m_perimeter_width);
-        poly = generate_support_rib_wall(writer, wt_box, feedrate, first_layer, m_wall_type == (int)wtwRib, true, m_use_gap_wall);
+        poly = generate_support_rib_wall(writer, wt_box, feedrate, first_layer, m_wall_type == (int)wtwRib, true);
     }
 
     // brim (first layer only)
@@ -2419,16 +2079,14 @@ WipeTower2::WipeTowerInfo::ToolChange WipeTower2::set_toolchange(size_t old_tool
 	float length_to_extrude = volume_to_length((m_semm ? 0.25f : m_filpar[old_tool].multitool_ramming_time) * std::accumulate(m_filpar[old_tool].ramming_speed.begin(), m_filpar[old_tool].ramming_speed.end(), 0.f),
 										m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator,
 										layer_height);
-    // Orca: Reserve ramming depth only when toolchange_Unload() will actually ram
-    // (same condition as its do_ramming), otherwise the unprinted reservation
-    // leaves blank bands between the purge boxes.
-    const bool do_ramming = (m_semm && m_enable_filament_ramming) || m_filpar[old_tool].multitool_ramming;
+    // Orca: Reserve ramming depth only when toolchange_Unload() will actually ram,
+    // otherwise the unprinted reservation leaves blank bands between the purge boxes.
+    const bool do_ramming = tool_ramming_enabled(old_tool);
     // Orca: with the gap wall on a multi-tool printer the ram band is quantized up to
     // the whole reserved rows and the wipe restarts at the left-edge boundary on a
     // fresh row below it (BBL parity: the old-tool purge is whole rows and the wipe
-    // always starts at the box corner, where the entry scrub runs). SEMM keeps the
-    // stock continue-from-ram-end behavior. Must match toolchange_Unload()/tool_change().
-    const bool boundary_wipe_start = do_ramming && !m_semm && m_use_gap_wall;
+    // always starts at the box corner, where the entry scrub runs).
+    const bool boundary_wipe_start = boundary_wipe_start_enabled(old_tool);
     float ramming_depth = do_ramming ? ((int(length_to_extrude / width) + 1) * (m_perimeter_width * m_filpar[old_tool].ramming_line_width_multiplicator * m_filpar[old_tool].ramming_step_multiplicator) * m_extra_spacing_ramming) : 0;
     // first_wipe_line rides for free on the last (partially used) ramming row, which
     // is already covered by ramming_depth. Without ramming that row does not exist
@@ -2588,30 +2246,26 @@ static WipeTower::ToolChangeResult merge_tcr(WipeTower::ToolChangeResult& first,
 }
 
 
-// Processes vector m_plan and calls respective functions to generate G-code for the wipe tower
-// Resulting ToolChangeResults are appended into vector "result"
 // Precompute, for every plan layer, the wall openings ("skip points") at each toolchange's
-// entry, like WipeTower::get_all_wall_skip_points(). The entry is where tool_change()
-// starts: cleaning_box.ld + (0, m_depth_traversed), with m_depth_traversed advancing by
-// required_depth per toolchange — reproduced here from the finalized plan so each gap
-// coincides with the entry travel's target (tcr.start_pos, pre-rotation frame).
-// With a boundary wipe start the entry, the wipe and its scrub sit on the first wipe row
-// below the quantized ram band, so the gap moves there with them (BBL cuts its gap at the
-// CP_TOOLCHANGE_WIPE start row too, never at the ram band).
+// entry position, like WipeTower::get_all_wall_skip_points(). toolchange_entry_pos()
+// reproduces from the finalized plan where tool_change() will start, so each gap coincides
+// with the entry travel's target (tcr.start_pos, pre-rotation frame). BBL parity: the gap
+// sits at the CP_TOOLCHANGE_WIPE start row, never at the ram band.
 void WipeTower2::compute_wall_skip_points()
 {
     m_wall_skip_points.assign(m_plan.size(), std::vector<Vec2f>());
     for (size_t layer_id = 0; layer_id < m_plan.size(); ++layer_id) {
         float depth_traversed = 0.f;
         for (const auto& toolchange : m_plan[layer_id].tool_changes) {
-            const float ram_offset = (!m_semm && toolchange.ramming_depth > 0.f) ?
-                wipe_start_offset_after_ram(toolchange.ramming_depth, layer_id == m_first_layer_idx) : 0.f;
-            m_wall_skip_points[layer_id].emplace_back(m_perimeter_width / 2.f, m_perimeter_width / 2.f + depth_traversed + ram_offset);
+            m_wall_skip_points[layer_id].emplace_back(
+                toolchange_entry_pos(depth_traversed, toolchange.ramming_depth, layer_id == m_first_layer_idx));
             depth_traversed += toolchange.required_depth;
         }
     }
 }
 
+// Processes vector m_plan and calls respective functions to generate G-code for the wipe tower
+// Resulting ToolChangeResults are appended into vector "result"
 void WipeTower2::generate(std::vector<std::vector<WipeTower::ToolChangeResult>> &result)
 {
 	if (m_plan.empty())
@@ -2779,8 +2433,7 @@ Polygon WipeTower2::generate_support_rib_wall(WipeTowerWriter2&                 
                                              double                 feedrate,
                                              bool                   first_layer,
                                              bool                   rib_wall,
-                                             bool                   extrude_perimeter,
-                                             bool                   skip_points)
+                                             bool                   extrude_perimeter)
 {
 
     float     retract_length = m_filpar[m_current_tool].retract_length;
@@ -2800,7 +2453,7 @@ Polygon WipeTower2::generate_support_rib_wall(WipeTowerWriter2&                 
     if (!extrude_perimeter)
         return wall_polygon;
 
-    if (skip_points) {
+    if (m_use_gap_wall) {
         // Cut the wall open at each toolchange's entry (see compute_wall_skip_points()).
         // The vector is empty during the save_on_last_wipe planning passes, which therefore
         // measure the un-gapped wall — same approximation as the BBL tower.

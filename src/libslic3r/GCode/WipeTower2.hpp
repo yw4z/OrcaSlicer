@@ -34,6 +34,10 @@ public:
 								   bool is_finish,
                                    bool is_contact = false) const;
 
+    // Whether this print cuts wall openings ("skip points") at the toolchange entries.
+    // Shared with the entry routing in GCode.cpp so the router and the tower agree.
+    static bool use_gap_wall(const PrintConfig& config);
+
 	// x			-- x coordinates of wipe tower in mm ( left bottom corner )
 	// y			-- y coordinates of wipe tower in mm ( left bottom corner )
 	// width		-- width of wipe tower in mm ( default 60 mm - leave as it is )
@@ -284,13 +288,35 @@ private:
 
     bool is_first_layer() const { return size_t(m_layer_info - m_plan.begin()) == m_first_layer_idx; }
 
-    // With a boundary wipe start (multitool ram, non-SEMM, gap wall) the wipe begins on a
-    // fresh row below the quantized ram band. Y offset from the box start to that first
-    // wipe row; must stay in sync with the alignment travel in toolchange_Unload().
+    // Purge row lattice of toolchange_Wipe(): row pitch and extrusion width.
+    float wipe_row_spacing(bool first_layer) const { return (first_layer ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width; }
+    float wipe_line_width() const { return m_perimeter_width * m_extra_flow; }
+
+    // Whether toolchange_Unload() rams this (old) tool out.
+    bool tool_ramming_enabled(size_t tool) const { return (m_semm && m_enable_filament_ramming) || m_filpar[tool].multitool_ramming; }
+    // Whether the wipe restarts at the box boundary on a fresh row below the quantized
+    // ram band after ramming this (old) tool out (multi-tool gap wall; SEMM keeps the
+    // stock continue-from-ram-end behavior).
+    bool boundary_wipe_start_enabled(size_t tool) const { return tool_ramming_enabled(tool) && !m_semm && m_use_gap_wall; }
+
+    // With a boundary wipe start the wipe begins on a fresh row below the quantized ram
+    // band. Y offset from the box start to that first wipe row.
     float wipe_start_offset_after_ram(float ramming_depth, bool first_layer) const
     {
-        const float wipe_dy = (first_layer ? m_extra_flow : m_extra_spacing_wipe) * m_perimeter_width;
-        return ramming_depth + wipe_dy - (m_perimeter_width + m_perimeter_width * m_extra_flow) / 2.f;
+        return ramming_depth + wipe_row_spacing(first_layer) - (m_perimeter_width + wipe_line_width()) / 2.f;
+    }
+
+    // Tower-local entry position of a toolchange whose box starts depth_traversed into
+    // the layer: the box corner, moved down to the first wipe row when the plan gives
+    // it a boundary wipe start (ramming_depth > 0 iff the unload rams). tool_change()
+    // enters here and compute_wall_skip_points() cuts the wall gap here, so the routed
+    // entry, the gap and the wipe scrub all share one opening.
+    Vec2f toolchange_entry_pos(float depth_traversed, float ramming_depth, bool first_layer) const
+    {
+        Vec2f pos(m_perimeter_width / 2.f, m_perimeter_width / 2.f + depth_traversed);
+        if (!m_semm && m_use_gap_wall && ramming_depth > 0.f)
+            pos.y() += wipe_start_offset_after_ram(ramming_depth, first_layer);
+        return pos;
     }
 
 	// Calculates extrusion flow needed to produce required line width for given layer height
@@ -379,8 +405,7 @@ private:
                                       double                 feedrate,
                                       bool                   first_layer,
                                       bool                   rib_wall,
-                                      bool                   extrude_perimeter,
-                                      bool                   skip_points);
+                                      bool                   extrude_perimeter);
 
     Polygon generate_support_cone_wall(
         WipeTowerWriter2& writer, 

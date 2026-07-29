@@ -13,6 +13,7 @@
 #include "GCode/PrintExtents.hpp"
 #include "GCode/Thumbnails.hpp"
 #include "GCode/WipeTower.hpp"
+#include "GCode/WipeTower2.hpp"
 #include "ShortestPath.hpp"
 #include "Print.hpp"
 #include "Utils.hpp"
@@ -888,18 +889,22 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         return res;
     }
 
-    // With skip points enabled the Type2 tower wall has an opening at each toolchange's
-    // entry (tcr.start_pos): route the approach around the tower's bounding box so the
-    // nozzle enters through that opening instead of dragging across the printed wall
-    // (append_tcr parity). Emits only the waypoints leading up to the opening — the
-    // caller still travels to start_wipe_pos itself. Returns an empty string when the
-    // option is off, the cone wall is active (it has no gap machinery), or the approach
-    // already starts inside the tower: such hops never cross the wall and must stay direct.
-    std::string WipeTowerIntegration::travel_to_tower_gap(GCode &gcodegen, const Point &route_start, const Point &start_wipe_pos) const
+    // Type2 tower-local point -> bed frame. The rib-wall offset is tower-local, so it
+    // rotates with the tower (unlike the BBL tower in append_tcr, which never rotates).
+    Vec2f WipeTowerIntegration::transform_wt2_pt(const Vec2f &pt) const
     {
-        if (!gcodegen.m_config.prime_tower_skip_points.value
-            || gcodegen.m_config.wipe_tower_wall_type.value == WipeTowerWallType::wtwCone)
-            return {};
+        const float alpha = m_wipe_tower_rotation / 180.f * float(M_PI);
+        return Eigen::Rotation2Df(alpha) * (pt + m_rib_offset) + m_wipe_tower_pos;
+    }
+
+    // Printable-area bounds for tower-approach routing, in object coordinates (shared by
+    // the BBL avoid-perimeter path in append_tcr and the Type2 skip-points router).
+    // Multi-nozzle: clamp the travel bounds to the region every extruder can reach
+    // (get_extruder_shared_printable_polygon) instead of the full bed. Gated on the
+    // multi-nozzle predicate so every existing single/dual printer keeps the historic
+    // full-printable_area routing byte-identical.
+    BoundingBox WipeTowerIntegration::printer_travel_bounds(GCode &gcodegen) const
+    {
         const Vec2f plate_origin_2d(m_plate_origin(0), m_plate_origin(1));
         BoundingBox printer_bbx;
         if (is_multi_nozzle_printer(gcodegen.m_config)) {
@@ -912,19 +917,30 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 bed_points.push_back(wipe_tower_point_to_object_point(gcodegen, p.cast<float>() + plate_origin_2d));
             printer_bbx = BoundingBox(bed_points);
         }
-        // Transform the tower-local bbx corners exactly like the tcr points (rib
-        // offset, rotation, tower position); a rotated tower gets a conservative
-        // axis-aligned envelope.
-        const float alpha        = m_wipe_tower_rotation / 180.f * float(M_PI);
-        Polygon     avoid_points = scaled(m_wipe_tower_bbx).polygon();
-        for (auto& p : avoid_points.points) {
-            Vec2f pp = Eigen::Rotation2Df(alpha) * (unscale(p).cast<float>() + m_rib_offset) + m_wipe_tower_pos;
-            p        = wipe_tower_point_to_object_point(gcodegen, pp + plate_origin_2d);
-        }
+        return printer_bbx;
+    }
+
+    // With skip points enabled the Type2 tower wall has an opening at each toolchange's
+    // entry (tcr.start_pos): route the approach around the tower's bounding box so the
+    // nozzle enters through that opening instead of dragging across the printed wall
+    // (append_tcr parity). Emits only the waypoints leading up to the opening — the
+    // caller still travels to start_wipe_pos itself. Returns an empty string when the
+    // gap wall is off (option off or cone wall) or the approach already starts inside
+    // the tower: such hops never cross the wall and must stay direct.
+    std::string WipeTowerIntegration::travel_to_tower_gap(GCode &gcodegen, const Point &route_start, const Point &start_wipe_pos) const
+    {
+        if (!WipeTower2::use_gap_wall(gcodegen.m_config))
+            return {};
+        const Vec2f plate_origin_2d(m_plate_origin(0), m_plate_origin(1));
+        // Transform the tower-local bbx corners exactly like the tcr points; a rotated
+        // tower gets a conservative axis-aligned envelope.
+        Polygon avoid_points = scaled(m_wipe_tower_bbx).polygon();
+        for (auto& p : avoid_points.points)
+            p = wipe_tower_point_to_object_point(gcodegen, transform_wt2_pt(unscale(p).cast<float>()) + plate_origin_2d);
         BoundingBox avoid_bbx(avoid_points.points);
         if (avoid_bbx.contains(route_start))
             return {};
-        Polyline    travel_polyline = generate_path_to_wipe_tower(route_start, start_wipe_pos, avoid_bbx, printer_bbx);
+        Polyline    travel_polyline = generate_path_to_wipe_tower(route_start, start_wipe_pos, avoid_bbx, printer_travel_bounds(gcodegen));
         std::string gcode;
         // The polyline's last point is start_wipe_pos itself — emitted by the caller.
         for (size_t i = 0; i + 1 < travel_polyline.points.size(); ++i)
@@ -1305,24 +1321,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 Vec2f       gcode_last_pos2d{gcode_last_pos[0], gcode_last_pos[1]};
                 Point       gcode_last_pos2d_object = gcodegen.gcode_to_point(gcode_last_pos2d.cast<double>() + plate_origin_2d.cast<double>());
                 Point       start_wipe_pos          = wipe_tower_point_to_object_point(gcodegen, tool_change_start_pos + plate_origin_2d);
-                BoundingBox avoid_bbx, printer_bbx;
-                {
-                    // set printer_bbx
-                    // Multi-nozzle: clamp the avoid-perimeter travel bounds to the region every
-                    // extruder can reach (get_extruder_shared_printable_polygon) instead of the full
-                    // bed. Gated on the multi-nozzle predicate so H2D and every existing single/dual
-                    // printer keep the historic full-printable_area routing byte-identical.
-                    if (is_multi_nozzle_printer(gcodegen.m_config)) {
-                        printer_bbx     = get_extents(gcodegen.m_print->get_extruder_shared_printable_polygon());
-                        printer_bbx.min = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.min) + plate_origin_2d);
-                        printer_bbx.max = wipe_tower_point_to_object_point(gcodegen, unscaled<float>(printer_bbx.max) + plate_origin_2d);
-                    } else {
-                        Pointfs bed_pointsf = gcodegen.m_config.printable_area.values;
-                        Points  bed_points;
-                        for (auto p : bed_pointsf) { bed_points.push_back(wipe_tower_point_to_object_point(gcodegen, p.cast<float>() + plate_origin_2d)); }
-                        printer_bbx = BoundingBox(bed_points);
-                    }
-                }
+                BoundingBox avoid_bbx, printer_bbx = printer_travel_bounds(gcodegen);
                 {
                     // set avoid_bbx
                     avoid_bbx            = scaled(m_wipe_tower_bbx);
@@ -1466,19 +1465,13 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         // We want to rotate and shift all extrusions (gcode postprocessing) and starting and ending position
         float alpha = m_wipe_tower_rotation / 180.f * float(M_PI);
 
-        // The rib-wall offset is tower-local, so it rotates with the tower (unlike the BBL
-        // tower in append_tcr, which never rotates). Priming lines are absolute bed moves.
-        auto transform_wt_pt = [&alpha, this](const Vec2f &pt) -> Vec2f {
-            Vec2f out = Eigen::Rotation2Df(alpha) * (pt + m_rib_offset);
-            out += m_wipe_tower_pos;
-            return out;
-        };
-
+        // Priming lines are absolute bed moves; everything else is tower-local
+        // (transform_wt2_pt).
         Vec2f start_pos = tcr.start_pos;
         Vec2f end_pos   = tcr.end_pos;
         if (!tcr.priming) {
-            start_pos = transform_wt_pt(start_pos);
-            end_pos   = transform_wt_pt(end_pos);
+            start_pos = transform_wt2_pt(start_pos);
+            end_pos   = transform_wt2_pt(end_pos);
         }
 
         Vec2f wipe_tower_offset   = tcr.priming ? Vec2f::Zero() : Vec2f(m_wipe_tower_pos + Eigen::Rotation2Df(alpha) * m_rib_offset);
@@ -1511,13 +1504,13 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                                                              || is_ramming
                                                              || tool_change_on_wipe_tower);
 
+        const Point start_wipe_pos     = wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d);
         const bool travel_to_tower_now = should_travel_to_tower || gcodegen.m_need_change_layer_lift_z;
         if (travel_to_tower_now) {
             // FIXME: It would be better if the wipe tower set the force_travel flag for all toolchanges,
             // then we could simplify the condition and make it more readable.
             gcode += gcodegen.retract();
             gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
-            const Point start_wipe_pos = wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d);
             if (!tcr.priming && gcodegen.last_pos_defined())
                 gcode += travel_to_tower_gap(gcodegen, gcodegen.last_pos(), start_wipe_pos);
             gcode += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
@@ -1549,9 +1542,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 toolchange_temp_override = interface_temp;
             }
             toolchange_gcode_str = gcodegen.set_extruder(new_extruder_id, tcr.print_z, false, toolchange_temp_override); // TODO: toolchange_z vs print_z
-            if (!travel_to_tower_now && !tcr.priming && needs_toolchange
-                && gcodegen.m_config.prime_tower_skip_points.value
-                && gcodegen.m_config.wipe_tower_wall_type.value != WipeTowerWallType::wtwCone) {
+            if (!travel_to_tower_now && !tcr.priming && WipeTower2::use_gap_wall(gcodegen.m_config)) {
                 // The tool changed in place (multi-tool printer without ramming), so the
                 // tower entry is the tcr's own positioning move — a straight line across
                 // the printed wall. Route it around the tower and in through the wall
@@ -1574,8 +1565,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 if (have_start) {
                     gcodegen.set_last_pos(route_start);
                     gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
-                    const Point start_wipe_pos = wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d);
-                    std::string travel         = travel_to_tower_gap(gcodegen, route_start, start_wipe_pos);
+                    std::string travel = travel_to_tower_gap(gcodegen, route_start, start_wipe_pos);
                     travel += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
                     check_add_eol(travel);
                     toolchange_gcode_str += travel;
@@ -1767,7 +1757,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
             // Prepare a future wipe.
             gcodegen.m_wipe.reset_path();
             for (const Vec2f& wipe_pt : tcr.wipe_path)
-                gcodegen.m_wipe.path.points.emplace_back(wipe_tower_point_to_object_point(gcodegen, transform_wt_pt(wipe_pt) + plate_origin_2d));
+                gcodegen.m_wipe.path.points.emplace_back(wipe_tower_point_to_object_point(gcodegen, transform_wt2_pt(wipe_pt) + plate_origin_2d));
         }
 
         // Let the planner know we are traveling between objects.
