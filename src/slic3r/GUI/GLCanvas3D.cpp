@@ -6079,6 +6079,14 @@ void GLCanvas3D::_render_3d_navigator()
         return;
     }
 
+    // Fix stealing capture event from other drag events
+    const bool other_drag_active = !m_navigator_dragging && (m_moving || m_camera_movement || m_mouse.dragging || m_rectangle_selection.is_dragging() || m_gizmos.is_dragging());
+
+    ImGuiIO& io = ImGui::GetIO();
+    const bool saved_mouse_down0 = io.MouseDown[0];
+    if (other_drag_active)
+        io.MouseDown[0] = false;
+
     ImGuizmo::BeginFrame();
 
     auto& style                                = ImGuizmo::GetStyle();
@@ -6103,7 +6111,6 @@ void GLCanvas3D::_render_3d_navigator()
     sc *= (float) dpi / (float) DPI_DEFAULT;
 #endif // WIN32
 
-    const ImGuiIO& io              = ImGui::GetIO();
     const float viewManipulateLeft = 0;
     const float viewManipulateTop  = io.DisplaySize.y;
     const float camDistance        = 8.f;
@@ -6126,6 +6133,10 @@ void GLCanvas3D::_render_3d_navigator()
     const auto result = ImGuizmo::ViewManipulate(cameraView, cameraProjection, ImGuizmo::OPERATION::ROTATE, ImGuizmo::MODE::WORLD, nullptr,
                                                  camDistance, ImVec2(viewManipulateLeft, viewManipulateTop - size), ImVec2(size, size),
                                                  0x00101010);
+
+    // Restore the real mouse-down state
+    if (other_drag_active)
+        io.MouseDown[0] = saved_mouse_down0;
 
     if (result.changed) {
         for (unsigned int c = 0; c < 4; ++c) {
