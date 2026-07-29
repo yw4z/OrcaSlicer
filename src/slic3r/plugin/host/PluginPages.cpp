@@ -14,6 +14,8 @@
 #include <boost/log/trivial.hpp>
 #include <nlohmann/json.hpp>
 
+#include <stdexcept>
+#include <wx/bookctrl.h>
 #include <wx/sizer.h>
 
 #include <utility>
@@ -204,6 +206,11 @@ void PluginPages::initialize(Notebook* parent)
     if (m_parent == nullptr)
         return;
 
+    // Keep image-list indices stable for the lifetime of this notebook. Removing an image
+    // would shift every later index, so deregistration only removes the page.
+    m_image_list = std::make_unique<wxImageList>(20, 20, true, 0);
+    m_parent->SetImageList(m_image_list.get());
+
     for (const auto& capability : PluginManager::instance().get_plugin_capabilities("", PluginCapabilityType::Pages)) {
         if (capability)
             on_cap_register(capability->identity());
@@ -214,6 +221,9 @@ void PluginPages::shutdown()
 {
     while (!m_pages.empty())
         remove_page(m_pages.begin()->first);
+    if (m_parent != nullptr)
+        m_parent->SetImageList(nullptr);
+    m_image_list.reset();
     m_parent = nullptr;
 }
 
@@ -235,6 +245,15 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     if (!capability)
         return;
 
+    std::string icon;
+    try {
+        icon = capability->get_icon();
+    } catch (const std::exception& error) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Failed to get icon for plugin " << id.plugin_key << ": " << error.what();
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Failed to get icon for plugin " << id.plugin_key;
+    }
+
     auto* page = new PluginPage(m_parent, std::move(capability));
     if (!page->is_valid()) {
         page->Destroy();
@@ -242,8 +261,29 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     }
 
     const wxString title = wxString::FromUTF8(id.name);
-    const wxString page_id = wxString::FromUTF8("plugin." + id.plugin_key + "." + id.name);
-    if (!m_parent->AddPage(page_id, page, title, "tab_auxiliary_active", "tab_auxiliary_active", false)) {
+
+    int image_id = wxBookCtrlBase::NO_IMAGE;
+    if (!icon.empty() && m_image_list) {
+        try {
+            boost::filesystem::path icon_path(icon);
+            const std::string extension = icon_path.extension().string();
+            if (extension == ".svg" || extension == ".png")
+                icon_path.replace_extension();
+
+            const wxBitmap bitmap = create_scaled_bitmap(icon_path.string(), m_parent, 20);
+            if (bitmap.IsOk())
+                image_id = m_image_list->Add(bitmap);
+        } catch (const std::exception& error) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Failed to load icon for plugin " << id.plugin_key << ": " << error.what();
+        } catch (...) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Failed to load icon for plugin " << id.plugin_key;
+        }
+    }
+
+    page->set_icon_image_id(image_id);
+    if (!m_parent->AddPage(page, title, false, image_id)) {
+        if (image_id != wxBookCtrlBase::NO_IMAGE && m_image_list && image_id == m_image_list->GetImageCount() - 1)
+            m_image_list->Remove(image_id);
         page->Destroy();
         return;
     }
@@ -285,12 +325,39 @@ void PluginPages::remove_page(const PluginCapabilityId& id)
         return;
 
     PluginPage* page = it->second;
+    const int removed_image_id = page->get_icon_image_id();
     page->detach_capability();
     if (m_parent != nullptr) {
         const int index = m_parent->FindPage(page);
         if (index != wxNOT_FOUND)
             m_parent->RemovePage(static_cast<size_t>(index));
     }
+
+    if (m_image_list && removed_image_id != wxBookCtrlBase::NO_IMAGE &&
+        removed_image_id >= 0 && removed_image_id < m_image_list->GetImageCount()) {
+        m_image_list->Remove(removed_image_id);
+
+        // wxImageList IDs are positional. Removing one shifts all later images down by
+        // one, so update both the page state and the notebook button for those pages.
+        for (const auto& [other_id, other_page] : m_pages) {
+            if (other_id == id)
+                continue;
+
+            const int other_image_id = other_page->get_icon_image_id();
+            if (other_image_id <= removed_image_id)
+                continue;
+
+            const int updated_image_id = other_image_id - 1;
+            other_page->set_icon_image_id(updated_image_id);
+
+            if (m_parent != nullptr) {
+                const int other_index = m_parent->FindPage(other_page);
+                if (other_index != wxNOT_FOUND)
+                    m_parent->SetPageImage(static_cast<size_t>(other_index), updated_image_id);
+            }
+        }
+    }
+
     page->Destroy();
     m_pages.erase(it);
 }

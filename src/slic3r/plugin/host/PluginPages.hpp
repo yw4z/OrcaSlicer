@@ -8,6 +8,8 @@
 #include <memory>
 #include <string>
 
+#include <wx/bookctrl.h>
+#include <wx/imaglist.h>
 #include <wx/panel.h>
 #include <wx/webview.h>
 
@@ -29,16 +31,20 @@ public:
     void on_new_window(wxWebViewEvent& event);
     void on_script_message(wxWebViewEvent& event);
     void push_message(const std::string& message);
+    void set_icon_image_id(int id) { m_icon_image_id = id; }
+    int get_icon_image_id() const { return m_icon_image_id; }
 
 private:
     void load_plugin_content();
     wxString bootstrap_url() const;
     wxString web_base_url() const;
 
-    wxWebView*                                      m_browser{nullptr};
-    std::shared_ptr<PagesPluginCapability>          m_cap;
-    std::shared_ptr<std::atomic<PluginPage*>>       m_lifetime;
-    bool                                             m_content_loaded{false};
+    wxWebView* m_browser{nullptr};
+    std::shared_ptr<PagesPluginCapability> m_cap;
+    std::shared_ptr<std::atomic<PluginPage*>> m_lifetime;
+    bool m_content_loaded{false};
+
+    int m_icon_image_id = wxBookCtrlBase::NO_IMAGE;
 };
 
 class PluginPages
@@ -47,7 +53,7 @@ public:
     PluginPages() = default;
     ~PluginPages();
 
-    PluginPages(const PluginPages&) = delete;
+    PluginPages(const PluginPages&)            = delete;
     PluginPages& operator=(const PluginPages&) = delete;
 
     void initialize(Notebook* parent);
@@ -63,7 +69,9 @@ private:
     void remove_page(const PluginCapabilityId& id);
 
     std::map<PluginCapabilityId, PluginPage*> m_pages;
-    Notebook*                                  m_parent{nullptr};
+    Notebook* m_parent{nullptr};
+
+    std::unique_ptr<wxImageList> m_image_list;
 };
 
 } // namespace Slic3r

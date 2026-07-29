@@ -23,6 +23,7 @@ void PagesPluginCapability::RegisterBindings(pybind11::module_& module)
         .def(py::init<>())
         .def("get_type", &PagesPluginCapability::get_type)
         .def("get_ui", &PagesPluginCapability::get_ui)
+        .def("get_icon", &PagesPluginCapability::get_icon)
         .def("on_message", &PagesPluginCapability::on_message)
         .def(
             "post_message",

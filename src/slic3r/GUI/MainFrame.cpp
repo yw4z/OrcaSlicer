@@ -1018,8 +1018,8 @@ void MainFrame::update_layout()
         {
             const int home_idx = m_tabpanel->FindPageByName(TAB_ID_HOME);
             const size_t prepare_pos = (home_idx == wxNOT_FOUND) ? 0 : static_cast<size_t>(home_idx) + 1;
-            m_tabpanel->InsertPage(prepare_pos, TAB_ID_PREPARE, m_plater, _L("Prepare"), std::string("tab_3d_active"), std::string("tab_3d_active"), false);
-            m_tabpanel->InsertPage(prepare_pos + 1, TAB_ID_PREVIEW, m_plater, _L("Preview"), std::string("tab_preview_active"), std::string("tab_preview_active"), false);
+            m_tabpanel->InsertPage(prepare_pos, m_plater, _L("Prepare"), false, Notebook::PAGE_PREPARE);
+            m_tabpanel->InsertPage(prepare_pos + 1, m_plater, _L("Preview"), false, Notebook::PAGE_PREVIEW);
         }
         m_main_sizer->Add(m_tabpanel, 1, wxEXPAND | wxTOP, 0);
 
@@ -1315,7 +1315,7 @@ void MainFrame::init_tabpanel() {
             select_tab(TAB_ID_HOME);
             m_webview->load_url(url);
         });
-        m_tabpanel->AddPage(TAB_ID_HOME, m_webview, "", "tab_home_active", "tab_home_active", false);
+        m_tabpanel->AddPage(m_webview, "", false, Notebook::PAGE_HOME);
         m_param_panel = new ParamsPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
     }
 
@@ -1330,7 +1330,7 @@ void MainFrame::init_tabpanel() {
         //BBS add pages
     m_monitor = new MonitorPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_monitor->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(TAB_ID_MONITOR, m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);
+    m_tabpanel->AddPage(m_monitor, _L("Device"), false, Notebook::PAGE_MONITOR);
 
     m_printer_view = new PrinterWebView(m_tabpanel);
     Bind(EVT_LOAD_PRINTER_URL, [this](LoadPrinterViewEvent &evt) {
@@ -1345,16 +1345,16 @@ void MainFrame::init_tabpanel() {
         m_multi_machine = new MultiMachinePage(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
         m_multi_machine->SetBackgroundColour(*wxWHITE);
         // TODO: change the bitmap
-        m_tabpanel->AddPage(TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"), std::string("tab_multi_active"), false);
+        m_tabpanel->AddPage(m_multi_machine, _L("Multi-device"), false, Notebook::PAGE_MULTI_DEVICE);
     }
 
     m_project = new ProjectPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_project->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(TAB_ID_PROJECT, m_project, _L("Project"), std::string("tab_auxiliary_active"), std::string("tab_auxiliary_active"), false);
+    m_tabpanel->AddPage(m_project, _L("Project"), false, Notebook::PAGE_PROJECT);
 
     m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_calibration->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration, _L("Calibration"), std::string("tab_calibration_active"), std::string("tab_calibration_active"), false);
+    m_tabpanel->AddPage(m_calibration, _L("Calibration"), false, Notebook::PAGE_CALIBRATION);
 
     // Plugin pages are appended after the built-in tabs; their ids are namespaced
     // (plugin.<plugin_key>.<name>) so they can't collide with the built-in TAB_ID_* constants.
@@ -1397,7 +1397,7 @@ void MainFrame::show_device(bool bBBLPrinter) {
         {
             const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
             const size_t monitor_pos = (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
-            m_tabpanel->InsertPage(monitor_pos, TAB_ID_MONITOR, m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"));
+            m_tabpanel->InsertPage(monitor_pos, m_monitor, _L("Device"), false, Notebook::PAGE_MONITOR);
         }
 
         if (wxGetApp().is_enable_multi_machine()) {
@@ -1410,8 +1410,7 @@ void MainFrame::show_device(bool bBBLPrinter) {
             {
                 const int monitor_idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR);
                 const size_t multi_pos = (monitor_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(monitor_idx) + 1;
-                m_tabpanel->InsertPage(multi_pos, TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"),
-                                       std::string("tab_multi_active"), false);
+                m_tabpanel->InsertPage(multi_pos, m_multi_machine, _L("Multi-device"), false, Notebook::PAGE_MULTI_DEVICE);
             }
         }
         if (!m_calibration) {
@@ -1422,8 +1421,7 @@ void MainFrame::show_device(bool bBBLPrinter) {
         // Calibration is always appended last (AddPage), so it lands after whichever of Monitor/Multi-device
         // actually got inserted above — no longer position-sensitive now that insertion position is computed
         // from FindPageByName rather than a fixed TabPosition index.
-        m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration, _L("Calibration"), std::string("tab_calibration_active"),
-                               std::string("tab_calibration_active"), false);
+        m_tabpanel->AddPage(m_calibration, _L("Calibration"), false, Notebook::PAGE_CALIBRATION);
 
 #ifdef _MSW_DARK_MODE
         wxGetApp().UpdateDarkUIWin(this);
@@ -1459,8 +1457,7 @@ void MainFrame::show_device(bool bBBLPrinter) {
         {
             const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
             const size_t monitor_pos = (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
-            m_tabpanel->InsertPage(monitor_pos, TAB_ID_MONITOR, m_printer_view, _L("Device"), std::string("tab_monitor_active"),
-                                   std::string("tab_monitor_active"));
+            m_tabpanel->InsertPage(monitor_pos, m_printer_view, _L("Device"), false, Notebook::PAGE_MONITOR);
         }
     }
     fit_tab_labels(); // ORCA on printer change

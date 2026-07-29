@@ -132,7 +132,6 @@ void ButtonsListCtrl::SetSelection(int sel)
         StateColor text_color = StateColor(
         std::pair{wxColour(254,254, 254), (int) StateColor::Normal}
         );
-        m_pageButtons[m_selection]->SetSelected(false);
         m_pageButtons[m_selection]->SetTextColor(text_color);
     }
 
@@ -152,16 +151,19 @@ void ButtonsListCtrl::SetSelection(int sel)
     StateColor text_color = StateColor(
         std::pair{wxColour(254, 254, 254), (int) StateColor::Normal}
         );
-    m_pageButtons[m_selection]->SetSelected(true);
     m_pageButtons[m_selection]->SetTextColor(text_color);
     
     Refresh();
 }
 
-bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, const std::string &inactive_bmp_name)
+bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, int imageId /* = wxBookCtrlBase::NO_IMAGE */)
 {
     Button * btn = new Button(this, text.empty() ? text : " " + text, bmp_name, wxNO_BORDER);
     btn->SetCornerRadius(0);
+
+    if (bmp_name.empty() && m_imageList != nullptr && imageId != wxBookCtrlBase::NO_IMAGE && imageId >= 0 &&
+        imageId < m_imageList->GetImageCount())
+        btn->SetIcon(m_imageList->GetBitmap(imageId));
 
     int em = em_unit(this);
     //BBS set size for button
@@ -175,8 +177,6 @@ bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /*
     StateColor text_color = StateColor(
         std::pair{wxColour(254,254, 254), (int) StateColor::Normal});
     btn->SetTextColor(text_color);
-    btn->SetInactiveIcon(inactive_bmp_name);
-    btn->SetSelected(false);
     btn->Bind(wxEVT_BUTTON, [this, btn](wxCommandEvent& event) {
         if (auto it = std::find(m_pageButtons.begin(), m_pageButtons.end(), btn); it != m_pageButtons.end()) {
             auto sel = it - m_pageButtons.begin();
@@ -229,6 +229,23 @@ bool ButtonsListCtrl::SetPageImage(size_t n, const std::string& bmp_name) const
     //return m_pageButtons[n]->SetBitmap_(bmp_name);
     ScalableBitmap bitmap(NULL, bmp_name);
     //m_pageButtons[n]->SetBitmap_(bitmap);
+    return true;
+}
+
+bool ButtonsListCtrl::SetPageImage(size_t n, int imageId)
+{
+    if (n >= m_pageButtons.size())
+        return false;
+
+    if (imageId == wxBookCtrlBase::NO_IMAGE) {
+        m_pageButtons[n]->SetIcon(wxBitmap());
+        return true;
+    }
+
+    if (m_imageList == nullptr || imageId < 0 || imageId >= m_imageList->GetImageCount())
+        return false;
+
+    m_pageButtons[n]->SetIcon(m_imageList->GetBitmap(imageId));
     return true;
 }
 

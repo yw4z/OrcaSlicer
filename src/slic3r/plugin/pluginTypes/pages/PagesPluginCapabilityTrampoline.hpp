@@ -13,6 +13,17 @@ class PyPagesPluginCapabilityTrampoline : public PyPluginCommonTrampoline<PagesP
 public:
     using PyPluginCommonTrampoline<PagesPluginCapability>::PyPluginCommonTrampoline;
 
+    std::string get_icon() override
+    {
+        ORCA_PY_OVERRIDE_AUDITED(
+            ::Slic3r::PluginAuditManager::AuditMode::Loading,
+            [] {},
+            PYBIND11_OVERRIDE,
+            std::string,
+            PagesPluginCapability,
+            get_icon);
+    }
+
     std::string get_ui() override
     {
         ORCA_PY_OVERRIDE_AUDITED(

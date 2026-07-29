@@ -18,6 +18,7 @@ public:
 
     virtual std::string get_ui() = 0;
     virtual void on_message(std::string message) { (void) message; }
+    virtual std::string get_icon() { return {}; }
 
     void post_message(std::string message);
     void set_message_sender(std::function<void(const std::string&)> sender);
