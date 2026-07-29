@@ -4193,7 +4193,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         m_mouse.position = evt.Leaving() ? Vec2d(-1.0, -1.0) : pos.cast<double>();
         m_tooltip.set_in_imgui(true);
 
-        // keep tracking an active ImGui drag even once the mouse leaves the canvas window bounds.
+        // ORCA keep tracking mouse position while drag active and cursor not in window bounds
         const bool imgui_dragging_active = (GImGui != nullptr && ImGui::GetIO().MouseDown[0] && GImGui->ActiveId != 0) || m_navigator_dragging;
         if (!has_mouse_capture() && imgui_dragging_active)
             m_canvas->CaptureMouse();
@@ -4299,7 +4299,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             m_main_toolbar.on_mouse(evt2, *this);
         }
 
-        // keep tracking past the window edge while a gizmo grabber is actively held
+        // ORCA keep tracking mouse position while drag active and cursor not in window bounds
         if (!has_mouse_capture() && evt.LeftIsDown() && m_gizmos.is_dragging())
             m_canvas->CaptureMouse();
 
@@ -4562,6 +4562,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         }
         // do not process the dragging if the left mouse was set down in another canvas
         else if (is_camera_rotate(evt, button_mappings)) {
+
+            if (!has_mouse_capture()) // ORCA keep tracking mouse position while drag active and cursor not in window bounds
+                m_canvas->CaptureMouse();
+
             // Orca: Sphere rotation for painting view
             // if dragging over blank area with left button or other button mapped to rotate, then rotate
             bool middle_or_right_button_used_as_rotate = (evt.MiddleIsDown() && button_mappings[MouseButton::Middle] == MouseAction::Rotation) ||
@@ -4641,6 +4645,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             m_mouse.drag.start_position_3D = Vec3d((double)pos(0), (double)pos(1), 0.0);
         }
         else if (is_camera_pan(evt, button_mappings)) {
+
+            if (!has_mouse_capture()) // ORCA keep tracking mouse position while drag active and cursor not in window bounds
+                m_canvas->CaptureMouse();
+
             // if dragging with right button or if button functions swapped and dragging with left button over blank area then pan
             if (m_mouse.is_start_position_2D_defined()) {
                 // get point in model space at Z = 0
