@@ -37,7 +37,7 @@ SwitchButton::SwitchButton(wxWindow* parent, wxWindowID id)
 	Bind(wxEVT_TOGGLEBUTTON, [this](auto& e) { update(); e.Skip(); });
 	SetFont(Label::Body_12);
 
-#ifdef __WXGTK3__
+#ifdef __WXGTK__
     Slic3r::GUI::RemoveButtonBorder(this);
 #endif
 
