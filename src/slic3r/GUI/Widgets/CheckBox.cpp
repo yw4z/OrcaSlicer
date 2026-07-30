@@ -29,7 +29,7 @@ CheckBox::CheckBox(wxWindow *parent, int id)
     Bind(wxEVT_LEAVE_WINDOW, &CheckBox::updateBitmap, this);
 #endif
 
-#ifdef __WXGTK3__
+#ifdef __WXGTK__
     Slic3r::GUI::RemoveButtonBorder(this);
 #endif
 
