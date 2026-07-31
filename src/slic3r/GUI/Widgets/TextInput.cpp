@@ -206,7 +206,7 @@ void TextInput::DoSetSize(int x, int y, int width, int height, int sizeFlags)
     if (align_right)
         textPos.x += labelSize.x;
     if (text_ctrl) {
-        wxSize textSize = text_ctrl->GetSize();
+        wxSize textSize = text_ctrl->GetBestSize();
         textSize.x = size.x - textPos.x - labelSize.x - 10;
         if(textSize.x < -1) textSize.x = -1;
         text_ctrl->SetSize(textSize);
@@ -331,7 +331,7 @@ void TextInput::messureSize()
     else
         dc.SetFont(Label::Body_12);
     labelSize = dc.GetTextExtent(wxWindow::GetLabel());
-    wxSize textSize = text_ctrl->GetSize();
+    wxSize textSize = text_ctrl->GetBestSize();
 
     if (!static_tips.empty()) {
         static_tips_size = dc.GetTextExtent(static_tips);
@@ -340,10 +340,7 @@ void TextInput::messureSize()
         textSize.y += 8;
     }
 
-    int h = textSize.y + 8;
-    if (size.y < h) {
-        size.y = h;
-    }
+    size.y = textSize.y + 8;
 
     wxSize minSize = size;
     minSize.x = GetMinWidth();
