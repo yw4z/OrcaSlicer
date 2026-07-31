@@ -248,7 +248,11 @@ private:
         m_normal_font = this->GetFont();
 
         // update em_unit value for new window font
-        m_em_unit = std::max<int>(10, 10.0f * m_scale_factor);
+#if !defined(__WXGTK__)
+        m_em_unit = std::max<size_t>(10, 10.0f * m_scale_factor);
+#else
+        m_em_unit = std::max<size_t>(10, this->GetTextExtent("m").x - 1);
+#endif // __WXGTK__
 
         // rescale missed controls sizes and images
         on_dpi_changed(suggested_rect);
