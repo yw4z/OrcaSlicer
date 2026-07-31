@@ -599,7 +599,35 @@ bool PluginsDialog::get_descriptor(const std::string& plugin_key, PluginDescript
 
 void PluginsDialog::refresh_plugin_metadata_async(const wxString& title, const wxString& message, bool fetch_cloud)
 {
-    run_with_dialog([fetch_cloud]() { refresh_plugin_metadata_blocking(fetch_cloud); }, [this]() { send_plugins(); }, title, message);
+    run_with_dialog([fetch_cloud]() { refresh_plugin_metadata_blocking(fetch_cloud); }, [this]() {
+        prompt_for_missing_plugins();
+        send_plugins();
+    }, title, message);
+}
+
+void PluginsDialog::prompt_for_missing_plugins()
+{
+    PluginManager& manager = PluginManager::instance();
+    const std::vector<PluginDescriptor> missing = manager.get_missing_plugin_descriptors();
+    if (missing.empty())
+        return;
+
+    wxString names;
+    std::vector<std::string> keys;
+    keys.reserve(missing.size());
+    for (const PluginDescriptor& plugin : missing) {
+        keys.push_back(plugin.plugin_key);
+        names += "\n- ";
+        names += plugin_display_name(plugin.plugin_key);
+    }
+
+    const int result = wxMessageBox(
+        wxString::Format(_L("The following installed plugins were not found on disk:\n%s\n\nRemove them from OrcaSlicer?"), names),
+        _L("Missing Plugins"), wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
+    restore_z_order();
+
+    if (result == wxYES)
+        manager.remove_missing_plugins(keys);
 }
 
 void PluginsDialog::refresh_plugins()
