@@ -1510,7 +1510,19 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         if (travel_to_tower_now) {
             // FIXME: It would be better if the wipe tower set the force_travel flag for all toolchanges,
             // then we could simplify the condition and make it more readable.
-            gcode += gcodegen.retract();
+
+            // Orca: pass the configured lift type, as append_tcr does above. lazy_lift() keeps
+            // the first type it is given, so the NormalLift default would pin this hop to a
+            // standing move. Slope and spiral both need a known head position.
+            LiftType lift_type = LiftType::NormalLift;
+            if (gcodegen.writer().filament() != nullptr && gcodegen.writer().is_current_position_clear()) {
+                ZHopType z_hop_type = ZHopType(gcodegen.config().z_hop_types.get_at(
+                    gcodegen.get_filament_config_index((int) gcodegen.writer().filament()->id())));
+                if (z_hop_type == ZHopType::zhtAuto)
+                    z_hop_type = ZHopType::zhtSpiral;
+                lift_type = gcodegen.to_lift_type(z_hop_type);
+            }
+            gcode += gcodegen.retract(false, false, lift_type);
             gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
             if (!tcr.priming && gcodegen.last_pos_defined())
                 gcode += travel_to_tower_gap(gcodegen, gcodegen.last_pos(), start_wipe_pos);
