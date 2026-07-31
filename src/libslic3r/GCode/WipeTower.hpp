@@ -23,7 +23,7 @@ enum GCodeFlavor : unsigned char;
 // Cuts the tower wall polygon open at each skip point (a toolchange's entry position)
 // so the entry travel can pass through instead of crossing the printed wall. Defined in
 // WipeTower.cpp, shared by WipeTower and WipeTower2.
-Polylines contrust_gap_for_skip_points(
+Polylines construct_gap_for_skip_points(
     const Polygon& polygon, const std::vector<Vec2f>& skip_points, float wt_width, float gap_length, Polygon& insert_skip_polygon);
 
 class WipeTower

@@ -2461,7 +2461,7 @@ Polygon WipeTower2::generate_support_rib_wall(WipeTowerWriter2&                 
         const size_t layer_id = size_t(m_layer_info - m_plan.begin());
         const std::vector<Vec2f>& layer_skip_points =
             layer_id < m_wall_skip_points.size() ? m_wall_skip_points[layer_id] : no_skip_points;
-        result_wall = contrust_gap_for_skip_points(wall_polygon, layer_skip_points, m_wipe_tower_width, 2.5 * m_perimeter_width,
+        result_wall = construct_gap_for_skip_points(wall_polygon, layer_skip_points, m_wipe_tower_width, 2.5 * m_perimeter_width,
                                                    insert_skip_polygon);
     } else {
         result_wall.push_back(to_polyline(wall_polygon));

@@ -593,7 +593,7 @@ Polylines remove_points_from_polygon(const Polygon &polygon_ori, const std::vect
     return result;
 }
 
-Polylines contrust_gap_for_skip_points(const Polygon &polygon, const std::vector<Vec2f> & skip_points ,float wt_width,float gap_length,Polygon& insert_skip_polygon)
+Polylines construct_gap_for_skip_points(const Polygon &polygon, const std::vector<Vec2f> & skip_points ,float wt_width,float gap_length,Polygon& insert_skip_polygon)
 {
     if (skip_points.empty()) {
         insert_skip_polygon = polygon;
@@ -5101,7 +5101,7 @@ Polygon WipeTower::generate_support_wall_new(WipeTowerWriter &writer, const box_
     if (!extrude_perimeter) return wall_polygon;
 
     if (skip_points) {
-        result_wall = contrust_gap_for_skip_points(wall_polygon, m_wall_skip_points[m_cur_layer_id], m_wipe_tower_width, 2.5 * m_perimeter_width, insert_skip_polygon);
+        result_wall = construct_gap_for_skip_points(wall_polygon, m_wall_skip_points[m_cur_layer_id], m_wipe_tower_width, 2.5 * m_perimeter_width, insert_skip_polygon);
     }
     else {
         result_wall.push_back(to_polyline(wall_polygon));
