@@ -509,8 +509,8 @@ TEST_CASE("A degenerate process variant map on a custom multi-extruder printer s
     // otherwise the failed per-extruder lookups collapse the per-extruder retract overrides
     // during slicing and the post-slice re-apply invalidates every fresh result, forever.
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
-    config.option<ConfigOptionFloats>("nozzle_diameter", true)->values = {0.4, 0.4, 0.4, 0.4, 0.4};
     config.set_num_extruders(5);
+    config.option<ConfigOptionFloats>("nozzle_diameter", true)->values = {0.4, 0.4, 0.4, 0.4, 0.4};
     // per-extruder machine values that a first-slot collapse would destroy
     config.option<ConfigOptionPercents>("retract_before_wipe", true)->values = {100., 70., 70., 70., 100.};
     config.option<ConfigOptionEnumsGeneric>("z_hop_types", true)->values = {zhtSlope, zhtNormal, zhtNormal, zhtNormal, zhtSlope};
