@@ -2186,7 +2186,7 @@ void GLCanvas3D::render(bool only_init)
 
 	// Negative coordinate means out of the window, likely because the window was deactivated.
 	// In that case the tooltip should be hidden.
-    if (m_mouse.position.x() >= 0. && m_mouse.position.y() >= 0.) {
+    if (m_mouse.position.x() >= 0. && m_mouse.position.y() >= 0. || has_mouse_capture()) { // ORCA continue to capture mouse pos mid drag
         if (tooltip.empty())
             tooltip = m_layers_editing.get_tooltip(*this);
 
@@ -4187,7 +4187,13 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         // ignore left up events coming from imgui windows and not processed by them
         m_mouse.ignore_left_up = true;
     m_tooltip.set_in_imgui(false);
-    if (imgui->update_mouse_data(evt)) {
+
+    // while a non-ImGui drag is already in progress (gizmo grabber, object move, rectangle selection, layer editing),
+    // don't let ImGui/ImGuizmo claim the event just because the cursor is hovering something like the navigator cube
+    // that incorrectly suppresses the active drag's tooltip and can interrupt its processing. The active drag always takes priority.
+    const bool other_drag_active = m_gizmos.is_dragging() || m_mouse.dragging || m_rectangle_selection.is_dragging() || m_layers_editing.state == LayersEditing::Editing;
+
+    if (imgui->update_mouse_data(evt) && !other_drag_active) {
         if ((evt.LeftDown() || (evt.Moving() && (evt.AltDown() || evt.ShiftDown()))) && m_canvas != nullptr)
             m_canvas->SetFocus();
         m_mouse.position = evt.Leaving() ? Vec2d(-1.0, -1.0) : pos.cast<double>();
