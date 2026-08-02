@@ -197,6 +197,8 @@ public:
 class AuxiliaryPanel : public wxPanel
 {
 private:
+    Button * back_btn = {nullptr};
+
     Tabbook *m_tabpanel = {nullptr};
     wxSizer *m_main_sizer = {nullptr};
 
