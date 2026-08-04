@@ -187,9 +187,14 @@ void AuFile::OnPaint(wxPaintEvent &event)
     wxAutoBufferedPaintDC dc(this);   // handles buffering correctly per-platform
     dc.Clear();
 
+#ifdef __WXMSW__
     wxGCDC gdc(dc);
     PaintBackground(gdc);
     PaintForeground(gdc);
+#else
+    PaintBackground(dc);
+    PaintForeground(dc);
+#endif
 }
 
 void AuFile::PaintBackground(wxDC &dc)
