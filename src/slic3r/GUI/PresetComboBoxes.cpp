@@ -1540,10 +1540,10 @@ void PlaterPresetComboBox::update()
 void PlaterPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
-    SetMinSize({-1, FromDIP(30)});
+    SetMinSize({-1, 30 * m_em_unit / 10});
 
     if (clr_picker)
-        clr_picker->SetSize(FromDIP(20), FromDIP(20));
+        clr_picker->SetSize(20 * m_em_unit / 10, 20 * m_em_unit / 10);
     // BBS
     if (edit_btn != nullptr)
         edit_btn->msw_rescale();
@@ -1908,7 +1908,7 @@ void TabPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
     // BBS: new layout
-    wxSize sz = wxSize(20 * m_em_unit, FromDIP(30));
+    wxSize sz = wxSize(20 * m_em_unit, 30 * m_em_unit / 10);
     SetMinSize(sz);
     SetSize(sz);
 }
