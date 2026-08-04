@@ -58,7 +58,12 @@ bool LabeledStaticBox::Create(
 
     Bind(wxEVT_PAINT,([this](wxPaintEvent& e) {
         wxAutoBufferedPaintDC dc(this);
+#ifdef __WXMSW__
+        wxGCDC gdc(dc);
+        DrawBorderAndLabel(gdc);
+#else
         DrawBorderAndLabel(dc);
+#endif
     }));
 
     state_handler.attach({&text_color, &background_color, &border_color});
