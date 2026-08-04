@@ -51,7 +51,9 @@ bool LabeledStaticBox::Create(
     Slic3r::GUI::staticbox_remove_margin(this);
 #endif
 
+#ifdef __WXGTK__
     Slic3r::GUI::StyleStaticBox(this, m_radius, m_border_width, border_color.colorForStates(StateColor::Normal).GetAsString().c_str());
+#endif
 
     m_label = label;
     m_scale = FromDIP(100) / 100.f;
@@ -84,14 +86,18 @@ bool LabeledStaticBox::Create(
 void LabeledStaticBox::SetCornerRadius(int radius)
 {
     this->m_radius = radius;
+#ifdef __WXGTK__
     Slic3r::GUI::StyleStaticBox(this, m_radius, m_border_width, border_color.colorForStates(StateColor::Normal).GetAsString().c_str());
+#endif
     Refresh();
 }
 
 void LabeledStaticBox::SetBorderWidth(int width)
 {
     this->m_border_width = width;
+#ifdef __WXGTK__
     Slic3r::GUI::StyleStaticBox(this, m_radius, m_border_width, border_color.colorForStates(StateColor::Normal).GetAsString().c_str());
+#endif
     Refresh();
 }
 
