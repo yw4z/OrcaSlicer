@@ -3752,7 +3752,7 @@ void Sidebar::msw_rescale()
     p->image_printer->SetSize(FromDIP(PRINTER_THUMBNAIL_SIZE));
     update_printer_thumbnail();
     p->combo_printer->Rescale();
-    p->combo_printer->SetMaxSize(wxSize(-1, FromDIP(SidebarProps::ComboHeightBig()))); // limiting height makes badge visible
+    p->combo_printer->SetMaxSize(wxSize(-1, FromDIP(SidebarProps::ComboHeight()))); // limiting height makes badge visible
     p->btn_edit_printer->msw_rescale();
 
     p->panel_nozzle_dia->Rescale();

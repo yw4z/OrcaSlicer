@@ -238,6 +238,7 @@ void Tab::create_preset_tab()
     if (m_type < Preset::TYPE_COUNT) {
         // preset chooser
         m_presets_choice = new TabPresetComboBox(panel, m_type);
+        m_presets_choice->SetMinSize(wxSize(-1, SidebarProps::ComboHeightBig() * wxGetApp().em_unit() / 10));
         // m_presets_choice->SetFont(Label::Body_10); // BBS
         m_presets_choice->set_selection_changed_function([this](int selection) {
             if (!m_presets_choice->selection_is_changed_according_to_physical_printers())
@@ -316,7 +317,7 @@ void Tab::create_preset_tab()
     m_btn_search->SetToolTip(_L("Search in preset"));
 
     //search input
-    m_search_item = new StaticBox(m_top_panel, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(SidebarProps::ComboHeightBig()))); // ensure its size matches with combo box
+    m_search_item = new StaticBox(m_top_panel, wxID_ANY, wxDefaultPosition, wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10)); // ensure its size matches with combo box
     StateColor box_colour(std::pair<wxColour, int>(*wxWHITE, StateColor::Normal));
     StateColor box_border_colour(std::pair<wxColour, int>(wxColour("#009688"), StateColor::Normal)); // ORCA match border color with other input/combo boxes
 
@@ -1584,13 +1585,15 @@ void Tab::msw_rescale()
 {
     m_em_unit = em_unit(m_parent);
 
-    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight(), m_parent));
+    m_top_sizer->SetMinSize(-1, SidebarProps::TitlebarHeight() * m_em_unit / 10);
 
     //BBS: GUI refactor
     //if (m_mode_sizer)
     //    m_mode_sizer->msw_rescale();
-    if (m_presets_choice)
+    if (m_presets_choice){
+        m_presets_choice->SetMinSize(wxSize(-1, SidebarProps::ComboHeightBig() * wxGetApp().em_unit() / 10));
         m_presets_choice->msw_rescale();
+    }
 
     m_tabctrl->SetMinSize(wxSize(20 * m_em_unit, -1));
 
@@ -1614,7 +1617,7 @@ void Tab::msw_rescale()
         m_extruder_sync->msw_rescale();
 
     if (m_search_item){
-        m_search_item->SetSize(wxSize(-1, FromDIP(SidebarProps::ComboHeightBig(), m_parent))); // ensure height matches with preset combo
+        m_search_item->SetSize(wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10)); // ensure height matches with preset combo
     }
     if (m_search_input){
         m_search_input->Rescale();
