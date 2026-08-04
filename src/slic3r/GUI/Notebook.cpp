@@ -102,9 +102,10 @@ void ButtonsListCtrl::UpdateMode()
 void ButtonsListCtrl::Rescale()
 {
     //m_mode_sizer->msw_rescale();
+    int em = em_unit(this);
     for (Button* btn : m_pageButtons) {
         //BBS
-        btn->SetMinSize(FromDIP(wxSize{btn->GetLabel().empty() ? 40 : 136, 36}));
+        btn->SetMinSize({(btn->GetLabel().empty() ? 40 : 132) * em / 10, 36 * em / 10});
         btn->Rescale();
     }
 
@@ -155,8 +156,9 @@ bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /*
     Button * btn = new Button(this, text.empty() ? text : " " + text, bmp_name, wxNO_BORDER);
     btn->SetCornerRadius(0);
 
+    int em = em_unit(this);
     //BBS set size for button
-    btn->SetMinSize(FromDIP(wxSize{text.empty() ? 40 : 136, 36}));
+    btn->SetMinSize({(text.empty() ? 40 : 136) * em / 10, 36 * em / 10});
 
     StateColor bg_color = StateColor(
         std::pair{wxColour(107, 107, 107), (int) StateColor::Hovered},
@@ -226,8 +228,9 @@ void ButtonsListCtrl::SetPageText(size_t n, const wxString& strText)
 // ORCA
 void ButtonsListCtrl::SetCompact(size_t n, bool compact)
 {
+    int em = em_unit(this);
     Button* btn = m_pageButtons[n];
-    btn->SetMinSize(FromDIP(wxSize{compact ? 40 : 136, 36}));
+    btn->SetMinSize({(compact ? 40 : 136) * em / 10, 36 * em / 10});
     btn->SetLabel(compact ? "" : (" " +  m_pageLabels[n]));
 }
 
