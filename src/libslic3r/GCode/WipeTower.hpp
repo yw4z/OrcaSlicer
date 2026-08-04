@@ -26,6 +26,14 @@ enum GCodeFlavor : unsigned char;
 Polylines construct_gap_for_skip_points(
     const Polygon& polygon, const std::vector<Vec2f>& skip_points, float wt_width, float gap_length, Polygon& insert_skip_polygon);
 
+// Returns the command that makes the firmware finish its queued moves, so a command or
+// custom-G-code boundary right after (resetting the extruder position, entering
+// [change_filament_gcode] / [filament_start_gcode]) is not reached early. Klipper acts on
+// such commands the moment it parses them, and its G4 reads only P, so the zero dwell the
+// other flavors use synchronizes nothing there — M400 does. Defined in WipeTower.cpp, shared
+// by WipeTower and WipeTower2.
+const char* flush_planner_queue_command(GCodeFlavor flavor);
+
 class WipeTower
 {
 public:

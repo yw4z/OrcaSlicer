@@ -617,6 +617,11 @@ Polygon generate_rectange_polygon(const Vec2f &wt_box_min ,const Vec2f & wt_box_
     return res;
 }
 
+const char* flush_planner_queue_command(GCodeFlavor flavor)
+{
+    return flavor == gcfKlipper ? "M400\n" : "G4 S0\n";
+}
+
 class WipeTowerWriter
 {
 public:
@@ -1190,7 +1195,7 @@ public:
 
 	WipeTowerWriter& flush_planner_queue()
 	{
-		m_gcode += "G4 S0\n";
+		m_gcode += flush_planner_queue_command(m_gcode_flavor);
 		return *this;
 	}
 
