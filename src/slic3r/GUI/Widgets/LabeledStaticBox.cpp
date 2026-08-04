@@ -51,6 +51,8 @@ bool LabeledStaticBox::Create(
     Slic3r::GUI::staticbox_remove_margin(this);
 #endif
 
+    Slic3r::GUI::StyleStaticBox(this, m_radius, m_border_width, border_color.colorForStates(StateColor::Normal).GetAsString().c_str());
+
     m_label = label;
     m_scale = FromDIP(100) / 100.f;
     m_pos   = this->GetPosition();
@@ -82,12 +84,14 @@ bool LabeledStaticBox::Create(
 void LabeledStaticBox::SetCornerRadius(int radius)
 {
     this->m_radius = radius;
+    Slic3r::GUI::StyleStaticBox(this, m_radius, m_border_width, border_color.colorForStates(StateColor::Normal).GetAsString().c_str());
     Refresh();
 }
 
 void LabeledStaticBox::SetBorderWidth(int width)
 {
     this->m_border_width = width;
+    Slic3r::GUI::StyleStaticBox(this, m_radius, m_border_width, border_color.colorForStates(StateColor::Normal).GetAsString().c_str());
     Refresh();
 }
 
@@ -184,5 +188,9 @@ void LabeledStaticBox::GetBordersForSizer(int* borderTop, int* borderOther) cons
     wxStaticBox::GetBordersForSizer(borderTop, borderOther);
 #ifdef __WXOSX__
     *borderOther = 5; // Make sure macOS uses the same border padding as other platforms
+#endif
+#ifdef __WXGTK__
+    *borderTop   = m_label_height + FromDIP(2);  // label height + a little gap
+    *borderOther = FromDIP(5);                   // left / right / bottom padding
 #endif
 }
