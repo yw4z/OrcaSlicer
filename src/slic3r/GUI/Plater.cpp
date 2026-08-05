@@ -3246,7 +3246,8 @@ void Sidebar::update_all_preset_comboboxes()
 
     auto p_mainframe = wxGetApp().mainframe;
     auto cfg = preset_bundle.printers.get_edited_preset().config;
-    const bool use_native_device_tab = preset_bundle.use_bbl_device_tab() || wxGetApp().app_config->get_bool("use_printer_agents");
+    const bool use_printer_agents = wxGetApp().app_config->get_bool("use_printer_agents");
+    const bool use_native_device_tab = preset_bundle.use_bbl_device_tab() || use_printer_agents;
 
     if (preset_bundle.use_bbl_network()) {
         //only show connection button for not-BBL printer
@@ -3259,7 +3260,7 @@ void Sidebar::update_all_preset_comboboxes()
     } else {
         //p->btn_connect_printer->Show();
         // ORCA: hide the physical-printer connection button when printer agents are enabled
-        p->m_printer_connect->Show(!wxGetApp().app_config->get_bool("use_printer_agents"));
+        p->m_printer_connect->Show(!use_printer_agents);
 
         // ORCA: show/hide sync-ams button based on filament sync mode
         auto agent = wxGetApp().getAgent();
@@ -3286,7 +3287,7 @@ void Sidebar::update_all_preset_comboboxes()
                                  : MainFrame::PrintSelectType::eSendGcode;
         }
 
-        if (!use_native_device_tab)
+        if (!use_native_device_tab || use_printer_agents)
             p_mainframe->load_printer_url(url, apikey);
 
 

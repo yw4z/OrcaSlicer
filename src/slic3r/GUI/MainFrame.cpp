@@ -1368,9 +1368,88 @@ void MainFrame::init_tabpanel() {
 }
 
 // SoftFever
-void MainFrame::show_device(bool bBBLPrinter) {
+void MainFrame::show_device(bool should_use_native) {
     auto idx = -1;
-    if (bBBLPrinter) {
+
+    const bool use_printer_agents = wxGetApp().app_config->get_bool("use_printer_agents");
+
+    // The legacy page is appended when printer agents are enabled. Remove that
+    // extra page before switching back to the normal native/legacy layout.
+    if (!use_printer_agents) {
+        if ((idx = m_tabpanel->FindPage(m_printer_view)) != wxNOT_FOUND && idx != tpMonitor) {
+            m_printer_view->Show(false);
+            m_tabpanel->RemovePage(idx);
+        }
+    }
+
+    if (use_printer_agents) {
+        if (!m_monitor) {
+            m_monitor = new MonitorPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+            m_monitor->SetBackgroundColour(*wxWHITE);
+        }
+
+        if (m_tabpanel->FindPage(m_monitor) == wxNOT_FOUND) {
+            if ((idx = m_tabpanel->FindPage(m_printer_view)) != wxNOT_FOUND) {
+                m_printer_view->Show(false);
+                m_tabpanel->RemovePage(idx);
+            }
+            m_monitor->Show(false);
+            m_tabpanel->InsertPage(tpMonitor, m_monitor, _L("Device"), std::string("tab_monitor_active"),
+                                   std::string("tab_monitor_active"));
+        }
+
+        if (m_printer_view == nullptr) {
+            m_printer_view = new PrinterWebView(m_tabpanel);
+            Bind(EVT_LOAD_PRINTER_URL, [this](LoadPrinterViewEvent& evt) {
+                wxString url = evt.GetString();
+                wxString key = evt.GetAPIkey();
+                // select_tab(MainFrame::tpMonitor);
+                m_printer_view->load_url(url, key);
+            });
+        }
+
+        if (wxGetApp().is_enable_multi_machine()) {
+            if (!m_multi_machine) {
+                m_multi_machine = new MultiMachinePage(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+                m_multi_machine->SetBackgroundColour(*wxWHITE);
+            }
+            // TODO: change the bitmap
+            if (m_tabpanel->FindPage(m_multi_machine) == wxNOT_FOUND) {
+                m_multi_machine->Show(false);
+                m_tabpanel->InsertPage(tpMultiDevice, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"),
+                                       std::string("tab_multi_active"), false);
+            }
+        }
+        if (!m_calibration) {
+            m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+            m_calibration->SetBackgroundColour(*wxWHITE);
+        }
+        // Calibration is always the last page, so don't use InsertPage here. Otherwise, if multi_machine page is not enabled,
+        // the calibration tab won't be properly added as well, due to the TabPosition::tpCalibration no longer matches the real tab position.
+        if (m_tabpanel->FindPage(m_calibration) == wxNOT_FOUND) {
+            m_calibration->Show(false);
+            m_tabpanel->AddPage(m_calibration, _L("Calibration"), std::string("tab_calibration_active"),
+                                std::string("tab_calibration_active"), false);
+        }
+
+        if ((idx = m_tabpanel->FindPage(m_printer_view)) == wxNOT_FOUND) {
+            m_printer_view->Show(false);
+            m_tabpanel->AddPage(m_printer_view, _L("Device (legacy)"), std::string("tab_monitor_active"),
+                                std::string("tab_monitor_active"), false);
+        } else {
+            m_tabpanel->SetPageText(idx, _L("Device (legacy)"));
+        }
+
+#ifdef _MSW_DARK_MODE
+        wxGetApp().UpdateDarkUIWin(this);
+#endif // _MSW_DARK_MODE
+
+        fit_tab_labels(); // ORCA on printer change
+
+        return;
+    }
+
+    if (should_use_native) {
         if (m_tabpanel->FindPage(m_monitor) != wxNOT_FOUND) {
             fit_tab_labels(); // ORCA on printer change - same button layout
             return;
