@@ -837,7 +837,7 @@ bool PresetComboBox::selection_is_changed_according_to_physical_printers()
 // ---------------------------------
 
 PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset_type) :
-    PresetComboBox(parent, preset_type, wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10))
+    PresetComboBox(parent, preset_type, wxSize(-1, SidebarProps::ComboHeightBig() * em_unit(parent) / 10))
 {
     GetDropDown().SetUseContentWidth(true,true);
 
