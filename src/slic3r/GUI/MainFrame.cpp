@@ -1385,7 +1385,7 @@ void MainFrame::show_device(bool should_use_native) {
     // The legacy page is appended when printer agents are enabled. Remove that
     // extra page before switching back to the normal native/legacy layout.
     if (!use_printer_agents) {
-        if ((idx = m_tabpanel->FindPage(m_printer_view)) != wxNOT_FOUND && idx != tpMonitor) {
+        if ((idx = m_tabpanel->FindPage(m_printer_view)) != wxNOT_FOUND && idx != m_tabpanel->FindPageByName(TAB_ID_MONITOR)) {
             m_printer_view->Show(false);
             m_tabpanel->RemovePage(idx);
         }
@@ -1403,8 +1403,10 @@ void MainFrame::show_device(bool should_use_native) {
                 m_tabpanel->RemovePage(idx);
             }
             m_monitor->Show(false);
-            m_tabpanel->InsertPage(tpMonitor, m_monitor, _L("Device"), std::string("tab_monitor_active"),
-                                   std::string("tab_monitor_active"));
+            const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
+            const size_t monitor_pos =
+                (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
+            m_tabpanel->InsertPage(monitor_pos, TAB_ID_MONITOR, m_monitor, _L("Device"), "tab_monitor_active", false);
         }
 
         if (m_printer_view == nullptr) {
@@ -1425,8 +1427,11 @@ void MainFrame::show_device(bool should_use_native) {
             // TODO: change the bitmap
             if (m_tabpanel->FindPage(m_multi_machine) == wxNOT_FOUND) {
                 m_multi_machine->Show(false);
-                m_tabpanel->InsertPage(tpMultiDevice, m_multi_machine, _L("Multi-device"), std::string("tab_multi_active"),
-                                       std::string("tab_multi_active"), false);
+                const int monitor_idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR);
+                const size_t multi_pos =
+                    (monitor_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(monitor_idx) + 1;
+                m_tabpanel->InsertPage(multi_pos, TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"),
+                                       "tab_multi_active", false);
             }
         }
         if (!m_calibration) {
@@ -1437,14 +1442,12 @@ void MainFrame::show_device(bool should_use_native) {
         // the calibration tab won't be properly added as well, due to the TabPosition::tpCalibration no longer matches the real tab position.
         if (m_tabpanel->FindPage(m_calibration) == wxNOT_FOUND) {
             m_calibration->Show(false);
-            m_tabpanel->AddPage(m_calibration, _L("Calibration"), std::string("tab_calibration_active"),
-                                std::string("tab_calibration_active"), false);
+            m_tabpanel->AddPage(m_calibration, _L("Calibration"), false, Notebook::PAGE_CALIBRATION);
         }
 
         if ((idx = m_tabpanel->FindPage(m_printer_view)) == wxNOT_FOUND) {
             m_printer_view->Show(false);
-            m_tabpanel->AddPage(m_printer_view, _L("Device (legacy)"), std::string("tab_monitor_active"),
-                                std::string("tab_monitor_active"), false);
+            m_tabpanel->AddPage(m_printer_view, _L("Device (legacy)"), false, Notebook::PAGE_MONITOR);
         } else {
             m_tabpanel->SetPageText(idx, _L("Device (legacy)"));
         }
