@@ -356,7 +356,7 @@ public:
     void RunScript(wxString js);
 
     //SoftFever
-    void show_device(bool bBBLPrinter);
+    void show_device(bool should_use_native);
     void fit_tab_labels(); // ORCA
     PluginPages& plugin_pages() { return m_plugin_pages; }
 
