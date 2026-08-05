@@ -636,7 +636,7 @@ public:
 	{
         if (time==0.f)
             return *this;
-        m_gcode += "G4 S" + Slic3r::float_to_string_decimal_point(time, 3) + "\n";
+        m_gcode += wait_command(m_gcode_flavor, time);
 		return *this;
     }
 

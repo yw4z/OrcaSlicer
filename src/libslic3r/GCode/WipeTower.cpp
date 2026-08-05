@@ -622,6 +622,13 @@ const char* flush_planner_queue_command(GCodeFlavor flavor)
     return flavor == gcfKlipper ? "M400\n" : "G4 S0\n";
 }
 
+std::string wait_command(GCodeFlavor flavor, float seconds)
+{
+    if (flavor == gcfKlipper)
+        return "G4 P" + std::to_string(std::lround(seconds * 1000.f)) + "\n";
+    return "G4 S" + Slic3r::float_to_string_decimal_point(seconds, 3) + "\n";
+}
+
 class WipeTowerWriter
 {
 public:
@@ -1150,7 +1157,7 @@ public:
 	{
         if (time==0.f)
             return *this;
-        m_gcode += "G4 S" + Slic3r::float_to_string_decimal_point(time, 3) + "\n";
+        m_gcode += wait_command(m_gcode_flavor, time);
 		return *this;
     }
 
