@@ -1110,6 +1110,8 @@ void MainFrame::update_edge_panels()
 void MainFrame::shutdown()
 {
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "MainFrame::shutdown enter";
+    if (m_project != nullptr)
+        m_project->shutdown();
     m_plugin_pages.shutdown();
 #ifdef __WXGTK__
     // Edge panels are child windows — wxWidgets destroys them automatically.
