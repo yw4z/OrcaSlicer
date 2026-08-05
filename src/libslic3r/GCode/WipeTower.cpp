@@ -1345,6 +1345,8 @@ public:
     {
         std::string buffer;
         if (wait_for_moves)
+            // Not flush_planner_queue_command(): this BBL precool path wants M400, which every
+            // flavor it reaches understands, not the zero dwell the other flavors flush with.
             buffer += "M400\n";
         buffer += "M104";
         if (target_extruder != -1)

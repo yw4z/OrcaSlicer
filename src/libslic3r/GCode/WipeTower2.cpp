@@ -386,8 +386,8 @@ public:
     }
 
     WipeTowerWriter2& switch_filament_monitoring(bool enable) {
-        m_gcode += flush_planner_queue_command(m_gcode_flavor);
-        m_gcode += std::string("M591 ") + (enable ? "R" : "S0") + "\n";
+        flush_planner_queue();
+        m_gcode += enable ? "M591 R\n" : "M591 S0\n";
         return *this;
     }
 
@@ -626,7 +626,7 @@ public:
 	// Set extruder temperature, don't wait by default.
 	WipeTowerWriter2& set_extruder_temp(int temperature, bool wait = false)
 	{
-        m_gcode += flush_planner_queue_command(m_gcode_flavor);
+        flush_planner_queue();
         m_gcode += "M" + std::to_string(wait ? 109 : 104) + " S" + std::to_string(temperature) + "\n";
         return *this;
     }
