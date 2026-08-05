@@ -238,7 +238,7 @@ void Tab::create_preset_tab()
     if (m_type < Preset::TYPE_COUNT) {
         // preset chooser
         m_presets_choice = new TabPresetComboBox(panel, m_type);
-        m_presets_choice->SetMinSize(wxSize(-1, SidebarProps::ComboHeightBig() * wxGetApp().em_unit() / 10));
+        m_presets_choice->SetMinSize(wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10));
         // m_presets_choice->SetFont(Label::Body_10); // BBS
         m_presets_choice->set_selection_changed_function([this](int selection) {
             if (!m_presets_choice->selection_is_changed_according_to_physical_printers())
@@ -445,7 +445,7 @@ void Tab::create_preset_tab()
 
     m_top_sizer->AddSpacer(FromDIP(SidebarProps::ContentMargin()));
 
-    m_top_sizer->SetMinSize(-1, FromDIP(SidebarProps::TitlebarHeight()));
+    m_top_sizer->SetMinSize(-1, SidebarProps::TitlebarHeight() * m_em_unit / 10);
     m_top_panel->SetSizer(m_top_sizer);
     if (m_presets_choice)
         m_main_sizer->Add(m_top_panel, 0, wxEXPAND | wxUP | wxDOWN, FromDIP(SidebarProps::ContentMarginV()));
@@ -1591,7 +1591,7 @@ void Tab::msw_rescale()
     //if (m_mode_sizer)
     //    m_mode_sizer->msw_rescale();
     if (m_presets_choice){
-        m_presets_choice->SetMinSize(wxSize(-1, SidebarProps::ComboHeightBig() * wxGetApp().em_unit() / 10));
+        m_presets_choice->SetMinSize(wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10));
         m_presets_choice->msw_rescale();
     }
 
