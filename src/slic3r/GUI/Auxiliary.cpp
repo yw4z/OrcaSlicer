@@ -64,15 +64,12 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
     m_file_path = file_path;
     m_file_name = file_name;
 
-    wxSize panel_size = parent->FromDIP(m_type == MODEL_PICTURE ? AUFILE_PICTURES_PANEL_SIZE : AUFILE_PANEL_SIZE);
-    SetMinSize(panel_size);
-    SetMaxSize(panel_size);
-    SetInitialSize(panel_size);
-    SetSize(panel_size); // ORCA call sizing before create to avoid wxEVT_SIZE event with wrong size
-
+    wxSize panel_size = m_type == MODEL_PICTURE ? AUFILE_PICTURES_PANEL_SIZE : AUFILE_PANEL_SIZE;
     wxPanel::Create(parent, id, pos, panel_size, style);
     SetBackgroundColour(StateColor::darkModeColorFor(AUFILE_GREY300));
     wxBoxSizer *sizer_body = new wxBoxSizer(wxVERTICAL);
+
+    SetSize(panel_size);
 
     if (m_type == MODEL_PICTURE) {
         if (m_file_path.empty()) { return; }
@@ -118,9 +115,9 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
     m_file_delete    = ScalableBitmap(this, "auxiliary_delete", 20);
     
 
-    auto m_text_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(panel_size.x, AUFILE_TEXT_HEIGHT), wxTAB_TRAVERSAL);
+    m_text_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(panel_size.x, AUFILE_TEXT_HEIGHT), wxTAB_TRAVERSAL);
     m_text_panel->SetBackgroundColour(StateColor::darkModeColorFor(AUFILE_GREY300));
-    
+    m_text_panel->SetMaxSize(wxSize(panel_size.x, AUFILE_TEXT_HEIGHT));
 
     wxBoxSizer *m_text_sizer = new wxBoxSizer(wxHORIZONTAL);
     m_text_name              = new wxStaticText(m_text_panel, wxID_ANY, m_file_name, wxDefaultPosition, wxSize(panel_size.x, -1), wxST_ELLIPSIZE_END);
@@ -148,8 +145,9 @@ AuFile::AuFile(wxWindow *parent, fs::path file_path, wxString file_name, Auxilia
 
     m_text_panel->SetSizer(m_text_sizer);
     m_text_panel->Layout();
-    sizer_body->Add(0, 0, 0, wxTOP, panel_size.y - AUFILE_TEXT_HEIGHT);
-    sizer_body->Add(m_text_panel, 0, wxALIGN_CENTER, 0);
+    //sizer_body->Add(0, 0, 0, wxTOP, panel_size.y - AUFILE_TEXT_HEIGHT);
+    sizer_body->AddStretchSpacer(); // ensures m_text_sizer rendered on bottom while using scaled screens
+    sizer_body->Add(m_text_panel, 1, wxALIGN_CENTER, 0);
 
     SetSizer(sizer_body);
     Layout();
@@ -563,12 +561,14 @@ void AuFile::msw_rescale()
     wxSize panel_size = m_type == MODEL_PICTURE ? AUFILE_PICTURES_PANEL_SIZE : AUFILE_PANEL_SIZE;
     SetMinSize(panel_size);
     SetMaxSize(panel_size);
-    SetInitialSize(panel_size);
     SetSize(panel_size);
 
     m_file_cover     = ScalableBitmap(this, "auxiliary_cover", 40);
     m_file_edit_mask = ScalableBitmap(this, "auxiliary_edit_mask", 30);
     m_file_delete    = ScalableBitmap(this, "auxiliary_delete", 20);
+
+    m_text_panel->SetSize(wxSize(panel_size.x, AUFILE_TEXT_HEIGHT));
+    m_text_panel->SetMaxSize(wxSize(panel_size.x, AUFILE_TEXT_HEIGHT));
 
     m_text_name->SetMinSize(wxSize(panel_size.x, -1));
     m_text_name->SetMaxSize(wxSize(panel_size.x, -1));
@@ -641,7 +641,7 @@ AuFolderPanel::AuFolderPanel(wxWindow *parent, AuxiliaryFolderType type, wxWindo
     // m_button_del->Bind(wxEVT_LEFT_UP, &AuxiliaryPanel::on_delete, this);
 
     sizer_top->Add(0, 0, 0, wxLEFT, FromDIP(10));
-    m_gsizer_content = new wxWrapSizer(wxHORIZONTAL, wxWRAPSIZER_DEFAULT_FLAGS);
+    m_gsizer_content = new wxWrapSizer(wxHORIZONTAL, 0); // wxWRAPSIZER_DEFAULT_FLAGS causes last item expands horizontaly
     //if (m_type == MODEL_PICTURE) {
     //    //sizer_top->Add(m_button_add, 0, wxALL, 0);
     //    //m_big_button_add->Hide();
@@ -690,6 +690,9 @@ void AuFolderPanel::update(std::vector<fs::path> paths)
         auto name = encode_path(temp_name.c_str());
 
         auto        aufile = new AuFile(m_scrolledWindow, paths[i], name, m_type, wxID_ANY);
+
+        aufile->msw_rescale(); // Force initial scale evaluation for high-DPI contexts
+
         m_gsizer_content->Add(aufile, 0, wxALL, FromDIP(8));
         auto af  = new AuFiles;
         af->path = paths[i].string();
