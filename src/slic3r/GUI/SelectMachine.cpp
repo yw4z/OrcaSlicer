@@ -3913,7 +3913,8 @@ _collect_sorted_machines(Slic3r::DeviceManager* dev_manager,
     };
 
     // collect from user machine list
-    const auto& user_machine_list = dev_manager->get_my_machine_list();// user machine list
+    const std::string agent_id = wxGetApp().preset_bundle->printers.get_edited_preset().config.opt_string("printer_agent");
+    const auto& user_machine_list = dev_manager->get_my_machine_list(agent_id);// user machine list
     for (const auto& elem : user_machine_list)
     {
         MachineObject* mobj = elem.second;
