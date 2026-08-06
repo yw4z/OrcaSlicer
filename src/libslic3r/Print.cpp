@@ -3944,6 +3944,12 @@ const WipeTowerData &Print::wipe_tower_data(size_t filaments_cnt) const
         double volume = wipe_volume * filament_depth_count;
         if (m_config.nozzle_diameter.values.size() == 2) volume += filament_change_volume * (int) (filaments_cnt / 2);
 
+        // Sizing should take into account currently set wiping volumes.
+        // For a long time, the initial preview would just use 900/width per toolchange (15mm on a 60mm wide tower)
+        // and it worked well enough. Let's try to do slightly better by accounting for the purging volumes.
+        const bool semm_flush = m_config.purge_in_prime_tower && m_config.single_extruder_multi_material;
+        if (semm_flush) volume = WipeTower2::estimate_semm_flush_volume(m_config, filaments_cnt);
+
         if (m_config.wipe_tower_wall_type.value == WipeTowerWallType::wtwRib) {
             double depth = std::sqrt(volume / layer_height * extra_spacing);
             if (need_wipe_tower || filaments_cnt > 1) {
@@ -3955,30 +3961,16 @@ const WipeTowerData &Print::wipe_tower_data(size_t filaments_cnt) const
             }
         }
         else {
-        double width        = m_config.prime_tower_width;
-        if (m_config.purge_in_prime_tower && m_config.single_extruder_multi_material) {
-            // Calculating depth should take into account currently set wiping volumes.
-            // For a long time, the initial preview would just use 900/width per toolchange (15mm on a 60mm wide tower)
-            // and it worked well enough. Let's try to do slightly better by accounting for the purging volumes.
-            std::vector<std::vector<float>> wipe_volumes = WipeTower2::extract_wipe_volumes(m_config);
-            std::vector<float>              max_wipe_volumes;
-            for (const std::vector<float> &v : wipe_volumes)
-                max_wipe_volumes.emplace_back(*std::max_element(v.begin(), v.end()));
-            float maximum = std::accumulate(max_wipe_volumes.begin(), max_wipe_volumes.end(), 0.f);
-            maximum       = maximum * filaments_cnt / max_wipe_volumes.size();
-            
-            // Orca: it's overshooting a bit, so let's reduce it a bit
-            maximum *= 0.6; 
-            const_cast<Print *>(this)->m_wipe_tower_data.depth = maximum / (layer_height * width);
-        } else {
-            double depth = volume / (layer_height * width) * extra_spacing;
-            if (need_wipe_tower || m_wipe_tower_data.depth > EPSILON) {
+            double width = m_config.prime_tower_width;
+            double depth = volume / (layer_height * width);
+            // The flush volumes already hold the spacing between wipes.
+            if (!semm_flush) depth *= extra_spacing;
+            if (need_wipe_tower || depth > EPSILON) {
                 float min_wipe_tower_depth = WipeTower::get_limit_depth_by_height(max_height);
                 depth = std::max((double) min_wipe_tower_depth, depth);
             }
             const_cast<Print *>(this)->m_wipe_tower_data.depth = depth;
-        }
-        const_cast<Print *>(this)->m_wipe_tower_data.brim_width = m_config.prime_tower_brim_width;
+            const_cast<Print *>(this)->m_wipe_tower_data.brim_width = m_config.prime_tower_brim_width;
         }
         if (m_config.prime_tower_brim_width < 0) const_cast<Print *>(this)->m_wipe_tower_data.brim_width = WipeTower::get_auto_brim_by_height(max_height);
     }

@@ -2871,6 +2871,9 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         }
 
         if (wt && (need_wipe_tower || filaments_count > 1) && !wxGetApp().plater()->only_gcode_mode() && !wxGetApp().plater()->is_gcode_3mf()) {
+            // The tower size estimate reads printer- and filament-scope keys, which the print preset
+            // does not carry; built once here rather than per plate.
+            const DynamicPrintConfig full_config = wxGetApp().preset_bundle->full_config();
             for (int plate_id = 0; plate_id < n_plates; plate_id++) {
                 // If print ByObject and there is only one object in the plate, the wipe tower is allowed to be generated.
                 PartPlate* part_plate = ppl.get_plate(plate_id);
@@ -2895,9 +2898,8 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
                 if (part_plate->get_objects_on_this_plate().empty()) continue;
 
                 float brim_width = print->wipe_tower_data(filaments_count).brim_width;
-                const DynamicPrintConfig &print_cfg   = wxGetApp().preset_bundle->prints.get_edited_preset().config;
                 int nozzle_nums = wxGetApp().preset_bundle->get_printer_extruder_count();
-                Vec3d wipe_tower_size = ppl.get_plate(plate_id)->estimate_wipe_tower_size(print_cfg, w, v, nozzle_nums, 0, false, dynamic_cast<const ConfigOptionBool*>(dconfig.option("enable_wrapping_detection"))->value);
+                Vec3d wipe_tower_size = ppl.get_plate(plate_id)->estimate_wipe_tower_size(full_config, w, v, nozzle_nums, 0, false, dynamic_cast<const ConfigOptionBool*>(dconfig.option("enable_wrapping_detection"))->value);
 
                 // The stored position is already clamped onto the bed, by
                 // set_default_wipe_tower_pos_for_plate and again on every drag.
