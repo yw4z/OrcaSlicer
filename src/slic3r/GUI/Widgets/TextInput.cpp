@@ -153,6 +153,9 @@ void TextInput::SetTextColor(StateColor const& color)
 
 void TextInput::Rescale()
 {
+    // Clear the min size so the `messureSize()` can shrink
+    wxWindow::SetMinSize(wxDefaultSize);
+
     StaticBox::Rescale();
 
     if (!this->icon.name().empty())
@@ -341,6 +344,9 @@ void TextInput::messureSize()
     }
 
     size.y = textSize.y + 8;
+
+    // If owner already give it a larger size, don't shrink
+    size.y = std::max(size.y, GetMinHeight());
 
     wxSize minSize = size;
     minSize.x = GetMinWidth();
