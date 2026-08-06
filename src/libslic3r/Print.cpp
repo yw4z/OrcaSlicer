@@ -1048,13 +1048,14 @@ static StringObjectException layered_print_cleareance_valid(const Print &print, 
             wipe_tower_convex_hull.points.emplace_back(scale_(x + width), scale_(y));
             wipe_tower_convex_hull.points.emplace_back(scale_(x + width), scale_(y + depth));
             wipe_tower_convex_hull.points.emplace_back(scale_(x), scale_(y + depth));
-            wipe_tower_convex_hull.rotate(a);
+            wipe_tower_convex_hull.rotate(Geometry::deg2rad(a), Point(scale_(x), scale_(y)));
             convex_hulls_temp.push_back(wipe_tower_convex_hull);
         } else {
             //here, wipe_tower_polygon is not always convex.
             Polygon wipe_tower_polygon;
             if (print.wipe_tower_data().wipe_tower_mesh_data)
                 wipe_tower_polygon = print.wipe_tower_data().wipe_tower_mesh_data->bottom;
+            wipe_tower_polygon.rotate(Geometry::deg2rad(a));
             wipe_tower_polygon.translate(Point(scale_(x), scale_(y)));
             convex_hulls_temp.push_back(wipe_tower_polygon);
         }
@@ -1072,6 +1073,22 @@ static StringObjectException layered_print_cleareance_valid(const Print &print, 
     }
     if (print_config.enable_wrapping_detection.value && !intersection({wrapping_poly}, convex_hulls_temp).empty()) {
         return {L("Prime Tower") + L(" is too close to clumping detection area, and collisions will be caused.\n")};
+    }
+    // Skip the containment check for towers that will never be printed (single-filament
+    // prints without smooth timelapse keep the config's tower position but emit nothing).
+    // Pre-generation only the body square is tested — the auto-brim estimate can overshoot
+    // the generated brim by several mm and must not hard-fail a print that physically fits.
+    // Post-generation the mesh bottom already includes the real brim, so the exact
+    // footprint is tested.
+    if (filaments_count > 1 || print.enable_timelapse_print()) {
+        // The shared printable polygon is plate-local, while the tower polygons above are
+        // already shifted by the plate origin.
+        Polygons    printable_polys = print.get_extruder_shared_printable_polygon();
+        const Point plate_shift(scale_(plate_origin.x()), scale_(plate_origin.y()));
+        for (Polygon &p : printable_polys)
+            p.translate(plate_shift);
+        if (!diff(convex_hulls_temp, printable_polys).empty())
+            return {L("Prime Tower") + L(" is partially outside the printable area, and it cannot be printed.\n")};
     }
     return {};
 }

@@ -3337,6 +3337,11 @@ BoundingBoxf3 PartPlate::get_build_volume(bool use_share)
     return plate_box;
 }
 
+Polygon PartPlate::get_shared_printable_polygon() const
+{
+	return m_extruder_areas.empty() ? Polygon::new_scale(m_shape) : get_shared_poly(m_extruder_areas);
+}
+
 bool PartPlate::contains(const Vec3d& point) const
 {
 	return m_bounding_box.contains(point);
@@ -4410,6 +4415,18 @@ void PartPlateList::set_default_wipe_tower_pos_for_plate(int plate_idx, bool ini
         } else if (y < margin) {
             y = margin;
         }
+    }
+
+    // The bounding box above still allows a corner a delta or hexagonal bed does not have, and the
+    // prime tower is validated against the real outline — pull it onto the bed before storing.
+    {
+        Polygons bed{part_plate->get_shared_printable_polygon()};
+        bed.front().translate(Point(-scaled(plate_origin.x()), -scaled(plate_origin.y()))); // into the frame x/y live in
+        const BoundingBox tower(Point::new_scale(x, y),
+                                Point::new_scale(x + wipe_tower_size(0), y + wipe_tower_size(1)));
+        const Vec2f move = WipeTower::move_box_inside_polygon(tower, bed, scaled<coord_t>(margin));
+        x += move.x();
+        y += move.y();
     }
 
     ConfigOptionFloat wt_x_opt(x);
