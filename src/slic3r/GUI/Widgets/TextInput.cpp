@@ -153,9 +153,6 @@ void TextInput::SetTextColor(StateColor const& color)
 
 void TextInput::Rescale()
 {
-    // Clear the min size so the `messureSize()` can shrink
-    wxWindow::SetMinSize(wxDefaultSize);
-
     StaticBox::Rescale();
 
     if (!this->icon.name().empty())
@@ -181,14 +178,15 @@ bool TextInput::Enable(bool enable)
 
 void TextInput::SetMinSize(const wxSize& size)
 {
-    wxSize size2 = size;
-    if (size2.y < 0) {
+    m_min_size = size;
+    wxWindow::SetMinSize(size);
+
 #ifdef __WXMAC__
         if (GetPeer()) // peer is not ready in Create on mac
+        return;
 #endif
-        size2.y = GetSize().y;
-    }
-    wxWindow::SetMinSize(size2);
+
+    messureSize();
 }
 
 void TextInput::DoSetSize(int x, int y, int width, int height, int sizeFlags)
@@ -334,7 +332,7 @@ void TextInput::messureSize()
     else
         dc.SetFont(Label::Body_12);
     labelSize = dc.GetTextExtent(wxWindow::GetLabel());
-    wxSize textSize = text_ctrl->GetBestSize();
+    wxSize textSize = text_ctrl ? text_ctrl->GetBestSize() : wxSize(0, 0); // GetBestSize might also include border width + padding from OS
 
     if (!static_tips.empty()) {
         static_tips_size = dc.GetTextExtent(static_tips);
@@ -343,13 +341,12 @@ void TextInput::messureSize()
         textSize.y += 8;
     }
 
-    size.y = textSize.y + 8;
+    int calculatedH = textSize.y + 8;
+    size.y = std::max(std::max(calculatedH, m_min_size.y), size.y); // pick max value for regular size so min value works 
 
-    // If owner already give it a larger size, don't shrink
-    size.y = std::max(size.y, GetMinHeight());
+    int minY = (m_min_size.y > 0) ? std::max(calculatedH, m_min_size.y) : calculatedH; // pick calculated height instead min value to prevent clipping
+    int minX = GetMinWidth(); // dont limit with text content so it will shrinks properly
 
-    wxSize minSize = size;
-    minSize.x = GetMinWidth();
-    SetMinSize(minSize);
-    SetSize(size);
+    wxWindow::SetMinSize(wxSize(minX, minY));
+    wxWindow::SetSize(size);
 }
