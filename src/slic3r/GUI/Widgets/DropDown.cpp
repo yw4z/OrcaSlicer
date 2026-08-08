@@ -520,21 +520,19 @@ void DropDown::messureSize()
     std::set<wxString> groups;
     for (size_t i = 0; i < items.size(); ++i) {
         auto &item = items[i];
-        // measure every item's label width, but only count rows once
-        bool counted = true;
+        // Skip by group
         if (group.IsEmpty()) {
             if (!item.group_key.IsEmpty()) {
                 if (groups.find(item.group_key) == groups.end())
                     groups.insert(item.group_key);
-                else // duplicate group row — don't count it as an extra visible row, but still measure it below
-                    counted = false;
+                else
+                    continue;
             }
         } else {
             if (item.group_key != group)
                 continue;
         }
-        if (counted) ++count;
-
+        ++count;
         wxSize size1;
         if (!text_off) {
             auto text = group.IsEmpty()
