@@ -1644,9 +1644,12 @@ void PlaterPresetComboBox::sync_colour_config(const std::vector<std::string> &cl
 
 TabPresetComboBox::TabPresetComboBox(wxWindow* parent, Preset::Type preset_type) :
     // BBS: new layout
-    PresetComboBox(parent, preset_type, wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10))
+    PresetComboBox(parent, preset_type, wxSize(-1, SidebarProps::ComboHeightBig() * em_unit(parent) / 10))
 {
-    GetDropDown().SetUseContentWidth(true,true);
+    // ComboBox might not be created yet. dropdowns uses incorrect size if limit_max_content_width is true and GetParent()->GetSize() returns {0,0}
+    CallAfter([this]() {
+        GetDropDown().SetUseContentWidth(true, true);
+    });
 }
 
 void TabPresetComboBox::OnSelect(wxCommandEvent &evt)
