@@ -1,5 +1,6 @@
 #include "PluginPages.hpp"
 
+#include "libslic3r/AppConfig.hpp"
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/Notebook.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -10,12 +11,15 @@
 
 #include <libslic3r/Utils.hpp>
 
+#include <algorithm>
+
 #include <boost/filesystem/path.hpp>
 #include <boost/log/trivial.hpp>
 #include <nlohmann/json.hpp>
 
 #include <stdexcept>
 #include <wx/bookctrl.h>
+#include <wx/choice.h>
 #include <wx/sizer.h>
 
 #include <utility>
@@ -194,9 +198,119 @@ void PluginPage::push_message(const std::string& message)
     WebView::RunScript(m_browser, script);
 }
 
+class PluginPagesOverflowPanel : public wxPanel
+{
+public:
+    explicit PluginPagesOverflowPanel(Notebook* parent)
+        : wxPanel(parent, wxID_ANY)
+        , m_notebook(parent)
+    {
+        auto* sizer = new wxBoxSizer(wxVERTICAL);
+
+        m_choice = new wxChoice(this, wxID_ANY);
+        m_choice->Bind(wxEVT_CHOICE, &PluginPagesOverflowPanel::on_choice, this);
+        sizer->Add(m_choice, wxSizerFlags().Expand().Border(wxALL, FromDIP(4)));
+
+        m_content_sizer = new wxBoxSizer(wxVERTICAL);
+        sizer->Add(m_content_sizer, wxSizerFlags().Expand().Proportion(1));
+
+        SetSizer(sizer);
+    }
+
+    void add_entry(const PluginCapabilityId& id, PluginPage* page, const wxString& title)
+    {
+        page->Reparent(this);
+        page->Hide();
+        m_entries.push_back({id, page, title});
+        m_choice->Append(title);
+        if (m_entries.size() == 1)
+            select_index(0);
+    }
+
+    void select_entry(const PluginCapabilityId& id)
+    {
+        for (size_t i = 0; i < m_entries.size(); ++i) {
+            if (m_entries[i].id == id) {
+                select_index(i);
+                return;
+            }
+        }
+    }
+
+    void clear()
+    {
+        if (m_shown_index != wxNOT_FOUND)
+            m_entries[static_cast<size_t>(m_shown_index)].page->Hide();
+        m_content_sizer->Clear(false);
+
+        for (const Entry& entry : m_entries)
+            entry.page->Reparent(m_notebook);
+
+        m_entries.clear();
+        m_choice->Clear();
+        m_shown_index = wxNOT_FOUND;
+    }
+
+    wxString current_title() const { return m_shown_index == wxNOT_FOUND ? wxString() : m_entries[static_cast<size_t>(m_shown_index)].title; }
+    int current_image_id() const
+    {
+        return m_shown_index == wxNOT_FOUND ? wxBookCtrlBase::NO_IMAGE : m_entries[static_cast<size_t>(m_shown_index)].page->get_icon_image_id();
+    }
+
+private:
+    struct Entry
+    {
+        PluginCapabilityId id;
+        PluginPage* page;
+        wxString title;
+    };
+
+    void on_choice(wxCommandEvent&)
+    {
+        const int selection = m_choice->GetSelection();
+        if (selection != wxNOT_FOUND)
+            select_index(static_cast<size_t>(selection));
+    }
+
+    void select_index(size_t index)
+    {
+        if (index >= m_entries.size())
+            return;
+
+        if (m_shown_index != wxNOT_FOUND)
+            m_entries[static_cast<size_t>(m_shown_index)].page->Hide();
+
+        m_content_sizer->Clear(false);
+        m_content_sizer->Add(m_entries[index].page, wxSizerFlags().Expand().Proportion(1));
+        m_entries[index].page->Show();
+        Layout();
+
+        m_shown_index = static_cast<int>(index);
+        m_choice->SetSelection(static_cast<int>(index));
+
+        const int tab_index = m_notebook->FindPage(this);
+        if (tab_index != wxNOT_FOUND) {
+            m_notebook->SetPageText(static_cast<size_t>(tab_index), m_entries[index].title);
+            m_notebook->SetPageImage(static_cast<size_t>(tab_index), m_entries[index].page->get_icon_image_id());
+        }
+    }
+
+    Notebook* m_notebook{nullptr};
+    wxChoice* m_choice{nullptr};
+    wxBoxSizer* m_content_sizer{nullptr};
+    std::vector<Entry> m_entries;
+    int m_shown_index{wxNOT_FOUND};
+};
+
 PluginPages::~PluginPages()
 {
     shutdown();
+    // try {
+    // } catch (const std::exception& error) {
+    //     BOOST_LOG_TRIVIAL(error) << "PluginPages::~PluginPages: shutdown() threw: " << error.what();
+    // } catch (...) {
+    //     BOOST_LOG_TRIVIAL(error) << "PluginPages::~PluginPages: shutdown() threw a non-standard exception";
+    // }
 }
 
 void PluginPages::initialize(Notebook* parent)
@@ -206,15 +320,17 @@ void PluginPages::initialize(Notebook* parent)
     if (m_parent == nullptr)
         return;
 
-    // Keep image-list indices stable for the lifetime of this notebook. Removing an image
-    // would shift every later index, so deregistration only removes the page.
+    m_visible_page_count = GUI::wxGetApp().app_config->get_plugin_pages_visible_count();
+    m_notebook_base_index = static_cast<size_t>(m_parent->GetPageCount());
+
     m_image_list = std::make_unique<wxImageList>(20, 20, true, 0);
     m_parent->SetImageList(m_image_list.get());
 
     for (const auto& capability : PluginManager::instance().get_plugin_capabilities("", PluginCapabilityType::Pages)) {
         if (capability)
-            on_cap_register(capability->identity());
+            create_page(capability->identity());
     }
+    relayout();
 }
 
 void PluginPages::shutdown()
@@ -225,6 +341,17 @@ void PluginPages::shutdown()
         m_parent->SetImageList(nullptr);
     m_image_list.reset();
     m_parent = nullptr;
+    m_notebook_base_index = 0;
+}
+
+void PluginPages::set_visible_page_count(int count)
+{
+    const int clamped = std::max(PLUGIN_PAGES_VISIBLE_COUNT_MIN, std::min(count, PLUGIN_PAGES_VISIBLE_COUNT_MAX));
+    if (clamped == m_visible_page_count)
+        return;
+
+    m_visible_page_count = clamped;
+    relayout();
 }
 
 std::shared_ptr<PagesPluginCapability> PluginPages::get_pages_cap(const PluginCapabilityId& id, bool is_enabled) const
@@ -236,14 +363,14 @@ std::shared_ptr<PagesPluginCapability> PluginPages::get_pages_cap(const PluginCa
     return std::dynamic_pointer_cast<PagesPluginCapability>(capability);
 }
 
-void PluginPages::on_cap_register(const PluginCapabilityId& id)
+bool PluginPages::create_page(const PluginCapabilityId& id)
 {
-    if (m_parent == nullptr || m_pages.find(id) != m_pages.end())
-        return;
+    if (m_pages.find(id) != m_pages.end())
+        return false;
 
     auto capability = get_pages_cap(id, true);
     if (!capability)
-        return;
+        return false;
 
     std::string icon;
     try {
@@ -257,10 +384,8 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     auto* page = new PluginPage(m_parent, std::move(capability));
     if (!page->is_valid()) {
         page->Destroy();
-        return;
+        return false;
     }
-
-    const wxString title = wxString::FromUTF8(id.name);
 
     int image_id = wxBookCtrlBase::NO_IMAGE;
     if (!icon.empty() && m_image_list) {
@@ -281,14 +406,18 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     }
 
     page->set_icon_image_id(image_id);
-    if (!m_parent->AddPage(page, title, false, image_id)) {
-        if (image_id != wxBookCtrlBase::NO_IMAGE && m_image_list && image_id == m_image_list->GetImageCount() - 1)
-            m_image_list->Remove(image_id);
-        page->Destroy();
-        return;
-    }
-
     m_pages.emplace(id, page);
+    m_order.push_back(id);
+    return true;
+}
+
+void PluginPages::on_cap_register(const PluginCapabilityId& id)
+{
+    if (m_parent == nullptr)
+        return;
+
+    if (create_page(id))
+        relayout();
 }
 
 void PluginPages::on_cap_deregister(const PluginCapabilityId& id)
@@ -327,39 +456,87 @@ void PluginPages::remove_page(const PluginCapabilityId& id)
     PluginPage* page = it->second;
     const int removed_image_id = page->get_icon_image_id();
     page->detach_capability();
-    if (m_parent != nullptr) {
-        const int index = m_parent->FindPage(page);
-        if (index != wxNOT_FOUND)
-            m_parent->RemovePage(static_cast<size_t>(index));
-    }
+
+    m_pages.erase(it);
+    m_order.erase(std::remove(m_order.begin(), m_order.end(), id), m_order.end());
 
     if (m_image_list && removed_image_id != wxBookCtrlBase::NO_IMAGE &&
         removed_image_id >= 0 && removed_image_id < m_image_list->GetImageCount()) {
         m_image_list->Remove(removed_image_id);
 
-        // wxImageList IDs are positional. Removing one shifts all later images down by
-        // one, so update both the page state and the notebook button for those pages.
-        for (const auto& [other_id, other_page] : m_pages) {
-            if (other_id == id)
-                continue;
-
+        // wxImageList IDs are positional. Removing one shifts all later images down by one.
+        for (auto& [other_id, other_page] : m_pages) {
             const int other_image_id = other_page->get_icon_image_id();
-            if (other_image_id <= removed_image_id)
-                continue;
-
-            const int updated_image_id = other_image_id - 1;
-            other_page->set_icon_image_id(updated_image_id);
-
-            if (m_parent != nullptr) {
-                const int other_index = m_parent->FindPage(other_page);
-                if (other_index != wxNOT_FOUND)
-                    m_parent->SetPageImage(static_cast<size_t>(other_index), updated_image_id);
-            }
+            if (other_image_id > removed_image_id)
+                other_page->set_icon_image_id(other_image_id - 1);
         }
     }
 
+    relayout();
     page->Destroy();
-    m_pages.erase(it);
+}
+
+wxString PluginPages::page_tab_id(const PluginCapabilityId& id)
+{
+    return wxString::FromUTF8("plugin." + id.plugin_key + "." + id.name);
+}
+
+void PluginPages::relayout()
+{
+    if (m_parent == nullptr)
+        return;
+
+    m_order.erase(std::remove_if(m_order.begin(), m_order.end(),
+        [this](const PluginCapabilityId& id) {
+            const bool orphaned = m_pages.find(id) == m_pages.end();
+            if (orphaned)
+                BOOST_LOG_TRIVIAL(error) << "PluginPages::relayout: '" << id.name << "' was in m_order but not m_pages, dropping";
+            return orphaned;
+        }),
+        m_order.end());
+
+    wxString id_to_reselect = m_parent->GetSelectedPageName();
+
+    while (m_parent->GetPageCount() > m_notebook_base_index)
+        m_parent->RemovePage(m_parent->GetPageCount() - 1);
+    if (m_overflow_panel != nullptr)
+        m_overflow_panel->clear();
+
+    const int visible_slots = std::max(1, m_visible_page_count);
+    const bool need_overflow = static_cast<int>(m_order.size()) > visible_slots;
+    const size_t individual_count = need_overflow ? static_cast<size_t>(visible_slots - 1) : m_order.size();
+
+    for (size_t i = 0; i < individual_count; ++i) {
+        const PluginCapabilityId& id = m_order[i];
+        PluginPage* page = m_pages.at(id);
+        m_parent->InsertPage(m_parent->GetPageCount(), page_tab_id(id), page, wxString::FromUTF8(id.name), page->get_icon_image_id());
+    }
+
+    if (need_overflow) {
+        if (m_overflow_panel == nullptr)
+            m_overflow_panel = new PluginPagesOverflowPanel(m_parent);
+
+        bool reselecting_overflow_entry = false;
+        for (size_t i = individual_count; i < m_order.size(); ++i) {
+            const PluginCapabilityId& id = m_order[i];
+            m_overflow_panel->add_entry(id, m_pages.at(id), wxString::FromUTF8(id.name));
+            if (page_tab_id(id) == id_to_reselect) {
+                m_overflow_panel->select_entry(id);
+                reselecting_overflow_entry = true;
+            }
+        }
+        if (reselecting_overflow_entry)
+            id_to_reselect = "plugin.__overflow__";
+
+        m_parent->InsertPage(m_parent->GetPageCount(), "plugin.__overflow__", m_overflow_panel,
+                              m_overflow_panel->current_title(), m_overflow_panel->current_image_id());
+    } else if (m_overflow_panel != nullptr) {
+        m_overflow_panel->Destroy();
+        m_overflow_panel = nullptr;
+    }
+
+    if (!id_to_reselect.empty())
+        m_parent->SelectPageByName(id_to_reselect);
 }
 
 } // namespace Slic3r

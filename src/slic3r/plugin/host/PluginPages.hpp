@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <wx/bookctrl.h>
 #include <wx/imaglist.h>
@@ -47,6 +48,8 @@ private:
     int m_icon_image_id = wxBookCtrlBase::NO_IMAGE;
 };
 
+class PluginPagesOverflowPanel;
+
 class PluginPages
 {
 public:
@@ -64,14 +67,26 @@ public:
     void on_plugin_register(const std::string& plugin_key);
     void on_plugin_deregister(const std::string& plugin_key);
 
+    int get_visible_page_count() const { return m_visible_page_count; }
+    void set_visible_page_count(int count);
+
 private:
     std::shared_ptr<PagesPluginCapability> get_pages_cap(const PluginCapabilityId& id, bool is_enabled) const;
+    bool create_page(const PluginCapabilityId& id);
     void remove_page(const PluginCapabilityId& id);
 
+    void relayout();
+    static wxString page_tab_id(const PluginCapabilityId& id);
+
     std::map<PluginCapabilityId, PluginPage*> m_pages;
+    std::vector<PluginCapabilityId> m_order;
     Notebook* m_parent{nullptr};
+    size_t m_notebook_base_index{0};
 
     std::unique_ptr<wxImageList> m_image_list;
+    int m_visible_page_count{0};
+
+    PluginPagesOverflowPanel* m_overflow_panel{nullptr};
 };
 
 } // namespace Slic3r
