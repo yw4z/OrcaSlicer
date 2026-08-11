@@ -272,6 +272,24 @@ wxString ButtonsListCtrl::GetPageText(size_t n) const
     return btn->GetLabel();
 }
 
+// ORCA
+void ButtonsListCtrl::SetOverflowButton(wxWindow* button)
+{
+    if (m_overflow_button == button)
+        return;
+
+    if (m_overflow_button != nullptr)
+        m_sizer->Detach(m_overflow_button);
+
+    m_overflow_button = button;
+
+    if (m_overflow_button != nullptr)
+        // Right after the tab buttons (index 0), ahead of any stretch spacer / side_tools.
+        m_sizer->Insert(1, m_overflow_button, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxBOTTOM, m_btn_margin);
+
+    m_sizer->Layout();
+}
+
 //#endif // _WIN32
 
 void Notebook::Init()

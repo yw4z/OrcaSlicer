@@ -4,6 +4,7 @@
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/Notebook.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/Widgets/Button.hpp"
 #include "slic3r/GUI/Widgets/WebView.hpp"
 #include "slic3r/GUI/Widgets/WebViewHostDialog.hpp"
 #include "slic3r/GUI/wxExtensions.hpp"
@@ -19,7 +20,7 @@
 
 #include <stdexcept>
 #include <wx/bookctrl.h>
-#include <wx/choice.h>
+#include <wx/menu.h>
 #include <wx/sizer.h>
 
 #include <utility>
@@ -197,110 +198,6 @@ void PluginPage::push_message(const std::string& message)
                             wxString("}, 0);");
     WebView::RunScript(m_browser, script);
 }
-
-class PluginPagesOverflowPanel : public wxPanel
-{
-public:
-    explicit PluginPagesOverflowPanel(Notebook* parent)
-        : wxPanel(parent, wxID_ANY)
-        , m_notebook(parent)
-    {
-        auto* sizer = new wxBoxSizer(wxVERTICAL);
-
-        m_choice = new wxChoice(this, wxID_ANY);
-        m_choice->Bind(wxEVT_CHOICE, &PluginPagesOverflowPanel::on_choice, this);
-        sizer->Add(m_choice, wxSizerFlags().Expand().Border(wxALL, FromDIP(4)));
-
-        m_content_sizer = new wxBoxSizer(wxVERTICAL);
-        sizer->Add(m_content_sizer, wxSizerFlags().Expand().Proportion(1));
-
-        SetSizer(sizer);
-    }
-
-    void add_entry(const PluginCapabilityId& id, PluginPage* page, const wxString& title)
-    {
-        page->Reparent(this);
-        page->Hide();
-        m_entries.push_back({id, page, title});
-        m_choice->Append(title);
-        if (m_entries.size() == 1)
-            select_index(0);
-    }
-
-    void select_entry(const PluginCapabilityId& id)
-    {
-        for (size_t i = 0; i < m_entries.size(); ++i) {
-            if (m_entries[i].id == id) {
-                select_index(i);
-                return;
-            }
-        }
-    }
-
-    void clear()
-    {
-        if (m_shown_index != wxNOT_FOUND)
-            m_entries[static_cast<size_t>(m_shown_index)].page->Hide();
-        m_content_sizer->Clear(false);
-
-        for (const Entry& entry : m_entries)
-            entry.page->Reparent(m_notebook);
-
-        m_entries.clear();
-        m_choice->Clear();
-        m_shown_index = wxNOT_FOUND;
-    }
-
-    wxString current_title() const { return m_shown_index == wxNOT_FOUND ? wxString() : m_entries[static_cast<size_t>(m_shown_index)].title; }
-    int current_image_id() const
-    {
-        return m_shown_index == wxNOT_FOUND ? wxBookCtrlBase::NO_IMAGE : m_entries[static_cast<size_t>(m_shown_index)].page->get_icon_image_id();
-    }
-
-private:
-    struct Entry
-    {
-        PluginCapabilityId id;
-        PluginPage* page;
-        wxString title;
-    };
-
-    void on_choice(wxCommandEvent&)
-    {
-        const int selection = m_choice->GetSelection();
-        if (selection != wxNOT_FOUND)
-            select_index(static_cast<size_t>(selection));
-    }
-
-    void select_index(size_t index)
-    {
-        if (index >= m_entries.size())
-            return;
-
-        if (m_shown_index != wxNOT_FOUND)
-            m_entries[static_cast<size_t>(m_shown_index)].page->Hide();
-
-        m_content_sizer->Clear(false);
-        m_content_sizer->Add(m_entries[index].page, wxSizerFlags().Expand().Proportion(1));
-        m_entries[index].page->Show();
-        Layout();
-
-        m_shown_index = static_cast<int>(index);
-        m_choice->SetSelection(static_cast<int>(index));
-
-        const int tab_index = m_notebook->FindPage(this);
-        if (tab_index != wxNOT_FOUND) {
-            m_notebook->SetPageText(static_cast<size_t>(tab_index), m_entries[index].title);
-            m_notebook->SetPageImage(static_cast<size_t>(tab_index), m_entries[index].page->get_icon_image_id());
-        }
-    }
-
-    Notebook* m_notebook{nullptr};
-    wxChoice* m_choice{nullptr};
-    wxBoxSizer* m_content_sizer{nullptr};
-    std::vector<Entry> m_entries;
-    int m_shown_index{wxNOT_FOUND};
-};
 
 PluginPages::~PluginPages()
 {
@@ -499,44 +396,78 @@ void PluginPages::relayout()
 
     while (m_parent->GetPageCount() > m_notebook_base_index)
         m_parent->RemovePage(m_parent->GetPageCount() - 1);
-    if (m_overflow_panel != nullptr)
-        m_overflow_panel->clear();
 
     const int visible_slots = std::max(1, m_visible_page_count);
     const bool need_overflow = static_cast<int>(m_order.size()) > visible_slots;
-    const size_t individual_count = need_overflow ? static_cast<size_t>(visible_slots - 1) : m_order.size();
 
-    for (size_t i = 0; i < individual_count; ++i) {
-        const PluginCapabilityId& id = m_order[i];
+    // Every visible slot is a normal, individual tab hosting its own page. When there's
+    // overflow, the last slot's page is swappable via m_overflow_button/show_overflow_menu()
+    // rather than being a fixed page — m_swapped_in_id tracks which one currently sits there.
+    std::vector<PluginCapabilityId> tab_ids;
+    if (!need_overflow) {
+        tab_ids = m_order;
+        m_swapped_in_id.reset();
+    } else {
+        const auto overflow_begin = m_order.begin() + (visible_slots - 1);
+        tab_ids.assign(m_order.begin(), overflow_begin);
+
+        if (!m_swapped_in_id || std::find(overflow_begin, m_order.end(), *m_swapped_in_id) == m_order.end())
+            m_swapped_in_id = *overflow_begin;
+        tab_ids.push_back(*m_swapped_in_id);
+    }
+
+    for (const auto& id : tab_ids) {
         PluginPage* page = m_pages.at(id);
         m_parent->InsertPage(m_parent->GetPageCount(), page_tab_id(id), page, wxString::FromUTF8(id.name), page->get_icon_image_id());
     }
 
     if (need_overflow) {
-        if (m_overflow_panel == nullptr)
-            m_overflow_panel = new PluginPagesOverflowPanel(m_parent);
-
-        bool reselecting_overflow_entry = false;
-        for (size_t i = individual_count; i < m_order.size(); ++i) {
-            const PluginCapabilityId& id = m_order[i];
-            m_overflow_panel->add_entry(id, m_pages.at(id), wxString::FromUTF8(id.name));
-            if (page_tab_id(id) == id_to_reselect) {
-                m_overflow_panel->select_entry(id);
-                reselecting_overflow_entry = true;
-            }
+        if (m_overflow_button == nullptr) {
+            auto* btn = new Button(m_parent->GetBtnsListCtrl(), wxString(L"\u25BE"), wxString(), wxNO_BORDER);
+            btn->SetCornerRadius(0);
+            const int em = em_unit(m_parent);
+            btn->SetMinSize({40 * em / 10, 36 * em / 10});
+            btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { show_overflow_menu(); });
+            GUI::wxGetApp().UpdateDarkUI(btn);
+            m_overflow_button = btn;
         }
-        if (reselecting_overflow_entry)
-            id_to_reselect = "plugin.__overflow__";
-
-        m_parent->InsertPage(m_parent->GetPageCount(), "plugin.__overflow__", m_overflow_panel,
-                              m_overflow_panel->current_title(), m_overflow_panel->current_image_id());
-    } else if (m_overflow_panel != nullptr) {
-        m_overflow_panel->Destroy();
-        m_overflow_panel = nullptr;
+        m_parent->SetOverflowButton(m_overflow_button);
+    } else if (m_overflow_button != nullptr) {
+        m_parent->SetOverflowButton(nullptr);
+        m_overflow_button->Destroy();
+        m_overflow_button = nullptr;
     }
 
     if (!id_to_reselect.empty())
         m_parent->SelectPageByName(id_to_reselect);
+}
+
+void PluginPages::show_overflow_menu()
+{
+    const int visible_slots = std::max(1, m_visible_page_count);
+    if (m_overflow_button == nullptr || static_cast<int>(m_order.size()) <= visible_slots)
+        return;
+
+    const std::vector<PluginCapabilityId> overflow_ids(m_order.begin() + (visible_slots - 1), m_order.end());
+
+    wxMenu menu;
+    for (size_t i = 0; i < overflow_ids.size(); ++i)
+        menu.AppendRadioItem(static_cast<int>(wxID_HIGHEST + 1 + i), wxString::FromUTF8(overflow_ids[i].name));
+    if (m_swapped_in_id) {
+        const auto it = std::find(overflow_ids.begin(), overflow_ids.end(), *m_swapped_in_id);
+        if (it != overflow_ids.end())
+            menu.Check(static_cast<int>(wxID_HIGHEST + 1 + (it - overflow_ids.begin())), true);
+    }
+
+    menu.Bind(wxEVT_MENU, [this, overflow_ids](wxCommandEvent& evt) {
+        const size_t index = static_cast<size_t>(evt.GetId() - (wxID_HIGHEST + 1));
+        if (index >= overflow_ids.size())
+            return;
+        m_swapped_in_id = overflow_ids[index];
+        relayout();
+        m_parent->SelectPageByName(page_tab_id(*m_swapped_in_id));
+    });
+    m_overflow_button->PopupMenu(&menu);
 }
 
 } // namespace Slic3r

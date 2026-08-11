@@ -36,6 +36,9 @@ public:
     void SetCompact(size_t n, bool compact); // ORCA
     wxString GetPageText(size_t n) const;
     wxFlexGridSizer* GetBtnsSizer(){return m_buttons_sizer;}; // ORCA
+    // ORCA: a companion widget shown right after the tab buttons (before any side_tools), e.g.
+    // an overflow indicator. Pass nullptr to remove it; ownership stays with the caller.
+    void SetOverflowButton(wxWindow* button);
 
 private:
     wxFlexGridSizer*                m_buttons_sizer;
@@ -47,6 +50,7 @@ private:
     int                             m_line_margin;
     std::vector<wxString>           m_pageLabels; // ORCA
     wxImageList*                    m_imageList{nullptr};
+    wxWindow*                       m_overflow_button{nullptr}; // ORCA
 };
 
 class Notebook : public wxBookCtrlBase
@@ -324,6 +328,7 @@ public:
     }
 
     ButtonsListCtrl* GetBtnsListCtrl() const { return static_cast<ButtonsListCtrl*>(m_bookctrl); }
+    void SetOverflowButton(wxWindow* button) { GetBtnsListCtrl()->SetOverflowButton(button); }
 
     int FindPageByName(const wxString& id) const
     {
