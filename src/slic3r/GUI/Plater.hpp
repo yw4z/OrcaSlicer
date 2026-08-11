@@ -128,7 +128,7 @@ public:
     static int ElementSpacing(){ return 5 ;} // Use if elements has relation between them like edit button for combo box etc.
     static int ComboHeight()   { return 26;} // ComboBox height for parameter comboboxes
     static int ComboHeightBig(){ return 30;} // ComboBox height for Filament, Process comboboxes
-    static int MinWidth()      { return 400;} // min width for sidebar. Should match with end of parameter boxes
+    static int MinWidth()      { return 390;} // min width for sidebar. Should match with end of parameter boxes
 };
 
 class Sidebar : public wxPanel
@@ -159,6 +159,8 @@ public:
     Sidebar &operator=(Sidebar &&) = delete;
     Sidebar &operator=(const Sidebar &) = delete;
     ~Sidebar();
+
+    int  m_em_unit = 10;
 
     void on_enter_image_printer_bed(wxMouseEvent &evt);
     void on_leave_image_printer_bed(wxMouseEvent &evt);

@@ -2356,7 +2356,8 @@ void Sidebar::update_sync_ams_btn_enable(wxUpdateUIEvent &e)
  }
 
 Sidebar::Sidebar(Plater *parent)
-    : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(39 * wxGetApp().em_unit(), -1)), p(new priv(parent))
+    : m_em_unit(em_unit(parent))
+    , wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(SidebarProps::MinWidth() * em_unit(parent) / 10, -1)), p(new priv(parent))
 {
     Choice::register_dynamic_list("support_filament", &dynamic_filament_list);
     Choice::register_dynamic_list("support_interface_filament", &dynamic_filament_list);
@@ -2387,7 +2388,6 @@ Sidebar::Sidebar(Plater *parent)
 #endif
 #endif
 
-    int em = wxGetApp().em_unit();
     //BBS refine layout and styles
     // Sizer in the scrolled area
     auto* scrolled_sizer = m_scrolled_sizer = new wxBoxSizer(wxVERTICAL);
@@ -2450,7 +2450,7 @@ Sidebar::Sidebar(Plater *parent)
         h_sizer_title->Add(p->m_printer_bbl_sync, 0, wxALIGN_CENTER | wxRIGHT, FromDIP(SidebarProps::WideSpacing())); // used larger margin to prevent accidental clicks
         h_sizer_title->Add(p->m_printer_setting, 0, wxALIGN_CENTER);
         h_sizer_title->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
-        h_sizer_title->SetMinSize(-1, SidebarProps::TitlebarHeight() * em / 10);
+        h_sizer_title->SetMinSize(-1, SidebarProps::TitlebarHeight() * m_em_unit / 10);
 
         p->m_panel_printer_title->SetSizer(h_sizer_title);
         p->m_panel_printer_title->Layout();
@@ -3152,13 +3152,12 @@ void Sidebar::init_filament_combo(PlaterPresetComboBox **combo, const int filame
 
     // BBS:  filament double columns
 
-    // int em = wxGetApp().em_unit();
     if ((filament_idx % 2) == 0) // Dont add right column item. this one create equal spacing on left, right & middle
         combo_and_btn_sizer->AddSpacer(FromDIP((filament_idx % 2) == 0 ? 12 : 3)); // Content Margin
 
     (*combo)->clr_picker->SetLabel(wxString::Format("%d", filament_idx + 1));
     combo_and_btn_sizer->Add((*combo)->clr_picker, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(SidebarProps::ElementSpacing()) - FromDIP(2)); // ElementSpacing - 2 (from combo box))
-    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, SidebarProps::ComboHeightBig() * wxGetApp().em_unit() / 10}); // ORCA ensure height matches with PlaterPresetComboBox
+    combo_and_btn_sizer->Add(*combo, 1, wxALL | wxEXPAND, FromDIP(2))->SetMinSize({-1, SidebarProps::ComboHeightBig() * m_em_unit / 10}); // ORCA ensure height matches with PlaterPresetComboBox
 
     /* BBS hide del_btn
     ScalableButton* del_btn = new ScalableButton(p->m_panel_filament_content, wxID_ANY, "delete_filament");
@@ -3735,11 +3734,14 @@ void Sidebar::update_filaments_counter(bool force_layout)
 
 void Sidebar::msw_rescale()
 {
-    SetMinSize(wxSize(39 * wxGetApp().em_unit(), -1));
+    m_em_unit = em_unit(this);
+    
+    SetMinSize(wxSize(SidebarProps::MinWidth() * m_em_unit / 10, -1));
+
     p->m_panel_printer_title->Rescale();
-    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, SidebarProps::TitlebarHeight() * wxGetApp().em_unit() / 10);
+    p->m_panel_printer_title->GetSizer()->SetMinSize(-1, SidebarProps::TitlebarHeight() * m_em_unit / 10);
     p->m_panel_filament_title->Rescale();
-    p->m_panel_filament_title->GetSizer()->SetMinSize(-1, SidebarProps::TitlebarHeight() * wxGetApp().em_unit() / 10);
+    p->m_panel_filament_title->GetSizer()->SetMinSize(-1, SidebarProps::TitlebarHeight() * m_em_unit / 10);
     p->m_printer_icon->msw_rescale();
     p->m_printer_connect->msw_rescale();
     p->m_printer_bbl_sync->msw_rescale();
@@ -3752,7 +3754,7 @@ void Sidebar::msw_rescale()
     p->image_printer->SetSize(FromDIP(PRINTER_THUMBNAIL_SIZE));
     update_printer_thumbnail();
     p->combo_printer->Rescale();
-    p->combo_printer->SetMaxSize(wxSize(-1, FromDIP(SidebarProps::ComboHeight()))); // limiting height makes badge visible
+    p->combo_printer->SetMaxSize(wxSize(-1, SidebarProps::ComboHeight() * m_em_unit / 10)); // limiting height makes badge visible
     p->btn_edit_printer->msw_rescale();
 
     p->panel_nozzle_dia->Rescale();
@@ -3818,7 +3820,7 @@ void Sidebar::msw_rescale()
     // BBS
     //p->object_manipulation->msw_rescale();
     p->object_settings->msw_rescale();
-    p->m_search_bar->SetSize(wxSize(-1, SidebarProps::ComboHeightBig() * wxGetApp().em_unit() / 10));
+    p->m_search_bar->SetSize(wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10));
     p->m_search_item->Rescale();
     p->m_search_item->GetTextCtrl()->SetSize(wxSize(-1, FromDIP(16)));
     p->m_search_bar->Rescale();
@@ -4794,7 +4796,7 @@ template<typename T> void setup_dialog_position(T& info)
 
         auto screen_width = wxDisplay(&sidebar).GetClientArea().GetSize().x;
         auto right_space  = screen_width - sidebar.get_sidebar_pos_right_x();
-        if (right_space < sidebar.FromDIP(SidebarProps::MinWidth())) {
+        if (right_space < SidebarProps::MinWidth() * sidebar.m_em_unit / 10) {
             on_right = false;
         }
     }
@@ -5962,7 +5964,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
                                    .CloseButton(false)
                                    .TopDockable(false)
                                    .BottomDockable(false)
-                                   .BestSize(wxSize(39 * wxGetApp().em_unit(), 90 * wxGetApp().em_unit())));
+                                   .BestSize(wxSize(SidebarProps::MinWidth() * sidebar->m_em_unit / 10, 90 * sidebar->m_em_unit)));
 
     auto* panel_sizer = new wxBoxSizer(wxHORIZONTAL);
     panel_sizer->Add(view3D, 1, wxEXPAND | wxALL, 0);

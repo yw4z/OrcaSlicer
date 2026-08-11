@@ -876,8 +876,8 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
 
     // BBS
     if (m_type == Preset::TYPE_FILAMENT) {
-        int em = wxGetApp().em_unit();
-        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(FromDIP(20), FromDIP(20)), wxBU_EXACTFIT | wxBU_AUTODRAW | wxBORDER_NONE);
+        int em = em_unit(parent);
+        clr_picker = new wxBitmapButton(parent, wxID_ANY, {}, wxDefaultPosition, wxSize(2 * em, 2 * em), wxBU_EXACTFIT | wxBU_AUTODRAW | wxBORDER_NONE);
         clr_picker->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
         clr_picker->SetToolTip(_L("Click to select filament color"));
 #ifdef __WXGTK__
@@ -1543,10 +1543,12 @@ void PlaterPresetComboBox::update()
 void PlaterPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
-    SetMinSize({-1, 30 * m_em_unit / 10});
+    wxSize sz = wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10);
+    SetMinSize(sz);
+    SetSize(sz);
 
     if (clr_picker)
-        clr_picker->SetSize(20 * m_em_unit / 10, 20 * m_em_unit / 10);
+        clr_picker->SetSize(2 * m_em_unit, 2 * m_em_unit);
     // BBS
     if (edit_btn != nullptr)
         edit_btn->msw_rescale();
@@ -1913,8 +1915,7 @@ void TabPresetComboBox::update()
 void TabPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();
-    // BBS: new layout
-    wxSize sz = wxSize(20 * m_em_unit, 30 * m_em_unit / 10);
+    wxSize sz = wxSize(-1, SidebarProps::ComboHeightBig() * m_em_unit / 10);
     SetMinSize(sz);
     SetSize(sz);
 }
