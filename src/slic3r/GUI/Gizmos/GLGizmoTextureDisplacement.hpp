@@ -67,7 +67,51 @@ private:
     void add_texture_layer();
     void remove_texture_layer(int slot);
     void set_active_layer(int slot); // flushes the previous layer's edits, then reloads selectors
-    void bake();
+    // `own_snapshot` false when the caller has already taken an undo step that is meant to cover the
+    // displacement too - see bake_standard().
+    void bake(bool own_snapshot = true);
+
+    // Standard (0) vs Pro (1), driven by the two-position slider in the panel header.
+    //
+    // Pro is the panel as it has always been: every geometry-preparation control is visible and the
+    // user drives Remesh, Subdivide and Bake themselves, in whatever order they like. Standard hides
+    // all of that, pins it to one fixed recipe, and folds it into the Bake button - paint, press Bake,
+    // done - so the common case does not require knowing that a height map can only move vertices that
+    // already exist. Nothing about Pro changed when Standard was added.
+    int  m_panel_mode = 0;
+    bool pro_mode() const { return m_panel_mode != 0; }
+    // Pins every control Standard mode hides to its preset value. Idempotent, called each frame while
+    // Standard is active so what Preview shows is always what Bake will do. Returns true if it actually
+    // changed something, so the caller can invalidate the preview.
+    bool apply_standard_mode_presets(ModelVolume *mv);
+    // Standard mode's Bake: remesh to an even density, refine where the texture bends, then displace.
+    // The order matters and is the whole reason this is one button - a height map can only move
+    // existing vertices, so the mesh has to be prepared first, and remeshing after painting would drop
+    // the paint if it were not remapped across (see replace_mesh_keep_all_paint()).
+    void bake_standard();
+
+    // Replaces `mv`'s mesh and carries *every* paint channel onto it, texture displacement included -
+    // the four standard channels via ModelVolume::restore_painting(), the eight texture-displacement
+    // masks via the same TriangleSelector::remap_painting() spatial remap, which restore_painting()
+    // does not cover. Shared by Remesh and by Standard mode's pipeline.
+    static void replace_mesh_keep_all_paint(ModelVolume &mv, TriangleMesh &&new_mesh);
+    // Remesh and adaptive Subdivide are each split into a *plan* (the heavy geometry work, touching
+    // nothing) and an *apply* (pure mutation). That split is what lets both the standalone buttons and
+    // Standard mode's one-button pipeline run the expensive part **before** taking the undo snapshot,
+    // so a run that turns out to be a no-op does not leave an empty undo step behind - and it keeps
+    // snapshot ownership with the caller, which matters because the buttons want one snapshot per click
+    // while the pipeline wants a single one around remesh + subdivide together.
+    struct SubdivisionPlan
+    {
+        indexed_triangle_set                                              refined;
+        std::vector<int>                                                  source;      // new tri -> input tri
+        std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> painted_tri; // per layer, per input tri
+    };
+    // False means "nothing to refine" and `out` must not be used.
+    bool        plan_adaptive_subdivision(const ModelVolume &mv, SubdivisionPlan &out) const;
+    static void apply_adaptive_subdivision(ModelVolume &mv, SubdivisionPlan &&plan);
+    // False means the remesh failed or changed nothing (CGAL signals failure by handing the input back).
+    static bool plan_remesh(const ModelVolume &mv, float target_edge_mm, float sharp_angle_deg, TriangleMesh &out);
 
     // Marks every facet of every model-part volume as painted for the currently active layer -
     // "whole model" as an alternative to brushing/clicking every triangle by hand.
@@ -327,7 +371,7 @@ private:
     // dense model). Refinement is worst-error-first, so hitting the budget still yields the best mesh
     // that many triangles can buy - and it is what keeps a fine "Detail" over a noisy texture from
     // turning into an out-of-memory, or an unrenderable preview wireframe.
-    int   m_subdivide_budget_k    = 200;
+    int   m_subdivide_budget_k    = 1500;
     void  subdivide_model_adaptive();
     // Fills `region` (per current-mesh triangle, 1 = refine) from the union of every layer's painted
     // area. If `painted_tri` is non-null, also fills, per layer, the fully-painted triangles to carry
@@ -345,7 +389,9 @@ private:
     // Isotropic remeshing (CGAL) to even out wildly varying triangle sizes so displacement has a
     // consistent density to work with. Target edge length in mm; 0 means "not yet initialised", filled
     // with the mesh's mean edge length the first time the control is shown. Like subdivide, it replaces
-    // the geometry and drops not-yet-baked paint (no remap across a topology change).
+    // the geometry, but unlike subdivide it keeps every paint channel: replace_mesh_keep_all_paint()
+    // remaps the texture-displacement masks spatially, which is also what lets Standard mode remesh
+    // *after* the user has painted.
     float m_remesh_target_edge_mm = 0.f;
     // Dihedral angle above which an edge counts as a hard feature and is held fixed by the remesher.
     // Off by default would round every sharp edge off, so this is on; 0 disables the protection.

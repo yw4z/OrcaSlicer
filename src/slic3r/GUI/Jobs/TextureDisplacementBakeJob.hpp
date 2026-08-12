@@ -22,6 +22,10 @@ struct TextureDisplacementBakeInput
     std::vector<TextureDisplacementLayer> layers;
     TextureDisplacementFacetsData         facets_data;
     TextureDisplacementOptions            options;
+    // Whether this job pushes its own undo step when it commits. False when the caller has already
+    // taken one that is meant to cover the displacement as well - Standard mode's Bake, which remeshes
+    // and subdivides first and has to undo as a single action.
+    bool                                  take_snapshot = true;
 };
 
 // Bakes a volume's painted texture-displacement layers into real mesh geometry in the background,
@@ -45,7 +49,8 @@ private:
 // the app's UI job worker. `on_finished` is always called once the job settles (success, failure,
 // or cancellation), so the caller can clear its own "bake in progress" UI state. Must be called
 // from the main thread.
-void queue_texture_displacement_bake(const ModelVolume &volume, std::function<void()> on_finished);
+void queue_texture_displacement_bake(const ModelVolume &volume, std::function<void()> on_finished,
+                                     bool take_snapshot = true);
 
 } // namespace Slic3r::GUI
 

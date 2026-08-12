@@ -19,7 +19,36 @@
 // Two projection paths:
 //   * Triplanar (use_vertex_uv = 0): uv and the tangent axes are derived in-shader from the dominant
 //     normal axis, mirroring libslic3r's project_planar()/apply_uv_transform(), and the slope is
-//     formed analytically (there is a closed-form uv, so 1 uv unit is exactly tiling_scale mm).
+//     formed analytically (there is a closed-form uv, so 1 uv unit is exactly tiling_scale mm). This
+//     path also runs a parallax step before shading, see below.
+//
+// Parallax. A pure bump map perturbs shading only, so the pattern is welded to the base surface: it
+// does not shift as the camera orbits and it does not get any deeper as depth_mm grows, which is
+// exactly when the preview stops reading as real geometry. The triplanar path therefore shades at the
+// point the *displaced* surface would show at this pixel rather than at the pixel's own base position.
+//
+// Two cheaper formulations were tried first and both are wrong here, which is worth recording:
+//   * Solving Q = P + V * (H(Q) / dot(V, n)) by fixed-point iteration. Geometrically exact, but the
+//     divisor goes to zero edge-on, and an unbounded step is not a small error - the sample lands a
+//     large fraction of a tile away and the iteration oscillates instead of converging. It reads as a
+//     *second, flat copy* of the pattern ghosted over the real one. Clamping the step to one tile does
+//     not help either: a tile-sized shift lands on the neighbouring tile, which is the same pattern.
+//   * Offset limiting (Welsh): step along the tangential part of V, whose length caps the shift at one
+//     depth. Stable and cheap, but it understates parallax by exactly the factor that matters - the
+//     relief still flattens as soon as the camera tilts, which is the complaint it was meant to fix.
+//
+// So this ray-marches instead (parallax occlusion mapping). A point at ray parameter s, i.e. P + V * s,
+// sits at height s * dot(V, n) above the undisplaced surface. The displaced surface lives in a shell
+// between the extreme values of amp * (h - midlevel); the march starts at the top of that shell, where
+// the ray is outside the surface by construction, and steps inward until the ray height falls below the
+// sampled height. That crossing *is* the visible point - no divergence, no ghosting, and parallax stays
+// correct at any angle. The hit is interpolated between the last two samples, which is what keeps
+// PARALLAX_STEPS low enough to afford. The march is skipped when sweeping the shell would move the
+// sample point less than half a texel (the head-on case), so the common view pays almost nothing.
+//
+// The gradient/shading below is evaluated at the resulting uv, so the relief both slides correctly
+// under camera motion and visibly deepens with depth_mm. What it still cannot do is change the
+// model's silhouette or cast shadows; for that, switch the View row to Normal.
 //   * Precomputed uv (use_vertex_uv = 1, used for LSCM): uv comes per-vertex from the CPU (the LSCM
 //     unwrap with island placement + tiling/rotation/offset already folded in), and the perturbed
 //     normal is built with Mikkelsen's method -- the surface gradient taken straight from the
@@ -30,6 +59,11 @@
 //     move an island and its uv -- hence its bump -- moves with it.
 
 #define INTENSITY_CORRECTION 0.6
+
+#define PARALLAX_STEPS 24
+// Explicit LOD: the march samples inside non-uniform control flow, where implicit
+// derivatives are undefined.
+#define H_AT(uv) textureLod(height_tex, uv, 0.0).r
 
 // normalized values for (-0.6/1.31, 0.6/1.31, 1./1.31)
 const vec3 LIGHT_TOP_DIR = vec3(-0.4574957, 0.4574957, 0.7624929);
@@ -58,6 +92,8 @@ uniform float      tiling_scale;
 uniform float      rotation_rad;
 uniform vec2       uv_offset;
 uniform bool       invert;
+uniform float      midlevel;      // the height that means "don't move"; needed by the parallax step
+uniform vec3       eye_model_pos; // camera position in this volume's local space, for the view ray
 uniform bool       use_vertex_uv; // true: sample at vertex_uv with a derived tangent frame (LSCM)
 // A 2x3 affine (columns packed as lin = (m00, m01, m10, m11), tr = (m02, m12)) applied to the uv of
 // the island currently being dragged in the UV editor (island_active > 0.5). Identity when nothing is
@@ -144,9 +180,49 @@ void main()
         // Triplanar path: uv and the tangent axes are reconstructed in-shader from the dominant
         // normal component (see header). The gradient is expressed analytically because there is a
         // closed-form uv here, unlike the LSCM case.
-        vec2 uv = project_uv(model_pos.xyz, triangle_normal);
         vec3 t, b;
         projection_axes(triangle_normal, t, b);
+
+        // Parallax occlusion mapping: march the view ray through the height shell and shade at the
+        // first point where it drops below the displaced surface (see header).
+        float amp      = (invert ? -1.0 : 1.0) * depth_mm * clamp(weight, 0.0, 1.0);
+        vec3  view_dir = normalize(eye_model_pos - model_pos.xyz);
+        float v_dot_n  = dot(view_dir, triangle_normal);
+        vec2  uv       = project_uv(model_pos.xyz, triangle_normal);
+
+        // The shell the displaced surface lives inside, as signed heights along the normal. Taken from
+        // both ends of h in [0, 1] so it stays correct for an inverted layer or a raised midlevel,
+        // where the surface sits *below* the undisplaced one.
+        float h_end_a = amp * (0.0 - midlevel);
+        float h_end_b = amp * (1.0 - midlevel);
+        float h_hi    = max(h_end_a, h_end_b);
+        float h_lo    = min(h_end_a, h_end_b);
+        // How far, in mm, sweeping the ray across the shell slides the sample point sideways. Below half
+        // a texel there is no parallax to find and the march would be pure cost - which is the common
+        // case of looking straight down at a surface.
+        float sweep = length(view_dir - triangle_normal * v_dot_n) * (h_hi - h_lo) / max(v_dot_n, 1e-4);
+        if (v_dot_n > 0.05 && sweep > 0.5 * tiling_scale * height_tex_texel.x) {
+            // A point at ray parameter s (model_pos + view_dir * s) sits at height s * v_dot_n above the
+            // undisplaced surface. Start at the top of the shell, where the ray is outside the surface
+            // by construction, and step inward; the crossing is what this pixel actually sees.
+            float s        = h_hi / v_dot_n;
+            float ds       = (h_hi - h_lo) / (v_dot_n * float(PARALLAX_STEPS));
+            vec2  prev_uv  = project_uv(model_pos.xyz + view_dir * s, triangle_normal);
+            float prev_gap = h_hi - amp * (H_AT(prev_uv) - midlevel); // >= 0 by construction
+            for (int i = 0; i < PARALLAX_STEPS; ++i) {
+                s -= ds;
+                vec2  cur_uv = project_uv(model_pos.xyz + view_dir * s, triangle_normal);
+                float gap    = s * v_dot_n - amp * (H_AT(cur_uv) - midlevel);
+                if (gap <= 0.0) {
+                    // Crossed between the last two samples - interpolating the hit is what stops it
+                    // quantising to the step size, and so what keeps the step count affordable.
+                    uv = mix(prev_uv, cur_uv, clamp(prev_gap / max(prev_gap - gap, 1e-6), 0.0, 1.0));
+                    break;
+                }
+                prev_uv  = cur_uv;
+                prev_gap = gap;
+            }
+        }
 
         float hL = texture(height_tex, uv - vec2(height_tex_texel.x, 0.0)).r;
         float hR = texture(height_tex, uv + vec2(height_tex_texel.x, 0.0)).r;

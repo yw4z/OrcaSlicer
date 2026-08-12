@@ -41,41 +41,55 @@ void TextureDisplacementBakeJob::finalize(bool canceled, std::exception_ptr &ept
 
     Plater *plater = wxGetApp().plater();
 
-    Plater::TakeSnapshot snapshot(plater, _u8L("Bake texture displacement"), UndoRedo::SnapshotType::GizmoAction);
+    const auto commit = [this, plater]() {
+        ModelVolume *volume = get_model_volume(m_input.volume_id, plater->model().objects);
+        if (volume == nullptr)
+            return;
 
-    ModelVolume *volume = get_model_volume(m_input.volume_id, plater->model().objects);
-    if (volume == nullptr)
-        return;
+        volume->set_mesh(std::move(m_result));
+        volume->set_new_unique_id();
+        volume->calculate_convex_hull();
 
-    volume->set_mesh(std::move(m_result));
-    volume->set_new_unique_id();
-    volume->calculate_convex_hull();
+        // Clear the paint mask of every layer that was actually baked so a repeat bake (or the paint
+        // overlay) doesn't act on triangles that no longer represent the same unbaked surface. The
+        // texture layer definitions themselves (and paint outside the baked area, if any) are left
+        // untouched so the user can keep sculpting with the same textures.
+        for (const TextureDisplacementLayer &layer : m_input.layers)
+            if (!layer.empty() && layer.slot >= 0 && layer.slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS))
+                volume->texture_displacement_facet(layer.slot).reset();
 
-    // Clear the paint mask of every layer that was actually baked so a repeat bake (or the paint
-    // overlay) doesn't act on triangles that no longer represent the same unbaked surface. The
-    // texture layer definitions themselves (and paint outside the baked area, if any) are left
-    // untouched so the user can keep sculpting with the same textures.
-    for (const TextureDisplacementLayer &layer : m_input.layers)
-        if (!layer.empty() && layer.slot >= 0 && layer.slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS))
-            volume->texture_displacement_facet(layer.slot).reset();
+        ModelObject *object = volume->get_object();
+        if (object == nullptr)
+            return;
 
-    ModelObject *object = volume->get_object();
-    if (object == nullptr)
-        return;
+        if (ObjectList *obj_list = wxGetApp().obj_list()) {
+            const ModelObjectPtrs &objs = plater->model().objects;
+            auto it = std::find(objs.begin(), objs.end(), object);
+            if (it != objs.end())
+                obj_list->update_info_items(size_t(it - objs.begin()));
+        }
 
-    if (ObjectList *obj_list = wxGetApp().obj_list()) {
-        const ModelObjectPtrs &objs = plater->model().objects;
-        auto it = std::find(objs.begin(), objs.end(), object);
-        if (it != objs.end())
-            obj_list->update_info_items(size_t(it - objs.begin()));
+        plater->changed_object(*object);
+    };
+
+    // Standard mode's Bake is remesh -> subdivide -> displace under a single snapshot, and this job runs
+    // long after that snapshot's scope has closed. Adding one here would put an undo step *between* the
+    // subdivision and the displacement: the first Undo would land on a mesh carrying every added
+    // triangle and no relief at all, and pressing Bake again from there would subdivide that mesh a
+    // second time. So the caller says who owns the undo step.
+    if (m_input.take_snapshot) {
+        Plater::TakeSnapshot snapshot(plater, _u8L("Bake texture displacement"), UndoRedo::SnapshotType::GizmoAction);
+        commit();
+    } else {
+        commit();
     }
-
-    plater->changed_object(*object);
 }
 
-void queue_texture_displacement_bake(const ModelVolume &volume, std::function<void()> on_finished)
+void queue_texture_displacement_bake(const ModelVolume &volume, std::function<void()> on_finished,
+                                     bool take_snapshot)
 {
     TextureDisplacementBakeInput input;
+    input.take_snapshot = take_snapshot;
     input.volume_id  = volume.id();
     input.base_mesh  = volume.mesh().its;
     input.layers     = volume.texture_displacement_layers;

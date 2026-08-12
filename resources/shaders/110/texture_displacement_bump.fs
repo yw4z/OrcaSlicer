@@ -5,6 +5,9 @@
 
 #define INTENSITY_CORRECTION 0.6
 
+#define PARALLAX_STEPS 24
+#define H_AT(uv) texture2D(height_tex, uv).r
+
 const vec3 LIGHT_TOP_DIR = vec3(-0.4574957, 0.4574957, 0.7624929);
 #define LIGHT_TOP_DIFFUSE    (0.8 * INTENSITY_CORRECTION)
 #define LIGHT_TOP_SPECULAR   (0.125 * INTENSITY_CORRECTION)
@@ -30,6 +33,8 @@ uniform float      tiling_scale;
 uniform float      rotation_rad;
 uniform vec2       uv_offset;
 uniform bool       invert;
+uniform float      midlevel;      // the height that means "don't move"; needed by the parallax step
+uniform vec3       eye_model_pos; // camera position in this volume's local space, for the view ray
 uniform bool       use_vertex_uv;
 // 2x3 affine (lin = (m00, m01, m10, m11), tr = (m02, m12)) applied to the dragged island's uv; see the
 // 140 variant. Identity when nothing is dragged.
@@ -96,9 +101,49 @@ void main()
         if (abs(det) > 1e-12)
             triangle_normal = normalize(triangle_normal - (dHdx * R1 + dHdy * R2) / det);
     } else if (weight > 0.0) {
-        vec2 uv = project_uv(model_pos.xyz, triangle_normal);
         vec3 t, b;
         projection_axes(triangle_normal, t, b);
+
+        // Parallax occlusion mapping: march the view ray through the height shell and shade at the
+        // first point where it drops below the displaced surface (see header).
+        float amp      = (invert ? -1.0 : 1.0) * depth_mm * clamp(weight, 0.0, 1.0);
+        vec3  view_dir = normalize(eye_model_pos - model_pos.xyz);
+        float v_dot_n  = dot(view_dir, triangle_normal);
+        vec2  uv       = project_uv(model_pos.xyz, triangle_normal);
+
+        // The shell the displaced surface lives inside, as signed heights along the normal. Taken from
+        // both ends of h in [0, 1] so it stays correct for an inverted layer or a raised midlevel,
+        // where the surface sits *below* the undisplaced one.
+        float h_end_a = amp * (0.0 - midlevel);
+        float h_end_b = amp * (1.0 - midlevel);
+        float h_hi    = max(h_end_a, h_end_b);
+        float h_lo    = min(h_end_a, h_end_b);
+        // How far, in mm, sweeping the ray across the shell slides the sample point sideways. Below half
+        // a texel there is no parallax to find and the march would be pure cost - which is the common
+        // case of looking straight down at a surface.
+        float sweep = length(view_dir - triangle_normal * v_dot_n) * (h_hi - h_lo) / max(v_dot_n, 1e-4);
+        if (v_dot_n > 0.05 && sweep > 0.5 * tiling_scale * height_tex_texel.x) {
+            // A point at ray parameter s (model_pos + view_dir * s) sits at height s * v_dot_n above the
+            // undisplaced surface. Start at the top of the shell, where the ray is outside the surface
+            // by construction, and step inward; the crossing is what this pixel actually sees.
+            float s        = h_hi / v_dot_n;
+            float ds       = (h_hi - h_lo) / (v_dot_n * float(PARALLAX_STEPS));
+            vec2  prev_uv  = project_uv(model_pos.xyz + view_dir * s, triangle_normal);
+            float prev_gap = h_hi - amp * (H_AT(prev_uv) - midlevel); // >= 0 by construction
+            for (int i = 0; i < PARALLAX_STEPS; ++i) {
+                s -= ds;
+                vec2  cur_uv = project_uv(model_pos.xyz + view_dir * s, triangle_normal);
+                float gap    = s * v_dot_n - amp * (H_AT(cur_uv) - midlevel);
+                if (gap <= 0.0) {
+                    // Crossed between the last two samples - interpolating the hit is what stops it
+                    // quantising to the step size, and so what keeps the step count affordable.
+                    uv = mix(prev_uv, cur_uv, clamp(prev_gap / max(prev_gap - gap, 1e-6), 0.0, 1.0));
+                    break;
+                }
+                prev_uv  = cur_uv;
+                prev_gap = gap;
+            }
+        }
 
         float hL = texture2D(height_tex, uv - vec2(height_tex_texel.x, 0.0)).r;
         float hR = texture2D(height_tex, uv + vec2(height_tex_texel.x, 0.0)).r;
