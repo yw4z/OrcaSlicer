@@ -218,7 +218,6 @@ void PluginPages::initialize(Notebook* parent)
         return;
 
     m_visible_page_count = GUI::wxGetApp().app_config->get_plugin_pages_visible_count();
-    m_notebook_base_index = static_cast<size_t>(m_parent->GetPageCount());
 
     m_image_list = std::make_unique<wxImageList>(20, 20, true, 0);
     m_parent->SetImageList(m_image_list.get());
@@ -238,7 +237,6 @@ void PluginPages::shutdown()
         m_parent->SetImageList(nullptr);
     m_image_list.reset();
     m_parent = nullptr;
-    m_notebook_base_index = 0;
 }
 
 void PluginPages::set_visible_page_count(int count)
@@ -369,6 +367,10 @@ void PluginPages::remove_page(const PluginCapabilityId& id)
         }
     }
 
+    const int idx = m_parent != nullptr ? m_parent->FindPage(page) : wxNOT_FOUND;
+    if (idx != wxNOT_FOUND)
+        m_parent->RemovePage(idx);
+
     relayout();
     page->Destroy();
 }
@@ -394,8 +396,11 @@ void PluginPages::relayout()
 
     wxString id_to_reselect = m_parent->GetSelectedPageName();
 
-    while (m_parent->GetPageCount() > m_notebook_base_index)
-        m_parent->RemovePage(m_parent->GetPageCount() - 1);
+    for (const auto& [id, page] : m_pages) {
+        const int idx = m_parent->FindPage(page);
+        if (idx != wxNOT_FOUND)
+            m_parent->RemovePage(idx);
+    }
 
     const int visible_slots = std::max(1, m_visible_page_count);
     const bool need_overflow = static_cast<int>(m_order.size()) > visible_slots;

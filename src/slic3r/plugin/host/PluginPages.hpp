@@ -69,19 +69,19 @@ public:
     int get_visible_page_count() const { return m_visible_page_count; }
     void set_visible_page_count(int count);
 
+    void relayout();
+
 private:
     std::shared_ptr<PagesPluginCapability> get_pages_cap(const PluginCapabilityId& id, bool is_enabled) const;
     bool create_page(const PluginCapabilityId& id);
     void remove_page(const PluginCapabilityId& id);
 
-    void relayout();
     void show_overflow_menu();
     static wxString page_tab_id(const PluginCapabilityId& id);
 
     std::map<PluginCapabilityId, PluginPage*> m_pages;
     std::vector<PluginCapabilityId> m_order;
     Notebook* m_parent{nullptr};
-    size_t m_notebook_base_index{0};
 
     std::unique_ptr<wxImageList> m_image_list;
     int m_visible_page_count{0};

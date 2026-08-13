@@ -1457,6 +1457,7 @@ void MainFrame::show_device(bool should_use_native) {
 #endif // _MSW_DARK_MODE
 
         fit_tab_labels(); // ORCA on printer change
+        m_plugin_pages.relayout(); // keep plugin tabs after the native tabs just mutated above
 
         return;
     }
@@ -1545,6 +1546,7 @@ void MainFrame::show_device(bool should_use_native) {
         }
     }
     fit_tab_labels(); // ORCA on printer change
+    m_plugin_pages.relayout(); // keep plugin tabs after the native tabs just mutated above
 }
 
 void MainFrame::fit_tab_labels()
