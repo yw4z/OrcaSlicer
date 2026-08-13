@@ -1095,7 +1095,7 @@ function(orcaslicer_copy_dlls target config postfix output_dlls)
 
 endfunction()
 
-function(bambustudio_copy_sos target config postfix output_sos)
+function(orcaslicer_copy_sos target config postfix output_sos)
 
     set(_out_dir "${CMAKE_CURRENT_BINARY_DIR}")
     message ("set out_dir to CMAKE_CURRENT_BINARY_DIR: ${_out_dir}")
