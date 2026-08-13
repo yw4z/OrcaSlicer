@@ -83,6 +83,10 @@ copy_shared_object_to_dir() {
     src_real="$(readlink -f "$src")"
     dst_name="$(basename "$src_real")"
     mkdir -p "$dst_dir"
+    if [ "$src_real" = "$dst_dir/$dst_name" ]; then
+        # Already bundled; the dependency resolved from the bundle directory.
+        return 0
+    fi
     cp -fL "$src_real" "$dst_dir/$dst_name"
 
     if [ -L "$src" ]; then
@@ -101,7 +105,7 @@ bundle_dependency_closure() {
     shift
 
     local -a queue=("$@")
-    local target dep dep_real copied_path
+    local target dep dep_real dep_key copied_path
     declare -A seen=()
     # Dependencies are resolved with ldd, which only searches the default
     # loader path. Deps-built shared libraries (e.g. the FFmpeg stack) are not
@@ -133,11 +137,17 @@ bundle_dependency_closure() {
                 continue
             fi
 
-            if [ -n "${seen[$dep_real]}" ]; then
+            # Key dedup on the bundled file rather than the source path: once
+            # ldd resolves a library from the bundle directory (via the
+            # LD_LIBRARY_PATH above) its path is a dst_dir path, which differs
+            # from the source path the first resolution returned. Keying on
+            # the source path would re-copy the file onto itself.
+            dep_key="$dst_dir/$(basename "$dep_real")"
+            if [ -n "${seen[$dep_key]}" ]; then
                 continue
             fi
 
-            seen[$dep_real]=1
+            seen[$dep_key]=1
             copy_shared_object_to_dir "$dep" "$dst_dir"
             search_dirs+=("$(dirname "$dep_real")")
             copied_path="$dst_dir/$(basename "$dep_real")"
