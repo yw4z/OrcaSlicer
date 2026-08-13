@@ -604,6 +604,13 @@ void wxMediaCtrl2::DoSetSize(int x, int y, int width, int height, int sizeFlags)
 {
     wxWindow::DoSetSize(x, y, width, height, sizeFlags);
     if (sizeFlags & wxSIZE_USE_EXISTING) return;
+#if defined(__LINUX__) && defined(__WXGTK__)
+    // Keep the native GStreamer video window filling the client area.
+    if (m_gtk_video_window) {
+        const wxSize client_size = GetClientSize();
+        m_gtk_video_window->SetSize(0, 0, client_size.GetWidth(), client_size.GetHeight());
+    }
+#endif
     wxMediaCtrl_OnSize(this, m_video_size, width, height);
 }
 

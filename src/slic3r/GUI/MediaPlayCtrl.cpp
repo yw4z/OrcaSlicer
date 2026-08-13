@@ -828,12 +828,6 @@ bool MediaPlayCtrl::get_stream_url(std::string *url)
 
 void wxMediaCtrl_OnSize(wxWindow * ctrl, wxSize const & videoSize, int width, int height)
 {
-#if defined(__LINUX__) && defined(__WXGTK__)
-    if (m_gtk_video_window) {
-        const wxSize client_size = GetClientSize();
-        m_gtk_video_window->SetSize(0, 0, client_size.GetWidth(), client_size.GetHeight());
-    }
-#endif
     wxSize size = videoSize;
     if (!size.IsFullySpecified()) size = {16, 9};
     int maxHeight = (width * size.GetHeight() + size.GetHeight() - 1) / size.GetWidth();
