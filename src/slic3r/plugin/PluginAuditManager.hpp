@@ -5,6 +5,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/filesystem.hpp>
@@ -19,8 +21,21 @@ struct AuditDecision {
 struct AuditViolation {
     std::string            plugin_key;
     std::string            event_name;
-    boost::filesystem::path  path;
     std::string            reason;
+};
+
+// The set of CPython audit events PluginAuditManager recognizes, grouped by the kind of
+// operation they represent. None means the event isn't one audit_hook() acts on at all.
+enum class AuditEventCategory {
+    None,
+    FsRead,
+    FsReadWrite,
+    FsCreate,
+    FsDelete,
+    Http,
+    Socket,
+    ProcessCreate,
+    Threading,
 };
 
 // Returns true if candidate resolves to a path inside allowed_root.
@@ -94,6 +109,16 @@ public:
     void clear_last_violation();
     bool last_violation(AuditViolation& violation) const;
 
+    // --- call-site cascade cache ---
+    // A single plugin action often fires several nested CPython audit events as it passes
+    // through stdlib layers (urllib.request calling http.client calling socket, for example).
+    // Once the user approves one event, every stdlib frame still on the stack for that call
+    // is recorded here by (filename, function, first line) identity. A later event whose own
+    // ancestor chain still contains one of those frames is the same logical action seen from
+    // a deeper layer, so it is auto-approved instead of prompting again.
+    bool has_approved_ancestor(const std::string& plugin_key, const std::vector<std::string>& call_site_ids) const;
+    void record_approved_call_sites(const std::string& plugin_key, const std::vector<std::string>& call_site_ids);
+
     bool verbose_events = true;
 
 private:
@@ -110,10 +135,11 @@ private:
     static thread_local bool                           m_has_last_violation;
     static thread_local AuditViolation                 m_last_violation;
 
-    // mutable: is_denied_filename() is a const query that must lock.
+    // mutable: is_denied_filename() and has_approved_ancestor() are const queries that must lock.
     mutable std::mutex m_mutex;
     std::vector<boost::filesystem::path> m_global_allowed_roots;
     std::vector<std::string>             m_denied_filenames;
+    std::unordered_map<std::string, std::unordered_set<std::string>> m_approved_call_sites; // plugin_key -> call-site ids
 };
 
 // RAII guard that sets the current plugin key and capability name, restoring the previous

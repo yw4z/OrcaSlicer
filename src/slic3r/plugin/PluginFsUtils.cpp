@@ -788,18 +788,18 @@ bool read_install_state(const boost::filesystem::path& plugin_dir, PluginInstall
 
         if (state.contains("permissions") && state["permissions"].is_object()) {
             const auto& permissions = state["permissions"];
-            if (permissions.contains("networking") && permissions["networking"].is_array())
-                for (const auto& host : permissions["networking"])
-                    if (host.is_string())
-                        parsed.permissions.networking.push_back(host.get<std::string>());
-            if (permissions.contains("fs_read") && permissions["fs_read"].is_array())
-                for (const auto& path : permissions["fs_read"])
-                    if (path.is_string())
-                        parsed.permissions.fs_read.push_back(path.get<std::string>());
-            if (permissions.contains("fs_write") && permissions["fs_write"].is_array())
-                for (const auto& path : permissions["fs_write"])
-                    if (path.is_string())
-                        parsed.permissions.fs_write.push_back(path.get<std::string>());
+            auto read_string_list = [&permissions](const char* key, std::vector<std::string>& out) {
+                if (!permissions.contains(key) || !permissions[key].is_array())
+                    return;
+                for (const auto& entry : permissions[key])
+                    if (entry.is_string())
+                        out.push_back(entry.get<std::string>());
+            };
+            read_string_list("fs_read", parsed.permissions.fs_read);
+            read_string_list("fs_readwrite", parsed.permissions.fs_readwrite);
+            read_string_list("network_http", parsed.permissions.network_http);
+            read_string_list("network_socket", parsed.permissions.network_socket);
+            read_string_list("process", parsed.permissions.process);
         }
 
         if (state.contains("enabled") && state["enabled"].is_boolean())
@@ -838,9 +838,11 @@ bool write_install_state(const boost::filesystem::path& plugin_dir, const Plugin
         json["cloud_uuid"] = state.cloud_uuid;
 
     json["permissions"] = {
-        {"networking", state.permissions.networking},
         {"fs_read", state.permissions.fs_read},
-        {"fs_write", state.permissions.fs_write},
+        {"fs_readwrite", state.permissions.fs_readwrite},
+        {"network_http", state.permissions.network_http},
+        {"network_socket", state.permissions.network_socket},
+        {"process", state.permissions.process},
     };
 
     nlohmann::json capabilities = nlohmann::json::array();

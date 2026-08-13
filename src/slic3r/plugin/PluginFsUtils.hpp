@@ -83,9 +83,11 @@ inline nlohmann::json py_to_json(const pybind11::handle& o)
 
 struct PluginPermissions
 {
-    std::vector<std::string> networking;
     std::vector<std::string> fs_read;
-    std::vector<std::string> fs_write;
+    std::vector<std::string> fs_readwrite;
+    std::vector<std::string> network_http;
+    std::vector<std::string> network_socket;
+    std::vector<std::string> process;
 };
 
 struct PluginInstallState {
