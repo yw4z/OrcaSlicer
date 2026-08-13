@@ -96,12 +96,23 @@ copy_shared_object_to_dir() {
 }
 
 bundle_dependency_closure() {
-    local dst_dir="$1"
+    local dst_dir
+    dst_dir="$(cd -- "$1" && pwd)"
     shift
 
     local -a queue=("$@")
     local target dep dep_real copied_path
     declare -A seen=()
+    # Dependencies are resolved with ldd, which only searches the default
+    # loader path. Deps-built shared libraries (e.g. the FFmpeg stack) are not
+    # installed there and carry no RUNPATH of their own, so once copied into
+    # the bundle ldd can no longer resolve one sibling from another
+    # (libavcodec -> libavutil) and reports it as missing. Extend the loader
+    # path with the bundle directory plus the source directories of files
+    # already bundled, so every library that was resolved once keeps resolving
+    # for its own dependencies. The audit script does the same
+    # (scripts/check_appimage_libs.sh).
+    local -a search_dirs=("$dst_dir")
 
     while [ ${#queue[@]} -gt 0 ]; do
         target="${queue[0]}"
@@ -128,11 +139,12 @@ bundle_dependency_closure() {
 
             seen[$dep_real]=1
             copy_shared_object_to_dir "$dep" "$dst_dir"
+            search_dirs+=("$(dirname "$dep_real")")
             copied_path="$dst_dir/$(basename "$dep_real")"
             if [ -e "$copied_path" ]; then
                 queue+=("$copied_path")
             fi
-        done < <(appimage_list_direct_dependencies "$target")
+        done < <(LD_LIBRARY_PATH="$(IFS=:; printf '%s' "${search_dirs[*]}")${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" appimage_list_direct_dependencies "$target")
     done
 }
 
