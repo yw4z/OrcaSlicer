@@ -794,8 +794,6 @@ else ()
     list(APPEND SLIC3R_GUI_SOURCES
             GUI/AVVideoDecoder.cpp
             GUI/AVVideoDecoder.hpp
-            GUI/wxMediaCtrl2.cpp
-            GUI/wxMediaCtrl2.h
             GUI/wxMediaCtrl3.cpp
             GUI/wxMediaCtrl3.h
         )

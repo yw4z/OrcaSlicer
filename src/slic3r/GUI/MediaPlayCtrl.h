@@ -8,14 +8,7 @@
 #ifndef MediaPlayCtrl_h
 #define MediaPlayCtrl_h
 
-#define USE_WX_MEDIA_CTRL_2 0
-
-#if USE_WX_MEDIA_CTRL_2
-#include "wxMediaCtrl2.h"
-#define wxMediaCtrl3 wxMediaCtrl2
-#else
 #include "wxMediaCtrl3.h"
-#endif
 
 #include <wx/panel.h>
 
