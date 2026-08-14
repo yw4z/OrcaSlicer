@@ -22,10 +22,13 @@ if (MSVC)
 
 else ()
     if (APPLE)
-        set(_minos_cmd 
-            "CFLAGS=-mmacosx-version-min=${DEP_OSX_TARGET}"
-            "LDFLAGS=-mmacosx-version-min=${DEP_OSX_TARGET}"
+        set(_minos_cmd
+            "--extra-cflags=-mmacosx-version-min=${DEP_OSX_TARGET}"
+            "--extra-ldflags=-mmacosx-version-min=${DEP_OSX_TARGET}"
             )
+        # Static FFmpeg: nothing to bundle into the .app, no rpath handling.
+        # Shared flags must come AFTER --enable-shared below so they win.
+        set(_link_cmd --enable-static --disable-shared)
         if (IS_CROSS_COMPILE)
             set(_cross_cmd --enable-cross-compile)
             set(_pic_cmd --enable-pic)
@@ -37,7 +40,9 @@ else ()
                 set(_cc_cmd "--cc=clang -arch x86_64")
             endif()
         endif()
-    endif()
+    else ()
+        set(_link_cmd --enable-shared)
+    endif ()
 
     set(_build_j -j)
     if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL})
@@ -55,6 +60,8 @@ else ()
             ${_cc_cmd}
             "--prefix=${DESTDIR}"
             --enable-shared
+            ${_link_cmd}
+            ${_minos_cmd}
             --disable-doc
             --enable-small
             --disable-outdevs
