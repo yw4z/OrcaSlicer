@@ -63,23 +63,13 @@ function(orcaslicer_copy_test_dlls)
         endif()
 
         set_property(TARGET ${_TEST_NAME}_tests PROPERTY BUILD_RPATH "$ORIGIN")
-        add_custom_command(TARGET ${_TEST_NAME}_tests POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_PREFIX_PATH}/lib/libavcodec.so
-                ${CMAKE_PREFIX_PATH}/lib/libavcodec.so.61
-                ${CMAKE_PREFIX_PATH}/lib/libavcodec.so.61.3.100
-                ${CMAKE_PREFIX_PATH}/lib/libavutil.so
-                ${CMAKE_PREFIX_PATH}/lib/libavutil.so.59
-                ${CMAKE_PREFIX_PATH}/lib/libavutil.so.59.8.100
-                ${CMAKE_PREFIX_PATH}/lib/libswscale.so
-                ${CMAKE_PREFIX_PATH}/lib/libswscale.so.8
-                ${CMAKE_PREFIX_PATH}/lib/libswscale.so.8.1.100
-                ${CMAKE_PREFIX_PATH}/lib/libswresample.so
-                ${CMAKE_PREFIX_PATH}/lib/libswresample.so.5
-                ${CMAKE_PREFIX_PATH}/lib/libswresample.so.5.1.100
-                "$<TARGET_FILE_DIR:${_TEST_NAME}_tests>"
-            COMMENT "Copying FFmpeg libraries next to test executable"
-            VERBATIM)
+        set(_configs ${CMAKE_CONFIGURATION_TYPES})
+        if (NOT _configs)
+            set(_configs "${CMAKE_BUILD_TYPE}")
+        endif()
+        foreach(_cfg IN LISTS _configs)
+            orcaslicer_copy_sos(${_TEST_NAME}_tests "${_cfg}" "" _unused_sos)
+        endforeach()
     endif()
 endfunction()
 

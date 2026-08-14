@@ -1097,8 +1097,16 @@ endfunction()
 
 function(orcaslicer_copy_sos target config postfix output_sos)
 
-    set(_out_dir "${CMAKE_CURRENT_BINARY_DIR}")
-    message ("set out_dir to CMAKE_CURRENT_BINARY_DIR: ${_out_dir}")
+    get_property(_is_multi GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    get_target_property(_alt_out_dir ${target} RUNTIME_OUTPUT_DIRECTORY)
+
+    if (_alt_out_dir)
+        set(_out_dir "${_alt_out_dir}")
+    elseif (_is_multi)
+        set(_out_dir "${CMAKE_CURRENT_BINARY_DIR}/${config}")
+    else ()
+        set(_out_dir "${CMAKE_CURRENT_BINARY_DIR}")
+    endif ()
 
     file(COPY ${CMAKE_PREFIX_PATH}/lib/libavcodec.so
             ${CMAKE_PREFIX_PATH}/lib/libavcodec.so.61
@@ -1114,7 +1122,7 @@ function(orcaslicer_copy_sos target config postfix output_sos)
             ${CMAKE_PREFIX_PATH}/lib/libswresample.so.5.1.100
          DESTINATION ${_out_dir})
 
-    set(${output_dlls}
+    set(${output_sos}
         ${_out_dir}/libavcodec.so
         ${_out_dir}/libavcodec.so.61
         ${_out_dir}/libavcodec.so.61.3.100
