@@ -784,8 +784,9 @@ if (APPLE)
             GUI/DeepLinkHandlerMac.mm
             GUI/DeepLinkHandlerMac.h
             GUI/GUI_UtilsMac.mm
-            GUI/wxMediaCtrl2.mm
-            GUI/wxMediaCtrl2.h
+            GUI/AVVideoDecoder.cpp
+            GUI/AVVideoDecoder.hpp
+            GUI/wxMediaCtrl3.cpp
             GUI/wxMediaCtrl3.h
         )
     FIND_LIBRARY(DISKARBITRATION_LIBRARY DiskArbitration)
@@ -903,7 +904,15 @@ if (SLIC3R_PCH AND NOT SLIC3R_SYNTAXONLY)
     add_precompiled_header(libslic3r_gui pchheader.hpp FORCEINCLUDE)
 endif ()
 
-if (NOT APPLE)
+if (APPLE)
+    # Static FFmpeg from the deps install: nothing to bundle into the .app,
+    # no rpath/install_name handling. Order matters: avcodec -> swscale -> avutil.
+    find_library(LIBAVCODEC_LIBRARY NAMES libavcodec.a PATHS ${CMAKE_PREFIX_PATH}/lib NO_DEFAULT_PATH)
+    find_library(LIBSWSCALE_LIBRARY NAMES libswscale.a PATHS ${CMAKE_PREFIX_PATH}/lib NO_DEFAULT_PATH)
+    find_library(LIBAVUTIL_LIBRARY NAMES libavutil.a PATHS ${CMAKE_PREFIX_PATH}/lib NO_DEFAULT_PATH)
+    target_link_libraries(libslic3r_gui ${LIBAVCODEC_LIBRARY} ${LIBSWSCALE_LIBRARY} ${LIBAVUTIL_LIBRARY})
+    target_include_directories(libslic3r_gui SYSTEM PRIVATE ${CMAKE_PREFIX_PATH}/include)
+else ()
     pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
         libavcodec
         libswscale

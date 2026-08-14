@@ -10,7 +10,7 @@
 #include <shellapi.h>
 #endif
 
-//wxDEFINE_EVENT(EVT_MEDIA_CTRL_STAT, wxCommandEvent);
+wxDEFINE_EVENT(EVT_MEDIA_CTRL_STAT, wxCommandEvent);
 
 BEGIN_EVENT_TABLE(wxMediaCtrl3, wxWindow)
 

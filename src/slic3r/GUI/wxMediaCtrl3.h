@@ -15,13 +15,6 @@ wxDECLARE_EVENT(EVT_MEDIA_CTRL_STAT, wxCommandEvent);
 
 void wxMediaCtrl_OnSize(wxWindow * ctrl, wxSize const & videoSize, int width, int height);
 
-#ifdef __WXMAC__
-
-#include "wxMediaCtrl2.h"
-#define wxMediaCtrl3 wxMediaCtrl2
-
-#else
-
 #define BAMBU_DYNAMIC
 #include <condition_variable>
 #include <thread>
@@ -88,7 +81,5 @@ private:
     std::condition_variable m_cond;
     std::thread m_thread;
 };
-
-#endif
 
 #endif /* wxMediaCtrl3_h */

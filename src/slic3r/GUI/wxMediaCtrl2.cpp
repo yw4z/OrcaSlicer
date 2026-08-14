@@ -98,8 +98,6 @@ public:
 };
 #endif
 
-wxDEFINE_EVENT(EVT_MEDIA_CTRL_STAT, wxCommandEvent);
-
 wxMediaCtrl2::wxMediaCtrl2(wxWindow *parent)
 {
 #if defined(__LINUX__) && defined(__WXGTK__)
