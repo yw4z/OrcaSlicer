@@ -27,7 +27,6 @@ else ()
             "--extra-ldflags=-mmacosx-version-min=${DEP_OSX_TARGET}"
             )
         # Static FFmpeg: nothing to bundle into the .app, no rpath handling.
-        # Shared flags must come AFTER --enable-shared below so they win.
         set(_link_cmd --enable-static --disable-shared)
         if (IS_CROSS_COMPILE)
             set(_cross_cmd --enable-cross-compile)
@@ -59,7 +58,6 @@ else ()
             ${_arch_cmd}
             ${_cc_cmd}
             "--prefix=${DESTDIR}"
-            --enable-shared
             ${_link_cmd}
             ${_minos_cmd}
             --disable-doc
