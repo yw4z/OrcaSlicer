@@ -1731,11 +1731,9 @@ int MachineObject::command_ams_user_settings(bool start_read_opt, bool tray_read
 
 int MachineObject::command_ams_calibrate(int ams_id)
 {
-    if (!m_agent) return -1;
-    int rtn = m_agent->command_ams_calibrate(get_dev_id(), ams_id, MachineObject::m_sequence_id++, is_lan_mode_printer());
-    if (rtn == ORCA_NETWORK_ERR_CMD_NOT_SUPPORTED || rtn == ORCA_NETWORK_ERR_CAP_NOT_AVAILABLE)
-        show_unsupported_dlg(rtn);
-    return rtn;
+    std::string gcode_cmd = (boost::format("M620 C%1% \n") % ams_id).str();
+    BOOST_LOG_TRIVIAL(trace) << "ams_debug: gcode_cmd" << gcode_cmd;
+    return this->publish_gcode(gcode_cmd);
 }
 
 int MachineObject::command_ams_filament_settings(int ams_id, int slot_id, std::string filament_id, std::string setting_id, std::string tray_color, std::string tray_type, int nozzle_temp_min, int nozzle_temp_max)
@@ -1773,11 +1771,9 @@ int MachineObject::command_ams_filament_settings(int ams_id, int slot_id, std::s
 
 int MachineObject::command_ams_refresh_rfid(std::string tray_id)
 {
-    if (!m_agent) return -1;
-    int rtn = m_agent->command_ams_refresh_rfid(get_dev_id(), tray_id, MachineObject::m_sequence_id++, is_lan_mode_printer());
-    if (rtn == ORCA_NETWORK_ERR_CMD_NOT_SUPPORTED || rtn == ORCA_NETWORK_ERR_CAP_NOT_AVAILABLE)
-        show_unsupported_dlg(rtn);
-    return rtn;
+    std::string gcode_cmd = (boost::format("M620 R%1% \n") % tray_id).str();
+    BOOST_LOG_TRIVIAL(trace) << "ams_debug: gcode_cmd" << gcode_cmd;
+    return this->publish_gcode(gcode_cmd);
 }
 
 int MachineObject::command_ams_refresh_rfid2(int ams_id,  int slot_id)
@@ -1793,11 +1789,9 @@ int MachineObject::command_ams_refresh_rfid2(int ams_id,  int slot_id)
 
 int MachineObject::command_ams_select_tray(std::string tray_id)
 {
-    if (!m_agent) return -1;
-    int rtn = m_agent->command_ams_select_tray(get_dev_id(), tray_id, MachineObject::m_sequence_id++, is_lan_mode_printer());
-    if (rtn == ORCA_NETWORK_ERR_CMD_NOT_SUPPORTED || rtn == ORCA_NETWORK_ERR_CAP_NOT_AVAILABLE)
-        show_unsupported_dlg(rtn);
-    return rtn;
+    std::string gcode_cmd = (boost::format("M620 P%1% \n") % tray_id).str();
+    BOOST_LOG_TRIVIAL(trace) << "ams_debug: gcode_cmd" << gcode_cmd;
+    return this->publish_gcode(gcode_cmd);
 }
 
 int MachineObject::command_ams_control(std::string action)
