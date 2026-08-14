@@ -19,48 +19,6 @@ void wxMediaCtrl_OnSize(wxWindow * ctrl, wxSize const & videoSize, int width, in
 typedef struct _GstElement GstElement;
 #endif
 
-#ifdef __WXMAC__
-
-class wxMediaCtrl2 : public wxWindow
-{
-public:
-    wxMediaCtrl2(wxWindow * parent);
-
-    ~wxMediaCtrl2();
-
-    void Load(wxURI url);
-
-    void Play();
-
-    void Stop();
-
-    void SetIdleImage(wxString const & image);
-
-    wxMediaState GetState() const;
-
-    wxSize GetVideoSize() const;
-
-    int GetLastError() const { return m_error; }
-
-    static inline const wxMediaState MEDIASTATE_BUFFERING = static_cast<wxMediaState>(6);
-
-protected:
-    void DoSetSize(int x, int y, int width, int height, int sizeFlags) override;
-
-    static void bambu_log(void const *ctx, int level, char const *msg);
-
-    void NotifyStopped();
-
-private:
-    void create_player();
-    void * m_player = nullptr;
-    wxMediaState m_state = wxMEDIASTATE_STOPPED;
-    int          m_error  = 0;
-    wxSize       m_video_size{16, 9};
-};
-
-#else
-
 class wxMediaCtrl2 : public wxMediaCtrl
 {
 public:
@@ -113,7 +71,5 @@ private:
     bool     m_loaded = false;
     wxSize   m_video_size{16, 9};
 };
-
-#endif
 
 #endif /* wxMediaCtrl2_h */
