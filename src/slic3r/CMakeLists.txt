@@ -38,6 +38,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/AuxiliaryDataViewModel.hpp
     GUI/AuxiliaryDialog.cpp
     GUI/AuxiliaryDialog.hpp
+    GUI/AVVideoDecoder.cpp
+    GUI/AVVideoDecoder.hpp
     GUI/Auxiliary.hpp
     GUI/BackgroundSlicingProcess.cpp
     GUI/BackgroundSlicingProcess.hpp
@@ -601,6 +603,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/WipeTowerDialog.cpp
     GUI/wxExtensions.cpp
     GUI/wxExtensions.hpp
+    GUI/wxMediaCtrl3.cpp
+    GUI/wxMediaCtrl3.h
     plugin/PythonInterpreter.cpp
     plugin/PythonInterpreter.hpp
     plugin/PythonPluginBridge.cpp
@@ -784,19 +788,8 @@ if (APPLE)
             GUI/DeepLinkHandlerMac.mm
             GUI/DeepLinkHandlerMac.h
             GUI/GUI_UtilsMac.mm
-            GUI/AVVideoDecoder.cpp
-            GUI/AVVideoDecoder.hpp
-            GUI/wxMediaCtrl3.cpp
-            GUI/wxMediaCtrl3.h
         )
     FIND_LIBRARY(DISKARBITRATION_LIBRARY DiskArbitration)
-else ()
-    list(APPEND SLIC3R_GUI_SOURCES
-            GUI/AVVideoDecoder.cpp
-            GUI/AVVideoDecoder.hpp
-            GUI/wxMediaCtrl3.cpp
-            GUI/wxMediaCtrl3.h
-        )
 endif ()
 
 set(ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY}")
