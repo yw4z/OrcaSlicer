@@ -799,12 +799,6 @@ else ()
         )
 endif ()
 
-if (UNIX AND NOT APPLE)
-    list(APPEND SLIC3R_GUI_SOURCES
-        GUI/Printer/gstbambusrc.c
-    )
-endif ()
-
 set(ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY}")
 string(STRIP "${ORCA_UPDATER_SIG_KEY_B64}" ORCA_UPDATER_SIG_KEY_B64)
 string(REPLACE "\n" "" ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY_B64}")
@@ -948,11 +942,6 @@ if (UNIX AND NOT APPLE)
         target_compile_definitions(libslic3r_gui PRIVATE wxHAVE_GDK_WAYLAND)
     endif ()
 
-    # We add GStreamer for bambu:/// support.
-    pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0)
-    pkg_check_modules(GST_BASE REQUIRED gstreamer-base-1.0)
-    target_link_libraries(libslic3r_gui ${GSTREAMER_LIBRARIES} ${GST_BASE_LIBRARIES})
-    target_include_directories(libslic3r_gui SYSTEM PRIVATE ${GSTREAMER_INCLUDE_DIRS} ${GST_BASE_INCLUDE_DIRS})
 endif ()
 
 # Add a definition so that we can tell we are compiling slic3r.
