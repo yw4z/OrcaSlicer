@@ -27,6 +27,16 @@ void seed_denied_names()
         mgr.add_denied_filename(name);
 }
 
+// Seed the keyword registry with the same list install_hook() uses. Same rationale as
+// seed_denied_names(): a process-singleton registry, seeded from the single shared source so
+// production and tests cannot drift apart.
+void seed_denied_keywords()
+{
+    PluginAuditManager& mgr = PluginAuditManager::instance();
+    for (const auto& keyword : PluginAuditManager::default_denied_path_keywords())
+        mgr.add_denied_path_keyword(keyword);
+}
+
 } // namespace
 
 TEST_CASE("Plugin audit denies app config and token filenames anywhere", "[audit]")
@@ -189,4 +199,140 @@ TEST_CASE("Plugin audit does not constrain non-plugin code", "[audit]")
     // ...but with no current plugin the access check allows it: denies constrain plugin code only.
     CHECK(mgr.check_open(conf.string(), "w").allowed);
     CHECK(mgr.check_open(conf.string(), "r").allowed);
+}
+
+TEST_CASE("Plugin audit denies secret/certificate/config-like paths by keyword", "[audit]")
+{
+    seed_denied_keywords();
+    const PluginAuditManager& mgr = PluginAuditManager::instance();
+
+    SECTION("a 'secrets' directory component is denied")
+    {
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/secrets/api_key.json")));
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/secret/token.txt")));
+    }
+
+    SECTION("a 'certificate(s)' directory component is denied")
+    {
+        CHECK(mgr.is_denied_path_keyword(fs::path("/resources/cert/slicer_base64.cer")));
+        CHECK(mgr.is_denied_path_keyword(fs::path("/resources/certificates/ca.pem")));
+    }
+
+    SECTION("a 'conf'/'config' directory or file component is denied")
+    {
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/conf/settings.json")));
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/config/settings.json")));
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/plugin.conf")));
+    }
+
+    SECTION("matching is case-insensitive")
+    {
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/SECRETS/token.txt")));
+        CHECK(mgr.is_denied_path_keyword(fs::path("/resources/CertBundle/ca.pem")));
+        CHECK(mgr.is_denied_path_keyword(fs::path("/plugin/CONFIG.JSON")));
+    }
+
+    SECTION("matching is not limited to the base name -- any ancestor component counts")
+    {
+        CHECK(mgr.is_denied_path_keyword(fs::path("/data/secrets/nested/deep/file.txt")));
+    }
+
+    SECTION("an unrelated path is not denied")
+    {
+        CHECK_FALSE(mgr.is_denied_path_keyword(fs::path("/plugin/output/model.gcode")));
+        CHECK_FALSE(mgr.is_denied_path_keyword(fs::path("/plugin/storage/state.json")));
+    }
+
+    SECTION("an empty path is not denied")
+    {
+        CHECK_FALSE(mgr.is_denied_path_keyword(fs::path()));
+    }
+}
+
+TEST_CASE("Plugin audit is_denied_path combines the filename and keyword registries", "[audit]")
+{
+    seed_denied_names();
+    seed_denied_keywords();
+    const PluginAuditManager& mgr = PluginAuditManager::instance();
+
+    SECTION("a filename-registry match is denied")
+    {
+        CHECK(mgr.is_denied_path(fs::path(SLIC3R_APP_KEY ".conf")));
+    }
+
+    SECTION("a keyword-registry match is denied")
+    {
+        CHECK(mgr.is_denied_path(fs::path("/plugin/secrets/token.txt")));
+    }
+
+    SECTION("a path matching neither registry is not denied")
+    {
+        CHECK_FALSE(mgr.is_denied_path(fs::path("/plugin/output/model.gcode")));
+    }
+}
+
+TEST_CASE("Plugin audit a read-only allowed root blocks writes but not reads", "[audit]")
+{
+    ScopedDataDir      data_dir_guard("plugin-audit-readonly");
+    ScopedResourcesDir resources_dir_guard("plugin-audit-readonly-resources");
+    seed_denied_names();
+    seed_denied_keywords();
+
+    PluginAuditManager& mgr = PluginAuditManager::instance();
+    mgr.add_global_allowed_root(resources_dir(), /*allow_write=*/false);
+
+    ScopedPluginAuditContext ctx("test_plugin", "");
+
+    const fs::path readonly_file = fs::path(resources_dir()) / "profiles" / "vendor.json";
+
+    SECTION("a read inside the read-only root is allowed")
+    {
+        CHECK(mgr.check_open(readonly_file.string(), "r").allowed);
+    }
+
+    SECTION("a write inside the read-only root is blocked")
+    {
+        AuditDecision decision = mgr.check_open(readonly_file.string(), "w");
+        CHECK_FALSE(decision.allowed);
+        CHECK(decision.reason == "outside allowed root");
+    }
+
+    SECTION("a create inside the read-only root is blocked")
+    {
+        AuditDecision decision = mgr.check_path_access(readonly_file, /*is_write=*/true);
+        CHECK_FALSE(decision.allowed);
+    }
+
+    SECTION("the bundled cert underneath the read-only root is denied even for reads")
+    {
+        const fs::path cert = fs::path(resources_dir()) / "cert" / "slicer_base64.cer";
+        AuditDecision  decision = mgr.check_open(cert.string(), "r");
+        CHECK_FALSE(decision.allowed);
+        CHECK(decision.reason == "denied path keyword");
+    }
+}
+
+TEST_CASE("Plugin audit a scoped root can also be registered read-only", "[audit]")
+{
+    ScopedDataDir data_dir_guard("plugin-audit-scoped-readonly");
+    seed_denied_names();
+    seed_denied_keywords();
+
+    PluginAuditManager& mgr = PluginAuditManager::instance();
+
+    const fs::path readonly_dir = fs::path(data_dir()) / "readonly_scope";
+    fs::create_directories(readonly_dir);
+
+    ScopedPluginAuditContext ctx("test_plugin", "");
+    mgr.add_scoped_allowed_root(readonly_dir, /*allow_write=*/false);
+
+    SECTION("a read inside the scoped read-only root is allowed")
+    {
+        CHECK(mgr.check_open((readonly_dir / "vendor.json").string(), "r").allowed);
+    }
+
+    SECTION("a write inside the scoped read-only root is blocked")
+    {
+        CHECK_FALSE(mgr.check_open((readonly_dir / "vendor.json").string(), "w").allowed);
+    }
 }

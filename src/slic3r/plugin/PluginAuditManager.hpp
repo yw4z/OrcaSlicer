@@ -24,6 +24,14 @@ struct AuditViolation {
     std::string            reason;
 };
 
+// A filesystem root a plugin may access while an audit context is active. allow_write is
+// false for a root that only grants reads (e.g. the bundled, shared resources folder) --
+// a write-shaped event never matches such a root, even though a read-shaped one does.
+struct AllowedRoot {
+    boost::filesystem::path path;
+    bool                    allow_write = true;
+};
+
 // The set of CPython audit events PluginAuditManager recognizes, grouped by the kind of
 // operation they represent. None means the event isn't one audit_hook() acts on at all.
 enum class AuditEventCategory {
@@ -65,8 +73,11 @@ public:
     void        clear_current_capability();
 
     // --- allowed-roots registry ---
-    void add_global_allowed_root(const boost::filesystem::path& root);
-    void add_scoped_allowed_root(const boost::filesystem::path& root);
+    // allow_write = false registers a read-only root: a read-shaped event inside it is allowed,
+    // but a write/create/delete-shaped event is not, so it falls through to the normal
+    // prompt-or-deny path instead.
+    void add_global_allowed_root(const boost::filesystem::path& root, bool allow_write = true);
+    void add_scoped_allowed_root(const boost::filesystem::path& root, bool allow_write = true);
 
     // --- denied-filenames registry ---
     // Filenames a plugin may never touch, in any directory, regardless of the enclosing allowed
@@ -89,10 +100,34 @@ public:
     // 8.3 short name is out of scope (see the design doc). This blocks direct access only.
     bool is_denied_filename(const boost::filesystem::path& candidate) const;
 
+    // --- denied-path-keyword registry ---
+    // Keywords that categorically deny a path if ANY of its components (directory or file
+    // name), not just the base name, contains one case-insensitively -- e.g. a "secrets"
+    // subfolder, a "certificates" folder, or a "conf"/"config" file anywhere the plugin can
+    // otherwise reach, including inside an allowed root. This is intentionally broader and
+    // fuzzier than the exact-name is_denied_filename registry: it exists to categorically rule
+    // out whole classes of sensitive paths (secrets, certificates, config) rather than name
+    // specific known files, at the cost of over-blocking an unrelated name that happens to
+    // contain the keyword -- the fail-safe direction, same rationale as is_denied_filename.
+    void add_denied_path_keyword(const std::string& keyword);
+
+    // The list install_hook() seeds into the keyword registry. Exposed so tests seed the exact
+    // same set without a live interpreter.
+    static std::vector<std::string> default_denied_path_keywords();
+
+    // True when any component of candidate's (canonicalized) path contains a registered
+    // keyword, case-insensitively.
+    bool is_denied_path_keyword(const boost::filesystem::path& candidate) const;
+
+    // is_denied_filename(candidate) || is_denied_path_keyword(candidate). Convenience for
+    // call sites that only need to know whether a path is categorically off-limits, not which
+    // specific rule fired.
+    bool is_denied_path(const boost::filesystem::path& candidate) const;
+
     // --- policy checks ---
-    // Shared core for every audited filesystem event.  The deny list is consulted above the
-    // allowed roots, so a denied filename is blocked even when the file sits inside data_dir(),
-    // which is itself a global allowed root.
+    // Shared core for every audited filesystem event.  The deny checks are consulted above the
+    // allowed roots, so a denied path is blocked even when it sits inside an allowed root (e.g.
+    // data_dir(), which is a global allowed root).
     AuditDecision check_path_access(const boost::filesystem::path& candidate, bool is_write);
     AuditDecision check_open(const std::string& path, const std::string& mode);
 
@@ -130,15 +165,16 @@ private:
 
     static thread_local std::string                   m_current_plugin_key;
     static thread_local std::string                   m_current_capability_name;
-    static thread_local std::vector<boost::filesystem::path> m_scoped_allowed_roots;
+    static thread_local std::vector<AllowedRoot>       m_scoped_allowed_roots;
     static thread_local bool                           m_audit_denial_pending;
     static thread_local bool                           m_has_last_violation;
     static thread_local AuditViolation                 m_last_violation;
 
     // mutable: is_denied_filename() and has_approved_ancestor() are const queries that must lock.
     mutable std::mutex m_mutex;
-    std::vector<boost::filesystem::path> m_global_allowed_roots;
+    std::vector<AllowedRoot>             m_global_allowed_roots;
     std::vector<std::string>             m_denied_filenames;
+    std::vector<std::string>             m_denied_path_keywords;
     std::unordered_map<std::string, std::unordered_set<std::string>> m_approved_call_sites; // plugin_key -> call-site ids
 };
 
@@ -160,7 +196,7 @@ public:
 private:
     std::string                   m_previous_id;
     std::string                   m_previous_capability;
-    std::vector<boost::filesystem::path> m_previous_scoped_roots;
+    std::vector<AllowedRoot>      m_previous_scoped_roots;
 };
 
 } // namespace Slic3r

@@ -8,6 +8,7 @@
 #include <boost/log/trivial.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <future>
 #include <slic3r/GUI/BindDialog.hpp>
@@ -111,6 +112,22 @@ static AuditEventCategory event_category(const std::string& event_name)
     return it == audit_event_categories.end() ? AuditEventCategory::None : it->second;
 }
 
+// True for the categories whose targets are filesystem paths, as opposed to a network
+// address or a process command line -- the deny-path and allowed-root checks only make sense
+// against a path.
+static bool is_fs_category(AuditEventCategory category)
+{
+    switch (category) {
+    case AuditEventCategory::FsRead:
+    case AuditEventCategory::FsReadWrite:
+    case AuditEventCategory::FsCreate:
+    case AuditEventCategory::FsDelete:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Path safety
 // ---------------------------------------------------------------------------
@@ -179,7 +196,7 @@ bool is_inside_allowed_root(const boost::filesystem::path& candidate, const boos
 
 thread_local std::string PluginAuditManager::m_current_plugin_key = "";
 thread_local std::string PluginAuditManager::m_current_capability_name = "";
-thread_local std::vector<boost::filesystem::path> PluginAuditManager::m_scoped_allowed_roots;
+thread_local std::vector<AllowedRoot> PluginAuditManager::m_scoped_allowed_roots;
 thread_local bool PluginAuditManager::m_audit_denial_pending = false;
 thread_local bool PluginAuditManager::m_has_last_violation = false;
 thread_local AuditViolation PluginAuditManager::m_last_violation;
@@ -224,23 +241,24 @@ std::string PluginAuditManager::current_capability() const { return m_current_ca
 
 void PluginAuditManager::clear_current_capability() { m_current_capability_name.clear(); }
 
-void PluginAuditManager::add_global_allowed_root(const boost::filesystem::path& root)
+void PluginAuditManager::add_global_allowed_root(const boost::filesystem::path& root, bool allow_write)
 {
     if (root.empty())
         return;
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_global_allowed_roots.push_back(root);
-    BOOST_LOG_TRIVIAL(info) << "[AUDIT] Global allowed root: " << root.string();
+    m_global_allowed_roots.push_back({root, allow_write});
+    BOOST_LOG_TRIVIAL(info) << "[AUDIT] Global allowed root: " << root.string() << " allow_write=" << allow_write;
 }
 
-void PluginAuditManager::add_scoped_allowed_root(const boost::filesystem::path& root)
+void PluginAuditManager::add_scoped_allowed_root(const boost::filesystem::path& root, bool allow_write)
 {
     if (root.empty())
         return;
 
-    m_scoped_allowed_roots.push_back(root);
-    BOOST_LOG_TRIVIAL(info) << "[AUDIT] Scoped allowed root for plugin " << current_plugin() << ": " << root.string();
+    m_scoped_allowed_roots.push_back({root, allow_write});
+    BOOST_LOG_TRIVIAL(info) << "[AUDIT] Scoped allowed root for plugin " << current_plugin() << ": " << root.string()
+                            << " allow_write=" << allow_write;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +312,67 @@ bool PluginAuditManager::is_denied_filename(const boost::filesystem::path& candi
 }
 
 // ---------------------------------------------------------------------------
+// Denied path keywords
+// ---------------------------------------------------------------------------
+
+void PluginAuditManager::add_denied_path_keyword(const std::string& keyword)
+{
+    if (keyword.empty())
+        return;
+
+    std::string lower = keyword;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_denied_path_keywords.push_back(lower);
+    BOOST_LOG_TRIVIAL(info) << "[AUDIT] Denied path keyword: " << lower;
+}
+
+std::vector<std::string> PluginAuditManager::default_denied_path_keywords()
+{
+    // Broad, categorical rules on top of the exact-name is_denied_filename registry: a plugin
+    // must never be able to reach a secret, a certificate, or a configuration file just because
+    // it happens to live inside an otherwise-allowed root (e.g. the bundled TLS client cert at
+    // resources_dir()/cert/..., which would become reachable the moment resources_dir() is
+    // granted as a read-only allowed root).
+    return {"secret", "cert", "conf"};
+}
+
+bool PluginAuditManager::is_denied_path_keyword(const boost::filesystem::path& candidate) const
+{
+    namespace fs = boost::filesystem;
+
+    boost::system::error_code ec;
+    fs::path canon = fs::weakly_canonical(candidate, ec);
+    if (ec) {
+        canon = fs::absolute(candidate, ec).lexically_normal();
+        if (ec)
+            canon = candidate;
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_denied_path_keywords.empty())
+        return false;
+
+    for (const auto& component : canon) {
+        std::string name = component.string();
+        if (name.empty())
+            continue;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return std::tolower(c); });
+        for (const auto& keyword : m_denied_path_keywords) {
+            if (name.find(keyword) != std::string::npos)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool PluginAuditManager::is_denied_path(const boost::filesystem::path& candidate) const
+{
+    return is_denied_filename(candidate) || is_denied_path_keyword(candidate);
+}
+
+// ---------------------------------------------------------------------------
 // Policy checks
 // ---------------------------------------------------------------------------
 
@@ -306,13 +385,19 @@ AuditDecision PluginAuditManager::check_path_access(const boost::filesystem::pat
     if (plugin_key.empty())
         return {true, ""}; // not running inside a plugin context
 
-    // Denied filenames are checked before the allowed roots.  The app config and the cloud
-    // refresh token live directly inside data_dir(), which is a global allowed root, so a deny
-    // placed any lower would be unreachable.
+    // Denied filenames/keywords are checked before the allowed roots.  The app config and the
+    // cloud refresh token live directly inside data_dir(), which is a global allowed root, and
+    // the bundled TLS client cert lives inside resources_dir(), a read-only global allowed
+    // root, so a deny placed any lower would be unreachable.
     if (is_denied_filename(path)) {
         BOOST_LOG_TRIVIAL(warning) << "[AUDIT] block path=" << path.string() << " is_write=" << is_write
                                    << " plugin=" << plugin_key << " reason=denied filename";
         return {false, "denied filename"};
+    }
+    if (is_denied_path_keyword(path)) {
+        BOOST_LOG_TRIVIAL(warning) << "[AUDIT] block path=" << path.string() << " is_write=" << is_write
+                                   << " plugin=" << plugin_key << " reason=denied path keyword";
+        return {false, "denied path keyword"};
     }
 
     namespace fs = boost::filesystem;
@@ -326,8 +411,11 @@ AuditDecision PluginAuditManager::check_path_access(const boost::filesystem::pat
             candidate = absolute_candidate;
     }
 
+    // A root that doesn't allow writes only matches a read-shaped request; a write/create/
+    // delete-shaped one falls through to "outside allowed root" for that root even though the
+    // path is physically inside it.
     for (const auto& root : m_scoped_allowed_roots) {
-        if (is_inside_allowed_root(candidate, root)) {
+        if ((!is_write || root.allow_write) && is_inside_allowed_root(candidate, root.path)) {
             return {true, ""};
         }
     }
@@ -335,7 +423,7 @@ AuditDecision PluginAuditManager::check_path_access(const boost::filesystem::pat
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (const auto& root : m_global_allowed_roots) {
-            if (is_inside_allowed_root(candidate, root)) {
+            if ((!is_write || root.allow_write) && is_inside_allowed_root(candidate, root.path)) {
                 return {true, ""};
             }
         }
@@ -799,6 +887,27 @@ int PluginAuditManager::audit_hook(const char* event, PyObject* args, void* user
         return 0;
     }
 
+    // the open function can take in different flags that determine if it is a read or readwrite.
+    const AuditEventCategory event_type =
+        event_name == "open" ? PluginAuditDetail::open_category(args) : event_category(event_name);
+    if (event_type == AuditEventCategory::None)
+        return 0;
+
+    const bool                      fs_category = is_fs_category(event_type);
+    const std::vector<std::string>  targets      = PluginAuditDetail::audit_targets(event_name, event_type, args);
+
+    // A denied path (secrets, certificates, config files -- see is_denied_path) is an
+    // unconditional block: checked before the ancestor-cascade check below, so a cascade
+    // approval recorded for an unrelated action can never launder access to one, and before
+    // the allowed-root shortcut further down, so an allowed root (e.g. the read-only resources
+    // folder) cannot make a denied path underneath it reachable.
+    if (fs_category) {
+        for (const auto& target : targets) {
+            if (mgr->is_denied_path(boost::filesystem::path(target)))
+                return PluginAuditDetail::report_denied(*mgr, event_name, {false, "denied path"});
+        }
+    }
+
     PluginDescriptor plugin_descriptor;
     PluginManager::instance().try_get_plugin_descriptor(mgr->current_plugin(), plugin_descriptor);
 
@@ -809,11 +918,20 @@ int PluginAuditManager::audit_hook(const char* event, PyObject* args, void* user
     if (mgr->has_approved_ancestor(mgr->current_plugin(), call_site_ids))
         return 0;
 
-    // the open function can take in different flags that determine if it is a read or readwrite.
-    const AuditEventCategory event_type =
-        event_name == "open" ? PluginAuditDetail::open_category(args) : event_category(event_name);
-    if (event_type == AuditEventCategory::None)
-        return 0;
+    // A filesystem target that resolves entirely inside a pre-determined allowed root -- the
+    // plugin system's own data_dir() tree (which holds each plugin's storage folder and the
+    // installed/system profile cache), the read-only bundled resources folder, or a per-call
+    // scoped root such as the current G-code folder -- is part of the plugin system's normal
+    // workflow and does not need a prompt.
+    if (fs_category && !targets.empty()) {
+        const bool is_write = event_type != AuditEventCategory::FsRead;
+        const bool all_inside_allowed_root =
+            std::all_of(targets.begin(), targets.end(), [&](const std::string& target) {
+                return mgr->check_path_access(boost::filesystem::path(target), is_write).allowed;
+            });
+        if (all_inside_allowed_root)
+            return 0;
+    }
 
     PluginInstallState state;
     const bool have_install_state = PluginManager::instance().get_install_state(mgr->current_plugin(), state);
@@ -823,8 +941,7 @@ int PluginAuditManager::audit_hook(const char* event, PyObject* args, void* user
 
     const std::string plugin_name = state.plugin_name.empty() ? mgr->current_plugin() : state.plugin_name;
 
-    const std::vector<std::string> targets         = PluginAuditDetail::audit_targets(event_name, event_type, args);
-    std::vector<std::string>*      permission_list = PluginAuditDetail::permission_list_for(event_type, state.permissions);
+    std::vector<std::string>* permission_list = PluginAuditDetail::permission_list_for(event_type, state.permissions);
 
     return PluginAuditDetail::decide_audited_event(*mgr, state, mgr->current_plugin(), plugin_name, event_name,
                                                     event_type, targets, permission_list, call_site_ids);
@@ -832,11 +949,19 @@ int PluginAuditManager::audit_hook(const char* event, PyObject* args, void* user
 
 void PluginAuditManager::install_hook()
 {
-    // data_dir() is the only globally-allowed root during plugin execution.
-    // The executable directory and resources directory are intentionally NOT allowed
-    // here: plugins must not access outside data_dir() (G-code plugins additionally get
-    // the temp G-code folder via a scoped root).
+    // data_dir() is the primary globally-allowed root during plugin execution: read+write. It
+    // covers the plugin system's own workflow needs -- each plugin's storage folder
+    // (data_dir()/orca_plugins) and the installed/system profile cache (data_dir()/system) --
+    // without a separate, narrower grant for either (G-code plugins additionally get the temp
+    // G-code folder via a scoped root, see SlicingPipelinePluginCapabilityTrampoline).
     add_global_allowed_root(data_dir());
+
+    // resources_dir() holds the app's bundled, shared assets (installed system profiles, the
+    // bundled TLS client cert, web assets). Plugins may read from it -- e.g. inspecting bundled
+    // profiles -- but must never write into the shared, potentially multi-user app install, so
+    // it is granted read-only. The bundled cert itself stays unreachable regardless, via the
+    // "cert" denied-path keyword seeded below.
+    add_global_allowed_root(resources_dir(), /*allow_write=*/false);
 
     // The user's app config and cloud credentials live directly inside data_dir(), so the
     // root just granted would otherwise expose them to any plugin.  Deny them by name.
@@ -849,6 +974,13 @@ void PluginAuditManager::install_hook()
     // (see its comment for why all four config names are denied); the tests seed from it too.
     for (const auto& name : default_denied_filenames())
         add_denied_filename(name);
+
+    // Categorical denies on top of the exact-name list above: no path a plugin can reach may
+    // contain a "secret", "cert"(ificate), or "conf"(ig) path component, regardless of which
+    // allowed root it happens to sit inside. default_denied_path_keywords() is the single
+    // source of this list; the tests seed from it too.
+    for (const auto& keyword : default_denied_path_keywords())
+        add_denied_path_keyword(keyword);
 
     if (PySys_AddAuditHook(audit_hook, this) < 0) {
         BOOST_LOG_TRIVIAL(error) << "[AUDIT] Failed to install CPython audit hook";
