@@ -27,7 +27,10 @@ else ()
             "--extra-ldflags=-mmacosx-version-min=${DEP_OSX_TARGET}"
             )
         # Static FFmpeg: nothing to bundle into the .app, no rpath handling.
-        set(_link_cmd --enable-static --disable-shared)
+        # Disable the VideoToolbox/AudioToolbox HW-accel paths: the player decodes
+        # in software (swscale), and the auto-detected HW objects would drag in
+        # system frameworks that the static libs would then depend on.
+        set(_link_cmd --enable-static --disable-shared --disable-videotoolbox --disable-audiotoolbox)
         if (IS_CROSS_COMPILE)
             set(_cross_cmd --enable-cross-compile)
             set(_pic_cmd --enable-pic)
