@@ -2708,23 +2708,6 @@ const TriangleMesh& ModelVolume::get_convex_hull() const
     return *m_convex_hull.get();
 }
 
-// Orca: get volume bbox for separate infill
-static std::mutex mtx_model;
-BoundingBox ModelVolume::get_volume_bbox(const Transform3d &matrix, Point &shift, bool apply_cache = false) {
-    std::unique_lock l(mtx_model); // locks function here
-    // Orca: the cache is keyed by the instance transform/shift; a ModelVolume is shared
-    // across instances, so returning the cache blindly would hand back another instance's bbox.
-    if (m_cached_volume_bbox.defined && apply_cache
-        && matrix.isApprox(m_cached_volume_bbox_matrix)
-        && shift == m_cached_volume_bbox_shift)
-        return m_cached_volume_bbox;
-    auto hull = get_convex_hull_2d(matrix);
-    hull.translate(-shift);
-    m_cached_volume_bbox_matrix = matrix;
-    m_cached_volume_bbox_shift  = shift;
-    return m_cached_volume_bbox = hull.bounding_box().polygon().bounding_box();
-}
-
 //BBS: refine the model part names
 ModelVolumeType ModelVolume::type_from_string(const std::string &s)
 {
@@ -3260,9 +3243,9 @@ double Model::findMaxSpeed(const ModelObject* object) {
         if (objectKey == "outer_wall_speed")
             externalPerimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
         if (objectKey == "small_perimeter_speed")
-            smallPerimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
+            smallPerimeterSpeedObj = object->config.get().opt_float_or_percent_nullable(objectKey, 0).get_abs_value(externalPerimeterSpeedObj);
         if (objectKey == "small_support_perimeter_speed")
-            smallSupportPerimeterSpeedObj = object->config.get().opt_float_nullable(objectKey, 0);
+            smallSupportPerimeterSpeedObj = object->config.get().opt_float_or_percent_nullable(objectKey, 0).get_abs_value(supportSpeedObj);
     }
     objMaxSpeed = std::max(perimeterSpeedObj, std::max(externalPerimeterSpeedObj, std::max(infillSpeedObj, std::max(solidInfillSpeedObj, std::max(topSolidInfillSpeedObj, std::max(supportSpeedObj, std::max(smallPerimeterSpeedObj, std::max(smallSupportPerimeterSpeedObj, objMaxSpeed))))))));
     if (objMaxSpeed <= 0) objMaxSpeed = 250.;
