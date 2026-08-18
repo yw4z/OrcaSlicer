@@ -413,7 +413,10 @@ void MonitorPanel::update_hms_tag()
 bool MonitorPanel::Show(bool show)
 {
 #ifdef __APPLE__
-    wxGetApp().mainframe->SetMinSize(wxGetApp().plater()->GetMinSize());
+    // Notebook::InsertPage() hides every page it appends, so this also runs while MainFrame is
+    // still constructing, before GUI_App::mainframe is assigned. Same guard as Plater::Show().
+    if (wxGetApp().mainframe)
+        wxGetApp().mainframe->SetMinSize(wxGetApp().plater()->GetMinSize());
 #endif
 
     NetworkAgent* m_agent = wxGetApp().getAgent();
