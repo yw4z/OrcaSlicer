@@ -1385,7 +1385,7 @@ void MainFrame::show_device(bool should_use_native) {
     // The web page is appended when printer agents are enabled. Remove that
     // extra page before switching back to the normal native/Web layout.
     if (!use_printer_agents) {
-        if ((idx = m_tabpanel->FindPage(m_printer_view)) != wxNOT_FOUND && idx != m_tabpanel->FindPageByName(TAB_ID_MONITOR)) {
+        if ((idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR_WEB)) != wxNOT_FOUND) {
             m_printer_view->Show(false);
             m_tabpanel->RemovePage(idx);
         }
@@ -1447,7 +1447,8 @@ void MainFrame::show_device(bool should_use_native) {
 
         if ((idx = m_tabpanel->FindPage(m_printer_view)) == wxNOT_FOUND) {
             m_printer_view->Show(false);
-            m_tabpanel->AddPage(m_printer_view, _L("Device (legacy)"), false, Notebook::PAGE_MONITOR);
+            m_tabpanel->InsertPage(m_tabpanel->GetPageCount(), TAB_ID_MONITOR_WEB, m_printer_view,
+                                   _L("Device (Web)"), "tab_monitor_active", false);
         } else {
             m_tabpanel->SetPageText(idx, _L("Device (Web)"));
         }
