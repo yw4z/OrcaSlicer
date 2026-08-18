@@ -254,7 +254,8 @@ void Button::SetStyle(const ButtonStyle style, const ButtonType type)
 
 void Button::Rescale()
 {
-    if (this->active_icon.bmp().IsOk())
+    // Only a named icon can be re-rasterized; one set from a wxBitmap has no source file,
+    if (!this->active_icon.name().empty())
         this->active_icon.msw_rescale();
 
     messureSize();
