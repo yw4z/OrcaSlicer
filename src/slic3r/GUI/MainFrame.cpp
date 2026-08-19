@@ -722,7 +722,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
         if (evt.CmdDown() && evt.ShiftDown() && evt.GetKeyCode() == 'S') { if (can_save_as()) m_plater->save_project(true); return;}
         else if (evt.CmdDown() && evt.GetKeyCode() == 'S') { if (can_save()) m_plater->save_project(); return;}
         if (evt.CmdDown() && evt.GetKeyCode() == 'F') {
-            if (m_plater && (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW)) {
+            if (m_plater && is_prepare_or_preview_tab()) {
                 m_plater->sidebar().can_search();
             }
         }
@@ -1015,12 +1015,12 @@ void MainFrame::update_layout()
     case ESettingsLayout::Old:
     {
         m_plater->Reparent(m_tabpanel);
-        {
-            const int home_idx = m_tabpanel->FindPageByName(TAB_ID_HOME);
-            const size_t prepare_pos = (home_idx == wxNOT_FOUND) ? 0 : static_cast<size_t>(home_idx) + 1;
-            m_tabpanel->InsertPage(prepare_pos, m_plater, _L("Prepare"), false, Notebook::PAGE_PREPARE);
-            m_tabpanel->InsertPage(prepare_pos + 1, m_plater, _L("Preview"), false, Notebook::PAGE_PREVIEW);
-        }
+        // Right after Home — or first, when there is no Home tab (PositionAfter() would
+        // append instead, and by now the other built-in tabs are already in place).
+        const int home_idx = m_tabpanel->FindPageByName(TAB_ID_HOME);
+        const size_t prepare_pos = (home_idx == wxNOT_FOUND) ? 0 : static_cast<size_t>(home_idx) + 1;
+        m_tabpanel->InsertPage(prepare_pos, TAB_ID_PREPARE, m_plater, _L("Prepare"), "tab_3d_active");
+        m_tabpanel->InsertPage(prepare_pos + 1, TAB_ID_PREVIEW, m_plater, _L("Preview"), "tab_preview_active");
         m_main_sizer->Add(m_tabpanel, 1, wxEXPAND | wxTOP, 0);
 
         m_tabpanel->Bind(wxCUSTOMEVT_NOTEBOOK_SEL_CHANGED, [this](wxCommandEvent& evt)
@@ -1290,24 +1290,6 @@ void MainFrame::init_tabpanel() {
 
         if (panel)
             panel->SetFocus();
-
-        /*switch (sel) {
-        case TabPosition::tpHome:
-            show_option(false);
-            break;
-        case TabPosition::tp3DEditor:
-            show_option(true);
-            break;
-        case TabPosition::tpPreview:
-            show_option(true);
-            break;
-        case TabPosition::tpMonitor:
-            show_option(false);
-            break;
-        default:
-            show_option(false);
-            break;
-        }*/
     });
 
     if (wxGetApp().is_editor()) {
@@ -1317,7 +1299,7 @@ void MainFrame::init_tabpanel() {
             select_tab(TAB_ID_HOME);
             m_webview->load_url(url);
         });
-        m_tabpanel->AddPage(m_webview, "", false, Notebook::PAGE_HOME);
+        m_tabpanel->AddPage(TAB_ID_HOME, m_webview, "", "tab_home_active");
         m_param_panel = new ParamsPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
     }
 
@@ -1332,7 +1314,7 @@ void MainFrame::init_tabpanel() {
         //BBS add pages
     m_monitor = new MonitorPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_monitor->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_monitor, _L("Device"), false, Notebook::PAGE_MONITOR);
+    m_tabpanel->AddPage(TAB_ID_MONITOR, m_monitor, _L("Device"), "tab_monitor_active");
 
     m_printer_view = new PrinterWebView(m_tabpanel);
     Bind(EVT_LOAD_PRINTER_URL, [this](LoadPrinterViewEvent &evt) {
@@ -1347,16 +1329,16 @@ void MainFrame::init_tabpanel() {
         m_multi_machine = new MultiMachinePage(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
         m_multi_machine->SetBackgroundColour(*wxWHITE);
         // TODO: change the bitmap
-        m_tabpanel->AddPage(m_multi_machine, _L("Multi-device"), false, Notebook::PAGE_MULTI_DEVICE);
+        m_tabpanel->AddPage(TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"), "tab_multi_active");
     }
 
     m_project = new ProjectPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_project->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_project, _L("Project"), false, Notebook::PAGE_PROJECT);
+    m_tabpanel->AddPage(TAB_ID_PROJECT, m_project, _L("Project"), "tab_auxiliary_active");
 
     m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     m_calibration->SetBackgroundColour(*wxWHITE);
-    m_tabpanel->AddPage(m_calibration, _L("Calibration"), false, Notebook::PAGE_CALIBRATION);
+    m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration, _L("Calibration"), "tab_calibration_active");
 
     // Plugin pages are appended after the built-in tabs; their ids are namespaced
     // (plugin.<plugin_key>.<name>) so they can't collide with the built-in TAB_ID_* constants.
@@ -1382,9 +1364,14 @@ void MainFrame::show_device(bool should_use_native) {
 
     const bool use_printer_agents = wxGetApp().app_config->get_bool("use_printer_agents");
 
-    // The web page is appended when printer agents are enabled. Remove that
-    // extra page before switching back to the normal native/Web layout.
-    if (!use_printer_agents) {
+    // The web Device page is the extra tab printer-agents mode shows alongside the native one.
+    // Printers that drive the native Bambu device tab have nothing to put in it, so they don't
+    // get it — otherwise a Bambu user sees two Device tabs, one of them permanently empty.
+    const bool want_web_device_tab = use_printer_agents && wxGetApp().preset_bundle != nullptr &&
+                                     !wxGetApp().preset_bundle->use_bbl_device_tab();
+
+    // Remove the extra page before switching to any layout that shouldn't have it.
+    if (!want_web_device_tab) {
         if ((idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR_WEB)) != wxNOT_FOUND) {
             m_printer_view->Show(false);
             m_tabpanel->RemovePage(idx);
@@ -1403,10 +1390,8 @@ void MainFrame::show_device(bool should_use_native) {
                 m_tabpanel->RemovePage(idx);
             }
             m_monitor->Show(false);
-            const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
-            const size_t monitor_pos =
-                (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
-            m_tabpanel->InsertPage(monitor_pos, TAB_ID_MONITOR, m_monitor, _L("Device"), "tab_monitor_active", false);
+            m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_monitor,
+                                   _L("Device"), "tab_monitor_active");
         }
 
         if (m_printer_view == nullptr) {
@@ -1427,30 +1412,31 @@ void MainFrame::show_device(bool should_use_native) {
             // TODO: change the bitmap
             if (m_tabpanel->FindPage(m_multi_machine) == wxNOT_FOUND) {
                 m_multi_machine->Show(false);
-                const int monitor_idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR);
-                const size_t multi_pos =
-                    (monitor_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(monitor_idx) + 1;
-                m_tabpanel->InsertPage(multi_pos, TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"),
-                                       "tab_multi_active", false);
+                // Past the web Device tab when it is already there, so enabling multi-machine
+                // later can't wedge this page between the two Device tabs.
+                m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_MONITOR_WEB, TAB_ID_MONITOR}),
+                                       TAB_ID_MULTI_DEVICE, m_multi_machine, _L("Multi-device"), "tab_multi_active");
             }
         }
         if (!m_calibration) {
             m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
             m_calibration->SetBackgroundColour(*wxWHITE);
         }
-        // Calibration is always the last page, so don't use InsertPage here. Otherwise, if multi_machine page is not enabled,
-        // the calibration tab won't be properly added as well, due to the TabPosition::tpCalibration no longer matches the real tab position.
         if (m_tabpanel->FindPage(m_calibration) == wxNOT_FOUND) {
             m_calibration->Show(false);
-            m_tabpanel->AddPage(m_calibration, _L("Calibration"), false, Notebook::PAGE_CALIBRATION);
+            m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PROJECT}), TAB_ID_CALIBRATION, m_calibration,
+                                   _L("Calibration"), "tab_calibration_active");
         }
 
-        if ((idx = m_tabpanel->FindPage(m_printer_view)) == wxNOT_FOUND) {
-            m_printer_view->Show(false);
-            m_tabpanel->InsertPage(m_tabpanel->GetPageCount(), TAB_ID_MONITOR_WEB, m_printer_view,
-                                   _L("Device (Web)"), "tab_monitor_active", false);
-        } else {
-            m_tabpanel->SetPageText(idx, _L("Device (Web)"));
+        if (want_web_device_tab) {
+            if ((idx = m_tabpanel->FindPage(m_printer_view)) == wxNOT_FOUND) {
+                m_printer_view->Show(false);
+                // Immediately right of the native Device tab, not at the end of the tab bar.
+                m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_MONITOR}), TAB_ID_MONITOR_WEB,
+                                       m_printer_view, _L("Device (Web)"), "tab_monitor_active");
+            } else {
+                m_tabpanel->SetPageText(idx, _L("Device (Web)"));
+            }
         }
 
 #ifdef _MSW_DARK_MODE
@@ -1458,7 +1444,7 @@ void MainFrame::show_device(bool should_use_native) {
 #endif // _MSW_DARK_MODE
 
         fit_tab_labels(); // ORCA on printer change
-        m_plugin_pages.relayout(); // keep plugin tabs after the native tabs just mutated above
+        m_plugin_pages.relayout(); // re-sync plugin tabs against the native tabs just mutated above
 
         return;
     }
@@ -1480,11 +1466,8 @@ void MainFrame::show_device(bool should_use_native) {
             m_monitor->SetBackgroundColour(*wxWHITE);
         }
         m_monitor->Show(false);
-        {
-            const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
-            const size_t monitor_pos = (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
-            m_tabpanel->InsertPage(monitor_pos, m_monitor, _L("Device"), false, Notebook::PAGE_MONITOR);
-        }
+        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_monitor,
+                               _L("Device"), "tab_monitor_active");
 
         if (wxGetApp().is_enable_multi_machine()) {
             if (!m_multi_machine) {
@@ -1493,21 +1476,18 @@ void MainFrame::show_device(bool should_use_native) {
             }
             // TODO: change the bitmap
             m_multi_machine->Show(false);
-            {
-                const int monitor_idx = m_tabpanel->FindPageByName(TAB_ID_MONITOR);
-                const size_t multi_pos = (monitor_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(monitor_idx) + 1;
-                m_tabpanel->InsertPage(multi_pos, m_multi_machine, _L("Multi-device"), false, Notebook::PAGE_MULTI_DEVICE);
-            }
+            m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_MONITOR}), TAB_ID_MULTI_DEVICE, m_multi_machine,
+                                   _L("Multi-device"), "tab_multi_active");
         }
         if (!m_calibration) {
             m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
             m_calibration->SetBackgroundColour(*wxWHITE);
         }
         m_calibration->Show(false);
-        // Calibration is always appended last (AddPage), so it lands after whichever of Monitor/Multi-device
-        // actually got inserted above — no longer position-sensitive now that insertion position is computed
-        // from FindPageByName rather than a fixed TabPosition index.
-        m_tabpanel->AddPage(m_calibration, _L("Calibration"), false, Notebook::PAGE_CALIBRATION);
+        // Last of the built-in tabs, but plugin tabs already sit past it — anchor rather than
+        // append, so its position doesn't depend on the relayout() below running afterwards.
+        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PROJECT}), TAB_ID_CALIBRATION, m_calibration,
+                               _L("Calibration"), "tab_calibration_active");
 
 #ifdef _MSW_DARK_MODE
         wxGetApp().UpdateDarkUIWin(this);
@@ -1540,14 +1520,17 @@ void MainFrame::show_device(bool should_use_native) {
             });
         }
         m_printer_view->Show(false);
-        {
-            const int preview_idx = m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
-            const size_t monitor_pos = (preview_idx == wxNOT_FOUND) ? m_tabpanel->GetPageCount() : static_cast<size_t>(preview_idx) + 1;
-            m_tabpanel->InsertPage(monitor_pos, m_printer_view, _L("Device"), false, Notebook::PAGE_MONITOR);
-        }
+        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_printer_view,
+                               _L("Device"), "tab_monitor_active");
     }
     fit_tab_labels(); // ORCA on printer change
-    m_plugin_pages.relayout(); // keep plugin tabs after the native tabs just mutated above
+    m_plugin_pages.relayout(); // re-sync plugin tabs against the native tabs just mutated above
+}
+
+bool MainFrame::is_prepare_or_preview_tab() const
+{
+    const wxString tab = m_tabpanel->GetSelectedPageName();
+    return tab == TAB_ID_PREPARE || tab == TAB_ID_PREVIEW;
 }
 
 void MainFrame::fit_tab_labels()
@@ -3168,7 +3151,7 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().app_config->set_bool("auto_perspective", !wxGetApp().app_config->get_bool("auto_perspective"));
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
-            this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
+            this, [this]() { return is_prepare_or_preview_tab(); },
             [this]() { return wxGetApp().app_config->get_bool("auto_perspective"); }, this);
 
         viewMenu->AppendSeparator();
@@ -3186,7 +3169,7 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().toggle_show_3d_navigator();
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
-            this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
+            this, [this]() { return is_prepare_or_preview_tab(); },
             [this]() { return wxGetApp().show_3d_navigator(); }, this);
 
         append_menu_check_item(viewMenu, wxID_ANY, _L("Show Gridlines"), _L("Show Gridlines on plate"),
@@ -3194,15 +3177,14 @@ void MainFrame::init_menubar_as_editor()
                 wxGetApp().toggle_show_plate_gridlines();
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             }, this,
-            [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
+            [this]() { return is_prepare_or_preview_tab(); },
             [this]() { return wxGetApp().show_plate_gridlines(); }, this);
 
         append_menu_item(
             viewMenu, wxID_ANY, _L("Reset Window Layout"), _L("Reset to default window layout"),
             [this](wxCommandEvent&) { m_plater->reset_window_layout(); }, "", this,
             [this]() {
-                return (m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE || m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW) &&
-                       m_plater->is_sidebar_enabled();
+                return is_prepare_or_preview_tab() && m_plater->is_sidebar_enabled();
             },
             this);
 
@@ -4025,10 +4007,8 @@ void MainFrame::select_tab(wxPanel* panel)
         wxGetApp().params_dialog()->Popup();
         return;
     }
-    // page_name cannot be resolved via panel->GetName() — Prepare and Preview
-    // share the single m_plater window, so the window itself has no single correct
-    // name (see Global Constraints). Resolve via Notebook's per-slot m_pageNames
-    // instead, via the index -> id lookup, which works for any page (built-in or not).
+    // Not panel->GetName(): Prepare and Preview share the single m_plater window, so the
+    // window has no one correct name. The slot -> id lookup is the only correct resolution.
     int page_idx = m_tabpanel->FindPage(panel);
     wxString page_name = (page_idx == wxNOT_FOUND) ? wxString() : m_tabpanel->GetPageName(static_cast<size_t>(page_idx));
     if (page_name == TAB_ID_PREPARE && m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW)
@@ -4082,10 +4062,8 @@ void MainFrame::select_tab(const wxString& id/* = wxString()*/)
                 m_plater->get_current_canvas3D()->render();
         }*/
 #endif
-        // NOTE: this checks the ORIGINAL parameter (id), not the resolved new_selection —
-        // preserving that the fallback-to-last-tab path never triggers this render call
-        // even if the last selected tab happened to be Prepare. Do not "simplify" to
-        // new_selection == TAB_ID_PREPARE, that changes behavior.
+        // Intentionally `id`, not `new_selection`: the fallback-to-last-tab path must not
+        // trigger this render even when the last selected tab was Prepare.
         if (id == TAB_ID_PREPARE && m_layout == ESettingsLayout::Old)
             m_plater->canvas3D()->render();
         else if (was_hidden) {

@@ -382,7 +382,6 @@ public:
     // Number of plugin pages shown as fixed tabs before the rest are collapsed into a
     // dropdown on the last tab.
     int get_plugin_pages_visible_count() const;
-    void set_plugin_pages_visible_count(int count);
 
     std::vector<std::string> get_skipped_network_versions() const;
     void add_skipped_network_version(const std::string& version);

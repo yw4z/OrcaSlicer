@@ -280,19 +280,8 @@ void AppConfig::set_defaults()
         set(SETTING_OPENGL_FPS_CAP, std::to_string(fps_cap));
     }
 
-    if (get(SETTING_PLUGIN_PAGES_VISIBLE_COUNT).empty())
-        set(SETTING_PLUGIN_PAGES_VISIBLE_COUNT, std::to_string(PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT));
-    else {
-        int visible_count = PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT;
-        try {
-            visible_count = std::stoi(get(SETTING_PLUGIN_PAGES_VISIBLE_COUNT));
-        }
-        catch (...) {
-            visible_count = PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT;
-        }
-        visible_count = std::max(PLUGIN_PAGES_VISIBLE_COUNT_MIN, std::min(visible_count, PLUGIN_PAGES_VISIBLE_COUNT_MAX));
-        set(SETTING_PLUGIN_PAGES_VISIBLE_COUNT, std::to_string(visible_count));
-    }
+    // The getter already defaults, parses and clamps; write back what it resolves to.
+    set(SETTING_PLUGIN_PAGES_VISIBLE_COUNT, std::to_string(get_plugin_pages_visible_count()));
 
     if (get(SETTING_OPENGL_SHOW_FPS_OVERLAY).empty())
         set_bool(SETTING_OPENGL_SHOW_FPS_OVERLAY, false);
@@ -1657,13 +1646,7 @@ int AppConfig::get_plugin_pages_visible_count() const
     catch (...) {
         return PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT;
     }
-    return std::max(PLUGIN_PAGES_VISIBLE_COUNT_MIN, std::min(visible_count, PLUGIN_PAGES_VISIBLE_COUNT_MAX));
-}
-
-void AppConfig::set_plugin_pages_visible_count(int count)
-{
-    count = std::max(PLUGIN_PAGES_VISIBLE_COUNT_MIN, std::min(count, PLUGIN_PAGES_VISIBLE_COUNT_MAX));
-    set(SETTING_PLUGIN_PAGES_VISIBLE_COUNT, std::to_string(count));
+    return std::clamp(visible_count, PLUGIN_PAGES_VISIBLE_COUNT_MIN, PLUGIN_PAGES_VISIBLE_COUNT_MAX);
 }
 
 std::vector<std::string> AppConfig::get_skipped_network_versions() const

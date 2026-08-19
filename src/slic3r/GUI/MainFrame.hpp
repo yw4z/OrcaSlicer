@@ -362,6 +362,8 @@ public:
     //SoftFever
     void show_device(bool should_use_native);
     void fit_tab_labels(); // ORCA
+    // True while either of the two tabs backed by m_plater is selected.
+    bool is_prepare_or_preview_tab() const;
     PluginPages& plugin_pages() { return m_plugin_pages; }
 
     PA_Calibration_Dlg* m_pa_calib_dlg{ nullptr };

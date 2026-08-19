@@ -11221,19 +11221,18 @@ void Plater::priv::on_tab_selection_changing(wxBookCtrlEvent& e)
 
     const int new_sel = e.GetSelection();
     if (new_sel == wxNOT_FOUND) {
-        // Guards against new_sel matching FindPageByName's own wxNOT_FOUND sentinel
-        // below when a TAB_ID_* isn't currently present in the tabpanel.
+        // GetPage(new_sel) below needs a valid index.
         e.Skip();
         return;
     }
-    sidebar_layout.show = new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_PREPARE) ||
-                           new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
+    const wxString new_name = main_frame->m_tabpanel->GetPageName(new_sel);
+    sidebar_layout.show = new_name == TAB_ID_PREPARE || new_name == TAB_ID_PREVIEW;
     update_sidebar();
     int old_sel = e.GetOldSelection();
     const bool use_printer_agents = wxGetApp().app_config->get_bool("use_printer_agents");
     const bool use_native_device_tab = wxGetApp().preset_bundle &&
         (wxGetApp().preset_bundle->use_bbl_device_tab() || use_printer_agents);
-    if (use_native_device_tab && new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_MONITOR)) {
+    if (use_native_device_tab && new_name == TAB_ID_MONITOR) {
         // BBL network module is only required for BBL-vendor printers.
         // Non-BBL Python plugins (e.g. moonraker) drive the Device tab without it.
         if (!use_printer_agents && wxGetApp().preset_bundle->is_bbl_vendor() && !Slic3r::NetworkAgent::is_network_module_loaded()) {
@@ -11253,7 +11252,7 @@ void Plater::priv::on_tab_selection_changing(wxBookCtrlEvent& e)
         if (selecting_web_device_tab) {
             // Use the selected discovered machine when the preset has no host.
             main_frame->load_printer_url();
-        } else if (new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_MONITOR) && wxGetApp().preset_bundle != nullptr) {
+        } else if (new_name == TAB_ID_MONITOR && wxGetApp().preset_bundle != nullptr) {
             auto     cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
             wxString url = from_u8(PrintHost::get_print_host_webui(&cfg));
             if (main_frame->m_printer_view && url.empty()) {

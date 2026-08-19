@@ -156,14 +156,13 @@ void ButtonsListCtrl::SetSelection(int sel)
     Refresh();
 }
 
-bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, int imageId /* = wxBookCtrlBase::NO_IMAGE */)
+bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, const wxBitmap &bmp /* = wxNullBitmap */)
 {
     Button * btn = new Button(this, text.empty() ? text : " " + text, bmp_name, wxNO_BORDER);
     btn->SetCornerRadius(0);
 
-    if (bmp_name.empty() && m_imageList != nullptr && imageId != wxBookCtrlBase::NO_IMAGE && imageId >= 0 &&
-        imageId < m_imageList->GetImageCount())
-        btn->SetIcon(m_imageList->GetBitmap(imageId));
+    if (bmp_name.empty() && bmp.IsOk())
+        btn->SetIcon(bmp);
 
     int em = em_unit(this);
     //BBS set size for button
@@ -229,23 +228,6 @@ bool ButtonsListCtrl::SetPageImage(size_t n, const std::string& bmp_name) const
     //return m_pageButtons[n]->SetBitmap_(bmp_name);
     ScalableBitmap bitmap(NULL, bmp_name);
     //m_pageButtons[n]->SetBitmap_(bitmap);
-    return true;
-}
-
-bool ButtonsListCtrl::SetPageImage(size_t n, int imageId)
-{
-    if (n >= m_pageButtons.size())
-        return false;
-
-    if (imageId == wxBookCtrlBase::NO_IMAGE) {
-        m_pageButtons[n]->SetIcon(wxBitmap());
-        return true;
-    }
-
-    if (m_imageList == nullptr || imageId < 0 || imageId >= m_imageList->GetImageCount())
-        return false;
-
-    m_pageButtons[n]->SetIcon(m_imageList->GetBitmap(imageId));
     return true;
 }
 

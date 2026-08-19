@@ -171,9 +171,11 @@ void PluginPage::on_script_message(wxWebViewEvent& event)
         root.value("kind", std::string()) != "message")
         return;
 
-    const nlohmann::json data = root.contains("data") ? root["data"] : nlohmann::json();
+    const auto data = root.find("data");
     try {
-        m_cap->on_message(data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+        m_cap->on_message(data == root.end()
+                              ? "null"
+                              : data->dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
     } catch (const std::exception& error) {
         BOOST_LOG_TRIVIAL(error) << "Plugin page message handler failed for '" << m_cap->name() << "': " << error.what();
     } catch (...) {
@@ -186,28 +188,23 @@ void PluginPage::push_message(const std::string& message)
     if (m_browser == nullptr)
         return;
 
-    nlohmann::json data = nlohmann::json::parse(message, nullptr, false);
-    if (data.is_discarded())
-        data = message;
+    // PagesPluginCapability::post_message() already dumps JSON, so accept it as-is; only a
+    // non-JSON payload needs wrapping as a string literal.
+    const std::string payload = nlohmann::json::accept(message)
+                                    ? message
+                                    : nlohmann::json(message).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 
-    const wxString script = wxString("(function dispatch(payload, attempts) {\n") +
-                            wxString("  if (typeof window.__orcaDispatch === 'function') { window.__orcaDispatch(payload); return; }\n") +
-                            wxString("  if (attempts < 100) window.setTimeout(function() { dispatch(payload, attempts + 1); }, 25);\n") +
-                            wxString("})({data: ") +
-                            wxString::FromUTF8(data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)) +
-                            wxString("}, 0);");
-    WebView::RunScript(m_browser, script);
+    WebView::RunScript(m_browser, wxString::Format(
+        "(function dispatch(payload, attempts) {\n"
+        "  if (typeof window.__orcaDispatch === 'function') { window.__orcaDispatch(payload); return; }\n"
+        "  if (attempts < 100) window.setTimeout(function() { dispatch(payload, attempts + 1); }, 25);\n"
+        "})({data: %s}, 0);",
+        wxString::FromUTF8(payload)));
 }
 
 PluginPages::~PluginPages()
 {
     shutdown();
-    // try {
-    // } catch (const std::exception& error) {
-    //     BOOST_LOG_TRIVIAL(error) << "PluginPages::~PluginPages: shutdown() threw: " << error.what();
-    // } catch (...) {
-    //     BOOST_LOG_TRIVIAL(error) << "PluginPages::~PluginPages: shutdown() threw a non-standard exception";
-    // }
 }
 
 void PluginPages::initialize(Notebook* parent)
@@ -218,9 +215,6 @@ void PluginPages::initialize(Notebook* parent)
         return;
 
     m_visible_page_count = GUI::wxGetApp().app_config->get_plugin_pages_visible_count();
-
-    m_image_list = std::make_unique<wxImageList>(20, 20, true, 0);
-    m_parent->SetImageList(m_image_list.get());
 
     for (const auto& capability : PluginManager::instance().get_plugin_capabilities("", PluginCapabilityType::Pages)) {
         if (capability)
@@ -233,15 +227,12 @@ void PluginPages::shutdown()
 {
     while (!m_pages.empty())
         remove_page(m_pages.begin()->first);
-    if (m_parent != nullptr)
-        m_parent->SetImageList(nullptr);
-    m_image_list.reset();
     m_parent = nullptr;
 }
 
 void PluginPages::set_visible_page_count(int count)
 {
-    const int clamped = std::max(PLUGIN_PAGES_VISIBLE_COUNT_MIN, std::min(count, PLUGIN_PAGES_VISIBLE_COUNT_MAX));
+    const int clamped = std::clamp(count, PLUGIN_PAGES_VISIBLE_COUNT_MIN, PLUGIN_PAGES_VISIBLE_COUNT_MAX);
     if (clamped == m_visible_page_count)
         return;
 
@@ -282,17 +273,14 @@ bool PluginPages::create_page(const PluginCapabilityId& id)
         return false;
     }
 
-    int image_id = wxBookCtrlBase::NO_IMAGE;
-    if (!icon.empty() && m_image_list) {
+    if (!icon.empty()) {
         try {
             boost::filesystem::path icon_path(icon);
             const std::string extension = icon_path.extension().string();
             if (extension == ".svg" || extension == ".png")
                 icon_path.replace_extension();
 
-            const wxBitmap bitmap = create_scaled_bitmap(icon_path.string(), m_parent, 20);
-            if (bitmap.IsOk())
-                image_id = m_image_list->Add(bitmap);
+            page->set_icon(create_scaled_bitmap(icon_path.string(), m_parent, 20));
         } catch (const std::exception& error) {
             BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Failed to load icon for plugin " << id.plugin_key << ": " << error.what();
         } catch (...) {
@@ -300,7 +288,6 @@ bool PluginPages::create_page(const PluginCapabilityId& id)
         }
     }
 
-    page->set_icon_image_id(image_id);
     m_pages.emplace(id, page);
     m_order.push_back(id);
     return true;
@@ -349,23 +336,10 @@ void PluginPages::remove_page(const PluginCapabilityId& id)
         return;
 
     PluginPage* page = it->second;
-    const int removed_image_id = page->get_icon_image_id();
     page->detach_capability();
 
     m_pages.erase(it);
     m_order.erase(std::remove(m_order.begin(), m_order.end(), id), m_order.end());
-
-    if (m_image_list && removed_image_id != wxBookCtrlBase::NO_IMAGE &&
-        removed_image_id >= 0 && removed_image_id < m_image_list->GetImageCount()) {
-        m_image_list->Remove(removed_image_id);
-
-        // wxImageList IDs are positional. Removing one shifts all later images down by one.
-        for (auto& [other_id, other_page] : m_pages) {
-            const int other_image_id = other_page->get_icon_image_id();
-            if (other_image_id > removed_image_id)
-                other_page->set_icon_image_id(other_image_id - 1);
-        }
-    }
 
     const int idx = m_parent != nullptr ? m_parent->FindPage(page) : wxNOT_FOUND;
     if (idx != wxNOT_FOUND)
@@ -394,14 +368,6 @@ void PluginPages::relayout()
         }),
         m_order.end());
 
-    wxString id_to_reselect = m_parent->GetSelectedPageName();
-
-    for (const auto& [id, page] : m_pages) {
-        const int idx = m_parent->FindPage(page);
-        if (idx != wxNOT_FOUND)
-            m_parent->RemovePage(idx);
-    }
-
     const int visible_slots = std::max(1, m_visible_page_count);
     const bool need_overflow = static_cast<int>(m_order.size()) > visible_slots;
 
@@ -421,9 +387,37 @@ void PluginPages::relayout()
         tab_ids.push_back(*m_swapped_in_id);
     }
 
-    for (const auto& id : tab_ids) {
-        PluginPage* page = m_pages.at(id);
-        m_parent->InsertPage(m_parent->GetPageCount(), page_tab_id(id), page, wxString::FromUTF8(id.name), page->get_icon_image_id());
+    // MainFrame::show_device() relayouts on every printer change and most of those change
+    // nothing, so only touch the notebook when the trailing slots don't already spell out
+    // tab_ids — a rebuild destroys and recreates every tab button and rasterizes every icon.
+    const size_t page_count = m_parent->GetPageCount();
+    bool up_to_date = page_count >= tab_ids.size();
+    for (size_t i = 0; up_to_date && i < tab_ids.size(); ++i)
+        up_to_date = m_parent->GetPageName(page_count - tab_ids.size() + i) == page_tab_id(tab_ids[i]);
+    for (const auto& [id, page] : m_pages) {
+        if (!up_to_date)
+            break;
+        const bool wanted = std::find(tab_ids.begin(), tab_ids.end(), id) != tab_ids.end();
+        up_to_date = (m_parent->FindPage(page) != wxNOT_FOUND) == wanted;
+    }
+
+    if (!up_to_date) {
+        const wxString id_to_reselect = m_parent->GetSelectedPageName();
+
+        for (const auto& [id, page] : m_pages) {
+            const int idx = m_parent->FindPage(page);
+            if (idx != wxNOT_FOUND)
+                m_parent->RemovePage(idx);
+        }
+
+        for (const auto& id : tab_ids) {
+            PluginPage* page = m_pages.at(id);
+            m_parent->InsertPage(m_parent->GetPageCount(), page_tab_id(id), page, wxString::FromUTF8(id.name), "",
+                                 false, page->icon());
+        }
+
+        if (!id_to_reselect.empty())
+            m_parent->SelectPageByName(id_to_reselect);
     }
 
     if (need_overflow) {
@@ -442,9 +436,6 @@ void PluginPages::relayout()
         m_overflow_button->Destroy();
         m_overflow_button = nullptr;
     }
-
-    if (!id_to_reselect.empty())
-        m_parent->SelectPageByName(id_to_reselect);
 }
 
 void PluginPages::show_overflow_menu()

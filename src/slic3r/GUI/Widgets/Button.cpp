@@ -288,7 +288,7 @@ void Button::render(wxDC& dc)
     wxSize szIcon;
     wxSize textSize = this->textSize.GetSize();
 
-    ScalableBitmap icon = active_icon;
+    const ScalableBitmap& icon = active_icon;
     wxSize padding = this->paddingSize;
     int spacing = 5;
     // Wrap text
