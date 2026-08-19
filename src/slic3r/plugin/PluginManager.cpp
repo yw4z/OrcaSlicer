@@ -1145,6 +1145,26 @@ void PluginManager::mark_plugin_install_state_disabled(const std::string& plugin
         plugin->descriptor.enabled = false;
 }
 
+void PluginManager::revoke_plugin_permissions(const std::string& plugin_key)
+{
+    std::lock_guard<std::mutex> state_lock(m_install_state_mutex);
+
+    PluginDescriptor descriptor;
+    if (!try_get_plugin_descriptor(plugin_key, descriptor) || descriptor.plugin_root.empty())
+        return;
+
+    const boost::filesystem::path root(descriptor.plugin_root);
+    PluginInstallState state;
+    if (!read_install_state(root, state)) {
+        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Failed to read install state for " << plugin_key;
+        return;
+    }
+
+    state.permissions = {};
+    if (!write_install_state(root, state))
+        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": Failed to revoke permissions for " << plugin_key;
+}
+
 // ── Callbacks ───────────────────────────────────────────────────────────────────────────────
 
 void PluginManager::subscribe_on_load_callback(PluginLifecycleCompleteFn fn)
@@ -1363,6 +1383,11 @@ bool PluginManager::install_plugin(const boost::filesystem::path& filepath, Plug
         BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
         return false;
     }
+
+    // Every successful install may have replaced executable plugin code. Revoke any permissions
+    // associated with the previous package so the newly installed version must request them again.
+    if (!plugin_descriptor.plugin_key.empty())
+        revoke_plugin_permissions(plugin_descriptor.plugin_key);
 
     if (!plugin_descriptor.plugin_key.empty())
         clear_plugin_error(plugin_descriptor.plugin_key);
@@ -1751,6 +1776,7 @@ bool PluginManager::update_cloud_plugin(const std::string& plugin_key, std::stri
     }
 
     clear_plugin_error(plugin_key);
+
     return true;
 }
 

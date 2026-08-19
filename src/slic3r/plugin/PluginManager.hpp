@@ -254,6 +254,8 @@ private:
     // Writes the sidecar for a loaded plugin (enabled=true plus the current per-capability flags).
     void write_loaded_plugin_install_state(const std::string& plugin_key);
     void mark_plugin_install_state_disabled(const std::string& plugin_key);
+    // Revoke permissions after a package replacement so the new package must request them again.
+    void revoke_plugin_permissions(const std::string& plugin_key);
 
     bool finalize_cloud_plugin_removal(const PluginDescriptor& plugin, bool keep_local, std::string& error);
     bool delete_installed_plugin_package(const PluginDescriptor& plugin, std::string& error);
