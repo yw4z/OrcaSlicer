@@ -278,15 +278,13 @@ TEST_CASE("TextureDisplacement: the patch border is displaced by default and pin
 TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved", "[TextureDisplacement]")
 {
     // A checkerboard height map on a fine grid gives a relief full of hard steps - exactly what the
-    // smoothing pass is for. Measure it as the spread of the displaced heights: relaxing the surface
-    // must pull the extremes in without touching the mesh's topology.
+    // smoothing pass is for. Only the central square is painted, so the patch has a real border.
     indexed_triangle_set plane;
     plane.vertices = { { 0.f, 0.f, 0.f }, { 20.f, 0.f, 0.f }, { 20.f, 20.f, 0.f }, { 0.f, 20.f, 0.f } };
     plane.indices  = { { 0, 1, 2 }, { 0, 2, 3 } };
     const indexed_triangle_set grid = subdivide_mesh_uniform(plane, 1.f, 6);
     REQUIRE(grid.indices.size() > 256);
 
-    // Paint only the central square, so the patch has a real border to test against.
     std::vector<uint8_t> painted(grid.indices.size(), 0);
     const TriangleMesh   grid_mesh(grid);
     TriangleSelector     selector(grid_mesh);
@@ -310,19 +308,19 @@ TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved",
     layer.slot         = 0;
     layer.depth_mm     = 2.0f;
     layer.tiling_scale = 6.0f;
-    layer.image_data   = make_checkerboard_png();
 
-    auto z_spread = [](const indexed_triangle_set &its) {
-        float lo = its.vertices.front().z(), hi = lo;
-        for (const Vec3f &v : its.vertices) {
-            lo = std::min(lo, v.z());
-            hi = std::max(hi, v.z());
-        }
-        return hi - lo;
-    };
-
-    const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets);
-    REQUIRE(z_spread(raw) > 1.f); // the checkerboard really did produce relief to smooth
+    // The patch rim: vertices shared by a painted and an unpainted triangle - exactly the set
+    // TextureDisplacementOptions::smooth_skip_border holds out of the relaxation.
+    std::vector<uint8_t> rim(grid.vertices.size(), 0), inside(grid.vertices.size(), 0);
+    for (size_t i = 0; i < grid.indices.size(); ++i)
+        for (int k = 0; k < 3; ++k)
+            (painted[i] ? inside : rim)[size_t(grid.indices[i][k])] = 1;
+    size_t rim_count = 0;
+    for (size_t v = 0; v < rim.size(); ++v) {
+        rim[v] = (rim[v] && inside[v]) ? 1 : 0;
+        rim_count += rim[v];
+    }
+    REQUIRE(rim_count > 8);
 
     TextureDisplacementOptions options;
     options.smooth_enabled    = true;
@@ -331,52 +329,59 @@ TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved",
 
     SECTION("it rounds off the steps without touching the topology")
     {
-        const indexed_triangle_set smoothed = build_texture_displacement(grid, { layer }, facets, options);
-        CHECK(z_spread(smoothed) < z_spread(raw));
-        CHECK(smoothed.indices == raw.indices);
-        CHECK(smoothed.vertices.size() == raw.vertices.size());
-    }
+        layer.image_data = make_checkerboard_png();
 
-    SECTION("\"ignore outer ring\" leaves the patch rim at the depth the texture asked for")
-    {
-        // The rim: vertices shared by a painted and an unpainted triangle. Their neighbours outside
-        // the paint never move, so relaxing them drags the relief back down toward the flat surface -
-        // which is what makes the pattern look half-melted right at the edge.
-        std::vector<uint8_t> rim(grid.vertices.size(), 0), inside(grid.vertices.size(), 0);
-        for (size_t i = 0; i < grid.indices.size(); ++i)
-            for (int k = 0; k < 3; ++k)
-                (painted[i] ? inside : rim)[size_t(grid.indices[i][k])] = 1;
-        size_t rim_count = 0;
-        for (size_t v = 0; v < rim.size(); ++v) {
-            rim[v] = (rim[v] && inside[v]) ? 1 : 0;
-            rim_count += rim[v];
-        }
-        REQUIRE(rim_count > 8);
-
-        // The tallest point of the rim. Laplacian relaxation is a convex average, so no vertex can ever
-        // exceed the mesh's current maximum - and a rim vertex sitting at that maximum has at least one
-        // neighbour outside the paint at zero, so it must come down. That makes this a strict, not a
-        // statistical, comparison.
-        auto rim_peak = [&](const indexed_triangle_set &its) {
-            float peak = 0.f;
-            for (size_t v = 0; v < rim.size(); ++v)
-                if (rim[v])
-                    peak = std::max(peak, its.vertices[v].z());
-            return peak;
+        // Dirichlet energy over the mesh's edges. Laplacian relaxation is gradient descent on exactly
+        // this, so it is the quantity guaranteed to fall - unlike the min/max spread of z, which is
+        // pinned by whichever vertices are held (the unpainted surface at zero, and by default the
+        // patch rim as well) and so need not move at all.
+        auto roughness = [](const indexed_triangle_set &its) {
+            double e = 0.0;
+            for (const auto &t : its.indices)
+                for (int k = 0; k < 3; ++k) {
+                    const double d = double(its.vertices[t[k]].z()) - double(its.vertices[t[(k + 1) % 3]].z());
+                    e += d * d;
+                }
+            return e;
         };
 
-        options.smooth_skip_border         = true;
-        const indexed_triangle_set kept    = build_texture_displacement(grid, { layer }, facets, options);
+        const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets);
+        REQUIRE(roughness(raw) > 0.0); // the checkerboard really did produce relief to smooth
+
+        const indexed_triangle_set smoothed = build_texture_displacement(grid, { layer }, facets, options);
+        CHECK(roughness(smoothed) < roughness(raw));
+        CHECK(smoothed.indices == raw.indices);               // ... without touching the topology
+        CHECK(smoothed.vertices.size() == raw.vertices.size());
+        for (size_t v = 0; v < rim.size(); ++v)               // ... and the held rim is bit-identical
+            if (rim[v])
+                CHECK_THAT(smoothed.vertices[v].z(), WithinAbs(raw.vertices[v].z(), 1e-6f));
+    }
+
+    SECTION("\"ignore outer ring\" decides whether the patch rim relaxes")
+    {
+        // A flat white texture makes this exact rather than statistical: every painted vertex is
+        // displaced to precisely depth_mm, so a movable interior vertex sees nothing but neighbours at
+        // its own height and cannot move, while every rim vertex has at least one neighbour outside the
+        // paint pinned at zero and so must come down the moment it is allowed to.
+        layer.image_data = make_flat_gray_png(255);
+        const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets);
+
+        options.smooth_skip_border      = true;
+        const indexed_triangle_set kept = build_texture_displacement(grid, { layer }, facets, options);
+
         options.smooth_skip_border         = false;
         const indexed_triangle_set relaxed = build_texture_displacement(grid, { layer }, facets, options);
 
-        // Held out of the smoothing, the rim is bit-for-bit the un-smoothed displacement.
+        // Asserted on z alone, not on the whole position: relaxation averages all three coordinates,
+        // and while the tangential drift cancels by symmetry on a regular grid it does so only up to
+        // floating-point summation order, which is not something to pin down across three platforms.
+        // Height is what the option is about and it is exact - every neighbour of a movable vertex sits
+        // at the same height, so its own height cannot move.
         for (size_t v = 0; v < rim.size(); ++v)
-            if (rim[v])
-                CHECK_THAT(kept.vertices[v].z(), WithinAbs(raw.vertices[v].z(), 1e-6f));
-        CHECK(rim_peak(relaxed) < rim_peak(kept)); // ... and melted back down without it
-        // ... while the interior really was smoothed - this is not just "smoothing turned off".
-        CHECK_FALSE(kept.vertices == raw.vertices);
+            if (rim[v]) {
+                CHECK_THAT(kept.vertices[v].z(), WithinAbs(raw.vertices[v].z(), 1e-6f)); // held
+                CHECK(relaxed.vertices[v].z() < raw.vertices[v].z());                    // melted down
+            }
     }
 }
 
