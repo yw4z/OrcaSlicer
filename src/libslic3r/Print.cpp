@@ -5,6 +5,7 @@
 #include "Brim.hpp"
 #include "ClipperUtils.hpp"
 #include "Extruder.hpp"
+#include "FilamentMixer.hpp"
 #include "Flow.hpp"
 #include "Geometry/ConvexHull.hpp"
 #include "I18N.hpp"
@@ -2601,28 +2602,38 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         if (this->config().print_sequence == PrintSequence::ByObject) {
             // Order object instances for sequential print.
             print_object_instances_ordering = sort_object_instances_by_model_order(*this);
+            // A mixed slot is virtual; only its components reach a nozzle. These per-object orderings
+            // are unsorted (no resolve_mixed_filaments), so expand the slots here for the grouping, the
+            // unprintable sets and the slice-used lists. No-op without mixed filaments.
+            // Orca: the slice-used lists stay sourced from these expanded lists rather than from the
+            // sorted orderings (which may add the wipe-tower filament or seed dontcare layers
+            // differently), so prints without mixed filaments keep their used-filament set; the
+            // first-layer set therefore lists every component of a mixed slot, not just the one layer 0
+            // resolves to.
+            const auto &is_mixed  = m_config.filament_is_mixed.values;
+            const auto &comp_strs = m_config.filament_mixed_components.values;
+            const bool  has_mixed = has_any_mixed_filament(is_mixed);
             std::vector<unsigned int> first_layer_used_filaments;
-            std::vector<unsigned int> used_mixed_filaments;
             std::vector<std::vector<unsigned int>> all_filaments;
             for (print_object_instance_sequential_active = print_object_instances_ordering.begin(); print_object_instance_sequential_active != print_object_instances_ordering.end(); ++print_object_instance_sequential_active) {
                 tool_ordering = ToolOrdering(*(*print_object_instance_sequential_active)->print_object, initial_extruder_id);
                 for (size_t idx = 0; idx < tool_ordering.layer_tools().size(); ++idx) {
-                    auto& layer_filament = tool_ordering.layer_tools()[idx].extruders;
+                    auto layer_filament = tool_ordering.layer_tools()[idx].extruders;
+                    if (has_mixed)
+                        layer_filament = expand_mixed_filaments(layer_filament, is_mixed, comp_strs);
                     all_filaments.emplace_back(layer_filament);
                     if (idx == 0)
                         first_layer_used_filaments.insert(first_layer_used_filaments.end(), layer_filament.begin(), layer_filament.end());
                 }
-                used_mixed_filaments.insert(used_mixed_filaments.end(),
-                    tool_ordering.used_mixed_filaments().begin(), tool_ordering.used_mixed_filaments().end());
             }
             sort_remove_duplicates(first_layer_used_filaments);
-            sort_remove_duplicates(used_mixed_filaments);
             auto used_filaments = collect_sorted_used_filaments(all_filaments);
             this->set_slice_used_filaments(first_layer_used_filaments,used_filaments);
-            this->set_slice_used_mixed_filaments(used_mixed_filaments);
 
             auto physical_unprintables = this->get_physical_unprintable_filaments(used_filaments);
             auto geometric_unprintables = this->get_geometric_unprintable_filaments();
+            if (has_mixed)
+                expand_mixed_slots_in_unprintables(geometric_unprintables, is_mixed, comp_strs);
             auto filament_unprintable_volumes = this->get_filament_unprintable_flow(used_filaments);
             // Selector (per-layer regroup) prints skip the static grouping: their print-wide result
             // is stitched from the per-object plans after the ordering loop below.
@@ -2674,6 +2685,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             std::vector<std::vector<int>>          nozzle_map_per_layer;
             std::vector<std::vector<unsigned int>> stitched_layer_filaments;
             print_object_instance_sequential_active = print_object_instances_ordering.begin();
+            std::vector<unsigned int> used_mixed_filaments;
             for (; print_object_instance_sequential_active != print_object_instances_ordering.end(); ++print_object_instance_sequential_active) {
                 const PrintObject *print_object = (*print_object_instance_sequential_active)->print_object;
                 if (dynamic_reorder) {
@@ -2705,10 +2717,15 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     if (!tool_ordering.layer_tools().empty())
                         seq_mixed_resolution[print_object->id()] = tool_ordering.layer_tools().front().mixed_filament_resolution;
                 }
+                // Only sorted orderings have run resolve_mixed_filaments, so only they know which
+                // mixed slots actually print.
+                append(used_mixed_filaments, tool_ordering.used_mixed_filaments());
                 if ((initial_extruder_id = tool_ordering.first_extruder()) != static_cast<unsigned int>(-1)) {
                     append(printExtruders, tool_ordering.tools_for_layer(layers_to_print.front().first).extruders);
                 }
             }
+            sort_remove_duplicates(used_mixed_filaments);
+            this->set_slice_used_mixed_filaments(used_mixed_filaments);
             if (dynamic_reorder && m_objects.size() > 1) {
                 // Stitch the per-object plans into one print-wide selector result. A single-object
                 // sequential print publishes (and writes back) from its own ordering instead: the
