@@ -614,13 +614,13 @@ TEST_CASE("set_num_filaments keeps mixed-color arrays in step with the filament 
     }
 }
 
-// A mix is described by 1-based indices into the project's filament list, so it is only meaningful
-// alongside that list. As in BambuStudio the app-config snapshot is global — one "last session"
-// copy under the shared "presets" section, restored at startup only. A PER-PRINTER copy would be
-// re-applied on every printer change and would replace a loaded project's mixes with whatever
-// snapshot that printer last held, which also shrinks the filament count and makes reload_scene
-// strip painted facets above it.
-TEST_CASE("Mixed-color filament metadata is snapshotted globally, never per printer", "[Preset][Bundle][FilamentMixer]")
+// A mix is described by 1-based indices into the project's filament list. Orca's per-printer
+// preset memory rebuilds that list from the selected printer's snapshot (filament_%02u /
+// filament_colors) at startup and on every printer selection, so the mixed arrays must be stored
+// in the SAME per-printer snapshot: kept globally (as BambuStudio does — its filament list is a
+// single global snapshot too) they end up indexing a list they were never saved against, and used
+// to be reset on every printer selection instead, losing the mixes over an app restart.
+TEST_CASE("Mixed-color filament metadata is snapshotted per printer, with its filament list", "[Preset][Bundle][FilamentMixer]")
 {
     PresetBundle bundle;
     // export_selections skips the built-in "Default Printer" placeholder entirely.
@@ -636,16 +636,16 @@ TEST_CASE("Mixed-color filament metadata is snapshotted globally, never per prin
 
     const std::string printer_name = bundle.printers.get_selected_preset_name();
     for (const char *key : kMixedKeys) {
-        DYNAMIC_SECTION("global, not per printer: " << key) {
-            CHECK(app_config.has("presets", key));
-            CHECK_FALSE(app_config.has_printer_setting(printer_name, key));
+        DYNAMIC_SECTION("per printer, not global: " << key) {
+            CHECK(app_config.has_printer_setting(printer_name, key));
+            CHECK_FALSE(app_config.has("presets", key));
         }
     }
 
     SECTION("with the encoding load_selections reads back") {
-        CHECK(app_config.get("presets", "filament_is_mixed") == "0,1");
-        CHECK(app_config.get("presets", "filament_mixed_components") == "|1,2");
-        CHECK(app_config.get("presets", "filament_mixed_sublayer_ratios") == "|0.5,0.5");
+        CHECK(app_config.get_printer_setting(printer_name, "filament_is_mixed") == "0,1");
+        CHECK(app_config.get_printer_setting(printer_name, "filament_mixed_components") == "|1,2");
+        CHECK(app_config.get_printer_setting(printer_name, "filament_mixed_sublayer_ratios") == "|0.5,0.5");
     }
 }
 
@@ -668,7 +668,8 @@ TEST_CASE("A multi-point gradient curve survives the app-config snapshot", "[Pre
     // Decoding the stored form returns the three slots intact, curve delimiters and all. A plain
     // '|' join would decode as five slots here instead of three.
     std::vector<std::string> decoded;
-    REQUIRE(unescape_strings_cstyle(app_config.get("presets", "filament_mixed_gradient_curve"), decoded));
+    REQUIRE(unescape_strings_cstyle(
+        app_config.get_printer_setting(bundle.printers.get_selected_preset_name(), "filament_mixed_gradient_curve"), decoded));
     CHECK(decoded == curves);
 }
 

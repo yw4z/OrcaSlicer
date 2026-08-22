@@ -2716,28 +2716,53 @@ void PresetBundle::load_installed_sla_materials(AppConfig &config)
 }
 
 // Mixed-color filament metadata is project state, carried in the 3mf's project_settings.config.
-// As in BambuStudio it also gets a single GLOBAL app-config snapshot, restored once at startup so
-// the last session's mixes are there before any project is opened; a project load then overwrites
-// them through s_project_options. It is deliberately not a per-printer snapshot: the component ids
-// in filament_mixed_components are 1-based indices into the project's filament list, so re-applying
-// a printer's copy on every printer change would silently replace a loaded project's mixes.
-// Mirrors PresetBundle::load_selections in BambuStudio.
-static void load_mixed_filament_settings(DynamicPrintConfig &project_config, const AppConfig &config, size_t n_filaments)
+// BambuStudio also snapshots it in the app config so the last session's mixes are back before any
+// project is opened; there the filament list itself is a single global snapshot, so the mixed
+// arrays live next to it in the global "presets" section. Orca's per-printer preset memory instead
+// rebuilds the filament list from the selected printer's snapshot (filament_%02u/filament_colors)
+// on startup AND on every printer selection — so the mixed arrays, whose component ids are 1-based
+// indices into exactly that list, must live in the same per-printer snapshot or they end up
+// describing a list they were never saved against (and previously got reset on every printer
+// select, losing the mixes over a restart).
+// Missing keys clear the arrays: a printer with no stored mixes must not inherit another's.
+// fallback_to_global additionally reads the legacy shared "presets" keys (the old format) so a
+// config saved by an earlier build still restores at startup; export_selections clears that
+// section on the next save.
+static void load_mixed_filament_settings(DynamicPrintConfig &project_config, AppConfig &config,
+                                         const std::string &printer_name, size_t n_filaments,
+                                         bool fallback_to_global)
 {
+    auto raw_value = [&](const char *key, bool &found) -> std::string {
+        if (config.has_printer_setting(printer_name, key)) {
+            found = true;
+            return config.get_printer_setting(printer_name, key);
+        }
+        if (fallback_to_global && config.has("presets", key)) {
+            found = true;
+            return config.get("presets", key);
+        }
+        found = false;
+        return std::string{};
+    };
     std::vector<std::string> parts;
     auto load_bools = [&](const char *key) {
         auto &vals = project_config.option<ConfigOptionBools>(key)->values;
-        if (config.has("presets", key)) {
-            boost::algorithm::split(parts, config.get("presets", key), boost::algorithm::is_any_of(","));
-            vals.clear();
+        vals.clear();
+        bool found = false;
+        const std::string s = raw_value(key, found);
+        if (found && !s.empty()) {
+            boost::algorithm::split(parts, s, boost::algorithm::is_any_of(","));
             for (const auto &p : parts) vals.push_back(p == "1");
         }
         vals.resize(n_filaments, false);
     };
     auto load_strings = [&](const char *key) {
         auto &vals = project_config.option<ConfigOptionStrings>(key)->values;
-        if (config.has("presets", key)) {
-            boost::algorithm::split(parts, config.get("presets", key), boost::algorithm::is_any_of("|"));
+        vals.clear();
+        bool found = false;
+        const std::string s = raw_value(key, found);
+        if (found && !s.empty()) {
+            boost::algorithm::split(parts, s, boost::algorithm::is_any_of("|"));
             vals = parts;
         }
         vals.resize(n_filaments, std::string{});
@@ -2754,9 +2779,12 @@ static void load_mixed_filament_settings(DynamicPrintConfig &project_config, con
     // control points), so it is stored C-style escaped rather than '|'-joined.
     {
         auto &vals = project_config.option<ConfigOptionStrings>("filament_mixed_gradient_curve")->values;
-        if (config.has("presets", "filament_mixed_gradient_curve")) {
+        vals.clear();
+        bool found = false;
+        const std::string s = raw_value("filament_mixed_gradient_curve", found);
+        if (found && !s.empty()) {
             std::vector<std::string> curves;
-            if (unescape_strings_cstyle(config.get("presets", "filament_mixed_gradient_curve"), curves))
+            if (unescape_strings_cstyle(s, curves))
                 vals = std::move(curves);
         }
         vals.resize(n_filaments, std::string{});
@@ -2764,30 +2792,6 @@ static void load_mixed_filament_settings(DynamicPrintConfig &project_config, con
         // (e.g. a curve split across slots by the old "|" delimiter). Falls back to linear.
         Slic3r::sanitize_mixed_gradient_curve_array(vals);
     }
-}
-
-// Orca's per-printer preset memory (update_selections, which BambuStudio has no equivalent of)
-// rebuilds the filament list wholesale from that printer's snapshot, presets and colours included.
-// Any existing mix then describes filaments that are no longer there, so clear the arrays and size
-// them to the new filament count rather than carrying stale component indices across.
-static void reset_mixed_filament_settings(DynamicPrintConfig &project_config, size_t n_filaments)
-{
-    auto reset_bools = [&](const char *opt_key) {
-        auto &vals = project_config.option<ConfigOptionBools>(opt_key)->values;
-        vals.assign(n_filaments, false);
-    };
-    auto reset_strings = [&](const char *opt_key) {
-        auto &vals = project_config.option<ConfigOptionStrings>(opt_key)->values;
-        vals.assign(n_filaments, std::string{});
-    };
-
-    reset_bools("filament_is_mixed");
-    reset_strings("filament_mixed_components");
-    reset_strings("filament_mixed_sublayer_ratios");
-    reset_bools("filament_mixed_gradient");
-    reset_strings("filament_mixed_gradient_range");
-    reset_strings("filament_mixed_gradient_curve");
-    reset_bools("filament_mixed_gradient_per_part");
 }
 
 void PresetBundle::update_selections(AppConfig &config)
@@ -2870,7 +2874,9 @@ void PresetBundle::update_selections(AppConfig &config)
         auto flush_multipliers = matrix | boost::adaptors::transformed(boost::lexical_cast<double, std::string>);
         project_config.option<ConfigOptionFloats>("flush_multiplier")->values = std::vector<double>(flush_multipliers.begin(), flush_multipliers.end());
     }
-    reset_mixed_filament_settings(project_config, filament_presets.size());
+    // No global fallback here: on a printer change the legacy shared keys describe another
+    // printer's filament list, so absent per-printer keys must clear the mixes, not revive them.
+    load_mixed_filament_settings(project_config, config, initial_printer_profile_name, filament_presets.size(), false);
 
     // Update visibility of presets based on their compatibility with the active printer.
     // Always try to select a compatible print and filament preset to the current printer preset,
@@ -3021,7 +3027,7 @@ void PresetBundle::load_selections(AppConfig &config, const PresetPreferences& p
         auto flush_multipliers = matrix | boost::adaptors::transformed(boost::lexical_cast<double, std::string>);
         project_config.option<ConfigOptionFloats>("flush_multiplier")->values = std::vector<double>(flush_multipliers.begin(), flush_multipliers.end());
     }
-    load_mixed_filament_settings(project_config, config, filament_presets.size());
+    load_mixed_filament_settings(project_config, config, initial_printer_profile_name, filament_presets.size(), true);
 
     // Update visibility of presets based on their compatibility with the active printer.
     // Always try to select a compatible print and filament preset to the current printer preset,
@@ -3156,11 +3162,12 @@ void PresetBundle::export_selections(AppConfig &config)
                                                               "|");
     config.set_printer_setting(printer_name, "flush_multiplier", flush_multiplier_str);
 
-    // Mixed-color filament metadata: a single global snapshot, restored by load_selections at
-    // startup (see the comment there). Written to the shared "presets" section rather than to this
-    // printer's settings on purpose — a per-printer copy is re-applied on every printer change and
-    // replaces a loaded project's mixes. Bools are ','-joined; the component/ratio/range strings
-    // are '|'-joined; the gradient curve is escaped instead, because its values contain '|'.
+    // Mixed-color filament metadata: stored in the per-printer snapshot next to the filament
+    // list it indexes (filament_%02u / filament_colors), so each printer's remembered config
+    // round-trips its own mixes and re-applying a snapshot never leaves the arrays describing a
+    // different list (see load_mixed_filament_settings). Bools are ','-joined; the
+    // component/ratio/range strings are '|'-joined; the gradient curve is escaped instead,
+    // because its values contain '|'.
     auto join_bools = [](const std::vector<unsigned char> &vals) {
         std::string s;
         for (size_t i = 0; i < vals.size(); ++i) {
@@ -3170,19 +3177,19 @@ void PresetBundle::export_selections(AppConfig &config)
         return s;
     };
     if (auto *opt = project_config.option<ConfigOptionBools>("filament_is_mixed"))
-        config.set("presets", "filament_is_mixed", join_bools(opt->values));
+        config.set_printer_setting(printer_name, "filament_is_mixed", join_bools(opt->values));
     if (auto *opt = project_config.option<ConfigOptionStrings>("filament_mixed_components"))
-        config.set("presets", "filament_mixed_components", boost::algorithm::join(opt->values, "|"));
+        config.set_printer_setting(printer_name, "filament_mixed_components", boost::algorithm::join(opt->values, "|"));
     if (auto *opt = project_config.option<ConfigOptionStrings>("filament_mixed_sublayer_ratios"))
-        config.set("presets", "filament_mixed_sublayer_ratios", boost::algorithm::join(opt->values, "|"));
+        config.set_printer_setting(printer_name, "filament_mixed_sublayer_ratios", boost::algorithm::join(opt->values, "|"));
     if (auto *opt = project_config.option<ConfigOptionBools>("filament_mixed_gradient"))
-        config.set("presets", "filament_mixed_gradient", join_bools(opt->values));
+        config.set_printer_setting(printer_name, "filament_mixed_gradient", join_bools(opt->values));
     if (auto *opt = project_config.option<ConfigOptionStrings>("filament_mixed_gradient_range"))
-        config.set("presets", "filament_mixed_gradient_range", boost::algorithm::join(opt->values, "|"));
+        config.set_printer_setting(printer_name, "filament_mixed_gradient_range", boost::algorithm::join(opt->values, "|"));
     if (auto *opt = project_config.option<ConfigOptionStrings>("filament_mixed_gradient_curve"))
-        config.set("presets", "filament_mixed_gradient_curve", escape_strings_cstyle(opt->values));
+        config.set_printer_setting(printer_name, "filament_mixed_gradient_curve", escape_strings_cstyle(opt->values));
     if (auto *opt = project_config.option<ConfigOptionBools>("filament_mixed_gradient_per_part"))
-        config.set("presets", "filament_mixed_gradient_per_part", join_bools(opt->values));
+        config.set_printer_setting(printer_name, "filament_mixed_gradient_per_part", join_bools(opt->values));
 
     // BBS
     //config.set("presets", "sla_print",    sla_prints.get_selected_preset_name());
