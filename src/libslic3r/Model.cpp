@@ -2669,9 +2669,18 @@ void ModelVolume::update_extruder_count_when_delete_filament(size_t extruder_cou
     // Same stale-assignment cleanup as update_extruder_count, for the filament-delete path.
     // Ported from BambuStudio (STUDIO-15763).
     size_t eid = extruder_id();
-    if (eid > extruder_count) {
-        // A mixed-color slot is virtual and legitimately sits past the physical filament count,
-        // so an assignment to one is not stale and must survive the delete.
+    // Judge out-of-range against the post-remap id, mirroring update_filament_values_for_items_when_delete_filament.
+    // Using the pre-remap eid would wrongly erase a high extruder that should remap (e.g. 5 -> 4 after
+    // deleting filament 1); update_filament_values_for_items_when_delete_filament would then skip it
+    // (!has("extruder")) and the volume would fall back to the object default color.
+    size_t remapped = eid;
+    if (eid == filament_id)
+        remapped = (replace_filament_id > 0) ? (size_t)replace_filament_id : 1;
+    else if (eid > filament_id)
+        remapped = eid - 1;
+    if (remapped > extruder_count) {
+        // filament_is_mixed is the pre-delete snapshot; index it with the ORIGINAL eid (1-based),
+        // not remapped, so we check whether this volume's current slot is a mixed slot.
         bool is_mixed = !filament_is_mixed.empty() && eid >= 1 && (eid - 1) < filament_is_mixed.size() && filament_is_mixed[eid - 1];
         if (!is_mixed)
             this->config.erase("extruder");
