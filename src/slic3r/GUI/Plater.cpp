@@ -1096,23 +1096,38 @@ std::vector<int> get_min_flush_volumes(const DynamicPrintConfig &full_config, si
 
 struct DynamicFilamentList : DynamicList
 {
+    // Orca: support and wipe-tower keys are consumed by the engine without per-layer mixed
+    // resolution (see ConfigManipulation::update_print_fff_config), so their dropdowns list
+    // physical slots only; the per-feature *_filament_id keys keep every slot. BBS uses one
+    // physical-only list for all of its keys.
+    explicit DynamicFilamentList(bool physical_only = false) : physical_only(physical_only) {}
+    bool physical_only;
     std::vector<std::pair<wxString, wxBitmap *>> items;
+    std::vector<int> slot_map{0}; // combo index -> 1-based filament slot; slot_map[0] = 0 is "Default"
 
     void apply_on(Choice *c) override
     {
+        if (!c)
+            return;
         if (items.empty())
             update(true);
         auto cb = dynamic_cast<ComboBox *>(c->window);
+        if (!cb)
+            return;
         wxString old_selection = cb->GetStringSelection();
         int old_index  = cb->GetSelection();
+        // slot_map is already rebuilt here: restoring through it keeps the index of every slot
+        // still listed and sends a vanished slot to the fallback below.
+        int old_slot = old_index >= 0 && old_index < int(slot_map.size()) ? slot_map[old_index] : -1;
         cb->Clear();
         cb->Append(_L("Default"));
         for (auto i : items) {
             cb->Append(i.first, i.second ? *i.second : wxNullBitmap);
         }
 
-        if (old_index >= 0 && (unsigned int) old_index < cb->GetCount()) {
-            cb->SetSelection(old_index);
+        int restored = index_of(wxString::Format("%d", old_slot));
+        if (restored > 0 || old_slot == 0) {
+            cb->SetSelection(restored);
             return;
         }
 
@@ -1128,27 +1143,36 @@ struct DynamicFilamentList : DynamicList
     wxString get_value(int index) override
     {
         wxString str;
-        str << index;
+        str << (index >= 0 && index < int(slot_map.size()) ? slot_map[index] : 0);
         return str;
     }
     int index_of(wxString value) override
     {
         long n = 0;
-        return (value.ToLong(&n) && n <= items.size()) ? int(n) : -1;
+        if (!value.ToLong(&n))
+            return -1;
+        for (int i = 0; i < int(slot_map.size()); ++i)
+            if (slot_map[i] == int(n))
+                return i;
+        return 0;
     }
     void update(bool force = false)
     {
         items.clear();
+        slot_map.assign(1, 0);
         if (!force && m_choices.empty())
             return;
         auto icons = get_extruder_color_icons(true);
         auto presets = wxGetApp().preset_bundle->filament_presets;
         for (int i = 0; i < presets.size(); ++i) {
+            if (physical_only && wxGetApp().preset_bundle->is_mixed_filament(i))
+                continue;
             wxString str;
             std::string type;
             wxGetApp().preset_bundle->filaments.find_preset(presets[i])->get_filament_type(type);
             str << type;
             items.push_back({str, i < icons.size() ? icons[i] : nullptr});
+            slot_map.push_back(i + 1);
         }
         DynamicList::update();
     }
@@ -1169,7 +1193,8 @@ static bool has_junction_deviation(const DynamicPrintConfig* printer_config)
            junction_dev->values.front() > 0.0;
 }
 
-static DynamicFilamentList dynamic_filament_list;
+static DynamicFilamentList dynamic_filament_list;                // every slot, mixed included (per-feature *_filament_id keys)
+static DynamicFilamentList dynamic_physical_filament_list(true); // physical slots only (support_*, wipe_tower_filament)
 
 class AMSCountPopupWindow : public PopupWindow
 {
@@ -2391,15 +2416,15 @@ void Sidebar::update_sync_ams_btn_enable(wxUpdateUIEvent &e)
 Sidebar::Sidebar(Plater *parent)
     : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(39 * wxGetApp().em_unit(), -1)), p(new priv(parent))
 {
-    Choice::register_dynamic_list("support_filament", &dynamic_filament_list);
-    Choice::register_dynamic_list("support_interface_filament", &dynamic_filament_list);
+    Choice::register_dynamic_list("support_filament", &dynamic_physical_filament_list);
+    Choice::register_dynamic_list("support_interface_filament", &dynamic_physical_filament_list);
     Choice::register_dynamic_list("outer_wall_filament_id", &dynamic_filament_list);
     Choice::register_dynamic_list("inner_wall_filament_id", &dynamic_filament_list);
     Choice::register_dynamic_list("sparse_infill_filament_id", &dynamic_filament_list);
     Choice::register_dynamic_list("internal_solid_filament_id", &dynamic_filament_list);
     Choice::register_dynamic_list("top_surface_filament_id", &dynamic_filament_list);
     Choice::register_dynamic_list("bottom_surface_filament_id", &dynamic_filament_list);
-    Choice::register_dynamic_list("wipe_tower_filament", &dynamic_filament_list);
+    Choice::register_dynamic_list("wipe_tower_filament", &dynamic_physical_filament_list);
 
     p->scrolled = new wxPanel(this);
     //    p->scrolled->SetScrollbars(0, 100, 1, 2); // ys_DELETE_after_testing. pixelsPerUnitY = 100
@@ -5341,7 +5366,7 @@ void Sidebar::on_filaments_delete(size_t filament_id)
     Layout();
     p->m_panel_filament_title->Refresh();
     update_ui_from_settings();
-    dynamic_filament_list.update();
+    update_dynamic_filament_list();
 }
 
 void Sidebar::add_filament() {
@@ -5842,7 +5867,7 @@ void Sidebar::sync_ams_list(bool is_from_big_sync_btn)
         if (m_sync_dlg->is_dirty_filament()) {
             wxGetApp().get_tab(Preset::TYPE_FILAMENT)->select_preset(wxGetApp().preset_bundle->filament_presets[0], false, "", false, true);
             wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
-            dynamic_filament_list.update();
+            update_dynamic_filament_list();
         }
         m_sync_dlg->set_check_dirty_fialment(false);
         dlg_res = m_sync_dlg->ShowModal();
@@ -6098,6 +6123,7 @@ void Sidebar::enable_nozzle_count_edit(bool enable)
 void Sidebar::update_dynamic_filament_list()
 {
     dynamic_filament_list.update();
+    dynamic_physical_filament_list.update();
 }
 
 PlaterPresetComboBox* Sidebar::printer_combox()
