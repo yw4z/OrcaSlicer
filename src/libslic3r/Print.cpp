@@ -2585,6 +2585,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         std::vector<const PrintInstance*>::const_iterator 	print_object_instance_sequential_active;
         std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> layers_to_print = GCode::collect_layers_to_print(*this);
         std::vector<unsigned int> printExtruders;
+        // Per-object first-layer mixed-slot resolutions for the by-object remap below
+        // (BBS reads them from m_sequential_print_data->object_tool_ordering_map).
+        std::map<ObjectID, std::map<unsigned int, unsigned int>> seq_mixed_resolution;
         // Cleared on every process so a print-sequence or selector-mode change can never leave
         // stale object pointers behind; repopulated below only by the sequential selector path.
         m_sequential_dynamic_orderings.clear();
@@ -2687,6 +2690,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 } else {
                     tool_ordering = ToolOrdering(*print_object, initial_extruder_id);
                     tool_ordering.sort_and_build_data(*print_object, initial_extruder_id);
+                    if (!tool_ordering.layer_tools().empty())
+                        seq_mixed_resolution[print_object->id()] = tool_ordering.layer_tools().front().mixed_filament_resolution;
                 }
                 if ((initial_extruder_id = tool_ordering.first_extruder()) != static_cast<unsigned int>(-1)) {
                     append(printExtruders, tool_ordering.tools_for_layer(layers_to_print.front().first).extruders);
@@ -2722,14 +2727,23 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         // Resolve mixed filament virtual slots to physical components so brim
         // extruder matching works correctly (mixed slot IDs are not present
         // in printExtruders after ToolOrdering::resolve_mixed_filaments).
-        if (m_config.print_sequence != PrintSequence::ByObject && !tool_ordering.layer_tools().empty()) {
-            const LayerTools &first_lt = tool_ordering.layer_tools().front();
+        {
+            const LayerTools *first_lt = nullptr;
+            if (m_config.print_sequence != PrintSequence::ByObject && !tool_ordering.layer_tools().empty())
+                first_lt = &tool_ordering.layer_tools().front();
             for (auto &[obj_id, ext_1based] : objectExtruderMap) {
                 if (ext_1based == 0)
                     continue;
-                auto it = first_lt.mixed_filament_resolution.find(ext_1based - 1);
-                if (it != first_lt.mixed_filament_resolution.end())
-                    ext_1based = it->second + 1;
+                const std::map<unsigned int, unsigned int> *resolution = nullptr;
+                if (first_lt)
+                    resolution = &first_lt->mixed_filament_resolution;
+                else if (auto obj_it = seq_mixed_resolution.find(obj_id); obj_it != seq_mixed_resolution.end())
+                    resolution = &obj_it->second;
+                if (resolution) {
+                    auto it = resolution->find(ext_1based - 1);
+                    if (it != resolution->end())
+                        ext_1based = it->second + 1;
+                }
             }
         }
         std::vector<std::pair<ObjectID, unsigned int>> objPrintVec;
