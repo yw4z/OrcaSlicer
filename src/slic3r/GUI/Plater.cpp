@@ -6477,6 +6477,10 @@ void Sidebar::auto_calc_flushing_volumes(const int filament_idx, const int extru
 void Sidebar::auto_calc_flushing_volumes_internal(const int modify_id, const int extruder_id)
 {
     auto& preset_bundle = wxGetApp().preset_bundle;
+    // A mixed-colour slot is virtual and is never flushed to or from: leave its row and column
+    // alone (the flushing dialog hides them and only compares physical slots).
+    if (modify_id >= 0 && preset_bundle->is_mixed_filament((size_t)modify_id))
+        return;
     auto& project_config = preset_bundle->project_config;
     const auto& full_config = wxGetApp().preset_bundle->full_config();
     auto& ams_multi_color_filament = preset_bundle->ams_multi_color_filment;
@@ -6515,6 +6519,8 @@ void Sidebar::auto_calc_flushing_volumes_internal(const int modify_id, const int
 
     if (modify_id >= 0 && modify_id < multi_colours.size()) {
         for (int i = 0; i < multi_colours.size(); ++i) {
+            if (preset_bundle->is_mixed_filament((size_t)i))
+                continue;
             // from to modify
             int from_idx = i;
             if (from_idx != modify_id) {

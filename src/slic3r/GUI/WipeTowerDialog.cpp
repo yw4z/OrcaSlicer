@@ -204,6 +204,10 @@ bool is_flush_config_modified()
     const auto                &project_config    = wxGetApp().preset_bundle->project_config;
     const std::vector<double> &config_matrix     = (project_config.option<ConfigOptionFloats>("flush_volumes_matrix"))->values;
     const std::vector<double> &config_multiplier = (project_config.option<ConfigOptionFloats>("flush_multiplier"))->values;
+    // The config matrix is N x N per nozzle over every slot, while CalcFlushingVolumes is p x p
+    // over the physical slots (mixed slots never flush): map each default cell to its config index.
+    const auto   physical_indices = wxGetApp().preset_bundle->physical_filament_config_indices();
+    const size_t full_n           = project_config.option<ConfigOptionStrings>("filament_colour")->values.size();
 
     bool has_modify = false;
     for (int i = 0; i < config_multiplier.size(); i++) {
@@ -212,11 +216,12 @@ bool is_flush_config_modified()
             break;
         }
         std::vector<std::vector<double>> default_matrix = WipingDialog::CalcFlushingVolumes(i);
-        int len = default_matrix.size();
-        for (int m = 0; m < len; m++) {
-            for (int n = 0; n < len; n++) {
-                int idx = i * len * len + m * len + n;
-                if (config_matrix[idx] != default_matrix[m][n] * config_multiplier[i]) {
+        size_t p_len         = default_matrix.size();
+        size_t nozzle_offset = i * full_n * full_n;
+        for (size_t m = 0; m < p_len; m++) {
+            for (size_t n = 0; n < p_len; n++) {
+                size_t cfg_idx = nozzle_offset + physical_indices[m] * full_n + physical_indices[n];
+                if (cfg_idx < config_matrix.size() && config_matrix[cfg_idx] != default_matrix[m][n] * config_multiplier[i]) {
                     has_modify = true;
                     break;
                 }
@@ -571,55 +576,51 @@ WipingDialog::VolumeMatrix WipingDialog::CalcFlushingVolumes(int extruder_id)
     auto& preset_bundle = wxGetApp().preset_bundle;
     auto full_config = preset_bundle->full_config();
     auto& ams_multi_color_filament = preset_bundle->ams_multi_color_filment;
+    // Mixed-colour slots are virtual and never flushed: compute a p x p matrix over the physical
+    // slots only, laid out like the table; row/column k belongs to config slot physical_indices[k].
+    auto physical_indices = preset_bundle->physical_filament_config_indices();
 
-    std::vector<std::string> filament_color_strs = full_config.option<ConfigOptionStrings>("filament_colour")->values;
-    std::vector<std::vector<wxColour>> multi_colors;
-    std::vector<wxColour> filament_colors;
-    for (auto color_str : filament_color_strs)
-        filament_colors.emplace_back(color_str);
-
+    std::vector<std::string> all_color_strs = full_config.option<ConfigOptionStrings>("filament_colour")->values;
     int flush_dataset_value = full_config.option<ConfigOptionIntsNullable>("nozzle_flush_dataset")->values[extruder_id];
+    const std::vector<int> min_flush_volumes = get_min_flush_volumes(full_config, extruder_id);
+
     // Support for multi-color filament
-    for (int i = 0; i < filament_colors.size(); ++i) {
+    std::vector<std::vector<wxColour>> multi_colors;
+    for (size_t cfg_idx : physical_indices) {
         std::vector<wxColour> single_filament;
-        if (i < ams_multi_color_filament.size()) {
-            if (!ams_multi_color_filament[i].empty()) {
-                std::vector<std::string> colors = ams_multi_color_filament[i];
-                for (int j = 0; j < colors.size(); ++j) {
-                    single_filament.push_back(wxColour(colors[j]));
-                }
-                multi_colors.push_back(single_filament);
-                continue;
-            }
+        if (cfg_idx < ams_multi_color_filament.size() && !ams_multi_color_filament[cfg_idx].empty()) {
+            for (const auto& c : ams_multi_color_filament[cfg_idx])
+                single_filament.push_back(wxColour(c));
+        } else if (cfg_idx < all_color_strs.size()) {
+            single_filament.push_back(wxColour(all_color_strs[cfg_idx]));
         }
-        single_filament.push_back(wxColour(filament_colors[i]));
         multi_colors.push_back(single_filament);
     }
 
     VolumeMatrix matrix;
-    const std::vector<int> min_flush_volumes = get_min_flush_volumes(full_config, extruder_id);
-
-    for (int from_idx = 0; from_idx < multi_colors.size(); ++from_idx) {
-        bool is_from_support = is_support_filament(from_idx);
+    for (size_t pi = 0; pi < physical_indices.size(); ++pi) {
+        int from_cfg = (int)physical_indices[pi];
+        bool is_from_support = is_support_filament(from_cfg);
         matrix.emplace_back();
-        for (int to_idx = 0; to_idx < multi_colors.size(); ++to_idx) {
-            if (from_idx == to_idx) {
+        for (size_t pj = 0; pj < physical_indices.size(); ++pj) {
+            int to_cfg = (int)physical_indices[pj];
+            if (from_cfg == to_cfg) {
                 matrix.back().emplace_back(0);
                 continue;
             }
 
-            bool is_to_support = is_support_filament(to_idx);
-
+            bool is_to_support = is_support_filament(to_cfg);
             int flushing_volume = 0;
             if (is_to_support) {
                 flushing_volume = Slic3r::g_flush_volume_to_support;
             }
             else {
-                for (int i = 0; i < multi_colors[from_idx].size(); ++i) {
-                    const wxColour& from = multi_colors[from_idx][i];
-                    for (int j = 0; j < multi_colors[to_idx].size(); ++j) {
-                        const wxColour& to = multi_colors[to_idx][j];
-                        int volume = CalcFlushingVolume(from, to, min_flush_volumes[from_idx], flush_dataset_value);
+                int min_flush_from = (from_cfg < (int)min_flush_volumes.size()) ? min_flush_volumes[from_cfg] : 0;
+                for (size_t i = 0; i < multi_colors[pi].size(); ++i) {
+                    const wxColour& from = multi_colors[pi][i];
+                    for (size_t j = 0; j < multi_colors[pj].size(); ++j) {
+                        const wxColour& to = multi_colors[pj][j];
+                        int volume = CalcFlushingVolume(from, to, min_flush_from, flush_dataset_value);
                         flushing_volume = std::max(flushing_volume, volume);
                     }
                 }
