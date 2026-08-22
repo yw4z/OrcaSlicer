@@ -1495,6 +1495,31 @@ void MixedFilamentDialog::on_ratio_changed(int new_ratio_a)
 
 void MixedFilamentDialog::on_gradient_toggled()
 {
+    // Orca: the engine only produces a gradient when the print profile's
+    // "enable_mixed_color_sublayer" option is on (ToolOrdering::resolve_mixed_filaments
+    // falls back to whole-layer round-robin without it, and BBS leaves users to find the
+    // option themselves). Offer to switch it on so the gradient the user just enabled
+    // actually shows up in the sliced result. Keep this block on future BBS syncs.
+    bool checked = m_chk_gradient->GetValue();
+
+    if (checked) {
+        auto& print_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        if (!print_config.opt_bool("enable_mixed_color_sublayer")) {
+            wxMessageDialog dlg(this,
+                _L("Gradient effect requires 'Mixed color sublayer' to be enabled. Enable it now?"),
+                _L("Mixed Color Sublayer"),
+                wxYES_NO | wxICON_QUESTION);
+            if (dlg.ShowModal() == wxID_YES) {
+                DynamicPrintConfig new_conf;
+                new_conf.set_key_value("enable_mixed_color_sublayer", new ConfigOptionBool(true));
+                wxGetApp().get_tab(Preset::TYPE_PRINT)->load_config(new_conf);
+            } else {
+                m_chk_gradient->SetValue(false);
+                return;
+            }
+        }
+    }
+
     m_result.gradient_enabled = m_chk_gradient->GetValue();
 
     if (m_ratio_sizer)
