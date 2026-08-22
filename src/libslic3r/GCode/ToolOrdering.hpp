@@ -290,6 +290,9 @@ public:
 
     // For a multi-material print, the printing extruders are ordered in the order they shall be primed.
     const std::vector<unsigned int>& all_extruders() const { return m_all_printing_extruders; }
+    // 0-based mixed (virtual) slots that appeared on layers before resolve_mixed_filaments
+    // expanded them to physical components.
+    const std::vector<unsigned int>& used_mixed_filaments() const { return m_used_mixed_filaments; }
 
     // Find LayerTools with the closest print_z.
     const LayerTools&	tools_for_layer(coordf_t print_z) const;
@@ -376,6 +379,7 @@ private:
     unsigned int               m_last_printing_extruder  = (unsigned int)-1;
     // All extruders, which extrude some material over m_layer_tools.
     std::vector<unsigned int>  m_all_printing_extruders;
+    std::vector<unsigned int>  m_used_mixed_filaments;
     const DynamicPrintConfig*  m_print_full_config = nullptr;
     const PrintConfig*         m_print_config_ptr = nullptr;
 

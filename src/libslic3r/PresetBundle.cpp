@@ -2760,6 +2760,9 @@ static void load_mixed_filament_settings(DynamicPrintConfig &project_config, con
                 vals = std::move(curves);
         }
         vals.resize(n_filaments, std::string{});
+        // Heal legacy corruption: clear any non-empty slot that ended up with < 2 points
+        // (e.g. a curve split across slots by the old "|" delimiter). Falls back to linear.
+        Slic3r::sanitize_mixed_gradient_curve_array(vals);
     }
 }
 

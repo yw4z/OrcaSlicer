@@ -4195,6 +4195,8 @@ void GCode::export_layer_filaments(GCodeProcessorResult* result)
         }
     }
 
+    result->used_mixed_filaments = m_print->get_slice_used_mixed_filaments();
+
     result->optimal_assignment.clear();
     result->optimal_assignment.reserve(filament_map.size());
     for (int nozzle_id : filament_map)
@@ -6859,7 +6861,7 @@ LayerResult GCode::process_layer(
                 if (instance_to_print.object_by_extruder.support && !instance_to_print.object_by_extruder.support->empty()) {
                     if (use_per_volume) {
                         m_nominal_z = obj_sub_z;
-                        gcode += m_writer.travel_to_z(obj_sub_z, "restore Z for support");
+                        m_need_change_layer_lift_z = true;
                     }
                     ExtrusionRole support_role = instance_to_print.object_by_extruder.support_extrusion_role;
                     gcode += this->extrude_support(*instance_to_print.object_by_extruder.support, support_role);
@@ -6897,7 +6899,7 @@ LayerResult GCode::process_layer(
         if (!layer_tools.mixed_sub_layer_groups.empty()) {
             m_writer.add_object_end_labels(gcode);
             m_nominal_z = print_z;
-            gcode += m_writer.travel_to_z(print_z, "restore Z after sublayers");
+            m_need_change_layer_lift_z = true;
         }
 
     }

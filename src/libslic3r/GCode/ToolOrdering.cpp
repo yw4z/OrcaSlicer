@@ -1015,7 +1015,7 @@ void ToolOrdering::fill_wipe_tower_partitions(const PrintConfig &config, coordf_
 
     //FIXME this is a hack to get the ball rolling.
     for (LayerTools &lt : m_layer_tools)
-        lt.has_wipe_tower |= (lt.has_object && (config.timelapse_type == TimelapseType::tlSmooth || lt.wipe_tower_partitions > 0))
+        lt.has_wipe_tower |= ((lt.has_object || lt.has_support) && (config.timelapse_type == TimelapseType::tlSmooth || lt.wipe_tower_partitions > 0))
             || lt.print_z < object_bottom_z + EPSILON;
 
     // Test for a raft, insert additional wipe tower layer to fill in the raft separation gap.
@@ -1053,6 +1053,84 @@ void ToolOrdering::fill_wipe_tower_partitions(const PrintConfig &config, coordf_
                 }
             }
             break;
+        }
+    }
+
+    // Ensure wipe tower vertical continuity:
+    //
+    // (1) Any existing LayerTools sandwiched between two has_wipe_tower layers must itself be a
+    //     wipe-tower layer. The LayerTools entry already exists, but it has neither object nor
+    //     support geometry (has_object == false && has_support == false), so the marking pass
+    //     above leaves has_wipe_tower == false. Happens e.g. when one object is fully floating
+    //     above another and the support_top_z_distance / support_bottom_z_distance gap leaves an
+    //     interior layer with no object and no support (e.g. B top z=20.4, A first layer z=20.8,
+    //     the z=20.6 LayerTools entry exists but stays unmarked).
+    //
+    // (2) When two adjacent has_wipe_tower layers are farther apart than max_layer_height and no
+    //     LayerTools entry exists between them, insert virtual wipe-tower-only layers to bridge
+    //     the gap. Happens with raft: BambuStudio's raft contact layer can be thicker than
+    //     max_layer_height (e.g. raft base top z=0.2, raft contact top z=0.5 — gap 0.3 > 0.28),
+    //     and there is no LayerTools entry between those two z values.
+    //
+    // wipe_tower_partitions has already been max-propagated downward above, so partition counts
+    // on the filled-in / inserted layers stay consistent.
+    {
+        int first_wt_idx = -1;
+        int last_wt_idx  = -1;
+        for (int i = 0; i < (int)m_layer_tools.size(); ++i)
+            if (m_layer_tools[i].has_wipe_tower) {
+                if (first_wt_idx < 0) first_wt_idx = i;
+                last_wt_idx = i;
+            }
+        for (int i = first_wt_idx + 1; i < last_wt_idx; ++i) {
+            LayerTools &lt = m_layer_tools[i];
+            lt.has_wipe_tower = true;
+            // GCode::process_layer emits wipe-tower G-code inside `for (extruder_id : layer_tools.extruders)`.
+            // An empty extruders vector here would silently skip wipe tower output, leaving the tower
+            // physically floating. Seed from the nearest non-empty neighbor so the loop actually runs.
+            if (lt.extruders.empty()) {
+                unsigned int seed_extruder = 0;
+                bool         found_seed    = false;
+                for (int j = i - 1; j >= 0; --j)
+                    if (!m_layer_tools[j].extruders.empty()) {
+                        seed_extruder = m_layer_tools[j].extruders.back();
+                        found_seed = true;
+                        break;
+                    }
+                if (!found_seed)
+                    for (int j = i + 1; j < (int)m_layer_tools.size(); ++j)
+                        if (!m_layer_tools[j].extruders.empty()) {
+                            seed_extruder = m_layer_tools[j].extruders.front();
+                            found_seed = true;
+                            break;
+                        }
+                if (found_seed)
+                    lt.extruders.push_back(seed_extruder);
+            }
+        }
+
+        // Walk adjacent has_wipe_tower pairs and split oversized gaps. Re-evaluate the same i
+        // after each insertion so very large gaps get split into multiple layers.
+        for (int i = 0; i + 1 < (int)m_layer_tools.size(); ) {
+            LayerTools &lt      = m_layer_tools[i];
+            LayerTools &lt_next = m_layer_tools[i + 1];
+            if (!lt.has_wipe_tower || !lt_next.has_wipe_tower) {
+                ++i;
+                continue;
+            }
+            coordf_t gap = lt_next.print_z - lt.print_z;
+            if (gap <= max_layer_height + EPSILON) {
+                ++i;
+                continue;
+            }
+            LayerTools lt_new(0.5 * (lt.print_z + lt_next.print_z));
+            lt_new.has_wipe_tower = true;
+            if (!lt_next.extruders.empty())
+                lt_new.extruders.push_back(lt_next.extruders.front());
+            else if (!lt.extruders.empty())
+                lt_new.extruders.push_back(lt.extruders.back());
+            lt_new.wipe_tower_partitions = lt_next.wipe_tower_partitions;
+            m_layer_tools.insert(m_layer_tools.begin() + i + 1, lt_new);
         }
     }
 
@@ -2080,6 +2158,18 @@ void ToolOrdering::resolve_mixed_filaments(const PrintConfig &config)
     const auto &is_mixed = config.filament_is_mixed.values;
     const auto &comp_strs = config.filament_mixed_components.values;
     const auto &ratio_strs = config.filament_mixed_sublayer_ratios.values;
+
+    // Capture mixed slots that actually appear on layers before they are expanded to
+    // physical components. Assigned-but-unused mixed slots never enter layer_tools.
+    m_used_mixed_filaments.clear();
+    if (has_any_mixed_filament(is_mixed)) {
+        std::set<unsigned int> used;
+        for (const LayerTools &lt : m_layer_tools)
+            for (unsigned int ext : lt.extruders)
+                if (ext < is_mixed.size() && is_mixed[ext])
+                    used.insert(ext);
+        m_used_mixed_filaments.assign(used.begin(), used.end());
+    }
 
     if (!has_any_mixed_filament(is_mixed))
         return;

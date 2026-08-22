@@ -1388,6 +1388,13 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         // #4043
         if (total_copies_count > 1 && m_config.print_sequence != PrintSequence::ByObject)
             return {L("Please select \"By object\" print sequence to print multiple objects in spiral vase mode."), nullptr, "spiral_mode"};
+        // A mixed (virtual) filament always resolves to multiple physical components, which
+        // spiral vase cannot print.
+        const auto &is_mixed = m_config.filament_is_mixed.values;
+        for (const PrintObject *object : m_objects)
+            for (unsigned int ext : object->object_extruders())
+                if (ext < is_mixed.size() && is_mixed[ext])
+                    return {L("Spiral (vase) mode does not work when an object contains more than one material."), nullptr, "spiral_mode"};
         assert(m_objects.size() == 1);
         const auto all_regions = m_objects.front()->all_regions();
         if (all_regions.size() > 1) {
@@ -2595,6 +2602,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             // Order object instances for sequential print.
             print_object_instances_ordering = sort_object_instances_by_model_order(*this);
             std::vector<unsigned int> first_layer_used_filaments;
+            std::vector<unsigned int> used_mixed_filaments;
             std::vector<std::vector<unsigned int>> all_filaments;
             for (print_object_instance_sequential_active = print_object_instances_ordering.begin(); print_object_instance_sequential_active != print_object_instances_ordering.end(); ++print_object_instance_sequential_active) {
                 tool_ordering = ToolOrdering(*(*print_object_instance_sequential_active)->print_object, initial_extruder_id);
@@ -2604,10 +2612,14 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     if (idx == 0)
                         first_layer_used_filaments.insert(first_layer_used_filaments.end(), layer_filament.begin(), layer_filament.end());
                 }
+                used_mixed_filaments.insert(used_mixed_filaments.end(),
+                    tool_ordering.used_mixed_filaments().begin(), tool_ordering.used_mixed_filaments().end());
             }
             sort_remove_duplicates(first_layer_used_filaments);
+            sort_remove_duplicates(used_mixed_filaments);
             auto used_filaments = collect_sorted_used_filaments(all_filaments);
             this->set_slice_used_filaments(first_layer_used_filaments,used_filaments);
+            this->set_slice_used_mixed_filaments(used_mixed_filaments);
 
             auto physical_unprintables = this->get_physical_unprintable_filaments(used_filaments);
             auto geometric_unprintables = this->get_geometric_unprintable_filaments();
@@ -2717,6 +2729,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 first_layer_used_filaments = tool_ordering.layer_tools().front().extruders;
 
             this->set_slice_used_filaments(first_layer_used_filaments, tool_ordering.all_extruders());
+            this->set_slice_used_mixed_filaments(tool_ordering.used_mixed_filaments());
             has_wipe_tower = this->has_wipe_tower() && tool_ordering.has_wipe_tower();
             initial_extruder_id = tool_ordering.first_extruder();
             print_object_instances_ordering = chain_print_object_instances(*this);
@@ -4034,38 +4047,36 @@ void Print::_make_wipe_tower()
         return;
 
     // Check whether there are any layers in m_tool_ordering, which are marked with has_wipe_tower,
-    // they print neither object, nor support. These layers are above the raft and below the object, and they
-    // shall be added to the support layers to be printed.
-    // see https://github.com/prusa3d/PrusaSlicer/issues/607
+    // they print neither object, nor support. Each such layer needs a virtual support layer
+    // counterpart in m_objects.front() so that GCode::collect_layers_to_print picks it up and the
+    // wipe tower G-code is actually emitted for that z. Such layers appear in two scenarios:
+    //   - above the raft, between raft top and the first real object layer
+    //     (see https://github.com/prusa3d/PrusaSlicer/issues/607);
+    //   - between two real wipe-tower layers, when one object is fully floating above another and
+    //     the support_top_z_distance / support_bottom_z_distance gap leaves interior z values with
+    //     neither object nor support (continuity fill in ToolOrdering::fill_wipe_tower_partitions).
+    // The previous implementation only handled the first contiguous run starting at the first
+    // virtual layer, which made the second scenario silently produce empty wipe-tower layers.
     {
-        size_t idx_begin = size_t(-1);
-        size_t idx_end   = m_wipe_tower_data.tool_ordering.layer_tools().size();
-        // Find the first wipe tower layer, which does not have a counterpart in an object or a support layer.
+        auto &support_layers = m_objects.front()->support_layers();
+        auto it_layer = support_layers.begin();
+        const size_t idx_end = m_wipe_tower_data.tool_ordering.layer_tools().size();
         for (size_t i = 0; i < idx_end; ++ i) {
-            const LayerTools &lt = m_wipe_tower_data.tool_ordering.layer_tools()[i];
-            if (lt.has_wipe_tower && ! lt.has_object && ! lt.has_support) {
-                idx_begin = i;
-                break;
-            }
-        }
-        if (idx_begin != size_t(-1)) {
-            // Find the position in m_objects.first()->support_layers to insert these new support layers.
-            double wipe_tower_new_layer_print_z_first = m_wipe_tower_data.tool_ordering.layer_tools()[idx_begin].print_z;
-            auto it_layer = m_objects.front()->support_layers().begin();
-            auto it_end   = m_objects.front()->support_layers().end();
-            for (; it_layer != it_end && (*it_layer)->print_z - EPSILON < wipe_tower_new_layer_print_z_first; ++ it_layer);
-            // Find the stopper of the sequence of wipe tower layers, which do not have a counterpart in an object or a support layer.
-            for (size_t i = idx_begin; i < idx_end; ++ i) {
-                LayerTools &lt = const_cast<LayerTools&>(m_wipe_tower_data.tool_ordering.layer_tools()[i]);
-                if (! (lt.has_wipe_tower && ! lt.has_object && ! lt.has_support))
-                    break;
-                lt.has_support = true;
-                // Insert the new support layer.
-                double height    = lt.print_z - (i == 0 ? 0. : m_wipe_tower_data.tool_ordering.layer_tools()[i-1].print_z);
-                //FIXME the support layer ID is set to -1, as Vojtech hopes it is not being used anyway.
-                it_layer = m_objects.front()->insert_support_layer(it_layer, -1, 0, height, lt.print_z, lt.print_z - 0.5 * height);
+            LayerTools &lt = const_cast<LayerTools&>(m_wipe_tower_data.tool_ordering.layer_tools()[i]);
+            if (! (lt.has_wipe_tower && ! lt.has_object && ! lt.has_support))
+                continue;
+            while (it_layer != support_layers.end() && (*it_layer)->print_z + EPSILON < lt.print_z)
                 ++ it_layer;
+            if (it_layer != support_layers.end() && std::abs((*it_layer)->print_z - lt.print_z) < EPSILON) {
+                lt.has_support = true;
+                ++ it_layer;
+                continue;
             }
+            lt.has_support = true;
+            double height = lt.print_z - (i == 0 ? 0. : m_wipe_tower_data.tool_ordering.layer_tools()[i-1].print_z);
+            //FIXME the support layer ID is set to -1, as Vojtech hopes it is not being used anyway.
+            it_layer = m_objects.front()->insert_support_layer(it_layer, -1, 0, height, lt.print_z, lt.print_z - 0.5 * height);
+            ++ it_layer;
         }
     }
     this->throw_if_canceled();
