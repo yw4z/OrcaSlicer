@@ -211,3 +211,46 @@ TEST_CASE("By-object G-code lists a mixed slot's components in the filament head
     CHECK(gc.find("; filament: 1,2\n") != std::string::npos);
     CHECK(gc.find("; filament: 3") == std::string::npos);
 }
+
+TEST_CASE("Print::validate rejects a mixed filament as the wipe tower filament", "[MixedFilament]")
+{
+    // The validate backstop refuses a mixed (virtual) slot as the wipe tower filament; the GUI hides
+    // the slot from that option. Two cubes on physical filaments 1 and 2 make the tower real, and the
+    // region roles mixed_config() points at the slot are reset so only the tower uses it.
+    DynamicPrintConfig config = mixed_config(false);
+    config.set_deserialize_strict({
+        {"enable_prime_tower",         "1"},
+        {"wipe_tower_x",               "50"}, // inside the 200x200 test bed
+        {"wipe_tower_y",               "50"}, // (the default y, 220, is not)
+        {"layer_change_gcode",         "G92 E0\n"}, // validate() relative-E reset, as in test_print.cpp's build_cubes
+        {"outer_wall_filament_id",     "0"},
+        {"inner_wall_filament_id",     "0"},
+        {"sparse_infill_filament_id",  "0"},
+        {"internal_solid_filament_id", "0"},
+        {"top_surface_filament_id",    "0"},
+        {"bottom_surface_filament_id", "0"},
+    });
+    const std::vector<std::vector<ConfigBase::SetDeserializeItem>> overrides{ { {"extruder", "1"} }, { {"extruder", "2"} } };
+
+    SECTION("a physical wipe tower filament validates") {
+        config.set_deserialize_strict({{"wipe_tower_filament", "2"}});
+        Print print;
+        Model model;
+        init_print(std::vector<TriangleMesh>{cube(20), cube(20)}, print, model, config, &overrides);
+        REQUIRE(print.has_wipe_tower());
+        const StringObjectException err = print.validate();
+        INFO(err.string);
+        CHECK(err.string.empty());
+    }
+
+    SECTION("the mixed slot is refused") {
+        config.set_deserialize_strict({{"wipe_tower_filament", "3"}});
+        Print print;
+        Model model;
+        init_print(std::vector<TriangleMesh>{cube(20), cube(20)}, print, model, config, &overrides);
+        REQUIRE(print.has_wipe_tower());
+        const StringObjectException err = print.validate();
+        CHECK_FALSE(err.string.empty());
+        CHECK(err.opt_key == "wipe_tower_filament");
+    }
+}

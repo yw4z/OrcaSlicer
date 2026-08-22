@@ -566,7 +566,7 @@ std::vector<unsigned int> Print::extruders(bool conside_custom_gcode) const
 
     // If a wipe tower filament is explicitly set, ensure it participates in tool ordering.
     if (has_wipe_tower() && config().wipe_tower_filament != 0 && extruders.size() > 1) {
-        assert(config().wipe_tower_filament > 0 && config().wipe_tower_filament < int(config().nozzle_diameter.size()));
+        assert(config().wipe_tower_filament > 0 && config().wipe_tower_filament <= int(config().filament_diameter.size()));
         extruders.emplace_back(config().wipe_tower_filament - 1); // config value is 1-based
     }
 
@@ -1472,6 +1472,17 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         }
 
     if (this->has_wipe_tower() && ! m_objects.empty()) {
+        // Orca: wipe_tower_filament (issue #10971) is inserted into the tool order after
+        // resolve_mixed_filaments has expanded every mixed (virtual) slot, so a mixed slot here
+        // would reach the G-code as a tool change to a slot no nozzle carries. The GUI hides
+        // mixed slots from the option; this guards loaded projects and the CLI.
+        if (m_config.wipe_tower_filament > 0) {
+            const auto  &is_mixed = m_config.filament_is_mixed.values;
+            const size_t wipe_idx = size_t(m_config.wipe_tower_filament - 1);
+            if (wipe_idx < is_mixed.size() && is_mixed[wipe_idx])
+                return { L("The wipe tower filament cannot be a mixed filament."), nullptr, "wipe_tower_filament" };
+        }
+
         // Make sure all extruders use same diameter filament and have the same nozzle diameter
         // EPSILON comparison is used for nozzles and 10 % tolerance is used for filaments
         double first_nozzle_diam = m_config.nozzle_diameter.get_at(extruders.front());
