@@ -53,6 +53,8 @@ public:
                         const std::vector<std::string>& physical_names,
                         const std::vector<std::string>& physical_types = {});
 
+    ~MixedFilamentDialog();
+
     MixedFilamentResult get_result() const { return m_result; }
 
 protected:
@@ -160,8 +162,11 @@ private:
     wxBitmap                    m_preview_bmp_two;
     wxBitmap                    m_preview_bmp_three;
 
-    // Drag state
-    bool   m_dragging{false};
+    // Drag state. The ratio bar and the triangle picker capture the mouse
+    // independently, so they must not share a flag: a mouse-up on one would
+    // otherwise clear the other's flag and skip its ReleaseMouse().
+    bool   m_ratio_dragging{false};
+    bool   m_tri_dragging{false};
     std::vector<size_t> m_ratio_manual_order;
     size_t m_ratio_editor_idx{0};
     bool   m_ratio_editor_committing{false};

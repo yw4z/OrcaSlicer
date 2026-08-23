@@ -85,6 +85,14 @@ GradientCurveEditor::GradientCurveEditor(wxWindow* parent,
     });
 }
 
+GradientCurveEditor::~GradientCurveEditor()
+{
+    // See MixedFilamentDialog::~MixedFilamentDialog: a widget destroyed while it
+    // still holds the capture wedges mouse input for the whole application.
+    if (HasCapture())
+        ReleaseMouse();
+}
+
 void GradientCurveEditor::set_points(const PointList& pts)
 {
     m_points = pts;

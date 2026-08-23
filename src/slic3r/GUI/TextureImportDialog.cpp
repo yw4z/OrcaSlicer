@@ -184,6 +184,7 @@ public:
     GreenSlider(wxWindow* parent, int value, int minVal, int maxVal,
                 const wxPoint& pos = wxDefaultPosition,
                 const wxSize& size = wxDefaultSize);
+    ~GreenSlider() override;
     int  GetValue() const;
     void SetValue(int val);
     bool Enable(bool enable = true) override;
@@ -213,6 +214,15 @@ GreenSlider::GreenSlider(wxWindow* parent, int value, int minVal, int maxVal,
     Bind(wxEVT_LEFT_DOWN, &GreenSlider::OnMouse, this);
     Bind(wxEVT_LEFT_UP,   &GreenSlider::OnMouse, this);
     Bind(wxEVT_MOTION,    &GreenSlider::OnMouse, this);
+    Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) { m_dragging = false; });
+}
+
+GreenSlider::~GreenSlider()
+{
+    // See MixedFilamentDialog::~MixedFilamentDialog: a widget destroyed while it
+    // still holds the capture wedges mouse input for the whole application.
+    if (HasCapture())
+        ReleaseMouse();
 }
 
 int GreenSlider::GetValue() const { return m_value; }
@@ -302,7 +312,7 @@ void GreenSlider::OnMouse(wxMouseEvent& evt)
 
     if (evt.LeftDown()) {
         m_dragging = true;
-        CaptureMouse();
+        if (!HasCapture()) CaptureMouse();
         update(evt.GetX());
     } else if (evt.LeftUp()) {
         m_dragging = false;
@@ -1019,11 +1029,20 @@ TexturePreviewCanvas::TexturePreviewCanvas(wxWindow* parent, const wxGLAttribute
     Bind(wxEVT_MIDDLE_DOWN, &TexturePreviewCanvas::on_mouse, this);
     Bind(wxEVT_MIDDLE_UP,   &TexturePreviewCanvas::on_mouse, this);
     Bind(wxEVT_MOTION,      &TexturePreviewCanvas::on_mouse, this);
+    Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
+        m_drag_mode = DragMode::None;
+        m_reset_overlay_pressed = false;
+    });
     Bind(wxEVT_LEAVE_WINDOW, &TexturePreviewCanvas::on_mouse, this);
 }
 
 TexturePreviewCanvas::~TexturePreviewCanvas()
 {
+    // See MixedFilamentDialog::~MixedFilamentDialog: a widget destroyed while it
+    // still holds the capture wedges mouse input for the whole application.
+    if (HasCapture())
+        ReleaseMouse();
+
     if (m_context) {
         SetCurrent(*m_context);
         if (m_tex_id)

@@ -154,6 +154,18 @@ MixedFilamentDialog::MixedFilamentDialog(wxWindow* parent,
         m_preview_bmp_three = wxBitmap(img);
 }
 
+MixedFilamentDialog::~MixedFilamentDialog()
+{
+    // Backstop: a child must never be destroyed while it still holds the mouse
+    // capture. wxWidgets only asserts about this (compiled out in release), and
+    // the macOS port never unwinds its capture stack, so the stale entry would
+    // make wxNSWindow::sendEvent swallow every mouse event in the application.
+    if (m_ratio_bar && m_ratio_bar->HasCapture())
+        m_ratio_bar->ReleaseMouse();
+    if (m_triangle_panel && m_triangle_panel->HasCapture())
+        m_triangle_panel->ReleaseMouse();
+}
+
 MixedFilamentDialog::MixedFilamentDialog(wxWindow* parent,
                                          const MixedFilamentResult& existing,
                                          const std::vector<std::string>& physical_colors,
@@ -892,24 +904,30 @@ wxBoxSizer* MixedFilamentDialog::create_ratio_slider()
     m_ratio_bar->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
         if (m_ratio_editor_panel && m_ratio_editor_panel->IsShown())
             commit_ratio_editor(true);
-        m_dragging = true;
-        m_ratio_bar->CaptureMouse();
+        m_ratio_dragging = true;
+        if (!m_ratio_bar->HasCapture())
+            m_ratio_bar->CaptureMouse();
         int new_ratio = 100 - (int)(e.GetX() * 100.0 / m_ratio_bar->GetClientSize().GetWidth() + 0.5);
         on_ratio_changed(std::max(MIN_COMPONENT_RATIO, std::min(100 - MIN_COMPONENT_RATIO, new_ratio)));
     });
 
     m_ratio_bar->Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
-        if (!m_dragging) return;
+        if (!m_ratio_dragging) return;
         int new_ratio = 100 - (int)(e.GetX() * 100.0 / m_ratio_bar->GetClientSize().GetWidth() + 0.5);
         on_ratio_changed(std::max(MIN_COMPONENT_RATIO, std::min(100 - MIN_COMPONENT_RATIO, new_ratio)));
     });
 
+    // Release whenever the capture is held, not only when the drag flag is set:
+    // the flag can be cleared behind our back, and a capture that outlives the
+    // widget wedges mouse input for the whole application.
     m_ratio_bar->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
-        if (m_dragging) {
-            m_dragging = false;
-            if (m_ratio_bar->HasCapture())
-                m_ratio_bar->ReleaseMouse();
-        }
+        m_ratio_dragging = false;
+        if (m_ratio_bar->HasCapture())
+            m_ratio_bar->ReleaseMouse();
+    });
+
+    m_ratio_bar->Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
+        m_ratio_dragging = false;
     });
 
     sizer->Add(m_ratio_bar, 0, wxEXPAND);
@@ -1122,11 +1140,12 @@ wxBoxSizer* MixedFilamentDialog::create_triangle_picker()
             // clicks outside the triangle must not change the mix ratio.
             if (!tri_contains(p, v0, v1, v2))
                 return;
-            m_dragging = true;
-            m_triangle_panel->CaptureMouse();
+            m_tri_dragging = true;
+            if (!m_triangle_panel->HasCapture())
+                m_triangle_panel->CaptureMouse();
         }
 
-        if (!m_dragging) return;
+        if (!m_tri_dragging) return;
 
         TriPoint clamped = tri_clamp(p, v0, v1, v2);
         tri_barycentric(clamped, v0, v1, v2, m_tri_wx, m_tri_wy, m_tri_wz);
@@ -1161,15 +1180,16 @@ wxBoxSizer* MixedFilamentDialog::create_triangle_picker()
         handle_mouse(e, true);
     });
     m_triangle_panel->Bind(wxEVT_MOTION, [this, handle_mouse](wxMouseEvent& e) {
-        if (m_dragging)
+        if (m_tri_dragging)
             handle_mouse(e, false);
     });
     m_triangle_panel->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
-        if (m_dragging) {
-            m_dragging = false;
-            if (m_triangle_panel->HasCapture())
-                m_triangle_panel->ReleaseMouse();
-        }
+        m_tri_dragging = false;
+        if (m_triangle_panel->HasCapture())
+            m_triangle_panel->ReleaseMouse();
+    });
+    m_triangle_panel->Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
+        m_tri_dragging = false;
     });
 
     sizer->Add(m_triangle_panel, 0);

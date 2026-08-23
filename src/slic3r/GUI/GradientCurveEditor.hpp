@@ -36,6 +36,8 @@ public:
                         const wxColour& color_low  = wxColour(217, 217, 217),
                         const wxColour& color_high = wxColour(217, 217, 217));
 
+    ~GradientCurveEditor() override;
+
     // Replace the entire point list. The widget enforces x in [0,1], y in [0,1],
     // sorts by x, and clamps the first / last x to 0 / 1. Tangent overrides are
     // preserved as-is (NaN entries continue to use PCHIP defaults).
