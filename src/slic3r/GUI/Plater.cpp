@@ -14077,8 +14077,8 @@ void Plater::priv::on_action_layersediting(SimpleEvent&)
     // Sub-layer splitting divides each layer by the mix ratio, so an adaptive layer profile makes
     // those sub-layer heights vary and degrades the blend. ConfigManipulation warns when the
     // option is switched on with a variable profile already present; this is the other direction,
-    // warning when variable layer editing is switched on while the option is active. Both honour
-    // the same do-not-show-again flag.
+    // warning when variable layer editing is switched on while the option is active. All three
+    // sites (with ObjectList::layers_editing for height ranges) honour the same do-not-show-again flag.
     if (!view3D->is_layers_editing_enabled()) {
         const auto& print_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
         if (print_config.opt_bool("enable_mixed_color_sublayer")) {
