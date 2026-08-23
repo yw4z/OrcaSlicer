@@ -7,6 +7,10 @@
 #include <wx/gdicmn.h>
 #include <vector>
 
+// Orca: forward-declare so the header is self-contained outside libslic3r_gui's
+// force-included pch (the GUI test suite includes it directly).
+namespace Slic3r { class DynamicPrintConfig; }
+
 namespace Slic3r { namespace GUI {
 
 // Fills a rect with a west->east linear gradient by drawing solid 1px columns.
@@ -27,6 +31,12 @@ enum class FilamentRenderMode {
 wxBitmap create_filament_bitmap(const std::vector<wxColour>& colors,
                               const wxSize& size,
                               bool force_gradient = false);
+
+// Recompute blended representative colors for mixed (virtual) filament slots.
+// Reads mixed-filament config keys from cfg and writes back into colors[i]
+// for every slot where filament_is_mixed[i] is true.
+void recompute_mixed_slot_colors(std::vector<wxColour>& colors,
+                                 const Slic3r::DynamicPrintConfig& cfg);
 
 }} // namespace Slic3r::GUI
 
