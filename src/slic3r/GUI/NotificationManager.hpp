@@ -174,6 +174,8 @@ enum class NotificationType
 	BBLBedFilamentIncompatible,
     BBLMixUsePLAAndPETG,
 	BBLNozzleFilamentIncompatible,
+    // A mixed-color filament is printed on a single-nozzle printer (frequent changes and purging).
+    BBLSingleExtruderMixedFilamentRisk,
     OrcaSharedProfilesAvailable,
 	OrcaCloudAPIError,
     OrcaSyncConflict,
