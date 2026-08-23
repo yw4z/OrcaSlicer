@@ -21,6 +21,7 @@
 #include "GUI.hpp"
 #include "GUI_App.hpp"
 #include "GradientCurveEditor.hpp"
+#include "FilamentBitmapUtils.hpp"
 #include "wxExtensions.hpp"
 #include "Tab.hpp"
 #include "libslic3r/Preset.hpp"
@@ -115,19 +116,6 @@ static wxColour blend_colors(const wxColour& a, const wxColour& b, double ratio_
     return wxColour(r, g, bl);
 }
 
-static wxColour blend_n_colors(const std::vector<wxColour>& cols, const std::vector<double>& weights)
-{
-    std::vector<std::string> hex_colors;
-    std::vector<int> int_weights;
-    for (size_t i = 0; i < cols.size() && i < weights.size(); ++i) {
-        hex_colors.push_back(cols[i].GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
-        // Scale double weights (e.g. 0.5) to int (5000) for blend_color_multi;
-        // only relative magnitude matters.
-        int_weights.push_back(static_cast<int>(std::lround(weights[i] * 10000)));
-    }
-    std::string hex = Slic3r::blend_color_multi(hex_colors, int_weights);
-    return wxColour(hex);
-}
 
 // ---- Constructors ----
 
@@ -709,21 +697,10 @@ wxBoxSizer* MixedFilamentDialog::create_preview_panel()
                 curve.points = {{0.0, yStart, NAN, NAN}, {1.0, yEnd, NAN, NAN}};
             }
 
-            wxColour colA = comp_colour(0);
-            wxColour colB = comp_colour(1);
-            const int bands = std::max(80, swatch_sz);
-            double band_h = static_cast<double>(swatch_sz) / bands;
-            dc.SetPen(*wxTRANSPARENT_PEN);
-            for (int b = 0; b < bands; ++b) {
-                double t = 1.0 - (b + 0.5) / bands;
-                double r1 = Slic3r::sample_gradient_curve(curve, t);
-                double r2 = 1.0 - r1;
-                wxColour band_col = blend_n_colors({colA, colB}, {r1, r2});
-                dc.SetBrush(wxBrush(band_col));
-                int by = y0 + static_cast<int>(b * band_h);
-                int bh = static_cast<int>((b + 1) * band_h) - static_cast<int>(b * band_h) + 1;
-                dc.DrawRectangle(x0, by, swatch_sz, bh);
-            }
+            // Same sampler the sidebar, extruder icons and paint gizmo swatches use, so this
+            // preview and every swatch drawn for the filament agree on what it looks like.
+            auto ramp = sample_gradient_ramp(comp_colour(0), comp_colour(1), curve, std::max(80, swatch_sz));
+            fill_gradient_ramp_rect(dc, wxRect(x0, y0, swatch_sz, swatch_sz), ramp);
 
             // Mask corners: overdraw a thick background-colored rounded rect frame
             // so the inner edge forms the desired rounded corners.

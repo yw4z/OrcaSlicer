@@ -78,13 +78,8 @@ void GLGizmoMmuSegmentation::init_extruders_data()
     m_extruders_colors      = wxGetApp().plater()->get_extruders_colors();
     m_selected_extruder_idx = 0;
 
-    auto plater_grad = wxGetApp().plater()->get_filament_gradient_info();
-    m_gradient_info.resize(m_extruders_colors.size());
-    for (size_t i = 0; i < m_gradient_info.size() && i < plater_grad.size(); ++i) {
-        m_gradient_info[i].is_gradient = plater_grad[i].is_gradient;
-        m_gradient_info[i].color_from  = plater_grad[i].color_from;
-        m_gradient_info[i].color_to    = plater_grad[i].color_to;
-    }
+    m_gradient_ramps = wxGetApp().plater()->get_filament_gradient_ramps();
+    m_gradient_ramps.resize(m_extruders_colors.size());
 
     // keep remap table consistent with current extruder count
     m_extruder_remap.resize(m_extruders_colors.size());
@@ -325,25 +320,19 @@ bool GLGizmoMmuSegmentation::draw_color_button(int idx, const char* id_str, cons
     ImVec4      color_vec = ImGuiWrapper::to_ImVec4(color);
     ImU32       br_color  = ImGui::ColorConvertFloat4ToU32(active ? ImGuiWrapper::COL_ORCA : m_is_dark_mode ? ImVec4(.35f, .35f, .35f, 1) : ImVec4(.85f, .85f, .85f, 1));
     // Every caller labels the button with the 1 based slot number, so idx - 1 picks out the slot's fade.
-    const GradientInfo* gradient = gradient_of(idx - 1);
-    // ImGui interpolates the fade linearly, so the centered slot number lands on the midpoint of the two
-    // endpoints - take its contrast from there, not from the slot's blended color.
-    ColorRGBA   tone      = gradient ? ColorRGBA(0.5f * (gradient->color_from[0] + gradient->color_to[0]),
-                                                 0.5f * (gradient->color_from[1] + gradient->color_to[1]),
-                                                 0.5f * (gradient->color_from[2] + gradient->color_to[2]), 1.f)
-                                     : color;
-    bool        dark_tone = (0.299f * tone.r() + 0.587f * tone.g() + 0.114f * tone.b()) < 0.51f; // matching values used by wxWidgets with clr.GetLuminance() < 0.51
+    const std::vector<wxColour>* gradient = gradient_of(idx - 1);
+    // The centered slot number sits at the swatch's mid height, so take its contrast from the colour
+    // printed there rather than from the slot's blended color.
+    bool dark_tone = gradient ? (*gradient)[gradient->size() / 2].GetLuminance() < 0.51 :
+                                (0.299f * color.r() + 0.587f * color.g() + 0.114f * color.b()) < 0.51f; // matching values used by wxWidgets with clr.GetLuminance() < 0.51
 
     // Paint a gradient mixed filament's fade before the button and keep the button transparent, so the
-    // slot number and the frame below stay on top of it. AddRectFilledMultiColor cannot round its
-    // corners, so the fade is drawn at the frame's inset and the frame masks it into the same shape a
-    // plain color slot gets.
+    // slot number and the frame below stay on top of it. The bands cannot round their corners, so the
+    // fade is drawn at the frame's inset and the frame masks it into the same shape a plain color slot
+    // gets.
     if (gradient) {
-        auto to_imu32 = [](const std::array<float, 4>& c) { return ImGui::ColorConvertFloat4ToU32({c[0], c[1], c[2], c[3]}); };
-        draw_list->AddRectFilledMultiColor({pos.x + frame_inset * scale, pos.y + frame_inset * scale},
-                                           {pos.x + size.x - frame_inset * scale, pos.y + size.y - frame_inset * scale},
-                                           to_imu32(gradient->color_from), to_imu32(gradient->color_to),
-                                           to_imu32(gradient->color_to), to_imu32(gradient->color_from));
+        ImGuiWrapper::draw_gradient_ramp(draw_list, {pos.x + frame_inset * scale, pos.y + frame_inset * scale},
+                                         {pos.x + size.x - frame_inset * scale, pos.y + size.y - frame_inset * scale}, *gradient);
         color_vec.w = 0.f; // let the fade show through
     }
 

@@ -4101,30 +4101,27 @@ void Sidebar::update_mixed_filament_list()
             wxColour mix_col(mix_color_str);
             unsigned int mix_num = (unsigned int)(cfg_idx + 1);
 
-            if (is_gradient && comp_ids.size() == 2) {
-                unsigned int from_id = (gradient_direction == 0) ? comp_ids[0] : comp_ids[1];
-                unsigned int to_id   = (gradient_direction == 0) ? comp_ids[1] : comp_ids[0];
-                wxColour col_from = (from_id >= 1 && from_id <= physical_colors.size())
-                    ? wxColour(physical_colors[from_id - 1]) : wxColour("#D9D9D9");
-                wxColour col_to = (to_id >= 1 && to_id <= physical_colors.size())
-                    ? wxColour(physical_colors[to_id - 1]) : wxColour("#D9D9D9");
-                int swatch_sz = FromDIP(20);
+            // The swatch fades bottom to top over the model's height, sampled the same way
+            // the slicer builds the sublayers, so it matches the editor's Effect Preview. It
+            // comes back empty for every slot that is not a two component gradient mix.
+            const int swatch_sz = FromDIP(20);
+            const std::vector<wxColour> gradient_ramp = mixed_gradient_ramp(project_config, cfg_idx, swatch_sz);
+
+            if (!gradient_ramp.empty()) {
                 auto* grad_panel = new wxPanel(p->m_panel_mixed_content, wxID_ANY,
                                                wxDefaultPosition, wxSize(swatch_sz, swatch_sz));
                 grad_panel->SetMinSize(wxSize(swatch_sz, swatch_sz));
                 grad_panel->SetBackgroundStyle(wxBG_STYLE_PAINT);
-                grad_panel->Bind(wxEVT_PAINT, [grad_panel, col_from, col_to, mix_num, mc_text](wxPaintEvent&) {
+                grad_panel->Bind(wxEVT_PAINT, [grad_panel, gradient_ramp, mix_num, mc_text](wxPaintEvent&) {
                     wxBufferedPaintDC dc(grad_panel);
                     wxSize sz = grad_panel->GetClientSize();
-                    fill_gradient_rect_east(dc, wxRect(0, 0, sz.GetWidth(), sz.GetHeight()), col_from, col_to);
+                    fill_gradient_ramp_rect(dc, wxRect(0, 0, sz.GetWidth(), sz.GetHeight()), gradient_ramp);
                     wxString txt = wxString::Format("%u", mix_num);
                     dc.SetFont(::Label::Body_14);
                     wxSize txt_sz = dc.GetTextExtent(txt);
-                    wxColour mid(
-                        (col_from.Red()   + col_to.Red())   / 2,
-                        (col_from.Green() + col_to.Green()) / 2,
-                        (col_from.Blue()  + col_to.Blue())  / 2);
-                    dc.SetTextForeground(mid.GetLuminance() > 0.5 ? mc_text : *wxWHITE);
+                    // The number sits at the swatch's middle, so take its contrast from the
+                    // colour printed at mid height rather than from either endpoint.
+                    dc.SetTextForeground(gradient_ramp[gradient_ramp.size() / 2].GetLuminance() > 0.5 ? mc_text : *wxWHITE);
                     dc.DrawText(txt, (sz.GetWidth() - txt_sz.GetWidth()) / 2,
                                      (sz.GetHeight() - txt_sz.GetHeight()) / 2);
                 });
@@ -19989,24 +19986,41 @@ std::vector<std::string> Plater::get_filament_color_render_type() const
     return ctype;
 }
 
-std::vector<Plater::FilamentGradientInfo> Plater::get_filament_gradient_info() const
+const std::vector<std::vector<wxColour>>& Plater::get_filament_gradient_ramps() const
 {
-    const Slic3r::DynamicPrintConfig* config = &wxGetApp().preset_bundle->project_config;
-    size_t n = get_extruder_colors_from_plater_config().size();
-    std::vector<FilamentGradientInfo> info(n);
+    // Sampling a ramp walks the measured-blend recipe table once per step, and the paint toolbar
+    // asks for the ramps on every rendered frame, so they are cached against the config values
+    // they are built from and resampled only when one of those actually changes.
+    //
+    // The cache cannot live on the Plater: the extruder icons ask for the ramps from inside
+    // MenuFactory::init(), which runs while this Plater is still being constructed, so `this` is
+    // not usable yet. Everything the ramps are built from is global anyway, and there is one
+    // Plater per process, which is the same reasoning behind the icons' own static BitmapCache.
+    static std::string                        s_ramps_key;
+    static std::vector<std::vector<wxColour>> s_ramps;
 
-    auto slots = parse_mixed_gradient_slots(*config, n);
-    unsigned char rgba[4] = {};
-    for (size_t i = 0; i < n; ++i) {
-        if (!slots[i].is_gradient) continue;
-        info[i].is_gradient = true;
-        Slic3r::GUI::BitmapCache::parse_color4(slots[i].color_from, rgba);
-        info[i].color_from = {rgba[0] / 255.f, rgba[1] / 255.f, rgba[2] / 255.f, rgba[3] / 255.f};
-        Slic3r::GUI::BitmapCache::parse_color4(slots[i].color_to, rgba);
-        info[i].color_to = {rgba[0] / 255.f, rgba[1] / 255.f, rgba[2] / 255.f, rgba[3] / 255.f};
-    }
+    static const char* ramp_keys[] = {"filament_is_mixed",             "filament_mixed_gradient",
+                                      "filament_mixed_components",     "filament_colour",
+                                      "filament_mixed_gradient_range", "filament_mixed_gradient_curve"};
 
-    return info;
+    const Slic3r::DynamicPrintConfig& config = wxGetApp().preset_bundle->project_config;
+    std::string key;
+    for (const char* opt_key : ramp_keys)
+        if (const ConfigOption* opt = config.option(opt_key))
+            key += opt->serialize() + '\n';
+    if (key == s_ramps_key)
+        return s_ramps;
+
+    // 64 bands outresolve every swatch drawn from this, all of which resample it down to their
+    // own height, so one cached resolution serves the icons and both ImGui filament bars.
+    const auto*  colour_opt = config.option<ConfigOptionStrings>("filament_colour");
+    const size_t n          = colour_opt ? colour_opt->values.size() : 0;
+    s_ramps.assign(n, {});
+    for (size_t i = 0; i < n; ++i)
+        s_ramps[i] = mixed_gradient_ramp(config, i, 64);
+    s_ramps_key = std::move(key);
+
+    return s_ramps;
 }
 
 /* Get vector of colors used for rendering of a Preview scene in "Color print" mode

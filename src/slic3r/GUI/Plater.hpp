@@ -5,6 +5,7 @@
 #include <vector>
 #include <boost/filesystem/path.hpp>
 
+#include <wx/colour.h>
 #include <wx/panel.h>
 // BBS
 #include <wx/notebook.h>
@@ -607,14 +608,11 @@ public:
     std::vector<std::string> get_filament_colors_render_info() const;
     std::vector<std::string> get_filament_color_render_type() const;
 
-    // Endpoint colours for gradient mixed filaments, so the 3D scene and the paint gizmo can
-    // draw a two-tone swatch. is_gradient is false for every ordinary filament slot.
-    struct FilamentGradientInfo {
-        bool is_gradient = false;
-        std::array<float, 4> color_from = {0.5f, 0.5f, 0.5f, 1.0f};
-        std::array<float, 4> color_to   = {0.5f, 0.5f, 0.5f, 1.0f};
-    };
-    std::vector<FilamentGradientInfo> get_filament_gradient_info() const;
+    // Per slot, the colours a gradient mixed filament actually prints, sampled bottom (index 0)
+    // to top, so the sidebar, the paint gizmo and the extruder icons draw the same fade the
+    // editor previews rather than a straight blend of two endpoints. A slot that is not a
+    // gradient mixed filament gets an empty ramp. Cached; recomputed when the config changes.
+    const std::vector<std::vector<wxColour>>& get_filament_gradient_ramps() const;
     std::vector<std::string> get_colors_for_color_print(const GCodeProcessorResult* const result = nullptr) const;
 
     void set_global_filament_map_mode(FilamentMapMode mode);

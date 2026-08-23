@@ -78,14 +78,6 @@ public:
     // filaments occupy ordinary slots, so they draw from the same budget as physical ones.
     static const constexpr size_t EXTRUDERS_LIMIT = static_cast<size_t>(EnforcerBlockerType::ExtruderMax);
 
-    // Endpoint colours for gradient mixed filaments, mirrored from Plater so the extruder
-    // swatches below can be drawn as a two-tone fade instead of a single blended colour.
-    struct GradientInfo {
-        bool is_gradient = false;
-        std::array<float, 4> color_from = {0.5f, 0.5f, 0.5f, 1.0f};
-        std::array<float, 4> color_to   = {0.5f, 0.5f, 0.5f, 1.0f};
-    };
-
     const float get_cursor_radius_min() const override { return CursorRadiusMin; }
 
     // BBS
@@ -123,7 +115,10 @@ protected:
     
     // Filament remap feature
     std::vector<size_t>               m_extruder_remap;      // index → target extruder index
-    std::vector<GradientInfo>         m_gradient_info;       // per-slot gradient endpoints, empty entries for plain filaments
+    // Colours each gradient mixed filament actually prints, bottom of the model first, mirrored
+    // from Plater so the extruder swatches draw the same fade the editor previews. Plain
+    // filament slots keep an empty ramp.
+    std::vector<std::vector<wxColour>> m_gradient_ramps;
     // ORCA: Cache used filaments to filter UI
     std::set<size_t>                  m_used_filaments;      // Set of used filament indices (cached)
 
@@ -146,10 +141,11 @@ private:
 
     // ORCA
     bool draw_color_button(int idx, const char* id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale);
-    // Gradient endpoints of a filament slot, or nullptr when the slot is a plain single color filament.
-    const GradientInfo* gradient_of(int idx) const
+    // Gradient ramp of a filament slot, or nullptr when the slot is a plain single color
+    // filament, so callers can index into what they get back freely.
+    const std::vector<wxColour>* gradient_of(int idx) const
     {
-        return idx >= 0 && idx < (int) m_gradient_info.size() && m_gradient_info[idx].is_gradient ? &m_gradient_info[idx] : nullptr;
+        return idx >= 0 && idx < (int) m_gradient_ramps.size() && !m_gradient_ramps[idx].empty() ? &m_gradient_ramps[idx] : nullptr;
     }
 
     // BBS

@@ -9718,9 +9718,9 @@ void GLCanvas3D::_render_paint_toolbar() const
     bool disabled = !wxGetApp().plater()->can_fillcolor();
     ColorRGBA rgba;
 
-    // Gradient mixed filaments fade between two colours over Z, so their swatch is drawn as a
-    // two-tone fade rather than the single blended colour in `colors`.
-    auto gradient_info = wxGetApp().plater()->get_filament_gradient_info();
+    // Gradient mixed filaments fade over Z, so their swatch is drawn as that fade rather than
+    // the single blended colour in `colors`. Every other slot's ramp is empty.
+    const auto& gradient_ramps = wxGetApp().plater()->get_filament_gradient_ramps();
 
     for (int i = 0; i < extruder_num; i++) {
         if (i > 0)
@@ -9735,16 +9735,8 @@ void GLCanvas3D::_render_paint_toolbar() const
             if (!ImGui::IsMouseHoveringRect(left_arrow_button.Min, left_arrow_button.Max) && !ImGui::IsMouseHoveringRect(right_arrow_button.Min, right_arrow_button.Max))
                 wxPostEvent(m_canvas, IntEvent(EVT_GLTOOLBAR_FILLCOLOR, i + 1));
         }
-        if (i < (int) gradient_info.size() && gradient_info[i].is_gradient) {
-            auto to_imu32 = [](const std::array<float, 4> &c) -> ImU32 {
-                return IM_COL32(uint8_t(c[0]*255.f), uint8_t(c[1]*255.f), uint8_t(c[2]*255.f), uint8_t(c[3]*255.f));
-            };
-            ImVec2 r_min = ImGui::GetItemRectMin();
-            ImVec2 r_max = ImGui::GetItemRectMax();
-            ImU32 col_from = to_imu32(gradient_info[i].color_from);
-            ImU32 col_to   = to_imu32(gradient_info[i].color_to);
-            ImGui::GetWindowDrawList()->AddRectFilledMultiColor(r_min, r_max, col_from, col_to, col_to, col_from);
-        }
+        if (i < (int) gradient_ramps.size() && !gradient_ramps[i].empty())
+            ImGuiWrapper::draw_gradient_ramp(draw_list, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), gradient_ramps[i]);
         if (ImGui::IsItemHovered() && i < 9) {
             if (!ImGui::IsMouseHoveringRect(left_arrow_button.Min, left_arrow_button.Max) && !ImGui::IsMouseHoveringRect(right_arrow_button.Min, right_arrow_button.Max)) {
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 20.0f * f_scale, 10.0f * f_scale });
