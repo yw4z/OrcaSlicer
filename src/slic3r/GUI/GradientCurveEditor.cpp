@@ -19,7 +19,7 @@ namespace GUI {
 wxDEFINE_EVENT(wxEVT_GRADIENT_CURVE_CHANGED, wxCommandEvent);
 
 namespace {
-// Layout (Figma "Property 1=Default", 214.06 x 179.63 px reference).
+// Layout ratios of the plot rect within the widget, taken from a 214 x 180 px reference drawing.
 // Plot rect occupies the upper-left region; right + bottom margins host axis arrows / labels.
 constexpr double kPlotLeftRatio   = 0.0316;
 constexpr double kPlotRightRatio  = 0.6766;
@@ -37,7 +37,7 @@ constexpr int kStrokeAxis       = 2;   // axis line width (px, no DPI scaling - 
 constexpr int kAxisArrowHalf    = 5;   // half-base of the axis arrow triangle (DIP)
 constexpr int kAxisArrowLen     = 10;  // length of the axis arrow triangle (DIP)
 
-// Light-mode design tokens from Figma. Resolved through StateColor::darkModeColorFor()
+// Light-mode design tokens. Resolved through StateColor::darkModeColorFor()
 // at paint time so the editor follows the app theme (#EEEEEE -> #4C4C55, #6B6B6B ->
 // #818183, #262E30 -> #EFEFF0, *wxWHITE -> #2D2D31). Don't read these directly in paint;
 // always go through the resolved locals declared at the top of on_paint().
@@ -46,11 +46,9 @@ const wxColour kAxisColor   (107, 107, 107);   // #6B6B6B grey 700
 const wxColour kLabelMuted  (107, 107, 107);   // #6B6B6B grey 700
 const wxColour kLabelStrong ( 38,  46,  48);   // #262E30 grey 900
 
-// LAB (DeltaE76) threshold for "curve color is too close to the background". Below this
-// we paint a subtle axis-color outline so the curve doesn't visually vanish; above this
-// we draw the curve plain. ~15 is "perceptible but still close", looser than the strict
-// 5.0 used by FlushPredict::is_similar_color but loose enough that a pastel pink on white
-// or a charcoal on #2B2B2B still triggers an outline.
+// LAB (DeltaE76) threshold for "curve color is too close to the background": below it the curve
+// gets a subtle outline so it does not visually vanish, otherwise it is drawn plain. Looser than
+// the 5.0 of FlushPredict::is_similar_color, so a pastel pink on white still gets an outline.
 constexpr float kBgSimilarThreshold = 15.0f;
 constexpr int   kOutlineExtraDip    = 2;
 } // namespace
@@ -65,8 +63,6 @@ GradientCurveEditor::GradientCurveEditor(wxWindow* parent,
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     SetBackgroundColour(wxGetApp().get_window_default_clr());
     // Wide enough so the X-axis "Material Ratio" label fits past the arrow tip without overlap.
-    // 260 (was 240): adds room for the "Material Ratio" label that gets shifted right by the
-    // longer axis arrow; the hosting MixedFilamentDialog grows to 470 DIP to accommodate.
     SetMinSize(FromDIP(wxSize(260, 200)));
 
     reset_to_linear(0.10, 0.90);
@@ -456,10 +452,9 @@ void GradientCurveEditor::on_paint(wxPaintEvent& /*evt*/)
         return poly;
     };
 
-    // Only the geometry goes through the graphics context: dc.DrawLines() takes integer
-    // wxPoint and would quantize the curve back to whole pixels.  The pen is still set on
-    // the dc, which forwards it to this same context while keeping the dc's own cached
-    // state in sync, so later dc drawing does not inherit the curve's pen.
+    // Only the geometry goes through the graphics context: dc.DrawLines() takes integer wxPoint
+    // and would quantize the curve back to whole pixels. The pen is still set on the dc, which
+    // forwards it here while keeping its own cached state in sync for later dc drawing.
     auto draw_polyline = [&](const std::vector<wxPoint2DDouble>& poly, const wxColour& col, int stroke_dip) {
         dc.SetPen(wxPen(col, FromDIP(stroke_dip)));
         gc->StrokeLines(poly.size(), poly.data());
@@ -552,12 +547,9 @@ void GradientCurveEditor::on_left_down(wxMouseEvent& evt)
 
     // 4) Selected curve line body hit -> insert a new anchor at cursor x (snapped
     //    to the current smooth curve so the initial click is visually invisible)
-    //    and immediately enter Anchor drag mode. PS Curves style: the drag-bend
-    //    interaction has no separate "bend without anchor" mode; pressing and
-    //    dragging on the line is equivalent to clicking to add then dragging the
-    //    fresh anchor. Trades the previous (failed) "no anchor on drag" promise
-    //    for genuine cursor tracking, since a single cubic between two existing
-    //    anchors mathematically cannot put its peak under an off-center cursor.
+    //    and immediately enter Anchor drag mode. Bending the segment without
+    //    inserting an anchor is not an option: a single cubic between two existing
+    //    anchors cannot put its peak under an off-center cursor.
     double nx = 0, dummy = 0;
     px_to_data(pos.x, pos.y, nx, dummy);
     if (nx <= 0.0 || nx >= 1.0 || seg < 0) {

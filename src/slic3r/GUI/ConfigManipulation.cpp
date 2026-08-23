@@ -577,13 +577,9 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
     }
 
     // BBS
-    // A filament override naming a slot that no longer exists is stale and falls back to the
-    // plater's value. Support and the wipe tower are additionally restricted to physical filaments:
-    // the engine consumes those keys directly, with no per-layer mixed resolution, so a virtual
-    // slot there would reach the G-code unresolved. The per-feature keys have no such restriction —
-    // LayerTools::extruder() and its siblings resolve a mixed slot to the physical filament chosen
-    // for each layer. The sidebar dropdowns already hide mixed slots for the restricted keys
-    // (Plater.cpp DynamicFilamentList); this reset covers values loaded from projects.
+    // Reset filament overrides pointing at a slot that no longer exists. Support and the wipe
+    // tower additionally reject mixed slots: the engine consumes those keys directly, so a virtual
+    // slot would reach the G-code unresolved, while the per-feature keys are resolved per layer.
     static const char* physical_only_keys[] = { "support_filament", "support_interface_filament", "wipe_tower_filament" };
     static const char* feature_keys[] = { "outer_wall_filament_id", "inner_wall_filament_id",
                                           "sparse_infill_filament_id", "internal_solid_filament_id",

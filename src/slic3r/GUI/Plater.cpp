@@ -3876,10 +3876,8 @@ void Sidebar::change_top_border_for_mode_sizer(bool increase_border)
 
 
 // ---- Mixed-color filament sidebar support ----
-// Ported from BambuStudio's 混色耗材 feature. BBS hosts these widgets in an
-// m_filament_area_wrapper that Orca's sidebar has no counterpart for, so the mixed
-// section is parented to p->scrolled and sized with Orca's own row-height preference
-// (filaments_area_preferred_count) rather than BBS's fixed 3-row / 12-filament cap.
+// The mixed rows get their own scroll area, capped by Orca's filaments_area_preferred_count
+// row budget rather than BBS's fixed 3-row / 12-filament limit.
 void Sidebar::recalc_filament_scroll_sizes()
 {
     if (!p->m_mixed_scroll_area || !p->m_mixed_scroll_area->GetSizer())
@@ -4102,8 +4100,8 @@ void Sidebar::update_mixed_filament_list()
             unsigned int mix_num = (unsigned int)(cfg_idx + 1);
 
             // The swatch fades bottom to top over the model's height, sampled the same way
-            // the slicer builds the sublayers, so it matches the editor's Effect Preview. It
-            // comes back empty for every slot that is not a two component gradient mix.
+            // the slicer builds the sublayers, so it matches the editor's Effect Preview. The
+            // ramp comes back empty for every slot that is not a two component gradient mix.
             const int swatch_sz = FromDIP(20);
             const std::vector<wxColour> gradient_ramp = mixed_gradient_ramp(project_config, cfg_idx, swatch_sz);
 
@@ -4642,9 +4640,8 @@ static bool create_mixed_filament_from_result(
         multi_colour_opt->values[new_idx] = mixed_color;
     }
 
-    // set_num_filaments() above is what grows these parallel arrays. Guard the writes anyway,
-    // matching the gradient writes below, so a sizing bug degrades into a no-op rather than a
-    // heap overwrite.
+    // set_num_filaments() above already grows these parallel arrays; the writes are still
+    // size-guarded so a sizing bug degrades into a no-op rather than a heap overwrite.
     {
         auto* is_mixed_opt = project_config.option<ConfigOptionBools>("filament_is_mixed");
         while (is_mixed_opt->values.size() <= new_idx) is_mixed_opt->values.push_back(false);
@@ -14071,11 +14068,9 @@ bool Plater::priv::can_layers_editing() const
 
 void Plater::priv::on_action_layersediting(SimpleEvent&)
 {
-    // Sub-layer splitting divides each layer by the mix ratio, so an adaptive layer profile makes
-    // those sub-layer heights vary and degrades the blend. ConfigManipulation warns when the
-    // option is switched on with a variable profile already present; this is the other direction,
-    // warning when variable layer editing is switched on while the option is active. All three
-    // sites (with ObjectList::layers_editing for height ranges) honour the same do-not-show-again flag.
+    // Sub-layer splitting divides each layer by the mix ratio, so a variable layer height profile
+    // makes those sub-layer heights uneven and degrades the blend. ConfigManipulation warns for the
+    // opposite order, when the option is switched on while a variable profile already exists.
     if (!view3D->is_layers_editing_enabled()) {
         const auto& print_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
         if (print_config.opt_bool("enable_mixed_color_sublayer")) {
@@ -19988,14 +19983,11 @@ std::vector<std::string> Plater::get_filament_color_render_type() const
 
 const std::vector<std::vector<wxColour>>& Plater::get_filament_gradient_ramps() const
 {
-    // Sampling a ramp walks the measured-blend recipe table once per step, and the paint toolbar
-    // asks for the ramps on every rendered frame, so they are cached against the config values
-    // they are built from and resampled only when one of those actually changes.
-    //
-    // The cache cannot live on the Plater: the extruder icons ask for the ramps from inside
-    // MenuFactory::init(), which runs while this Plater is still being constructed, so `this` is
-    // not usable yet. Everything the ramps are built from is global anyway, and there is one
-    // Plater per process, which is the same reasoning behind the icons' own static BitmapCache.
+    // Sampling a ramp walks the measured-blend recipe table once per step and the paint toolbar
+    // asks for the ramps every rendered frame, so they are cached against the config values they
+    // are built from. The cache is static rather than a Plater member because the extruder icons
+    // ask for the ramps from MenuFactory::init(), which runs while this Plater is still inside its
+    // own constructor, so wxGetApp().plater_ is not assigned yet.
     static std::string                        s_ramps_key;
     static std::vector<std::vector<wxColour>> s_ramps;
 

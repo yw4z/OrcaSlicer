@@ -3234,8 +3234,8 @@ void ObjectList::merge(bool to_multipart_object)
 void ObjectList::layers_editing()
 {
     // Height ranges give each range its own layer height, varying the mixed sub-layer heights just
-    // like an adaptive profile; sibling of the on_action_layersediting/ConfigManipulation warnings,
-    // sharing the same do-not-show-again flag.
+    // like an adaptive profile, so this raises the same warning as variable layer height and shares
+    // its do-not-show-again flag.
     const auto& print_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
     if (print_config.opt_bool("enable_mixed_color_sublayer")) {
         if (wxGetApp().app_config->get("no_warn_mixed_sublayer_variable_layer") != "1") {

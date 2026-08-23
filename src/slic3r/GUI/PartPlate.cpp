@@ -2048,13 +2048,8 @@ bool PartPlate::check_tpu_printable_status(const DynamicPrintConfig & config, co
 }
 
 // A mixed-color filament alternates between its components constantly. On a single-nozzle
-// printer every one of those switches is a full filament change plus a purge, so warn the
-// user before they commit to it. Printers with more than one nozzle can keep the components
-// loaded simultaneously and are not affected.
-//
-// BBS additionally excludes its H2C/H2D/X2D models by name; those are multi-nozzle machines
-// already ruled out by the nozzle_diameter test above, so the name check is dropped here
-// rather than carried over as a Bambu-specific special case.
+// printer every one of those switches is a full filament change plus a purge, so warn before
+// slicing. Multi-nozzle printers keep the components loaded at once and are not affected.
 bool PartPlate::check_single_extruder_mixed_filament_risk(const DynamicPrintConfig &config, std::string &warning_text) const
 {
     warning_text.clear();

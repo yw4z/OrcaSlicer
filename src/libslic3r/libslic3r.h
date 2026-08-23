@@ -64,10 +64,9 @@ static constexpr double LARGE_BED_THRESHOLD = 2147;
 // Orca: maximum number of extruders is 64. For SEMM printers, it defines maximum filament number.
 static constexpr size_t MAXIMUM_EXTRUDER_NUMBER = 64;
 
-// Orca: how many filament slots syncing an AMS setup may create. This used to follow
-// EnforcerBlockerType::ExtruderMax, which capped it at the number of paintable filaments; that
-// limit has since been raised to 32, so the value is pinned here to keep AMS sync behaving as
-// before for projects that use no mixed-colour filaments.
+// Orca: how many filament slots syncing an AMS setup may create. This was derived from
+// EnforcerBlockerType::ExtruderMax, but that cap now covers 32 paintable filaments, so the AMS
+// limit is pinned here to keep sync behaving as it does for projects without mixed-color filaments.
 static constexpr size_t MAXIMUM_AMS_SYNC_FILAMENT_NUMBER = 16;
 
 // Orca: maximum line width is 5 times the nozzle diameter

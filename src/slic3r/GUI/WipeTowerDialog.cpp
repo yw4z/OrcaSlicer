@@ -261,10 +261,9 @@ static std::vector<float> MatrixFlatten(const WipingDialog::VolumeMatrix& matrix
     return vec;
 }
 
-// Mixed-color slots are virtual: they are never loaded into a tray and so have no flushing
-// volumes of their own. The dialog therefore shows only the physical filaments, which means
-// converting between the full config matrix (indexed by config slot) and a dense physical
-// sub-matrix (indexed by row/column in the table).
+// Mixed-color slots are virtual and have no flushing volumes, so the dialog shows only the
+// physical filaments. That means converting between the full config matrix (indexed by config
+// slot) and a dense physical sub-matrix (indexed by row/column in the table).
 static std::vector<double> extract_physical_sub_matrix(
     const std::vector<double>& full_matrix, size_t full_n,
     const std::vector<size_t>& indices)

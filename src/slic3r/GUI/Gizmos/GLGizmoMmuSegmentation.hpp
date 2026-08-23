@@ -142,7 +142,7 @@ private:
     // ORCA
     bool draw_color_button(int idx, const char* id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale);
     // Gradient ramp of a filament slot, or nullptr when the slot is a plain single color
-    // filament, so callers can index into what they get back freely.
+    // filament. A non-null result is never empty.
     const std::vector<wxColour>* gradient_of(int idx) const
     {
         return idx >= 0 && idx < (int) m_gradient_ramps.size() && !m_gradient_ramps[idx].empty() ? &m_gradient_ramps[idx] : nullptr;

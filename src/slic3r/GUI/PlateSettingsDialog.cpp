@@ -473,8 +473,7 @@ PlateSettingsDialog::PlateSettingsDialog(wxWindow* parent, const wxString& title
     m_sizer_main->Add(m_other_layers_seq_panel, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(30));
 
     // A mixed-color slot resolves to a different physical filament per layer, so a user-defined
-    // filament order cannot be honoured. Disable the choice and say why. BBS puts this warning
-    // inside its button sizer; Orca builds the buttons with DialogButtons, so it gets its own row.
+    // filament order cannot be honoured; grey out the choice and explain that in the dialog.
     {
         auto &proj_cfg     = wxGetApp().preset_bundle->project_config;
         auto *is_mixed_opt = proj_cfg.option<ConfigOptionBools>("filament_is_mixed");

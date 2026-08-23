@@ -99,7 +99,7 @@ TEST_CASE("Extruder states above 17 are encoded in a second nibble", "[TriangleS
 }
 
 // Model.cpp writes these hex strings into the 3MF for colored mesh imports; the selector must
-// decode exactly the states that table assigns to them.
+// decode exactly the states CONST_FILAMENTS assigns to them.
 TEST_CASE("Extruder states match the CONST_FILAMENTS hex encoding", "[TriangleSelector]")
 {
     struct Case { const char *hex; int state; };

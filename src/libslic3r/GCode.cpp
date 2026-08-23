@@ -6106,8 +6106,7 @@ LayerResult GCode::process_layer(
         // A mixed-color slot is absent from layer_tools.extruders by design: resolve_mixed_filaments()
         // replaced it with its physical components. Its geometry is still keyed under the slot in
         // by_extruder though, and the sublayer emitter looks the plan up by slot id, so append the
-        // slots here. Appended (not merged) so the existing order is untouched, and empty for every
-        // configuration without sublayer splitting.
+        // slots here. Appending rather than merging leaves the flush-optimized order untouched.
         std::vector<unsigned int> plan_filaments = layer_tools.extruders;
         for (const auto &grp : layer_tools.mixed_sub_layer_groups)
             if (std::find(plan_filaments.begin(), plan_filaments.end(), grp.mixed_slot_0based) == plan_filaments.end())
@@ -6593,8 +6592,8 @@ LayerResult GCode::process_layer(
 
         // Mixed-color sublayer extrusion: if this extruder is a component of a mixed sublayer
         // group, extrude the mixed slot's geometry at the appropriate sub-Z with scaled flow.
-        // Ported from BambuStudio's 混色耗材 feature; adapted to Orca's InstanceVisit-based
-        // instance loop and its finer-grained per-role region filament options.
+        // Ported from BambuStudio and adapted to Orca's instance loop and its finer-grained
+        // per-role region filament options.
         for (const auto &grp : layer_tools.mixed_sub_layer_groups) {
             int sub_idx = -1;
             for (size_t k = 0; k < grp.components_0based.size(); ++k) {

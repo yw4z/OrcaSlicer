@@ -326,10 +326,9 @@ bool GLGizmoMmuSegmentation::draw_color_button(int idx, const char* id_str, cons
     bool dark_tone = gradient ? (*gradient)[gradient->size() / 2].GetLuminance() < 0.51 :
                                 (0.299f * color.r() + 0.587f * color.g() + 0.114f * color.b()) < 0.51f; // matching values used by wxWidgets with clr.GetLuminance() < 0.51
 
-    // Paint a gradient mixed filament's fade before the button and keep the button transparent, so the
-    // slot number and the frame below stay on top of it. The bands cannot round their corners, so the
-    // fade is drawn at the frame's inset and the frame masks it into the same shape a plain color slot
-    // gets.
+    // Paint a gradient mixed filament's fade before the button and keep the button transparent, so
+    // the slot number and the frame below stay on top of it. The bands cannot round their corners,
+    // so the fade is inset to the frame, which masks it into the shape a plain color slot gets.
     if (gradient) {
         ImGuiWrapper::draw_gradient_ramp(draw_list, {pos.x + frame_inset * scale, pos.y + frame_inset * scale},
                                          {pos.x + size.x - frame_inset * scale, pos.y + size.y - frame_inset * scale}, *gradient);
@@ -778,7 +777,7 @@ void GLGizmoMmuSegmentation::update_triangle_selectors_colors()
         TriangleSelectorPatch* selector = dynamic_cast<TriangleSelectorPatch*>(m_triangle_selectors[i].get());
         int extruder_idx = m_volumes_extruder_idxs[i];
         int extruder_color_idx = std::max(0, extruder_idx - 1);
-        // As above: a mixed-color slot can index past the physical colour list.
+        // A mixed-color slot can index past the physical colour list; fall back to the first colour.
         if (extruder_color_idx >= (int)m_extruders_colors.size())
             extruder_color_idx = 0;
         std::vector<ColorRGBA> ebt_colors;

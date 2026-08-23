@@ -2615,12 +2615,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             print_object_instances_ordering = sort_object_instances_by_model_order(*this);
             // A mixed slot is virtual; only its components reach a nozzle. These per-object orderings
             // are unsorted (no resolve_mixed_filaments), so expand the slots here for the grouping, the
-            // unprintable sets and the slice-used lists. No-op without mixed filaments.
-            // Orca: the slice-used lists stay sourced from these expanded lists rather than from the
-            // sorted orderings (which may add the wipe-tower filament or seed dontcare layers
-            // differently), so prints without mixed filaments keep their used-filament set; the
-            // first-layer set therefore lists every component of a mixed slot, not just the one layer 0
-            // resolves to.
+            // unprintable sets and the slice-used lists. Because the expansion happens here rather than
+            // on the sorted orderings, the first-layer used set lists every component of a mixed slot,
+            // not just the one layer 0 resolves to. No-op without mixed filaments.
             const auto &is_mixed  = m_config.filament_is_mixed.values;
             const auto &comp_strs = m_config.filament_mixed_components.values;
             const bool  has_mixed = has_any_mixed_filament(is_mixed);

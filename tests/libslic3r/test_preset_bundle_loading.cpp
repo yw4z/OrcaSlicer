@@ -614,12 +614,10 @@ TEST_CASE("set_num_filaments keeps mixed-color arrays in step with the filament 
     }
 }
 
-// A mix is described by 1-based indices into the project's filament list. Orca's per-printer
-// preset memory rebuilds that list from the selected printer's snapshot (filament_%02u /
-// filament_colors) at startup and on every printer selection, so the mixed arrays must be stored
-// in the SAME per-printer snapshot: kept globally (as BambuStudio does — its filament list is a
-// single global snapshot too) they end up indexing a list they were never saved against, and used
-// to be reset on every printer selection instead, losing the mixes over an app restart.
+// A mix is described by 1-based indices into the project's filament list, which Orca rebuilds
+// from the selected printer's snapshot (filament_%02u / filament_colors) at startup and on every
+// printer selection. Held anywhere but that same per-printer snapshot, the mixed arrays end up
+// indexing a filament list they were never saved against.
 TEST_CASE("Mixed-color filament metadata is snapshotted per printer, with its filament list", "[Preset][Bundle][FilamentMixer]")
 {
     PresetBundle bundle;
@@ -674,10 +672,9 @@ TEST_CASE("A multi-point gradient curve survives the app-config snapshot", "[Pre
 }
 
 // A multi-tool printer sizes the filament list from its nozzle count. Mixed-color slots are extra
-// virtual filaments at the tail of that list with no nozzle of their own, so the sync has to add
-// them on top. Sizing to the nozzle count alone truncates them — and because that sync runs right
-// after a project is loaded, it silently drops the project's mixes and then lets the filament-count
-// change strip every painted facet above the new count.
+// virtual filaments at the tail of that list with no nozzle of their own, so the count has to
+// allow for them: sizing to the nozzle count alone drops the project's mixes and strips every
+// painted facet above the new count.
 TEST_CASE("Sizing the filament list to a multi-tool nozzle count keeps mixed slots", "[Preset][Bundle][FilamentMixer]")
 {
     // The 5-slot layout of a 4-tool project carrying one mix of filaments 2 and 3.

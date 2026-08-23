@@ -37,7 +37,7 @@ DynamicPrintConfig mixed_config(bool sublayer_on, const char *ratios = "0.6,0.4"
     return config;
 }
 
-// Total sub-layer groups and per-layer DRR resolutions across the whole tool ordering.
+// Total sub-layer groups and per-layer mixed-filament resolutions across the whole tool ordering.
 void count_mixed(ToolOrdering &to, size_t &groups, size_t &resolutions)
 {
     groups = resolutions = 0;
@@ -139,9 +139,8 @@ TEST_CASE("Whole-layer mixing emits only the nominal layer height", "[MixedFilam
 
 TEST_CASE("By-object prints without mixed filaments keep their used-filament set", "[MixedFilament]")
 {
-    // Regression guard for the mixed gate: with no mixed slot the by-object bookkeeping must
-    // be untouched by this change. Object 2 prints with filament 2, so both filaments are used
-    // and no mixed filament is reported.
+    // With no mixed slot the by-object bookkeeping stays plain: object 2 prints with filament 2,
+    // so both filaments are used and no mixed filament is reported.
     DynamicPrintConfig config = multifilament_config(2, {{"print_sequence", "by object"}});
     const std::vector<std::vector<ConfigBase::SetDeserializeItem>> overrides{ {}, { {"extruder", "2"} } };
 

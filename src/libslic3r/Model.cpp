@@ -309,9 +309,8 @@ Model Model::read_from_file(const std::string&                                  
         ObjParser::MtlData      mtl_data;
         result = load_obj(input_file.c_str(), &model, obj_info, message, nullptr, &mtl_data);
         if (result && obj_info.has_uv_png && !obj_info.uvs.empty() && !model.objects.empty()) {
-            // Textured OBJ: hand the mesh + materials to the texture-to-color importer instead
-            // of the flat per-face colour dialog. Replaces Orca's previous "not implemented"
-            // placeholder for this branch.
+            // Textured OBJ: hand the mesh + materials to the texture-to-color importer
+            // instead of the flat per-face colour dialog.
             auto tex_mesh = std::make_shared<TexturedMesh>();
             std::string obj_dir = boost::filesystem::path(input_file).parent_path().string();
             if (obj_to_textured_mesh(obj_info,
@@ -322,7 +321,7 @@ Model Model::read_from_file(const std::string&                                  
         }
         else if (result && !model.objects.empty() && !model.objects.back()->volumes.empty()) {
             // Vertex-colour and MTL face-colour OBJs also go through the texture-to-color
-            // importer (as precomputed per-face colors) instead of the legacy flat
+            // importer (as precomputed per-face colors) instead of the flat
             // per-face colour dialog, matching the uv_png branch above.
             auto build_tex_mesh_geometry = [&]() {
                 auto tex_mesh = std::make_shared<TexturedMesh>();
@@ -374,7 +373,7 @@ Model Model::read_from_file(const std::string&                                  
     else if (boost::algorithm::iends_with(input_file, ".glb") ||
              boost::algorithm::iends_with(input_file, ".gltf") ||
              boost::algorithm::iends_with(input_file, ".fbx")) {
-        // These formats always carry material/texture data, so they go through the textured
+        // These formats can carry material/texture data, so they go through the textured
         // import path: the geometry becomes a normal object and the texture is handed to the
         // texture-to-color dialog via Model::texture_mesh.
         auto tex_mesh = std::make_shared<TexturedMesh>();

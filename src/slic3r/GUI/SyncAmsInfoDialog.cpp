@@ -2577,7 +2577,7 @@ void SyncAmsInfoDialog::reset_and_sync_ams_list()
     m_filaments.clear();
 
     // Mixed-color slots are virtual: they never occupy a tray, so they must not appear as
-    // AMS sync targets. Look the flags up once and skip those slots in the loop below.
+    // AMS sync targets.
     auto* is_mixed_opt = preset_bundle->project_config.option<ConfigOptionBools>("filament_is_mixed");
 
     bool use_double_extruder = get_is_double_extruder();
@@ -2801,7 +2801,7 @@ void SyncAmsInfoDialog::generate_override_fix_ams_list()
     m_fix_filaments.clear();
 
     // Mixed-color slots are virtual: they never occupy a tray, so they must not appear as
-    // AMS sync targets. Look the flags up once and skip those slots in the loop below.
+    // AMS sync targets.
     auto* is_mixed_opt = preset_bundle->project_config.option<ConfigOptionBools>("filament_is_mixed");
 
     bool use_double_extruder = get_is_double_extruder();

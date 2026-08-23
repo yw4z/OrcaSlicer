@@ -998,8 +998,8 @@ bool GLGizmosManager::on_key(wxKeyEvent& evt)
                     keyCode = keyCode- WXK_NUMPAD0+'0';
                 }
                 if (keyCode >= '0' && keyCode <= '9') {
-                    // The paint palette now reaches EXTRUDERS_LIMIT (mixed-color filaments share
-                    // the same slots), so any leading digit that can start a valid two-digit
+                    // The paint palette reaches EXTRUDERS_LIMIT slots (mixed-color filaments take
+                    // ordinary slots too), so any leading digit that can start a valid two-digit
                     // number waits briefly for a second one.
                     const int digit        = keyCode - '0';
                     const int shortcut_max = int(GLGizmoMmuSegmentation::EXTRUDERS_LIMIT);

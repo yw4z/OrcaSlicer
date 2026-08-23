@@ -91,11 +91,9 @@ bool check_filament_printable_after_group(const std::vector<unsigned int> &used_
 }
 
 // Return a zero based extruder from the region, or extruder_override if overriden.
-// The region accessors below resolve mixed-color slots to the physical filament chosen for
-// this layer. Without sub-layer splitting a mixed slot is realized by alternating whole layers
-// (deficit round-robin, see resolve_mixed_filaments), so a region asking "which filament?" must
-// get the resolved physical one, not the virtual slot id. resolve_mixed() is identity when the
-// slot is not mixed, so this is a no-op for every non-mixed setup.
+// The region accessors below resolve mixed-color slots to the physical filament chosen for this
+// layer by resolve_mixed_filaments(), because a virtual slot id is never a real tool. resolve_mixed()
+// returns its argument unchanged for every filament that is not a mixed slot.
 unsigned int LayerTools::wall_extruder_id(const PrintRegion &region) const
 {
 	assert(region.config().outer_wall_filament_id.value > 0);
@@ -2522,8 +2520,7 @@ void ToolOrdering::resolve_mixed_filaments(const PrintConfig &config)
                 //  - untagged region (modifier / painted / etc.) -> per_object_gradient[obj]
                 // Populating both keeps the per-object run state correct even when per-volume
                 // takes over for the same (slot, obj), and lets untagged geometry (which is
-                // explicitly NOT split per-volume in v1 per the design doc) keep its legacy
-                // per-object gradient ratios.
+                // never split per-volume) keep its per-object gradient ratios.
                 if (grp.is_gradient) {
                     auto vol_runs_slot_it = per_vol_runs.find(ext);
                     if (vol_runs_slot_it != per_vol_runs.end()) {

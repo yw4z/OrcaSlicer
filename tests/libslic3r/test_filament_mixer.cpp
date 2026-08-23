@@ -101,10 +101,9 @@ TEST_CASE("check_mixed_filament_type_consistency flags mismatched component type
 
 TEST_CASE("a support-flagged component reads as its own filament type for the consistency check", "[FilamentMixer]")
 {
-    // Sidebar::update_mixed_filament_list and Sidebar::has_broken_mixed_filament derive each
-    // component's type through DynamicPrintConfig::get_filament_type, which folds the
-    // filament_is_support flag into the type — so toggling that flag alone changes the verdict
-    // and Plater::on_config_change has to refresh the mixed list on filament_is_support too.
+    // The sidebar derives each component's type through DynamicPrintConfig::get_filament_type,
+    // which folds filament_is_support into the type, so toggling that flag alone flips the
+    // verdict and the mixed filament list has to be refreshed on filament_is_support too.
     DynamicPrintConfig plain_pla;
     plain_pla.set_key_value("filament_type", new ConfigOptionStrings({"PLA"}));
     plain_pla.set_key_value("filament_is_support", new ConfigOptionBools({false}));
@@ -193,8 +192,8 @@ TEST_CASE("blend_color_multi weights components", "[FilamentMixer]")
     }
 
     SECTION("Mixing a color with itself stays close to that color") {
-        // The mixer is a degree-4 polynomial fit of pigment behaviour, so a round trip through
-        // it is near-identity rather than exact (the model documents a mean Delta-E around 2).
+        // The mixer is a degree-4 polynomial fit of pigment behaviour, so mixing a color with
+        // itself lands near it rather than exactly on it; allow a small per-channel drift.
         std::string mixed = blend_color_multi({"#123456", "#123456"}, {1, 1});
         REQUIRE(mixed.size() == 7);
         auto comp = [](const std::string &hex, int i) {

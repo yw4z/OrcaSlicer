@@ -894,9 +894,9 @@ wxBoxSizer* MixedFilamentDialog::create_ratio_slider()
         on_ratio_changed(std::max(MIN_COMPONENT_RATIO, std::min(100 - MIN_COMPONENT_RATIO, new_ratio)));
     });
 
-    // Release whenever the capture is held, not only when the drag flag is set:
-    // the flag can be cleared behind our back, and a capture that outlives the
-    // widget wedges mouse input for the whole application.
+    // Key the release off the capture itself, not off the drag flag: the two can fall out of
+    // sync (a lost capture clears the flag on its own), and a capture that outlives the widget
+    // wedges mouse input for the whole application.
     m_ratio_bar->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
         m_ratio_dragging = false;
         if (m_ratio_bar->HasCapture())
@@ -1492,11 +1492,9 @@ void MixedFilamentDialog::on_ratio_changed(int new_ratio_a)
 
 void MixedFilamentDialog::on_gradient_toggled()
 {
-    // Orca: the engine only produces a gradient when the print profile's
-    // "enable_mixed_color_sublayer" option is on (ToolOrdering::resolve_mixed_filaments
-    // falls back to whole-layer round-robin without it, and BBS leaves users to find the
-    // option themselves). Offer to switch it on so the gradient the user just enabled
-    // actually shows up in the sliced result. Keep this block on future BBS syncs.
+    // Orca: a gradient is only sliced when the print profile's "enable_mixed_color_sublayer"
+    // option is on; without it ToolOrdering picks a single component per whole layer. Offer to
+    // turn the option on instead of silently ignoring the gradient the user just enabled.
     bool checked = m_chk_gradient->GetValue();
 
     if (checked) {

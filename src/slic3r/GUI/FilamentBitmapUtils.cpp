@@ -131,8 +131,7 @@ void fill_gradient_ramp_rect(wxDC& dc, const wxRect& rect, const std::vector<wxC
     dc.SetPen(*wxTRANSPARENT_PEN);
     for (int y = 0; y < rect.height; ++y) {
         // Row 0 is the top of the rect and so takes the ramp's last entry, the model's top.
-        // Mapping over height - 1 keeps both ends of the ramp on screen; a swatch is often
-        // shorter than the ramp is long, so truncating either end would be visible.
+        // Mapping over height - 1 puts both ends of the ramp on screen even in a short swatch.
         const double t = (rect.height > 1) ? (double) (rect.height - 1 - y) / (rect.height - 1) : 0.5;
         dc.SetBrush(wxBrush(ramp[static_cast<size_t>(t * (ramp.size() - 1) + 0.5)]));
         dc.DrawRectangle(rect.x, rect.y + y, rect.width, 1);

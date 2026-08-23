@@ -2715,19 +2715,13 @@ void PresetBundle::load_installed_sla_materials(AppConfig &config)
         preset.set_visible_from_appconfig(config);
 }
 
-// Mixed-color filament metadata is project state, carried in the 3mf's project_settings.config.
-// BambuStudio also snapshots it in the app config so the last session's mixes are back before any
-// project is opened; there the filament list itself is a single global snapshot, so the mixed
-// arrays live next to it in the global "presets" section. Orca's per-printer preset memory instead
-// rebuilds the filament list from the selected printer's snapshot (filament_%02u/filament_colors)
-// on startup AND on every printer selection — so the mixed arrays, whose component ids are 1-based
-// indices into exactly that list, must live in the same per-printer snapshot or they end up
-// describing a list they were never saved against (and previously got reset on every printer
-// select, losing the mixes over a restart).
-// Missing keys clear the arrays: a printer with no stored mixes must not inherit another's.
-// fallback_to_global additionally reads the legacy shared "presets" keys (the old format) so a
-// config saved by an earlier build still restores at startup; export_selections clears that
-// section on the next save.
+// Mixed-color filament metadata is project state saved in the 3mf, also mirrored into the app
+// config so the last session's mixes are back before any project is opened. It is kept in the
+// per-printer snapshot next to the filament list it indexes (filament_%02u/filament_colors),
+// because that list is rebuilt on every printer selection and the component ids are 1-based
+// indices into exactly that list. Missing keys clear the arrays, so one printer never inherits
+// another's mixes; fallback_to_global also reads the shared "presets" keys an older config
+// layout used, which export_selections drops on the next save.
 static void load_mixed_filament_settings(DynamicPrintConfig &project_config, AppConfig &config,
                                          const std::string &printer_name, size_t n_filaments,
                                          bool fallback_to_global)
@@ -3162,12 +3156,9 @@ void PresetBundle::export_selections(AppConfig &config)
                                                               "|");
     config.set_printer_setting(printer_name, "flush_multiplier", flush_multiplier_str);
 
-    // Mixed-color filament metadata: stored in the per-printer snapshot next to the filament
-    // list it indexes (filament_%02u / filament_colors), so each printer's remembered config
-    // round-trips its own mixes and re-applying a snapshot never leaves the arrays describing a
-    // different list (see load_mixed_filament_settings). Bools are ','-joined; the
-    // component/ratio/range strings are '|'-joined; the gradient curve is escaped instead,
-    // because its values contain '|'.
+    // Mixed-color filament metadata goes into the per-printer snapshot next to the filament list
+    // it indexes (see load_mixed_filament_settings). Bools are ','-joined and the component, ratio
+    // and range strings '|'-joined; the gradient curve is escaped instead, as it contains '|'.
     auto join_bools = [](const std::vector<unsigned char> &vals) {
         std::string s;
         for (size_t i = 0; i < vals.size(); ++i) {
@@ -3227,8 +3218,7 @@ void PresetBundle::set_num_filaments(unsigned int n, std::vector<std::string> ne
     ams_multi_color_filment.resize(n);
 
     // Mixed-color metadata is a parallel per-filament array set, so it has to grow and shrink
-    // with the filament count exactly like filament_colour above. Missing this leaves the
-    // arrays short and every lookup of a newly created slot reads past the end.
+    // with the filament count exactly like filament_colour above.
     if (auto* opt = project_config.option<ConfigOptionBools>("filament_is_mixed"))
         opt->values.resize(n, false);
     if (auto* opt = project_config.option<ConfigOptionStrings>("filament_mixed_components"))
@@ -3285,8 +3275,7 @@ void PresetBundle::set_num_filaments(unsigned int n, std::string new_color)
     ams_multi_color_filment.resize(n);
 
     // Mixed-color metadata is a parallel per-filament array set, so it has to grow and shrink
-    // with the filament count exactly like filament_colour above. Missing this leaves the
-    // arrays short and every lookup of a newly created slot reads past the end.
+    // with the filament count exactly like filament_colour above.
     if (auto* opt = project_config.option<ConfigOptionBools>("filament_is_mixed"))
         opt->values.resize(n, false);
     if (auto* opt = project_config.option<ConfigOptionStrings>("filament_mixed_components"))

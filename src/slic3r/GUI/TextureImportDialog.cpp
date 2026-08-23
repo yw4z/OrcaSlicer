@@ -1368,11 +1368,9 @@ void TexturePreviewCanvas::ensure_gl_ready()
 {
     if (m_gl_initialized) return;
 
-    // BBS loads GL entry points here with GLEW. Orca uses glad and centralises loading in
-    // OpenGLManager, which has already run by the time any canvas is realized, so just
-    // verify the loader is up and drain any stale error state.
-    // glad leaves unresolved entry points as null pointers, so this is a cheap guard against
-    // painting before OpenGLManager::init_gl() has run.
+    // BBS loads the GL entry points here with GLEW; Orca loads them centrally in
+    // OpenGLManager, so only check that this has already happened (glad leaves unresolved
+    // entry points null) and drain any stale error state.
     if (glGetString == nullptr) {
         BOOST_LOG_TRIVIAL(error) << "TexturePreviewCanvas: OpenGL functions are not loaded yet";
         return;
@@ -2436,10 +2434,9 @@ void TextureImportDialog::start_computation(bool auto_color, bool initial)
     settings.target_colors_num = auto_color ? 0 : (size_t)m_param_color_count;
     settings.smooth_weight     = m_param_smooth / 10.0;
     settings.mesh_repair_decision = m_mesh_repair_decision;
-    // BBS repairs the mesh through the Windows 3D SDK, which only exists on Windows and only
-    // when the SDK is present at build time. Orca already ships a CGAL-based repair
-    // (MeshBoolean::cgal::repair) that works on all three platforms, so use that instead —
-    // this makes the repair path available on Linux and macOS too.
+    // BBS repairs the mesh through the Windows 3D SDK, which is only available on Windows
+    // builds that ship the SDK. Orca's CGAL-based repair (MeshBoolean::cgal::repair) works
+    // on all three platforms, so use that instead.
     settings.mesh_repair_callback = [](const indexed_triangle_set& mesh,
                                        indexed_triangle_set&       repaired_mesh,
                                        std::function<void(const char*, unsigned)> progress_callback,

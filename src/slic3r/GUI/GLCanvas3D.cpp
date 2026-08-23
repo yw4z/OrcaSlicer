@@ -9681,10 +9681,9 @@ void GLCanvas3D::_render_paint_toolbar() const
             }
         }
     }
-    // ORCA: the loop above only produces a label for a slot whose preset is found in the preset
-    // collection, while the render loop below iterates extruder_num (= colour count). Pad the
-    // label arrays so a slot without a matching preset cannot index past them — reading a garbage
-    // std::string here crashes in ImGui::CalcTextSize (strlen).
+    // ORCA: the loop above only labels a slot whose preset was found in the preset collection,
+    // while the render loop below iterates extruder_num. Pad the label arrays so a slot without a
+    // matching preset cannot index past them; a garbage std::string crashes ImGui::CalcTextSize.
     while (int(filament_text_first_line.size()) < extruder_num) {
         filament_text_first_line.emplace_back();
         filament_text_second_line.emplace_back();

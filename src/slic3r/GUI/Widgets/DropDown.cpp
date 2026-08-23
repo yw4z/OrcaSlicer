@@ -360,8 +360,7 @@ void DropDown::render(wxDC &dc)
     for (int i = 0; i < items.size(); ++i) {
         auto &item = items[i];
         int states2 = states;
-        // Dimmed items stay selectable but render greyed out (used by the mixed-filament
-        // dialog to show components that are already consumed by another mix).
+        // Dimmed items render greyed out but stay selectable, so they cannot reuse the disabled state.
         bool is_dimmed = (item.style & DD_ITEM_STYLE_DIMMED) != 0;
         if ((item.style & DD_ITEM_STYLE_DISABLED) != 0)
             states2 &= ~StateColor::Enabled;

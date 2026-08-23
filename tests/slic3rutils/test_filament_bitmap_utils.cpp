@@ -140,8 +140,8 @@ TEST_CASE("recompute_mixed_slot_colors honours the configured ratios and is idem
 // --- mixed_gradient_ramp / sample_gradient_ramp -----------------------------------------
 //
 // The ramp is what every mixed filament swatch is drawn from, so these pin the three things
-// a plain two-endpoint fade got wrong: the reserved ratio band, the component order, and the
-// custom curve.
+// a plain fade between two endpoint colours cannot express: the reserved ratio band, the
+// component order, and the custom curve.
 
 namespace {
 
@@ -169,7 +169,7 @@ TEST_CASE("mixed_gradient_ramp runs bottom to top and never reaches a pure compo
     REQUIRE(ramp.size() == 16);
 
     // Neither end is the pure component colour - the slicer clamps the blend to
-    // [kGradientMinRatio, kGradientMaxRatio], which is exactly what a two-endpoint fade missed.
+    // [kGradientMinRatio, kGradientMaxRatio], which a fade between the pure colours would ignore.
     REQUIRE(ramp.front() != wxColour(255, 0, 0));
     REQUIRE(ramp.back() != wxColour(0, 0, 255));
 
@@ -188,7 +188,7 @@ TEST_CASE("mixed_gradient_ramp follows the range's direction rather than the com
     REQUIRE(falling.size() == 16);
 
     // "0.1,0.9" starts blue-heavy at the bottom; "0.9,0.1" starts red-heavy. Reversing the
-    // range must reverse the ramp, which HSV-sorted endpoint colours could not express.
+    // range must reverse the ramp, which endpoint colours ordered by HSV cannot express.
     REQUIRE(int(rising.front().Blue()) > int(rising.front().Red()));
     REQUIRE(int(falling.front().Red()) > int(falling.front().Blue()));
     require_same_rgb(rising.front(), falling.back());

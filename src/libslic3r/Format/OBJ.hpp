@@ -38,8 +38,8 @@ extern bool load_obj(const char *path, TriangleMesh *mesh, ObjInfo &vertex_color
 extern bool load_obj(const char *path, Model *model, ObjInfo &vertex_colors, std::string &message, const char *object_name = nullptr, ObjParser::MtlData *out_mtl = nullptr);
 
 struct TexturedMesh;
-// Build a TexturedMesh (vertices + per-face UVs + decoded texture images) from a parsed OBJ
-// plus its material table, so the texture-to-color importer can sample face colours.
+// Build a TexturedMesh (vertices + per-face UVs + the texture files named by map_Kd) from a
+// parsed OBJ plus its material table, so the texture-to-color importer can sample face colours.
 extern bool obj_to_textured_mesh(
     const ObjInfo& obj_info,
     const indexed_triangle_set& its,

@@ -501,10 +501,8 @@ SCENARIO("Nozzle-group metadata .3mf round-trip", "[3mf][MultiNozzle]") {
 
 
 // A mixed-color filament occupies an ordinary filament slot, and painting with it stores an
-// ordinary extruder state — a project saved by BambuStudio encodes filament 5 of a 5-slot setup
-// as paint state 5, with the mix described by the parallel filament_mixed_* project arrays. This
-// pins both halves of that contract at the .3mf layer: the project keys and the painted states
-// must come back exactly as written.
+// ordinary extruder state: a project saved by BambuStudio encodes filament 5 of a 5-slot setup
+// as paint state 5, with the mix described by the parallel filament_mixed_* project arrays.
 SCENARIO("Mixed-color filament setup and painting round-trip through a .3mf", "[3mf][MixedFilament]") {
     GIVEN("a painted model whose project config describes a mixed filament in the last slot") {
         Model model;
