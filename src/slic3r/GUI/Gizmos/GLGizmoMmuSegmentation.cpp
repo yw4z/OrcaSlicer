@@ -313,15 +313,39 @@ void GLGizmoMmuSegmentation::render_tooltip_button(float x, float y)
 }
 
 // ORCA
-bool GLGizmoMmuSegmentation::draw_color_button(int idx, std::string id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale)
+bool GLGizmoMmuSegmentation::draw_color_button(int idx, const char* id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale)
 {
+    // Inset of the frame stroked below, which is what trims the swatch down to its visible shape.
+    const float frame_inset = 1.5f;
+
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     std::string label_id  = std::to_string(idx) + id_str + std::to_string(idx);
     ImVec2      pos       = ImGui::GetCursorScreenPos();
     ImVec2      size      = ImVec2(27.f * scale, 27.f * scale);
     ImVec4      color_vec = ImGuiWrapper::to_ImVec4(color);
     ImU32       br_color  = ImGui::ColorConvertFloat4ToU32(active ? ImGuiWrapper::COL_ORCA : m_is_dark_mode ? ImVec4(.35f, .35f, .35f, 1) : ImVec4(.85f, .85f, .85f, 1));
-    bool        dark_tone = (0.299f * color.r() + 0.587f * color.g() + 0.114f * color.b()) < 0.51f; // matching values used by wxWidgets with clr.GetLuminance() < 0.51
+    // Every caller labels the button with the 1 based slot number, so idx - 1 picks out the slot's fade.
+    const GradientInfo* gradient = gradient_of(idx - 1);
+    // ImGui interpolates the fade linearly, so the centered slot number lands on the midpoint of the two
+    // endpoints - take its contrast from there, not from the slot's blended color.
+    ColorRGBA   tone      = gradient ? ColorRGBA(0.5f * (gradient->color_from[0] + gradient->color_to[0]),
+                                                 0.5f * (gradient->color_from[1] + gradient->color_to[1]),
+                                                 0.5f * (gradient->color_from[2] + gradient->color_to[2]), 1.f)
+                                     : color;
+    bool        dark_tone = (0.299f * tone.r() + 0.587f * tone.g() + 0.114f * tone.b()) < 0.51f; // matching values used by wxWidgets with clr.GetLuminance() < 0.51
+
+    // Paint a gradient mixed filament's fade before the button and keep the button transparent, so the
+    // slot number and the frame below stay on top of it. AddRectFilledMultiColor cannot round its
+    // corners, so the fade is drawn at the frame's inset and the frame masks it into the same shape a
+    // plain color slot gets.
+    if (gradient) {
+        auto to_imu32 = [](const std::array<float, 4>& c) { return ImGui::ColorConvertFloat4ToU32({c[0], c[1], c[2], c[3]}); };
+        draw_list->AddRectFilledMultiColor({pos.x + frame_inset * scale, pos.y + frame_inset * scale},
+                                           {pos.x + size.x - frame_inset * scale, pos.y + size.y - frame_inset * scale},
+                                           to_imu32(gradient->color_from), to_imu32(gradient->color_to),
+                                           to_imu32(gradient->color_to), to_imu32(gradient->color_from));
+        color_vec.w = 0.f; // let the fade show through
+    }
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 7.f * scale);
@@ -337,7 +361,7 @@ bool GLGizmoMmuSegmentation::draw_color_button(int idx, std::string id_str, cons
     auto drawBorder = [&](float d, float r, float t, ImU32 col) {
         draw_list->AddRect({pos.x + d * scale, pos.y + d * scale}, {pos.x + size.x - d * scale , pos.y + size.y - d * scale}, col, r * scale, 0, t * scale);
     };
-    drawBorder(1.5f, 3.f, 4.f, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg)));
+    drawBorder(frame_inset, 3.f, 4.f, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg)));
     if(active)
         drawBorder(.5f, 4.f , 2.f, br_color);
     else
@@ -439,19 +463,6 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             scale
         )){
             m_selected_extruder_idx = extruder_idx;
-        }
-
-        // Overlay a two-tone fade for gradient mixed filaments; a single flat colour would
-        // misrepresent a slot that fades between two filaments over Z.
-        if (extruder_idx < (int) m_gradient_info.size() && m_gradient_info[extruder_idx].is_gradient) {
-            auto to_imu32 = [](const std::array<float, 4> &c) -> ImU32 {
-                return IM_COL32(uint8_t(c[0]*255.f), uint8_t(c[1]*255.f), uint8_t(c[2]*255.f), uint8_t(c[3]*255.f));
-            };
-            ImVec2 r_min = ImGui::GetItemRectMin();
-            ImVec2 r_max = ImGui::GetItemRectMax();
-            ImU32 col_from = to_imu32(m_gradient_info[extruder_idx].color_from);
-            ImU32 col_to   = to_imu32(m_gradient_info[extruder_idx].color_to);
-            ImGui::GetWindowDrawList()->AddRectFilledMultiColor(r_min, r_max, col_from, col_to, col_to, col_from);
         }
 
         if (extruder_idx < int(GLGizmoMmuSegmentation::EXTRUDERS_LIMIT) && ImGui::IsItemHovered()) m_imgui->tooltip(_L("Shortcut Key ") + std::to_string(extruder_idx + 1), max_tooltip_width);

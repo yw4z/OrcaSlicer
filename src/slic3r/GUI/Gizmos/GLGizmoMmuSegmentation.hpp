@@ -145,7 +145,12 @@ private:
     void init_model_triangle_selectors();
 
     // ORCA
-    bool draw_color_button(int idx, std::string id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale);
+    bool draw_color_button(int idx, const char* id_str, const ColorRGBA& color, ColorRGBA& map_color, bool active, float scale);
+    // Gradient endpoints of a filament slot, or nullptr when the slot is a plain single color filament.
+    const GradientInfo* gradient_of(int idx) const
+    {
+        return idx >= 0 && idx < (int) m_gradient_info.size() && m_gradient_info[idx].is_gradient ? &m_gradient_info[idx] : nullptr;
+    }
 
     // BBS
     void update_triangle_selectors_colors();
