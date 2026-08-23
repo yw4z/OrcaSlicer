@@ -1258,7 +1258,7 @@ wxBoxSizer* MixedFilamentDialog::create_recommendation_grid()
     m_recommendation_scroll->SetScrollRate(0, 5);
     m_recommendation_scroll->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#F8F8F8")));
 
-    m_recommendation_grid = new wxWrapSizer(wxHORIZONTAL, wxWRAPSIZER_DEFAULT_FLAGS);
+    m_recommendation_grid = new wxWrapSizer(wxHORIZONTAL, wxREMOVE_LEADING_SPACES);
     auto* scroll_inner_sizer = new wxBoxSizer(wxVERTICAL);
     scroll_inner_sizer->Add(m_recommendation_grid, 1, wxEXPAND | wxLEFT | wxTOP, FromDIP(8));
     m_recommendation_scroll->SetSizer(scroll_inner_sizer);
