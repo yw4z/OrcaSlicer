@@ -1,6 +1,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "libslic3r/FilamentMixer.hpp"
+#include "libslic3r/PrintConfig.hpp"
 
 using namespace Slic3r;
 
@@ -96,6 +97,29 @@ TEST_CASE("check_mixed_filament_type_consistency flags mismatched component type
 
     auto bad = check_mixed_filament_type_consistency(is_mixed, comp_strs, {"PLA", "PETG"});
     REQUIRE(bad == std::vector<size_t>{2});
+}
+
+TEST_CASE("a support-flagged component reads as its own filament type for the consistency check", "[FilamentMixer]")
+{
+    // Sidebar::update_mixed_filament_list and Sidebar::has_broken_mixed_filament derive each
+    // component's type through DynamicPrintConfig::get_filament_type, which folds the
+    // filament_is_support flag into the type — so toggling that flag alone changes the verdict
+    // and Plater::on_config_change has to refresh the mixed list on filament_is_support too.
+    DynamicPrintConfig plain_pla;
+    plain_pla.set_key_value("filament_type", new ConfigOptionStrings({"PLA"}));
+    plain_pla.set_key_value("filament_is_support", new ConfigOptionBools({false}));
+    std::string displayed;
+    REQUIRE(plain_pla.get_filament_type(displayed) == "PLA");
+
+    DynamicPrintConfig support_pla;
+    support_pla.set_key_value("filament_type", new ConfigOptionStrings({"PLA"}));
+    support_pla.set_key_value("filament_is_support", new ConfigOptionBools({true}));
+    REQUIRE(support_pla.get_filament_type(displayed) == "PLA-S");
+    REQUIRE(displayed == "Sup.PLA");
+
+    const std::vector<unsigned char> is_mixed  = {0, 0, 1};
+    const std::vector<std::string>   comp_strs = {"", "", "1,2"};
+    REQUIRE(check_mixed_filament_type_consistency(is_mixed, comp_strs, {"PLA", "PLA-S"}) == std::vector<size_t>{2});
 }
 
 TEST_CASE("gradient curves round-trip and sample monotonically", "[FilamentMixer]")
