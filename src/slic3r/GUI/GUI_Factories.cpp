@@ -1685,7 +1685,9 @@ void MenuFactory::create_filament_action_menu(bool init, int active_filament_men
         [filaments_cnt]() { return filaments_cnt > 1; }, m_parent);
 
     // Decompose a target colour into a printable mix of the loaded filaments. Placed before the
-    // Delete entry below so Orca's "delete last" ordering is preserved (BBS appends it after).
+    const int decompose_id = menu->FindItem(_L("Decompose Color"));
+    if (decompose_id != wxNOT_FOUND)
+        menu->Destroy(decompose_id);
     append_menu_item(
         menu, wxID_ANY, _L("Decompose Color"), "", [](wxCommandEvent&) {
             plater()->sidebar().decompose_filament_color(kSidebarContextMenuFilamentId); }, "", nullptr,
