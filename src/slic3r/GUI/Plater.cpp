@@ -737,6 +737,9 @@ struct Sidebar::priv
     ScalableButton *  m_bpButton_ams_filament;
     ScalableButton *  m_bpButton_set_filament;
     int m_menu_filament_id = -1;
+
+    wxPanel* m_filament_area_wrapper;
+
     wxScrolledWindow* m_panel_filament_content;
 
     // Mixed-color filament section. Sits directly under the physical filament list in
@@ -2896,7 +2899,7 @@ Sidebar::Sidebar(Plater *parent)
     p->m_panel_filament_title->SetBackgroundColor(title_bg);
     p->m_panel_filament_title->SetBackgroundColor2(0xF1F1F1);
     p->m_panel_filament_title->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &e) {
-        if (!p || !p->m_panel_filament_content || !m_scrolled_sizer || !p->m_bpButton_set_filament || !p->m_purge_mode_btn || !p->m_flushing_volume_btn || !p->m_bpButton_add_filament || !ams_btn)
+        if (!p || !p->m_filament_area_wrapper || !m_scrolled_sizer || !p->m_bpButton_set_filament || !p->m_purge_mode_btn || !p->m_flushing_volume_btn || !p->m_bpButton_add_filament || !ams_btn)
             return;
         // ORCA exclude area of del button from titlebar collapse/expand feature to fix undesired collapse when user spams del filament button
         // also block fold/unfold feature when user clicks to spacing between icons
@@ -2907,8 +2910,8 @@ Sidebar::Sidebar(Plater *parent)
         else if (ams_btn->IsShown())                    exclude_pt = ams_btn->GetPosition().x;
         if (e.GetPosition().x > exclude_pt)
             return;
-        bool isShown = p->m_panel_filament_content->IsShown();
-        p->m_panel_filament_content->Show(!isShown);
+        bool isShown = p->m_filament_area_wrapper->IsShown();
+        p->m_filament_area_wrapper->Show(!isShown);
         p->m_panel_filament_separator->Show(isShown);
         m_scrolled_sizer->Layout();
 
@@ -3022,8 +3025,13 @@ Sidebar::Sidebar(Plater *parent)
     bSizer39->Add(set_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::WideSpacing()));
     bSizer39->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
 
+    // ---- Wrapper panel for collapse/expand of all filament content ----
+    p->m_filament_area_wrapper = new wxPanel(p->scrolled, wxID_ANY);
+    p->m_filament_area_wrapper->SetBackgroundColour(*wxWHITE);
+    auto* wrapper_sizer = new wxBoxSizer(wxVERTICAL);
+
     // add filament content
-    p->m_panel_filament_content = new wxScrolledWindow( p->scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+    p->m_panel_filament_content = new wxScrolledWindow(p->m_filament_area_wrapper, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
     p->m_panel_filament_content->SetScrollbars(0, 100, 1, 2);
     p->m_panel_filament_content->SetScrollRate(0, 5);
     //p->m_panel_filament_content->SetMaxSize(wxSize{-1, FromDIP(174)});
@@ -3051,7 +3059,7 @@ Sidebar::Sidebar(Plater *parent)
     
     update_filaments_area_height(); // ORCA
 
-    scrolled_sizer->Add(p->m_panel_filament_content, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(SidebarProps::ContentMarginV())); // ORCA use vertical margin on parent otherwise it shows scrollbar even on 1 filament
+    wrapper_sizer->Add(p->m_panel_filament_content, 0, wxEXPAND);
 
     // ---- Mixed-color filament section ----
     // A mixed filament is a virtual slot realized from 2-3 physical filaments at slicing time.
@@ -3059,7 +3067,7 @@ Sidebar::Sidebar(Plater *parent)
     // filament setup looks exactly as before.
     {
     // 1) "+ Add Mixed Filament" button, shown only while no mixed filament exists yet.
-    p->m_btn_add_mixed_filament = new wxPanel(p->scrolled, wxID_ANY);
+    p->m_btn_add_mixed_filament = new wxPanel(p->m_filament_area_wrapper, wxID_ANY);
     p->m_btn_add_mixed_filament->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#F8F8F8")));
     p->m_btn_add_mixed_filament->SetMinSize(wxSize(-1, FromDIP(23)));
     {
@@ -3081,10 +3089,10 @@ Sidebar::Sidebar(Plater *parent)
         add_label->Bind(wxEVT_LEFT_UP, on_click);
         icon_add->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { add_mixed_filament(); });
     }
-    scrolled_sizer->Add(p->m_btn_add_mixed_filament, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, FromDIP(8));
+    wrapper_sizer->Add(p->m_btn_add_mixed_filament, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, FromDIP(8));
 
     // 2) Title row with add / remove buttons, shown once a mixed filament exists.
-    p->m_panel_mixed_title = new wxPanel(p->scrolled, wxID_ANY);
+    p->m_panel_mixed_title = new wxPanel(p->m_filament_area_wrapper, wxID_ANY);
     p->m_panel_mixed_title->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
     {
         auto* title_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -3112,11 +3120,11 @@ Sidebar::Sidebar(Plater *parent)
 
         p->m_panel_mixed_title->SetSizer(title_sizer);
     }
-    scrolled_sizer->Add(p->m_panel_mixed_title, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(8));
+    wrapper_sizer->Add(p->m_panel_mixed_title, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(8));
 
     // 3) Mixed filament rows, in their own scroll area so a long mixed list does not
     //    push the physical filament list off screen.
-    p->m_mixed_scroll_area = new wxScrolledWindow(p->scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
+    p->m_mixed_scroll_area = new wxScrolledWindow(p->m_filament_area_wrapper, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
     p->m_mixed_scroll_area->SetScrollbars(0, 100, 1, 2);
     p->m_mixed_scroll_area->SetScrollRate(0, 5);
     p->m_mixed_scroll_area->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
@@ -3144,10 +3152,10 @@ Sidebar::Sidebar(Plater *parent)
             p->m_mixed_scroll_area->SetVirtualSize(w, p->m_mixed_scroll_area->GetVirtualSize().GetHeight());
         e.Skip();
     });
-    scrolled_sizer->Add(p->m_mixed_scroll_area, 0, wxEXPAND, 0);
+    wrapper_sizer->Add(p->m_mixed_scroll_area, 0, wxEXPAND, 0);
 
     // 4) Warning bar for mixes whose components were deleted or whose types disagree.
-    p->m_panel_mixed_warning = new wxPanel(p->scrolled, wxID_ANY);
+    p->m_panel_mixed_warning = new wxPanel(p->m_filament_area_wrapper, wxID_ANY);
     p->m_panel_mixed_warning->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
     {
         auto* warn_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -3159,7 +3167,7 @@ Sidebar::Sidebar(Plater *parent)
         warn_sizer->Add(p->m_text_mixed_warning, 1, wxALL, FromDIP(6));
         p->m_panel_mixed_warning->SetSizer(warn_sizer);
     }
-    scrolled_sizer->Add(p->m_panel_mixed_warning, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(8));
+    wrapper_sizer->Add(p->m_panel_mixed_warning, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(8));
 
     // Hidden until update_mixed_filament_list() decides otherwise.
     p->m_btn_add_mixed_filament->Hide();
@@ -3169,6 +3177,11 @@ Sidebar::Sidebar(Plater *parent)
     p->m_panel_mixed_warning->Hide();
     }
     // ---- End mixed-color filament section ----
+
+    p->m_filament_area_wrapper->SetSizer(wrapper_sizer);
+    p->m_filament_area_wrapper->Layout();
+    scrolled_sizer->Add(p->m_filament_area_wrapper, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(SidebarProps::ContentMarginV())); // ORCA use vertical margin on parent otherwise it shows scrollbar even on 1 filament
+    // ---- End filament area ----
     }
 
     {
