@@ -553,24 +553,11 @@ wxBoxSizer* ColorDecomposeDialog::create_button_panel()
     sizer->AddStretchSpacer();
 
     m_btn_cancel = new Button(this, _L("Cancel"));
-    m_btn_cancel->SetBackgroundColor(*wxWHITE);
-    m_btn_cancel->SetBorderColor(wxColour("#CECECE"));
-    m_btn_cancel->SetTextColor(COLOR_TEXT_DARK);
-    m_btn_cancel->SetMinSize(wxSize(FromDIP(55), FromDIP(24)));
+    m_btn_cancel->SetStyle(ButtonStyle::Regular, ButtonType::Choice);
     m_btn_cancel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_CANCEL); });
 
     m_btn_ok = new Button(this, _L("OK"));
-    m_btn_ok->SetBackgroundColor(StateColor(
-        std::make_pair(wxColour("#CECECE"), (int) StateColor::Disabled),
-        std::make_pair(wxColour(0, 137, 123), (int) StateColor::Pressed),
-        std::make_pair(COLOR_BRAND, (int) StateColor::Normal)));
-    m_btn_ok->SetBorderColor(StateColor(
-        std::make_pair(wxColour("#CECECE"), (int) StateColor::Disabled),
-        std::make_pair(COLOR_BRAND, (int) StateColor::Normal)));
-    // Off-by-one white: plain #FFFFFF is a dark-mode key and would repaint the
-    // label as the window background on the accent fill.
-    m_btn_ok->SetTextColor(wxColour("#FFFFFE"));
-    m_btn_ok->SetMinSize(wxSize(FromDIP(55), FromDIP(24)));
+    m_btn_ok->SetStyle(ButtonStyle::Confirm, ButtonType::Choice);
     m_btn_ok->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         EndModal(wxID_OK);
     });

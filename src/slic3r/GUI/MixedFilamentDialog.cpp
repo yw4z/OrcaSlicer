@@ -1369,22 +1369,11 @@ wxBoxSizer* MixedFilamentDialog::create_button_panel()
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
 
     m_btn_cancel = new Button(this, _L("Cancel"));
-    m_btn_cancel->SetBackgroundColor(*wxWHITE);
-    m_btn_cancel->SetBorderColor(wxColour("#CECECE"));
-    m_btn_cancel->SetTextColor(wxColour("#262E30"));
-    m_btn_cancel->SetMinSize(wxSize(FromDIP(55), FromDIP(24)));
+    m_btn_cancel->SetStyle(ButtonStyle::Regular, ButtonType::Choice);
     m_btn_cancel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_CANCEL); });
 
     m_btn_ok = new Button(this, _L("OK"));
-    m_btn_ok->SetBackgroundColor(StateColor(
-        std::make_pair(wxColour("#CECECE"), (int) StateColor::Disabled),
-        std::make_pair(wxColour(0, 137, 123), (int) StateColor::Pressed),
-        std::make_pair(wxColour("#009688"), (int) StateColor::Normal)));
-    m_btn_ok->SetBorderColor(StateColor(
-        std::make_pair(wxColour("#CECECE"), (int) StateColor::Disabled),
-        std::make_pair(wxColour("#009688"), (int) StateColor::Normal)));
-    m_btn_ok->SetTextColor(wxColour("#FFFFFE"));
-    m_btn_ok->SetMinSize(wxSize(FromDIP(55), FromDIP(24)));
+    m_btn_ok->SetStyle(ButtonStyle::Confirm, ButtonType::Choice);
     m_btn_ok->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_OK); });
 
     sizer->Add(m_btn_cancel, 0, wxRIGHT, FromDIP(12));
