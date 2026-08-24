@@ -253,3 +253,72 @@ TEST_CASE("Print::validate rejects a mixed filament as the wipe tower filament",
         CHECK(err.opt_key == "wipe_tower_filament");
     }
 }
+
+TEST_CASE("Print::validate warns when a gradient mixed filament is used without sublayer mixing", "[MixedFilament]")
+{
+    // A gradient mixed filament only renders its gradient with the process option enabled; without
+    // it ToolOrdering prints one whole component per layer and the gradient is dropped silently,
+    // so validate() warns whenever the slot actually takes part in the print. The layer-change
+    // reset avoids an unrelated relative-extrusion warning, as in the wipe tower test above.
+    DynamicPrintConfig config = mixed_config(false);
+    config.set_deserialize_strict({
+        {"filament_mixed_gradient", "0,0,1"},
+        {"layer_change_gcode",       "G92 E0\n"},
+    });
+
+    auto count_opt = [](Print &print, const char *opt_key) {
+        std::vector<StringObjectException> warnings;
+        print.validate(&warnings);
+        return std::count_if(warnings.begin(), warnings.end(),
+                             [&](const StringObjectException &w) { return w.opt_key == opt_key; });
+    };
+
+    SECTION("gradient slot used, sublayer mixing off") {
+        Print print;
+        Model model;
+        init_print({cube(20)}, print, model, config);
+        std::vector<StringObjectException> warnings;
+        const StringObjectException err = print.validate(&warnings);
+        CHECK(err.string.empty());
+        const auto it = std::find_if(warnings.begin(), warnings.end(), [](const StringObjectException &w) {
+            return w.opt_key == "enable_mixed_color_sublayer";
+        });
+        REQUIRE(it != warnings.end());
+        CHECK(it->is_warning);
+        CHECK(std::count_if(warnings.begin(), warnings.end(), [](const StringObjectException &w) {
+                  return w.opt_key == "enable_mixed_color_sublayer";
+              }) == 1);
+    }
+
+    SECTION("sublayer mixing on") {
+        config.set_deserialize_strict({{"enable_mixed_color_sublayer", "1"}});
+        Print print;
+        Model model;
+        init_print({cube(20)}, print, model, config);
+        CHECK(count_opt(print, "enable_mixed_color_sublayer") == 0);
+    }
+
+    SECTION("gradient flag off") {
+        config.set_deserialize_strict({{"filament_mixed_gradient", "0,0,0"}});
+        Print print;
+        Model model;
+        init_print({cube(20)}, print, model, config);
+        CHECK(count_opt(print, "enable_mixed_color_sublayer") == 0);
+    }
+
+    SECTION("mixed slot not used") {
+        config.set_deserialize_strict({
+            {"outer_wall_filament_id",     "0"},
+            {"inner_wall_filament_id",     "0"},
+            {"sparse_infill_filament_id",  "0"},
+            {"internal_solid_filament_id", "0"},
+            {"top_surface_filament_id",    "0"},
+            {"bottom_surface_filament_id", "0"},
+        });
+        Print print;
+        Model model;
+        const std::vector<std::vector<ConfigBase::SetDeserializeItem>> overrides{{{ "extruder", "1" }}};
+        init_print(std::vector<TriangleMesh>{cube(20)}, print, model, config, &overrides);
+        CHECK(count_opt(print, "enable_mixed_color_sublayer") == 0);
+    }
+}

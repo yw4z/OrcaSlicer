@@ -23,8 +23,6 @@
 #include "GradientCurveEditor.hpp"
 #include "FilamentBitmapUtils.hpp"
 #include "wxExtensions.hpp"
-#include "Tab.hpp"
-#include "libslic3r/Preset.hpp"
 #include "Widgets/Button.hpp"
 #include "Widgets/CheckBox.hpp"
 #include "Widgets/ComboBox.hpp"
@@ -1492,28 +1490,6 @@ void MixedFilamentDialog::on_ratio_changed(int new_ratio_a)
 
 void MixedFilamentDialog::on_gradient_toggled()
 {
-    // Orca: a gradient is only sliced when the print profile's "enable_mixed_color_sublayer"
-    // option is on; without it ToolOrdering picks a single component per whole layer. Offer to
-    // turn the option on instead of silently ignoring the gradient the user just enabled.
-    bool checked = m_chk_gradient->GetValue();
-
-    if (checked) {
-        auto& print_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
-        if (!print_config.opt_bool("enable_mixed_color_sublayer")) {
-            wxMessageDialog dlg(this,
-                _L("Gradient effect requires 'Mixed color sublayer' to be enabled. Enable it now?"),
-                _L("Mixed Color Sublayer"),
-                wxYES_NO | wxICON_QUESTION);
-            if (dlg.ShowModal() == wxID_YES) {
-                DynamicPrintConfig new_conf;
-                new_conf.set_key_value("enable_mixed_color_sublayer", new ConfigOptionBool(true));
-                wxGetApp().get_tab(Preset::TYPE_PRINT)->load_config(new_conf);
-            } else {
-                m_chk_gradient->SetValue(false);
-                return;
-            }
-        }
-    }
 
     m_result.gradient_enabled = m_chk_gradient->GetValue();
 

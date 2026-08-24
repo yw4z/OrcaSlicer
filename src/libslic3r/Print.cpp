@@ -1328,6 +1328,19 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     if (extruders.empty())
         return { L("No extrusions under current settings.") };
 
+    // Orca: a gradient mixed filament only renders its gradient with "Mixed color sublayer" on;
+    // without it ToolOrdering::resolve_mixed_filaments prints one whole component per layer and
+    // the gradient is dropped silently. extruders() already covers painting, height ranges,
+    // per-feature filament ids and supports, and still lists mixed slots under their own id here.
+    if (!m_config.enable_mixed_color_sublayer.value) {
+        const auto &is_mixed = m_config.filament_is_mixed.values;
+        const auto &gradient = m_config.filament_mixed_gradient.values;
+        if (std::any_of(extruders.begin(), extruders.end(), [&](unsigned int e) {
+                return e < is_mixed.size() && is_mixed[e] && e < gradient.size() && gradient[e]; }))
+            warn(L("A gradient mixed filament is used, but 'Mixed color sublayer' is disabled. The gradient will not be printed."),
+                 "enable_mixed_color_sublayer");
+    }
+
     if (nozzles < 2 && extruders.size() > 1) {
         auto ret = check_multi_filament_valid(*this);
         if (!ret.string.empty())
