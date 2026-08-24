@@ -4308,11 +4308,6 @@ void Sidebar::update_mixed_filament_list()
                     edit_mixed_filament(panel_idx);
                 }, edit_item->GetId());
 
-                auto* del_item = menu.Append(wxID_ANY, _L("Delete"));
-                menu.Bind(wxEVT_MENU, [this, panel_idx](wxCommandEvent&) {
-                    delete_mixed_filament_at(panel_idx);
-                }, del_item->GetId());
-
                 wxMenu* sub_menu = new wxMenu();
                 std::vector<wxBitmap*> icons = get_extruder_color_icons(true);
                 int filaments_cnt = icons.size();
@@ -4344,6 +4339,14 @@ void Sidebar::update_mixed_filament_list()
                     menu.AppendSubMenu(sub_menu, _L("Merge with"));
                 else
                     delete sub_menu;
+
+                menu.AppendSeparator(); // ORCA use seperator for reducing accidental clicks to delete
+
+                // ORCA use delete item on end of menu to prevent accidental clicks. clicking to submenus(merge) already not allowed by OS
+                auto* del_item = menu.Append(wxID_ANY, _L("Delete"));
+                menu.Bind(wxEVT_MENU, [this, panel_idx](wxCommandEvent&) {
+                    delete_mixed_filament_at(panel_idx);
+                }, del_item->GetId());
 
                 PopupMenu(&menu);
             });
