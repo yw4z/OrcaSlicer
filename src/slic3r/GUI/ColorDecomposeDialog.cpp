@@ -26,7 +26,7 @@
 namespace Slic3r {
 namespace GUI {
 
-static const wxColour COLOR_BRAND("#00AE42");
+static const wxColour COLOR_BRAND("#009688");
 static const wxColour COLOR_BORDER_NORMAL("#EEEEEE");
 static const wxColour COLOR_BG_CARD("#F8F8F8");
 static const wxColour COLOR_LABEL_GREY("#ACACAC");
@@ -394,7 +394,7 @@ wxPanel* ColorDecomposeDialog::create_mode_card(wxWindow* parent, DecomposeMode 
     auto* title_sizer = new wxBoxSizer(wxHORIZONTAL);
     auto* title_label = new wxStaticText(card, wxID_ANY, title);
     title_label->SetFont(Label::Body_14);
-    title_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#909090")));
+    title_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#6B6A6A")));
     match_parent_bg(title_label, StateColor::darkModeColorFor(COLOR_BG_CARD));
     title_sizer->Add(title_label, 1, wxALIGN_CENTER_VERTICAL);
 
@@ -523,7 +523,7 @@ wxBoxSizer* ColorDecomposeDialog::create_mode_selection_section()
     m_no_card_hint = new wxStaticText(this, wxID_ANY,
         _L("At least two filaments of the same material type are required for decomposition"));
     m_no_card_hint->SetFont(Label::Body_13);
-    m_no_card_hint->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#909090")));
+    m_no_card_hint->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#6B6A6A")));
     m_no_card_hint->Wrap(FromDIP(400));
     m_no_card_hint->Hide();
     sizer->Add(m_no_card_hint, 0, wxTOP, FromDIP(8));
@@ -536,7 +536,7 @@ wxBoxSizer* ColorDecomposeDialog::create_mode_selection_section()
         wxDefaultPosition, wxSize(FromDIP(16), FromDIP(16)));
     m_limit_warning_text = new wxStaticText(m_limit_warning_panel, wxID_ANY, wxEmptyString);
     m_limit_warning_text->SetFont(Label::Body_13);
-    m_limit_warning_text->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#D32F2F")));
+    m_limit_warning_text->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#D01B1B")));
     m_limit_warning_text->Wrap(FromDIP(400));
     warning_sizer->Add(warn_bmp, 0, wxALIGN_TOP | wxRIGHT, FromDIP(6));
     warning_sizer->Add(m_limit_warning_text, 1, wxEXPAND);
@@ -553,22 +553,23 @@ wxBoxSizer* ColorDecomposeDialog::create_button_panel()
     sizer->AddStretchSpacer();
 
     m_btn_cancel = new Button(this, _L("Cancel"));
-    m_btn_cancel->SetBackgroundColor(StateColor::darkModeColorFor(*wxWHITE));
-    m_btn_cancel->SetBorderColor(StateColor::darkModeColorFor(wxColour("#CECECE")));
-    m_btn_cancel->SetTextColor(StateColor::darkModeColorFor(wxColour("#262E30")));
+    m_btn_cancel->SetBackgroundColor(*wxWHITE);
+    m_btn_cancel->SetBorderColor(wxColour("#CECECE"));
+    m_btn_cancel->SetTextColor(COLOR_TEXT_DARK);
     m_btn_cancel->SetMinSize(wxSize(FromDIP(55), FromDIP(24)));
     m_btn_cancel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_CANCEL); });
 
     m_btn_ok = new Button(this, _L("OK"));
     m_btn_ok->SetBackgroundColor(StateColor(
-        std::make_pair(wxColour("#C2C2C2"), (int) StateColor::Disabled),
-        std::make_pair(wxColour("#00AE42"), (int) StateColor::Normal)));
+        std::make_pair(wxColour("#CECECE"), (int) StateColor::Disabled),
+        std::make_pair(wxColour(0, 137, 123), (int) StateColor::Pressed),
+        std::make_pair(COLOR_BRAND, (int) StateColor::Normal)));
     m_btn_ok->SetBorderColor(StateColor(
-        std::make_pair(wxColour("#C2C2C2"), (int) StateColor::Disabled),
-        std::make_pair(wxColour("#00AE42"), (int) StateColor::Normal)));
-    m_btn_ok->SetTextColor(StateColor(
-        std::make_pair(*wxWHITE, (int) StateColor::Disabled),
-        std::make_pair(*wxWHITE, (int) StateColor::Normal)));
+        std::make_pair(wxColour("#CECECE"), (int) StateColor::Disabled),
+        std::make_pair(COLOR_BRAND, (int) StateColor::Normal)));
+    // Off-by-one white: plain #FFFFFF is a dark-mode key and would repaint the
+    // label as the window background on the accent fill.
+    m_btn_ok->SetTextColor(wxColour("#FFFFFE"));
     m_btn_ok->SetMinSize(wxSize(FromDIP(55), FromDIP(24)));
     m_btn_ok->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         EndModal(wxID_OK);

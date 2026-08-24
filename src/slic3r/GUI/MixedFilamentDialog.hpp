@@ -158,10 +158,6 @@ private:
     wxScrolledWindow*           m_recommendation_scroll{nullptr};
     wxWrapSizer*                m_recommendation_grid{nullptr};
 
-    // Cached preview bitmaps (loaded once at construction)
-    wxBitmap                    m_preview_bmp_two;
-    wxBitmap                    m_preview_bmp_three;
-
     // Drag state. The ratio bar and the triangle picker capture the mouse
     // independently, so they must not share a flag: a mouse-up on one would
     // otherwise clear the other's flag and skip its ReleaseMouse().

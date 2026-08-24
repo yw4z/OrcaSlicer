@@ -360,8 +360,6 @@ void DropDown::render(wxDC &dc)
     for (int i = 0; i < items.size(); ++i) {
         auto &item = items[i];
         int states2 = states;
-        // Dimmed items render greyed out but stay selectable, so they cannot reuse the disabled state.
-        bool is_dimmed = (item.style & DD_ITEM_STYLE_DIMMED) != 0;
         if ((item.style & DD_ITEM_STYLE_DISABLED) != 0)
             states2 &= ~StateColor::Enabled;
         // Skip by group
@@ -429,7 +427,10 @@ void DropDown::render(wxDC &dc)
             }
             pt.y += (rcContent.height - textSize.y) / 2;
             dc.SetFont(GetFont());
-            dc.SetTextForeground(is_dimmed ? wxColour(0xCE, 0xCE, 0xCE) : text_color.colorForStates(states2));
+            // Dimmed items stay selectable, so they only borrow the disabled text tone rather
+            // than taking the disabled state itself.
+            const int text_states = (item.style & DD_ITEM_STYLE_DIMMED) ? (states2 & ~StateColor::Enabled) : states2;
+            dc.SetTextForeground(text_color.colorForStates(text_states));
             dc.DrawText(text, pt);
             if (group.IsEmpty() && !item.group_key.IsEmpty()) {
                 auto szBmp = arrow_bitmap.GetBmpSize();

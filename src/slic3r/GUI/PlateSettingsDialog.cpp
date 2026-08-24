@@ -486,7 +486,7 @@ PlateSettingsDialog::PlateSettingsDialog(wxWindow* parent, const wxString& title
                                                   wxDefaultPosition, wxSize(FromDIP(16), FromDIP(16)));
             auto *warn_text  = new wxStaticText(this, wxID_ANY,
                 _L("The filament list contains mixed filaments. Custom filament sequence will not take effect."));
-            warn_text->SetForegroundColour(wxColour(255, 111, 0));
+            warn_text->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#FF6F00")));
             warn_text->SetFont(Label::Body_12);
             warn_text->Wrap(FromDIP(300));
 

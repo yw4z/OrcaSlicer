@@ -39,12 +39,13 @@ constexpr int kAxisArrowLen     = 10;  // length of the axis arrow triangle (DIP
 
 // Light-mode design tokens. Resolved through StateColor::darkModeColorFor()
 // at paint time so the editor follows the app theme (#EEEEEE -> #4C4C55, #6B6B6B ->
-// #818183, #262E30 -> #EFEFF0, *wxWHITE -> #2D2D31). Don't read these directly in paint;
-// always go through the resolved locals declared at the top of on_paint().
+// #818183, #262E30 -> #EFEFF0, #ACACAC -> #65656A, *wxWHITE -> #2D2D31). Don't read these
+// directly in paint; always go through the resolved locals declared at the top of on_paint().
 const wxColour kGridColor   (238, 238, 238);   // #EEEEEE grey 300
 const wxColour kAxisColor   (107, 107, 107);   // #6B6B6B grey 700
 const wxColour kLabelMuted  (107, 107, 107);   // #6B6B6B grey 700
 const wxColour kLabelStrong ( 38,  46,  48);   // #262E30 grey 900
+const wxColour kOutlineColor(172, 172, 172);   // #ACACAC dimmed elements
 
 // LAB (DeltaE76) threshold for "curve color is too close to the background": below it the curve
 // gets a subtle outline so it does not visually vanish, otherwise it is drawn plain. Looser than
@@ -321,6 +322,9 @@ void GradientCurveEditor::on_paint(wxPaintEvent& /*evt*/)
     const wxColour label_muted   = StateColor::darkModeColorFor(kLabelMuted);
     const wxColour label_strong  = StateColor::darkModeColorFor(kLabelStrong);
     const wxColour point_fill    = StateColor::darkModeColorFor(*wxWHITE);
+    // Softer than axis_color: the curve outline only has to lift the curve off the
+    // background, it must not compete with the structural axis / grid.
+    const wxColour outline_color = StateColor::darkModeColorFor(kOutlineColor);
 
     wxAutoBufferedPaintDC raw_dc(this);
     raw_dc.SetBackground(wxBrush(bg));
@@ -462,12 +466,6 @@ void GradientCurveEditor::on_paint(wxPaintEvent& /*evt*/)
 
     // Outline only when the curve color is perceptually close to the background; otherwise
     // the plain filament color reads fine and the extra stroke would look heavy.
-    // Outline tone is intentionally softer than axis_color so it disambiguates the curve
-    // from the bg without competing with the structural axis/grid: light mode uses a pale
-    // grey, dark mode uses a slightly-above-bg grey (gDarkColors has no entry for these).
-    const wxColour outline_color = wxGetApp().dark_mode()
-        ? wxColour(90,  90,  94)    // > bg #2B2B2B, < axis #818183
-        : wxColour(200, 200, 200);  // > grid #EEEEEE, < axis #6B6B6B
     auto needs_outline = [&](const wxColour& c) {
         return calc_color_distance(c, bg) < kBgSimilarThreshold;
     };

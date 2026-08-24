@@ -27,7 +27,7 @@
 #include <vector>
 #include <string>
 
-class GreenSlider;
+class AccentSlider;
 
 namespace Slic3r { namespace GUI {
 
@@ -299,7 +299,7 @@ private:
 
     void set_color_count_value(int value, bool update_spin);
     void set_smooth_value(int value, bool update_spin);
-    void preview_spin_text_value(SpinInput* spin, GreenSlider* slider, int& param,
+    void preview_spin_text_value(SpinInput* spin, AccentSlider* slider, int& param,
                                  int min_value, int max_value, const wxString& text,
                                  std::function<void()> on_value_changed = {});
     void update_color_count_preset_buttons();
@@ -307,6 +307,7 @@ private:
     bool has_valid_result() const;
     bool is_params_dirty() const;
     void update_confirm_button_state();
+    void style_confirm_button(bool dirty);
 
     Slic3r::TexturedMesh               m_textured_mesh;
     std::vector<std::string>           m_filament_color_strs;   // existing + virtual
@@ -351,15 +352,15 @@ private:
     Slic3r::TexturePaintingSettings::MeshRepairDecision m_mesh_repair_decision =
         Slic3r::TexturePaintingSettings::MeshRepairDecision::Ask;
 
-    Button*      m_btn_color_4    = nullptr;
-    Button*      m_btn_color_8    = nullptr;
-    Button*      m_btn_color_16   = nullptr;
-    Button*      m_btn_color_auto = nullptr;
-    GreenSlider* m_color_slider   = nullptr;
-    SpinInput*   m_color_spin     = nullptr;
-    GreenSlider* m_smooth_slider  = nullptr;
-    SpinInput*   m_smooth_spin    = nullptr;
-    Button*      m_btn_apply      = nullptr;
+    Button*       m_btn_color_4    = nullptr;
+    Button*       m_btn_color_8    = nullptr;
+    Button*       m_btn_color_16   = nullptr;
+    Button*       m_btn_color_auto = nullptr;
+    AccentSlider* m_color_slider   = nullptr;
+    SpinInput*    m_color_spin     = nullptr;
+    AccentSlider* m_smooth_slider  = nullptr;
+    SpinInput*    m_smooth_spin    = nullptr;
+    Button*       m_btn_apply      = nullptr;
 
     wxCheckBox*           m_auto_merge_cb = nullptr;
     Button*               m_btn_auto_mix  = nullptr;

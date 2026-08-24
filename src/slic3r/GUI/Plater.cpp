@@ -3148,12 +3148,12 @@ Sidebar::Sidebar(Plater *parent)
 
     // 4) Warning bar for mixes whose components were deleted or whose types disagree.
     p->m_panel_mixed_warning = new wxPanel(p->scrolled, wxID_ANY);
-    p->m_panel_mixed_warning->SetBackgroundColour(wxColour("#FDE8E8"));
+    p->m_panel_mixed_warning->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
     {
         auto* warn_sizer = new wxBoxSizer(wxHORIZONTAL);
         p->m_text_mixed_warning = new wxStaticText(p->m_panel_mixed_warning, wxID_ANY,
             _L("Mixed filament has invalid or mismatched components. Please re-edit affected entries."));
-        p->m_text_mixed_warning->SetForegroundColour(wxColour("#D32F2F"));
+        p->m_text_mixed_warning->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#D01B1B")));
         p->m_text_mixed_warning->SetFont(::Label::Body_12);
         p->m_text_mixed_warning->Wrap(FromDIP(360));
         warn_sizer->Add(p->m_text_mixed_warning, 1, wxALL, FromDIP(6));
@@ -3999,12 +3999,12 @@ void Sidebar::update_mixed_filament_list()
                 physical_colors.push_back(colours_opt->values[i]);
         }
 
-        auto make_swatch_panel = [this, mc_text](wxWindow* parent, const wxColour& col, unsigned int num) -> wxPanel* {
+        auto make_swatch_panel = [this](wxWindow* parent, const wxColour& col, unsigned int num) -> wxPanel* {
             int swatch_sz = FromDIP(20);
             auto* panel = new wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(swatch_sz, swatch_sz));
             panel->SetMinSize(wxSize(swatch_sz, swatch_sz));
             bool is_dark = wxGetApp().dark_mode();
-            panel->Bind(wxEVT_PAINT, [panel, col, num, mc_text, is_dark](wxPaintEvent&) {
+            panel->Bind(wxEVT_PAINT, [panel, col, num, is_dark](wxPaintEvent&) {
                 wxPaintDC dc(panel);
                 wxSize sz = panel->GetClientSize();
                 dc.SetBackground(wxBrush(col));
@@ -4110,7 +4110,7 @@ void Sidebar::update_mixed_filament_list()
                                                wxDefaultPosition, wxSize(swatch_sz, swatch_sz));
                 grad_panel->SetMinSize(wxSize(swatch_sz, swatch_sz));
                 grad_panel->SetBackgroundStyle(wxBG_STYLE_PAINT);
-                grad_panel->Bind(wxEVT_PAINT, [grad_panel, gradient_ramp, mix_num, mc_text](wxPaintEvent&) {
+                grad_panel->Bind(wxEVT_PAINT, [grad_panel, gradient_ramp, mix_num](wxPaintEvent&) {
                     wxBufferedPaintDC dc(grad_panel);
                     wxSize sz = grad_panel->GetClientSize();
                     fill_gradient_ramp_rect(dc, wxRect(0, 0, sz.GetWidth(), sz.GetHeight()), gradient_ramp);
@@ -4119,7 +4119,7 @@ void Sidebar::update_mixed_filament_list()
                     wxSize txt_sz = dc.GetTextExtent(txt);
                     // The number sits at the swatch's middle, so take its contrast from the
                     // colour printed at mid height rather than from either endpoint.
-                    dc.SetTextForeground(gradient_ramp[gradient_ramp.size() / 2].GetLuminance() > 0.5 ? mc_text : *wxWHITE);
+                    dc.SetTextForeground(gradient_ramp[gradient_ramp.size() / 2].GetLuminance() > 0.5 ? wxColour(50, 58, 61) : *wxWHITE);
                     dc.DrawText(txt, (sz.GetWidth() - txt_sz.GetWidth()) / 2,
                                      (sz.GetHeight() - txt_sz.GetHeight()) / 2);
                 });
@@ -4251,7 +4251,7 @@ void Sidebar::update_mixed_filament_list()
                         dc.DrawRectangle(x, y_swatch, cp_swatch_sz, cp_swatch_sz);
                         wxString dash = wxT("\u2014");
                         wxSize dash_sz = dc.GetTextExtent(dash);
-                        dc.SetTextForeground(wxColour("#909090"));
+                        dc.SetTextForeground(mc_dim);
                         dc.DrawText(dash, x + (cp_swatch_sz - dash_sz.GetWidth()) / 2,
                                           y_swatch + (cp_swatch_sz - dash_sz.GetHeight()) / 2);
                     }

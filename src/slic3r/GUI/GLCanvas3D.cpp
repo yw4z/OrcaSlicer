@@ -9751,7 +9751,13 @@ void GLCanvas3D::_render_paint_toolbar() const
 
     const float text_offset_y = 4.0f * em_unit * f_scale;
     for (int i = 0; i < extruder_num; i++) {
-        decode_color(colors[i], rgba);
+        // A gradient slot's swatch shows its fade instead of the blended colour in `colors`, so the
+        // labels take their contrast from the colour printed at the middle of the fade they sit on.
+        if (i < (int) gradient_ramps.size() && !gradient_ramps[i].empty()) {
+            const wxColour& c = gradient_ramps[i][gradient_ramps[i].size() / 2];
+            rgba = ColorRGBA(c.Red(), c.Green(), c.Blue(), c.Alpha());
+        } else
+            decode_color(colors[i], rgba);
         float  gray       = 0.299 * rgba.r_uchar() + 0.587 * rgba.g_uchar() + 0.114 * rgba.b_uchar();
         ImVec4 text_color = gray < 80 ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : ImVec4(0, 0, 0, 1.0f);
 
