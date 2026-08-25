@@ -108,8 +108,9 @@ TEST_CASE("Extruder states match the CONST_FILAMENTS hex encoding", "[TriangleSe
     }));
 
     // get_triangle_as_string emits the nibbles most significant first, so read the hex backwards.
+    const std::string hex = c.hex;
     std::vector<bool> bitstream;
-    for (auto it = std::string(c.hex).rbegin(); it != std::string(c.hex).rend(); ++it) {
+    for (auto it = hex.rbegin(); it != hex.rend(); ++it) {
         const int nibble = *it >= 'A' ? (*it - 'A' + 10) : (*it - '0');
         for (int bit = 0; bit < 4; ++bit)
             bitstream.push_back((nibble >> bit) & 1);
