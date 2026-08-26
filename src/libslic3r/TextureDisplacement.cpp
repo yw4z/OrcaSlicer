@@ -13,6 +13,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+
 #include "MeshBoolean.hpp"
 #include "Model.hpp"
 #include "PNGReadWrite.hpp"
@@ -897,7 +900,7 @@ std::vector<Vec2f> compute_lscm_uvs(const indexed_triangle_set &patch, const Tex
     return per_vertex;
 }
 
-Vec2f apply_uv_transform(const Vec2f &planar, const TextureDisplacementLayer &layer)
+Vec2f apply_uv_transform(const Vec2f &planar, const TextureDisplacementLayer &layer, float aspect)
 {
     const float scale = (layer.tiling_scale > 1e-6f) ? (1.f / layer.tiling_scale) : 1.f;
     const Vec2f scaled = planar * scale;
@@ -905,7 +908,20 @@ Vec2f apply_uv_transform(const Vec2f &planar, const TextureDisplacementLayer &la
     const float rad = layer.rotation_deg * float(M_PI) / 180.f;
     const float cs  = std::cos(rad);
     const float sn  = std::sin(rad);
-    const Vec2f rotated(scaled.x() * cs - scaled.y() * sn, scaled.x() * sn + scaled.y() * cs);
+    Vec2f       rotated(scaled.x() * cs - scaled.y() * sn, scaled.x() * sn + scaled.y() * cs);
+
+    // Non-square textures. Without this the [0,1] square of uv covers the whole image whatever its
+    // proportions, so a 2:1 image is squeezed into a square tile and every feature in it comes out
+    // half as wide as it should be. `tiling_scale` is the tile's size along u; the tile is
+    // `tiling_scale * height / width` mm along v, which is exactly what keeps texels square - so
+    // dividing v by that extent is the same as multiplying it by width / height. A square texture has
+    // aspect 1 and is untouched, which is why this changes nothing for the shipped library.
+    //
+    // Applied after the rotation, not before: scaling one axis of an already-rotated coordinate is a
+    // shear, and doing it the other way round would make "Rotation" skew the pattern instead of
+    // turning it.
+    if (aspect > 0.f && aspect != 1.f)
+        rotated.y() *= aspect;
 
     return rotated + layer.offset;
 }
@@ -954,8 +970,12 @@ float sample_layer_height(const DecodedHeightTexture &texture, const TextureDisp
     if (texture.empty())
         return 0.f;
 
+    // width / height of the height map, so a non-square image keeps its proportions (see
+    // apply_uv_transform()). Every projection except the projective "from view" one funnels through
+    // here, so this one line is what makes them all aspect-correct.
+    const float aspect = (texture.height > 0) ? float(texture.width) / float(texture.height) : 1.f;
     auto sample_at = [&](const Vec2f &planar) {
-        return texture.sample(apply_uv_transform(planar, layer), layer.tile_enabled, layer.tile_method);
+        return texture.sample(apply_uv_transform(planar, layer, aspect), layer.tile_enabled, layer.tile_method);
     };
 
     // Precomputed per-patch LSCM solve wins over the layer's own method (see the header): the
@@ -1118,8 +1138,13 @@ std::vector<float> patch_boundary_distance(const indexed_triangle_set &patch, co
 indexed_triangle_set build_texture_displacement(const indexed_triangle_set                  &base_mesh,
                                                  const std::vector<TextureDisplacementLayer> &layers,
                                                  const TextureDisplacementFacetsData         &facets_data,
-                                                 const TextureDisplacementOptions            &options)
+                                                 const TextureDisplacementOptions            &options,
+                                                 const DisplacementProgressFn                &progress)
 {
+    // Returns true to keep going. An aborted run returns {} (see the header): an empty mesh is the
+    // one result no caller can mistake for a finished bake and commit onto the volume.
+    const auto report = [&progress](int percent) { return !progress || progress(percent); };
+
     indexed_triangle_set mesh = base_mesh;
     // TriangleSelector's vertex array starts with the mesh's own vertices (any extra ones, created
     // where a brush stroke split a triangle, are appended after them), and get_facets_strict()
@@ -1183,8 +1208,14 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
         }
     }
 
+    if (!report(5))
+        return {};
+
     std::vector<float> displacement(mesh.vertices.size(), 0.f);
-    std::vector<bool>  displaced(mesh.vertices.size(), false);
+    // uint8_t rather than std::vector<bool>: the sampling loop below writes these from several
+    // threads at once, and vector<bool>'s bit packing makes writes to *distinct* elements a data
+    // race on the shared word.
+    std::vector<uint8_t> displaced(mesh.vertices.size(), 0);
     // Union, over every layer, of that layer's patch border - the vertices the post-process smoothing
     // holds when TextureDisplacementOptions::smooth_skip_border is set. A vertex on any patch's edge
     // counts, which is the conservative choice: hold it rather than let one layer's smoothing melt the
@@ -1193,7 +1224,21 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
     bool               any_displacement = false;
 
     const TriangleMesh selector_mesh(mesh);
+    // One selector for the whole stack, re-deserialized per layer. Its constructor computes
+    // its_face_neighbors() and its_face_normals() over the *entire* mesh, which on a subdivided model
+    // is by far the most expensive thing here - building a fresh one per layer paid that cost up to
+    // eight times over. reset() (what deserialize(..., true) calls) only rebuilds the vertex/triangle
+    // arrays; the neighbour and face-normal tables are immutable members and survive it.
+    TriangleSelector selector(selector_mesh);
+    bool             selector_dirty = false;
+
+    const int layer_count = std::max(int(ordered_layers.size()), 1);
+    int       layer_index = 0;
     for (const TextureDisplacementLayer *layer : ordered_layers) {
+        // Progress spans 5..65% across the layers; the apply and smoothing passes take it from there.
+        if (!report(5 + (60 * layer_index++) / layer_count))
+            return {};
+
         const TriangleSelector::TriangleSplittingData &data = facets_data[size_t(layer->slot)];
         if (data.triangles_to_split.empty())
             continue;
@@ -1202,8 +1247,9 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
         if (height.empty())
             continue;
 
-        TriangleSelector selector(selector_mesh);
-        selector.deserialize(data, false);
+        // needs_reset only from the second layer on: the selector is already pristine on the first.
+        selector.deserialize(data, selector_dirty);
+        selector_dirty = true;
 
         const indexed_triangle_set patch = selector.get_facets_strict(EnforcerBlockerType::ENFORCER);
         if (patch.indices.empty())
@@ -1287,8 +1333,13 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
         const float sign = layer->invert ? -1.f : 1.f;
         // A vertex may be reached by several of the patch's triangles; each must fold into the
         // running total exactly once, or a Multiply/Subtract layer would apply two or three times
-        // over depending on how many painted triangles happen to share the vertex.
-        std::vector<bool> visited(patch.vertices.size(), false);
+        // over depending on how many painted triangles happen to share the vertex. Collecting the
+        // unique list up front (cheap, one pass) is also what lets the expensive part - the texture
+        // sampling, which is three bilinear fetches plus three pow()s per vertex for triplanar - run
+        // in parallel below, instead of serially inside the triangle walk.
+        std::vector<int>  layer_vertices;
+        std::vector<char> visited(patch.vertices.size(), 0);
+        layer_vertices.reserve(patch.vertices.size());
         for (const stl_triangle_vertex_indices &tri : patch.indices)
             for (int i = 0; i < 3; ++i) {
                 const int vi = tri[i];
@@ -1296,27 +1347,52 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
                 // they carry no displacement of their own and are not part of the output mesh.
                 if (vi >= int(mesh.vertices.size()) || (pin_boundary && is_boundary[vi]) || visited[vi])
                     continue;
-                visited[vi] = true;
+                visited[vi] = 1;
+                layer_vertices.push_back(vi);
+            }
+        if (layer_vertices.empty())
+            continue;
 
-                const Vec2f *lscm_uv = lscm_uvs.empty() ? nullptr : &lscm_uvs[size_t(vi)];
+        std::vector<float> sampled(layer_vertices.size(), 0.f);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, layer_vertices.size()),
+                          [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t k = range.begin(); k < range.end(); ++k) {
+                const size_t vi      = size_t(layer_vertices[k]);
+                const Vec2f *lscm_uv = lscm_uvs.empty() ? nullptr : &lscm_uvs[vi];
                 const float  h       = sample_layer_height(height, *layer, mesh.vertices[vi], vertex_normals[vi],
                                                             patch_centroid, patch_axis, lscm_uv);
-
                 // midlevel is the height that means "stay put", so anything below it displaces
                 // *inwards* - see TextureDisplacementLayer::midlevel. At the default of 0 this is
                 // exactly the old outward-only behaviour.
-                const float edge_w        = edge_weight.empty() ? 1.f : edge_weight[size_t(vi)];
-                const float signed_height = (h - layer->midlevel) * layer->depth_mm * sign * edge_w;
-                displacement[size_t(vi)] = blend_displacement(displacement[size_t(vi)], signed_height,
-                                                               displaced[size_t(vi)] ? layer->blend_mode : TextureBlendMode::Add);
-                // The first layer to reach a vertex has nothing underneath it to blend with, so it
-                // always starts the total off additively - a Multiply/Divide against an implicit
-                // zero base would otherwise annihilate (or blow up) it, which is never what the
-                // user means by putting a mask on the bottom of the stack.
-                displaced[size_t(vi)] = true;
-                any_displacement      = true;
+                sampled[k] = (h - layer->midlevel) * layer->depth_mm * sign;
             }
+        });
+
+        for (size_t k = 0; k < layer_vertices.size(); ++k) {
+            const size_t vi = size_t(layer_vertices[k]);
+            // The first layer to reach a vertex has nothing underneath it to blend with, so it
+            // always starts the total off additively - a Multiply/Divide against an implicit
+            // zero base would otherwise annihilate (or blow up) it, which is never what the
+            // user means by putting a mask on the bottom of the stack.
+            const float accumulated = displacement[vi];
+            const float blended     = blend_displacement(accumulated, sampled[k],
+                                                          displaced[vi] ? layer->blend_mode : TextureBlendMode::Add);
+            // Edge smoothing fades this layer's *effect*, not its input. Scaling the input instead is
+            // only correct for Add/Subtract, whose neutral value is 0: on a Multiply layer a faded
+            // input approaches 0, which annihilates everything beneath it at the rim rather than
+            // leaving it alone, and on a Divide layer it approaches the 0.05 divisor floor, which
+            // amplifies the relief underneath by up to 20x exactly where it was meant to fade out.
+            // Interpolating the blended result back toward the accumulated total is the neutral
+            // element for every mode at once, and reduces to the old formula exactly for Add.
+            const float edge_w = edge_weight.empty() ? 1.f : edge_weight[vi];
+            displacement[vi]   = accumulated + (blended - accumulated) * edge_w;
+            displaced[vi]      = 1;
+        }
+        any_displacement = true;
     }
+
+    if (!report(65))
+        return {};
 
     if (!any_displacement)
         return mesh;
@@ -1332,12 +1408,22 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
     // neighbours are those pinned outsiders: relaxing it would drag the rim of the relief back down and
     // leave the pattern looking half-melted right where it meets the edge.
     if (options.smooth_enabled && options.smooth_strength > 0.f && options.smooth_iterations > 0) {
+        if (!report(70))
+            return {};
         std::vector<uint8_t> movable(mesh.vertices.size(), 0);
         for (size_t vi = 0; vi < mesh.vertices.size(); ++vi)
             movable[vi] = (displaced[vi] && !(options.smooth_skip_border && on_patch_border[vi])) ? 1 : 0;
-        smooth_mesh_vertices(mesh, movable, options.smooth_strength, options.smooth_iterations);
+        // The pass hook only *stops* the relaxation early; the report(99) below is what turns a
+        // cancellation into an empty (uncommittable) result, since a cancelled run keeps reporting
+        // cancelled.
+        smooth_mesh_vertices(mesh, movable, options.smooth_strength, options.smooth_iterations,
+                             progress ? DisplacementProgressFn([&report, it = options.smooth_iterations](int pass) {
+                                 return report(70 + (29 * (pass + 1)) / std::max(it, 1));
+                             }) : DisplacementProgressFn{});
     }
 
+    if (!report(99))
+        return {};
     return mesh;
 }
 
@@ -1352,7 +1438,7 @@ indexed_triangle_set build_texture_displacement(const ModelVolume &volume)
 }
 
 void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t> &movable, float strength,
-                          int iterations)
+                          int iterations, const DisplacementProgressFn &on_pass)
 {
     if (iterations <= 0 || mesh.vertices.empty() || movable.size() != mesh.vertices.size())
         return;
@@ -1391,15 +1477,21 @@ void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t>
     std::vector<Vec3f> prev;
     for (int it = 0; it < iterations; ++it) {
         prev = mesh.vertices;
-        for (size_t v = 0; v < nv; ++v) {
-            if (!movable[v] || start[v] == start[v + 1])
-                continue;
-            Vec3f sum = Vec3f::Zero();
-            for (int k = start[v]; k < start[v + 1]; ++k)
-                sum += prev[size_t(nbr[size_t(k)])];
-            const Vec3f avg = sum / float(start[v + 1] - start[v]);
-            mesh.vertices[v] = prev[v] + (avg - prev[v]) * strength;
-        }
+        // Each vertex reads only from `prev` and writes only its own slot, so the sweep parallelises
+        // with no synchronisation at all.
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, nv), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t v = range.begin(); v < range.end(); ++v) {
+                if (!movable[v] || start[v] == start[v + 1])
+                    continue;
+                Vec3f sum = Vec3f::Zero();
+                for (int k = start[v]; k < start[v + 1]; ++k)
+                    sum += prev[size_t(nbr[size_t(k)])];
+                const Vec3f avg = sum / float(start[v + 1] - start[v]);
+                mesh.vertices[v] = prev[v] + (avg - prev[v]) * strength;
+            }
+        });
+        if (on_pass && !on_pass(it))
+            return; // cancelled: leave the passes done so far in place, the caller decides what to do
     }
 }
 
@@ -1552,7 +1644,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                              const std::vector<uint8_t> &refine_region,
                                              float target_edge_length_mm, int max_triangles,
                                              std::vector<int> *out_source, const HeightFieldSampler &sampler,
-                                             float chord_tolerance_mm, float min_edge_length_mm)
+                                             float chord_tolerance_mm, float min_edge_length_mm,
+                                             float border_edge_length_mm)
 {
     // Neighbour slots that are not a triangle index.
     constexpr int NB_BOUNDARY    = -1; // open edge: terminal on its own, bisected from this side alone
@@ -1590,12 +1683,13 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
     const bool  feature_mode = bool(sampler) && chord_tolerance_mm > 0.f;
     const float min_floor_sq = min_edge_length_mm > 0.f ? min_edge_length_mm * min_edge_length_mm : 0.f;
     const float target_sq    = target_edge_length_mm > 0.f ? target_edge_length_mm * target_edge_length_mm : 0.f;
+    const float border_sq    = border_edge_length_mm > 0.f ? border_edge_length_mm * border_edge_length_mm : 0.f;
 
     // refine_region is indexed by input-triangle index, and every triangle's src stays in that range
     // (children inherit their parent's src), so a wrong size would be an out-of-bounds read. Guard it.
     if (refine_region.size() != mesh.indices.size() || int(tris.size()) + 2 > max_triangles)
         return emit();
-    if (!feature_mode && target_sq <= 0.f)
+    if (!feature_mode && target_sq <= 0.f && border_sq <= 0.f)
         return emit(); // no criterion at all
     if (std::none_of(refine_region.begin(), refine_region.end(), [](uint8_t v) { return v != 0; }))
         return emit(); // nothing flagged: no-op
@@ -1720,16 +1814,27 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
     // reach. Triangles outside the region always score 0 - they are only ever touched by the conformal
     // closure below, never refined on their own account.
     auto priority = [&](int ti) -> float {
-        const Tri &t = tris[ti];
-        if (refine_region[t.src] == 0)
+        const Tri    &t     = tris[ti];
+        const uint8_t flags = refine_region[t.src];
+        if (flags == 0)
             return 0.f;
         const int   le = longest_local(ti);
         const float ll = elen_sq(t.v[le], t.v[(le + 1) % 3]);
         if (ll <= min_floor_sq)
             return 0.f; // at the resolution floor - also what stops a sharp texture step going forever
-        float p = (target_sq > 0.f) ? ll / target_sq : 0.f;
-        if (feature_mode)
-            p = std::max(p, detail_error(ti) / chord_tolerance_mm);
+        float p = 0.f;
+        if (flags & REFINE_PAINTED) {
+            p = (target_sq > 0.f) ? ll / target_sq : 0.f;
+            if (feature_mode)
+                p = std::max(p, detail_error(ti) / chord_tolerance_mm);
+        }
+        // The band straddling the paint's edge, refined by plain edge length. Deliberately *not* run
+        // through detail_error(): outside the paint the sampler still reports full relief (it has no
+        // per-point paint test), so the chord test there would chase texture detail on a surface the
+        // bake is going to leave flat. Length alone is what this band needs - the error it is fixing
+        // is the size of the triangles spanning the displacement step, not the curvature of anything.
+        if ((flags & REFINE_BORDER) && border_sq > 0.f)
+            p = std::max(p, ll / border_sq);
         return p;
     };
 

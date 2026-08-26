@@ -20,12 +20,34 @@ TextureDisplacementBakeJob::TextureDisplacementBakeJob(TextureDisplacementBakeIn
 
 void TextureDisplacementBakeJob::process(Ctl &ctl)
 {
-    ctl.update_status(0, _u8L("Baking texture displacement"));
+    const std::string status = _u8L("Baking texture displacement");
+    ctl.update_status(1, status);
 
     // Only ever touches m_input (captured by value before this job was queued) and local state -
     // never the live Model - so this is safe to run concurrently with the UI thread.
-    m_result = TriangleMesh(build_texture_displacement(m_input.base_mesh, m_input.layers, m_input.facets_data,
-                                                       m_input.options));
+    //
+    // The progress hook matters for more than cosmetics: the framework's progress notification only
+    // grows a close button once it reaches 100%, so a job that reports 0 and nothing else leaves an
+    // uncloseable notification pinned on screen. It also carries the Cancel button's effect into the
+    // bake, which on a subdivided mesh can run for several seconds.
+    int last_reported = 1;
+    m_result = TriangleMesh(build_texture_displacement(
+        m_input.base_mesh, m_input.layers, m_input.facets_data, m_input.options,
+        [&ctl, &status, &last_reported](int percent) {
+            if (ctl.was_canceled())
+                return false;
+            // The notification repaints (and wakes the idle loop) on every call, so only push a
+            // message when the displayed integer percentage actually moves.
+            if (percent > last_reported) {
+                last_reported = percent;
+                ctl.update_status(percent, status);
+            }
+            return true;
+        }));
+
+    // Always finish at 100: this is what closes the notification. Reported even on cancel, where
+    // build_texture_displacement() returns an empty mesh and finalize() commits nothing.
+    ctl.update_status(100, status);
 }
 
 void TextureDisplacementBakeJob::finalize(bool canceled, std::exception_ptr &eptr)

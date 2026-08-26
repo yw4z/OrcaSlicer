@@ -22,6 +22,14 @@ namespace Slic3r {
 
 class ModelVolume;
 
+// Bits of subdivide_mesh_adaptive()'s per-triangle `refine_region` mask. See that function.
+static constexpr uint8_t REFINE_PAINTED = 1;
+static constexpr uint8_t REFINE_BORDER  = 2;
+
+// Progress/cancellation hook for the (potentially multi-second) bake. Called with a 0..100
+// percentage; return false to abort. See build_texture_displacement().
+using DisplacementProgressFn = std::function<bool(int)>;
+
 // Maximum number of simultaneous texture-displacement layers a single ModelVolume can hold.
 // Each layer owns its own paint mask (ModelVolume::texture_displacement_facet(slot)), so this
 // is also the number of independent EnforcerBlockerType selectors kept per volume.
@@ -370,7 +378,11 @@ Vec2f project_planar(const Vec3f &position, const Vec3f &normal);
 // LSCM's per-patch UV solve through the same scale/rotate/offset controls as every other
 // projection method, without going through project_texture_displacement_uv()'s own dispatch
 // (which only knows how to compute the *analytic* methods from a single vertex + normal).
-Vec2f apply_uv_transform(const Vec2f &planar, const TextureDisplacementLayer &layer);
+// `aspect` is the height map's width / height. It scales the v axis so a non-square image is not
+// squeezed into a square tile: `tiling_scale` is the tile's size along u, and the tile is
+// `tiling_scale * height / width` mm along v, which keeps texels square. 1 (the default) is the
+// square case and leaves the coordinate exactly as it always was.
+Vec2f apply_uv_transform(const Vec2f &planar, const TextureDisplacementLayer &layer, float aspect = 1.f);
 
 // Applies a row-major 3x4 projective matrix (see TextureDisplacementLayer::view_project_matrix) to a
 // local-space point, writing the resulting texture uv. Returns false - and leaves `uv` untouched -
@@ -532,10 +544,18 @@ using TextureDisplacementFacetsData = std::array<TriangleSelector::TriangleSplit
 // mesh-boolean ops) the way TriangleSelector::remap_painting() does for the other paint channels.
 // Such operations will silently drop any unbaked texture-displacement paint on the affected
 // volume. This is an explicit extension point for a later phase, not an oversight.
+//
+// `progress`, when set, is called from the worker thread with a 0..100 completion percentage as the
+// bake proceeds. Returning false from it aborts the run, which then returns an *empty* mesh - never
+// a partially displaced one, so a cancelled bake can never be mistaken for a finished result and
+// committed. It exists because this is the one call in the feature that can take seconds on a
+// subdivided mesh, and without it the progress notification the Job framework puts on screen sits at
+// 0% for the whole run and offers no way to close it (its close button only appears at 100%).
 indexed_triangle_set build_texture_displacement(const indexed_triangle_set                  &base_mesh,
                                                  const std::vector<TextureDisplacementLayer> &layers,
                                                  const TextureDisplacementFacetsData         &facets_data,
-                                                 const TextureDisplacementOptions            &options = {});
+                                                 const TextureDisplacementOptions            &options = {},
+                                                 const DisplacementProgressFn                &progress = {});
 
 // Convenience overload for main-thread callers: extracts the mesh/layers/paint data/options from
 // `volume` and forwards to the overload above.
@@ -551,8 +571,10 @@ indexed_triangle_set build_texture_displacement(const ModelVolume &volume);
 // after displacing it" runs, and it is also safe to run standalone on an already baked mesh.
 // `strength` is clamped to [0, 1]; 0 iterations, an empty/mis-sized `movable`, or an all-false one
 // leave the mesh untouched.
+// `on_pass`, when set, is called with the 0-based index of each completed pass; returning false stops
+// the relaxation there, leaving the passes already done in place.
 void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t> &movable, float strength,
-                          int iterations);
+                          int iterations, const DisplacementProgressFn &on_pass = {});
 
 // Returns a scalar height (in mm - a displacement magnitude) at a surface point, given that point's
 // position and interpolated normal. This is what feature-adaptive subdivision samples to decide
@@ -638,12 +660,30 @@ indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, fl
 // the input triangle that output triangle i descends from (children inherit their parent's index), so
 // a caller can carry per-triangle data - e.g. a paint mask - across the topology change without a
 // geometric remap.
+//
+// `refine_region` is a **bitmask** per input triangle, not a plain flag:
+//   bit 0 (REFINE_PAINTED) - inside the painted area: refine by the length baseline and, in feature
+//                            mode, by the chord-error test.
+//   bit 1 (REFINE_BORDER)  - inside the band straddling the paint's edge: refine by
+//                            `border_edge_length_mm` alone.
+// A value of 1 therefore means exactly what a plain 1 always meant, and 0 still means "never touch
+// this triangle except through the conformal closure".
+//
+// The border band exists because the chord-error test is blind to the one discontinuity the bake
+// actually creates. `make_combined_displacement_sampler()` evaluates the height field everywhere,
+// with no per-point paint test, so where the paint *stops* it keeps reporting full relief - smooth
+// and low-curvature - while the baked surface steps from full displacement to zero. The test sees no
+// error there and leaves the transition at whatever density the input had, which is what turns the
+// rim of an unpainted island into a ring of large, steeply tilted triangles. Refining that band by
+// plain edge length is bounded (it is a thin ring, and a length target always terminates) and needs
+// no paint-aware sampler.
 indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                              const std::vector<uint8_t> &refine_region,
                                              float target_edge_length_mm, int max_triangles = 1000000,
                                              std::vector<int> *out_source = nullptr,
                                              const HeightFieldSampler &sampler = nullptr,
-                                             float chord_tolerance_mm = 0.f, float min_edge_length_mm = 0.f);
+                                             float chord_tolerance_mm = 0.f, float min_edge_length_mm = 0.f,
+                                             float border_edge_length_mm = 0.f);
 
 } // namespace Slic3r
 

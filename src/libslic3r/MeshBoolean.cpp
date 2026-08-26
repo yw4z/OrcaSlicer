@@ -356,6 +356,25 @@ std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &
     if (border == halfedge_descriptor())
         return std::nullopt; // no boundary at all -- a closed patch, which isn't a disk either
 
+    // ...and exactly one boundary loop. One connected component is not enough on its own: a patch with
+    // a hole in it (paint a ring, or erase the middle of a stroke) is a single component with two
+    // loops, and LSCM will happily "parameterize" it into an overlapping, folded-over chart rather
+    // than fail. Walk the border halfedges and check every one of them belongs to the longest loop.
+    {
+        std::size_t border_halfedges = 0;
+        for (halfedge_descriptor h : halfedges(cgal_mesh))
+            if (is_border(h, cgal_mesh))
+                ++border_halfedges;
+        std::size_t loop_length = 0;
+        halfedge_descriptor h = border;
+        do {
+            ++loop_length;
+            h = next(h, cgal_mesh);
+        } while (h != border && loop_length <= border_halfedges);
+        if (loop_length != border_halfedges)
+            return std::nullopt; // more than one boundary loop -- not a topological disk
+    }
+
     using Point_2 = EpicKernel::Point_2;
     using UV_pmap = _EpicMesh::Property_map<vertex_descriptor, Point_2>;
     UV_pmap uv_map = cgal_mesh.add_property_map<vertex_descriptor, Point_2>("h:uv", Point_2(0, 0)).first;

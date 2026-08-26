@@ -166,7 +166,11 @@ void GLGizmosManager::switch_gizmos_icon_filename()
             gizmo->set_icon_filename(m_is_dark ? "toolbar_fuzzy_skin_paint_dark.svg" : "toolbar_fuzzy_skin_paint.svg");
             break;
         case(EType::TextureDisplacement):
-            gizmo->set_icon_filename(m_is_dark ? "toolbar_fuzzy_skin_paint_dark.svg" : "toolbar_fuzzy_skin_paint.svg");
+            // One shared icon in both themes (no dedicated dark variant yet) - but it must still be
+            // *this* gizmo's icon. Handing it the fuzzy-skin one here quietly replaced the icon set at
+            // construction, so the toolbar ended up showing two identical fuzzy-skin buttons after any
+            // light/dark switch.
+            gizmo->set_icon_filename("toolbar_texture_displacement.svg");
             break;
         case(EType::MeshBoolean):
             gizmo->set_icon_filename(m_is_dark ? "toolbar_meshboolean_dark.svg" : "toolbar_meshboolean.svg");

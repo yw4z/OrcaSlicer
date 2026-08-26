@@ -10,6 +10,7 @@
 #include "slic3r/GUI/TextureLibrary.hpp"
 
 #include <array>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
@@ -101,11 +102,26 @@ private:
     // so a run that turns out to be a no-op does not leave an empty undo step behind - and it keeps
     // snapshot ownership with the caller, which matters because the buttons want one snapshot per click
     // while the pipeline wants a single one around remesh + subdivide together.
+    // How one layer's paint sits on the pre-subdivision mesh, precise enough to carry across the
+    // refinement without rounding each source triangle to wholly painted or not.
+    //
+    // Rounding is what made the outline of a painted region come out ragged: a source triangle near a
+    // smooth brush boundary is wholly painted essentially at random, so "painted iff the source was
+    // full" turns a clean curve into a noisy fringe of isolated painted and unpainted triangles - and
+    // once the border band refines the mesh there, that fringe is reproduced faithfully instead of
+    // being blurred away by coarse geometry.
+    struct LayerPaintMap
+    {
+        std::vector<uint8_t>              full;       // per source triangle: covered edge to edge
+        std::vector<int>                  part_start; // CSR offsets into `part`, size (source tris + 1)
+        std::vector<std::array<Vec3f, 3>> part;       // painted pieces of partly covered source triangles
+        bool empty() const { return full.empty(); }
+    };
     struct SubdivisionPlan
     {
-        indexed_triangle_set                                              refined;
-        std::vector<int>                                                  source;      // new tri -> input tri
-        std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> painted_tri; // per layer, per input tri
+        indexed_triangle_set                                        refined;
+        std::vector<int>                                            source; // new tri -> input tri
+        std::array<LayerPaintMap, TEXTURE_DISPLACEMENT_MAX_LAYERS>  paint;  // per layer
     };
     // False means "nothing to refine" and `out` must not be used.
     bool        plan_adaptive_subdivision(const ModelVolume &mv, SubdivisionPlan &out) const;
@@ -162,9 +178,19 @@ private:
     // remapped (texture-displacement paint has no remap-across-topology-change support yet).
     void subdivide_model();
 
+    // The layer height map's width / height, for apply_uv_transform()'s non-square handling. 1 when
+    // there is no usable texture.
+    static float layer_texture_aspect(const TextureDisplacementLayer &layer);
+
     // Returns a cached GPU thumbnail of layer's texture (decoding + uploading it the first time it
     // is requested, or whenever its image_data changes), or nullptr if it has no usable texture.
+    // Panel-sized: box-filtered down to THUMBNAIL_MAX_PX, which is right for a list row and wrong for
+    // anything the shader samples - see get_layer_height_texture().
     GLTexture *get_layer_thumbnail(const TextureDisplacementLayer &layer);
+
+    // The same texture at full resolution, for the fast-preview shader. One slot, shared by whichever
+    // layer is active, because that is the only one the bump shader ever shades.
+    GLTexture *get_layer_height_texture(const TextureDisplacementLayer &layer);
 
     // A texture from the picker's library (see slic3r/GUI/TextureLibrary.hpp), read and uploaded
     // once and then kept for the gizmo's lifetime. The decoded bytes are held alongside the GPU
@@ -366,18 +392,33 @@ private:
     bool  m_subdivide_feature     = false;
     float m_subdivide_detail_mm   = 0.05f;
     float m_subdivide_min_edge_mm = 0.1f;
+    // Edge length the band straddling the paint's boundary is refined to (0 = leave it alone). Applies
+    // in both adaptive sub-modes, because it is not a texture-detail criterion: the bake steps the
+    // surface from full displacement to zero across that boundary whatever the texture is doing, and
+    // the chord-error test cannot see that step at all - its sampler has no per-point paint test, so
+    // just outside the paint it goes on reporting the same smooth height field. Without this the
+    // transition keeps the input's density and the rim of an unpainted island comes out as a ring of
+    // large, steeply tilted triangles. See collect_paint_region() and subdivide_mesh_adaptive().
+    float m_subdivide_border_mm   = 0.4f;
     // How many thousand triangles refinement may *add* (the mesh's own count is added on before it is
     // passed as subdivide_mesh_adaptive()'s absolute cap, so the control still means something on a
     // dense model). Refinement is worst-error-first, so hitting the budget still yields the best mesh
     // that many triangles can buy - and it is what keeps a fine "Detail" over a noisy texture from
     // turning into an out-of-memory, or an unrenderable preview wireframe.
-    int   m_subdivide_budget_k    = 1500;
+    //
+    // The default used to be 1500 (i.e. +1.5 M triangles), which is what made Standard mode's Bake
+    // take minutes: every stage after the subdivision - the displacement itself, the convex hull, the
+    // GLModel upload, and the re-slice changed_object() triggers - then runs on a mesh two orders of
+    // magnitude denser than the input. 300k is still far finer than any FDM nozzle resolves at the
+    // 0.02 mm detail tolerance Standard uses, and the slider goes to 2000 for anyone who wants more.
+    int   m_subdivide_budget_k    = 300;
     void  subdivide_model_adaptive();
-    // Fills `region` (per current-mesh triangle, 1 = refine) from the union of every layer's painted
-    // area. If `painted_tri` is non-null, also fills, per layer, the fully-painted triangles to carry
-    // forward. Returns false when nothing is painted at all. Shared by the preview and the commit.
+    // Fills `region` (per current-mesh triangle, a REFINE_* bitmask) from the union of every layer's
+    // painted area plus the band straddling its edge. If `paint` is non-null, also fills the per-layer
+    // coverage map the subdivision carries forward - the expensive half, skipped by the live preview,
+    // which only needs the region. Returns false when nothing is painted at all.
     bool  collect_paint_region(std::vector<uint8_t> &region,
-                               std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> *painted_tri) const;
+                               std::array<LayerPaintMap, TEXTURE_DISPLACEMENT_MAX_LAYERS> *paint) const;
 
     // Runs the volume's TextureDisplacementOptions smoothing over the *already committed* geometry,
     // restricted to the painted area. The same settings are folded into Preview/Bake automatically;
@@ -417,6 +458,25 @@ private:
     // and the 3D view. The rebuild is instead coalesced to once per 3D frame (render_painter_gizmo).
     bool    m_bump_preview_dirty = false;
     GLModel m_bump_preview_glmodel;
+
+    // Translucent tint over the active layer's painted triangles, drawn on top of whichever preview
+    // is showing. The base painter's own opaque paint highlight (render_triangles()) cannot be used
+    // in either preview mode - it is coincident with the surface and simply covers it - so the only
+    // paint feedback the gizmo had was the relief itself, which meant erasing showed nothing at all
+    // until the stroke ended and the whole preview rebuilt. This is that feedback: cheap (the painted
+    // patch only), translucent (the preview stays visible through it) and rebuilt live during a
+    // stroke.
+    GLModel m_paint_overlay_glmodel;
+    // Set on every paint event, cleared when the overlay is rebuilt in render_painter_gizmo(). Kept
+    // separate from m_bump_preview_dirty so a stroke refreshes only the small painted patch per frame,
+    // not the bump mesh (which also carries every *unpainted* triangle of the volume).
+    bool    m_paint_overlay_dirty = false;
+    void    rebuild_paint_overlay();
+    void    render_paint_overlay();
+    // Whether render_bump_preview_mesh() would actually draw something. Checked before the real volume
+    // is hidden: with no layer, no texture or no shader the bump path draws nothing, and hiding the
+    // volume for it left the model invisible.
+    bool    bump_preview_ready() const;
     // Whether the current bump mesh carries a precomputed per-vertex uv (LSCM) that the shader
     // should sample at directly, rather than projecting in-shader. Set by rebuild_bump_preview_mesh().
     bool    m_bump_preview_uses_vertex_uv = false;
@@ -507,15 +567,35 @@ private:
     // Bumped on every rebuild_preview() call; a background TextureDisplacementPreviewJob's result
     // is only applied if this hasn't moved on since the job was queued (see rebuild_preview()),
     // so a burst of edits can't have an earlier, now-stale job clobber a later one's result.
-    uint64_t m_preview_generation = 0;
+    //
+    // Shared with the worker thread (hence the atomic) so a running job can notice mid-computation
+    // that it has been superseded and abort, instead of running to completion for a result that will
+    // only be discarded on arrival.
+    std::shared_ptr<std::atomic<uint64_t>> m_preview_generation = std::make_shared<std::atomic<uint64_t>>(0);
+    // At most one preview job is ever queued. The UI job worker is a single FIFO queue shared with
+    // Bake (and with arrange/orient/send), and rebuild_preview() is called on every stroke end, every
+    // slider release and - with "Auto update" on - every frame of a slider drag. Queuing one full
+    // displacement per call built a backlog that took minutes to drain: the preview appeared frozen,
+    // and a Bake pressed afterwards sat behind the whole queue. So a request made while a job is in
+    // flight is recorded here and issued once that job settles, collapsing any number of edits into a
+    // single follow-up run.
+    bool m_preview_job_running = false;
+    bool m_preview_job_pending = false;
+    void queue_preview_job();
 
     // Per-slot GPU thumbnail cache for the layer list panel, keyed by the image_data pointer that
     // was current the last time each thumbnail was built (see get_layer_thumbnail()).
     std::array<std::unique_ptr<GLTexture>, TEXTURE_DISPLACEMENT_MAX_LAYERS> m_thumbnails;
     std::array<const void *, TEXTURE_DISPLACEMENT_MAX_LAYERS>               m_thumbnail_source{};
-    // The smoothing each cached thumbnail was built at, so a smoothing change re-uploads it (and the
-    // fast/bump preview, which samples this texture, actually shows the blur).
+    // The smoothing each cached thumbnail was built at, so a smoothing change re-uploads it.
     std::array<float, TEXTURE_DISPLACEMENT_MAX_LAYERS>                      m_thumbnail_smoothing{};
+
+    // Full-resolution height texture for the bump shader, keyed the same way (see
+    // get_layer_height_texture()). A smoothing change re-uploads it, so the fast preview shows the
+    // blur the bake will apply.
+    std::unique_ptr<GLTexture> m_height_tex;
+    const void                *m_height_tex_source    = nullptr;
+    float                      m_height_tex_smoothing = -1.f;
 
     // Library textures the picker has shown at least once, keyed by file path (see LibraryTexture).
     std::map<std::string, LibraryTexture> m_library_textures;

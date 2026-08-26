@@ -1,8 +1,10 @@
 #ifndef slic3r_TextureDisplacementPreviewJob_hpp_
 #define slic3r_TextureDisplacementPreviewJob_hpp_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <vector>
 
 #include "libslic3r/TextureDisplacement.hpp"
@@ -27,6 +29,10 @@ struct TextureDisplacementPreviewInput
 // to run synchronously on every paint stroke and parameter tweak and made editing feel slow with
 // more than one or two layers. Unlike Bake, this never touches the live Model - a preview is
 // purely informational, there is nothing to commit.
+//
+// Deliberately reports no status: the Job framework turns the first update_status() call into an
+// on-screen progress notification, and a preview firing one on every stroke and slider release
+// buried the user in notifications that only closed at 100%.
 class TextureDisplacementPreviewJob : public Job
 {
 public:
@@ -35,7 +41,14 @@ public:
     // current generation when the job completes, so that a burst of edits queuing several of
     // these jobs in a row can't have an earlier, now-stale result clobber a later one that
     // finishes first.
+    //
+    // `current_generation` is the caller's live counter, shared with the worker thread. The job
+    // polls it *while computing* and aborts as soon as it no longer matches - so a preview that has
+    // already been superseded stops burning CPU instead of running to completion for a result that
+    // will only be thrown away. That matters because the UI job worker runs one job at a time in FIFO
+    // order: without it, a Bake queued behind a handful of stale previews waits for every one of them.
     TextureDisplacementPreviewJob(TextureDisplacementPreviewInput &&input, uint64_t generation,
+                                   std::shared_ptr<const std::atomic<uint64_t>> current_generation,
                                    std::function<void(indexed_triangle_set, uint64_t)> on_finished);
 
     void process(Ctl &ctl) override;
@@ -44,6 +57,7 @@ public:
 private:
     TextureDisplacementPreviewInput                    m_input;
     uint64_t                                            m_generation;
+    std::shared_ptr<const std::atomic<uint64_t>>        m_current_generation;
     indexed_triangle_set                                m_result;
     std::function<void(indexed_triangle_set, uint64_t)> m_on_finished;
 };

@@ -68,13 +68,43 @@ constexpr float ImGuiLogSlider = float(ImGuiSliderFlags_Logarithmic);
 //     frequencies that would alias, and it cuts the VRAM these hold by ~16x as a bonus.
 constexpr int THUMBNAIL_MAX_PX = 128;
 
-std::unique_ptr<GLTexture> upload_height_thumbnail(const DecodedHeightTexture &decoded)
+// Everything above is about drawing a ~48 px panel row, and none of it applies to the height texture
+// the fast-preview *shader* samples: that one is magnified across the model, not minified into a
+// row, and every texel it loses is relief the preview cannot show. It gets its own upload at (up to)
+// this size, so the bump preview reads the same height field the bake does instead of a 128 px box
+// blur of it - which is what made Fast look flatter and softer than the result it was previewing.
+constexpr int HEIGHT_TEX_MAX_PX = 2048;
+
+// How many rings of vertex-adjacent triangles either side of the paint's edge join the border refine
+// band (see collect_paint_region()). Two is enough to grade the size change without the band's own
+// cost growing to matter: it is a ring around a perimeter, not an area.
+constexpr int BORDER_BAND_RINGS = 2;
+
+// Is `p` inside triangle `t`, given that it already lies in the triangle's plane? Barycentric via the
+// three sub-triangle cross products, compared against the whole triangle's normal. Used to carry a
+// partly painted source triangle's coverage onto the children of a subdivision, which are coplanar
+// with it by construction (subdivision only adds edge midpoints).
+bool point_in_triangle_coplanar(const Vec3f &p, const std::array<Vec3f, 3> &t)
+{
+    const Vec3f n = (t[1] - t[0]).cross(t[2] - t[0]);
+    const float n2 = n.squaredNorm();
+    if (n2 < 1e-20f)
+        return false; // degenerate: it covers no area, so nothing is inside it
+    // A small negative tolerance, scaled by the triangle, keeps a centroid sitting exactly on a shared
+    // edge from falling through the gap between two neighbouring pieces.
+    const float eps = -1e-4f * n2;
+    return (t[1] - t[0]).cross(p - t[0]).dot(n) >= eps &&
+           (t[2] - t[1]).cross(p - t[1]).dot(n) >= eps &&
+           (t[0] - t[2]).cross(p - t[2]).dot(n) >= eps;
+}
+
+std::unique_ptr<GLTexture> upload_height_thumbnail(const DecodedHeightTexture &decoded, int max_px = THUMBNAIL_MAX_PX)
 {
     if (decoded.empty())
         return nullptr;
 
     // Preserve aspect; never upscale a texture that is already small.
-    const int scale = std::max(1, (std::max(decoded.width, decoded.height) + THUMBNAIL_MAX_PX - 1) / THUMBNAIL_MAX_PX);
+    const int scale = std::max(1, (std::max(decoded.width, decoded.height) + max_px - 1) / max_px);
     const int w     = std::max(1, decoded.width / scale);
     const int h     = std::max(1, decoded.height / scale);
 
@@ -155,6 +185,12 @@ void GLGizmoTextureDisplacement::on_shutdown()
     m_parent.toggle_model_objects_visibility(true);
     m_preview_glmodel.reset();
     m_bump_preview_glmodel.reset();
+    m_paint_overlay_glmodel.reset();
+    m_paint_overlay_dirty = false;
+    // Any preview still in flight is superseded: bumping the shared counter makes it abort at its next
+    // progress poll, and its completion handler then finds nothing to do.
+    m_preview_generation->fetch_add(1);
+    m_preview_job_pending = false;
     m_uvcheck_glmodel.reset();
     m_wireframe_overlay_glmodel.reset();
     m_wireframe_overlay_vcount = 0;
@@ -221,32 +257,50 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     //
     // The bump preview is different: it never actually moves geometry (it's a shading trick), so
     // its depth is identical to the overlay's *everywhere*, not just in the unpainted area - the
-    // depth-biased overlay would win the depth test across the whole surface and hide the bump
-    // shading entirely. So the overlay is skipped for it; the bump shading itself is the only
-    // feedback in that mode (still fine for painting, since render_cursor() below shows the brush).
+    // depth-biased opaque overlay would win the depth test across the whole surface and hide the bump
+    // shading entirely. So render_triangles() is skipped for it. What is *not* skipped is
+    // render_paint_overlay(): leaving the bump shading as the only paint feedback meant a stroke that
+    // erased paint, or added it with no texture picked, changed nothing on screen until the whole
+    // preview rebuilt at stroke end - and in the true-displacement view the opaque overlay is hidden
+    // by the raised surface for the same reason. The translucent tint covers both cases.
     // Coalesced bump rebuild from an in-progress UV island drag (see on_island_edited): done here, at
     // most once per drawn frame, rather than synchronously in the UV canvas's mouse-move handler.
     if (m_use_bump_preview && m_bump_preview_dirty) {
         rebuild_bump_preview_mesh();
         m_bump_preview_dirty = false;
     }
-    const bool use_bump = m_use_bump_preview && m_bump_preview_glmodel.is_initialized();
+    // Same coalescing for the paint tint, but on its own flag: a stroke marks this every mouse move
+    // (see on_mouse()) and it only costs the painted patch, whereas the bump mesh also carries every
+    // unpainted triangle of the volume and stays on the stroke-end cadence.
+    if (m_paint_overlay_dirty) {
+        rebuild_paint_overlay();
+        m_paint_overlay_dirty = false;
+    }
+    // is_initialized() alone is not enough: render_bump_preview_mesh() also needs an active layer
+    // with a decoded texture and a compiled shader, and bails silently without them. Hiding the real
+    // volume for a bump pass that then draws nothing is what made the model vanish - most obviously
+    // with zero layers, but equally with a layer that has no texture picked yet.
+    const bool use_bump = m_use_bump_preview && m_bump_preview_glmodel.is_initialized() && bump_preview_ready();
+    const bool use_true_preview = !use_bump && m_preview_glmodel.is_initialized();
     // In Checker/Distortion mode the UV-check overlay *is* the surface visualization the user is
     // looking at, so the opaque paint-selection highlight must not be drawn on top of it - same
     // reasoning as skipping it for the bump preview (see bug #12). Without this the painted area
     // covers the checker/heatmap and it can't be seen.
     const bool show_paint_overlay = m_uv_check_mode == UVCheckMode::None;
+
+    // Hide the real volume only when something is actually going to be drawn in its place; otherwise
+    // put it back. Getting this wrong leaves an invisible model, so it is decided once, here, rather
+    // than per branch below.
+    m_parent.toggle_model_objects_visibility(true);
+    if (use_bump || use_true_preview) {
+        if (ModelVolume *mv = texture_volume())
+            m_parent.toggle_model_objects_visibility(false, m_c->selection_info()->model_object(),
+                                                      m_c->selection_info()->get_active_instance(), mv);
+    }
+
     if (use_bump) {
-        m_parent.toggle_model_objects_visibility(true);
-        if (ModelVolume *mv = texture_volume())
-            m_parent.toggle_model_objects_visibility(false, m_c->selection_info()->model_object(),
-                                                      m_c->selection_info()->get_active_instance(), mv);
         render_bump_preview_mesh();
-    } else if (m_preview_glmodel.is_initialized()) {
-        m_parent.toggle_model_objects_visibility(true);
-        if (ModelVolume *mv = texture_volume())
-            m_parent.toggle_model_objects_visibility(false, m_c->selection_info()->model_object(),
-                                                      m_c->selection_info()->get_active_instance(), mv);
+    } else if (use_true_preview) {
         render_preview_mesh();
 
         if (show_paint_overlay) {
@@ -258,6 +312,13 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     } else if (show_paint_overlay) {
         render_triangles(selection);
     }
+
+    // The translucent paint tint. Needed in the bump view because the opaque highlight above is
+    // skipped there, and in the true-displacement view because the displaced surface rises *above*
+    // the undisplaced overlay geometry and hides it exactly where the relief is strongest - in both
+    // cases leaving an erase stroke with no visible effect until the next full preview rebuild.
+    if (show_paint_overlay && (use_bump || use_true_preview))
+        render_paint_overlay();
 
     // Diagnostic overlays, drawn on top of whatever preview is active (both pull toward the camera
     // with a polygon offset so they win the depth test against the coincident surface).
@@ -290,7 +351,16 @@ bool GLGizmoTextureDisplacement::on_mouse(const wxMouseEvent &mouse_event)
         return on_mouse_seam(mouse_event);
     if (m_adjust_texture_mode)
         return on_mouse_adjust_texture(mouse_event);
-    return GLGizmoPainterBase::on_mouse(mouse_event);
+
+    const bool handled = GLGizmoPainterBase::on_mouse(mouse_event);
+    // A consumed drag/click is a paint (or erase) event: the base class has already updated the live
+    // TriangleSelector, but nothing is flushed to the model - and so nothing rebuilds - until the
+    // stroke ends. Mark the tint stale so it follows the brush from the first frame instead. Only the
+    // flag is set here; the rebuild is coalesced to once per drawn frame in render_painter_gizmo().
+    if (handled && (mouse_event.Dragging() || mouse_event.LeftDown() || mouse_event.RightDown() ||
+                    mouse_event.LeftUp() || mouse_event.RightUp()))
+        m_paint_overlay_dirty = true;
+    return handled;
 }
 
 bool GLGizmoTextureDisplacement::on_mouse_seam(const wxMouseEvent &mouse_event)
@@ -707,11 +777,29 @@ void GLGizmoTextureDisplacement::render_preview_mesh()
     shader->stop_using();
 }
 
+float GLGizmoTextureDisplacement::layer_texture_aspect(const TextureDisplacementLayer &layer)
+{
+    // decode_height_texture() is cached on the image_data allocation, so this is a hash lookup rather
+    // than a PNG decode - cheap enough to call per rebuild.
+    const DecodedHeightTexture tex = decode_height_texture(layer);
+    return (tex.width > 0 && tex.height > 0) ? float(tex.width) / float(tex.height) : 1.f;
+}
+
 std::vector<Vec2f> GLGizmoTextureDisplacement::compute_layer_vertex_uvs(const indexed_triangle_set     &patch,
                                                                        const TextureDisplacementLayer &layer) const
 {
-    if (layer.projection_method == TextureProjectionMethod::LSCM)
-        return compute_lscm_uvs(patch, layer); // one final uv per patch vertex (0 where unassigned)
+    const float aspect = layer_texture_aspect(layer);
+    if (layer.projection_method == TextureProjectionMethod::LSCM) {
+        // compute_lscm_uvs() returns the unwrap's own (raw, mm) coordinates with the island placement
+        // folded in - it does *not* apply the layer's tiling/rotation/offset. The bake applies those
+        // on top (sample_layer_height()'s lscm branch runs the result through sample_at()), so the
+        // shader's precomputed-uv path has to as well, or the fast preview samples millimetre-valued
+        // coordinates as if they were uv and shows the texture at a wildly wrong scale.
+        std::vector<Vec2f> uv = compute_lscm_uvs(patch, layer);
+        for (Vec2f &p : uv)
+            p = apply_uv_transform(p, layer, aspect);
+        return uv;
+    }
     if (layer.projection_method == TextureProjectionMethod::ViewProjected) {
         std::vector<Vec2f> uv(patch.vertices.size());
         for (size_t vi = 0; vi < patch.vertices.size(); ++vi) {
@@ -725,7 +813,7 @@ std::vector<Vec2f> GLGizmoTextureDisplacement::compute_layer_vertex_uvs(const in
             }
             const Vec2f planar(patch.vertices[vi].dot(layer.view_project_right),
                                patch.vertices[vi].dot(layer.view_project_up));
-            uv[vi] = apply_uv_transform(planar, layer);
+            uv[vi] = apply_uv_transform(planar, layer, aspect);
         }
         return uv;
     }
@@ -913,11 +1001,13 @@ void GLGizmoTextureDisplacement::render_bump_preview_mesh()
     if (layer == nullptr || layer->empty())
         return;
 
-    // Reuses the layer-list panel's already-decoded, already-uploaded GPU thumbnail (smoothing-aware),
-    // whose grayscale value lives in the R channel exactly as the shader samples it. Its width/height
-    // are read straight off the texture - decoding the PNG here every frame would re-run the smoothing
-    // blur on every camera move, which is what tanked the frame rate at high smoothing.
-    GLTexture *tex = get_layer_thumbnail(*layer);
+    // Full-resolution height upload (smoothing-aware), whose grayscale value lives in the R channel
+    // exactly as the shader samples it. Deliberately *not* the layer-list panel's thumbnail: that one
+    // is box-filtered down to 128 px for a ~48 px row, and feeding it to the shader cost the preview
+    // three quarters of the height map's detail - and, since height_tex_texel is derived from it, also
+    // flattened the shading gradient and made the parallax march skip itself at angles where it should
+    // run. Cached on the image_data pointer + smoothing, so no PNG is decoded per frame.
+    GLTexture *tex = get_layer_height_texture(*layer);
     if (tex == nullptr || tex->get_width() <= 0 || tex->get_height() <= 0)
         return;
 
@@ -942,10 +1032,36 @@ void GLGizmoTextureDisplacement::render_bump_preview_mesh()
     shader->set_uniform("volume_mirrored", trafo_matrix.matrix().determinant() < 0.0);
     glsafe(::glActiveTexture(GL_TEXTURE0));
     glsafe(::glBindTexture(GL_TEXTURE_2D, tex->get_id()));
+    // Match DecodedHeightTexture::sample()'s tiling. The sampler's wrap mode is the only place the
+    // GPU path can express this, and nothing ever set it - so it sat at GL_REPEAT no matter what the
+    // layer said: a MirroredRepeat layer previewed as a plain repeat, and a layer with tiling *off*
+    // previewed as an endless tiling where the bake produces one placement and nothing around it.
+    // CLAMP_TO_BORDER with a zero border is the exact analogue of sample()'s "outside [0,1) is 0".
+    // GL_CLAMP_TO_BORDER is desktop-GL only; on ES the nearest thing is CLAMP_TO_EDGE, which smears
+    // the border row instead of vanishing - still much closer to the bake than an endless repeat.
+#if SLIC3R_OPENGL_ES
+    const GLint no_tile_wrap = GL_CLAMP_TO_EDGE;
+#else
+    const GLint no_tile_wrap = GL_CLAMP_TO_BORDER;
+#endif
+    const GLint wrap = !layer->tile_enabled                                      ? no_tile_wrap :
+                       (layer->tile_method == TextureTileMethod::MirroredRepeat) ? GL_MIRRORED_REPEAT :
+                                                                                   GL_REPEAT;
+    glsafe(::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap));
+    glsafe(::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap));
+#if !SLIC3R_OPENGL_ES
+    if (wrap == GL_CLAMP_TO_BORDER) {
+        static const GLfloat border[4] = { 0.f, 0.f, 0.f, 0.f };
+        glsafe(::glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border));
+    }
+#endif // !SLIC3R_OPENGL_ES
     shader->set_uniform("height_tex", 0);
     shader->set_uniform("height_tex_texel", Vec2f(1.f / float(tex->get_width()), 1.f / float(tex->get_height())));
     shader->set_uniform("depth_mm", layer->depth_mm);
     shader->set_uniform("tiling_scale", layer->tiling_scale);
+    // Read off the uploaded texture rather than the decoded one: they are the same image, and this is
+    // the aspect the sampler will actually see.
+    shader->set_uniform("tex_aspect", float(tex->get_width()) / float(tex->get_height()));
     shader->set_uniform("rotation_rad", layer->rotation_deg * float(M_PI) / 180.f);
     shader->set_uniform("uv_offset", layer->offset);
     shader->set_uniform("invert", layer->invert);
@@ -966,6 +1082,100 @@ void GLGizmoTextureDisplacement::render_bump_preview_mesh()
     shader->set_uniform("island_delta_tr", Vec2f(d(0, 2), d(1, 2)));
     m_bump_preview_glmodel.render();
     glsafe(::glBindTexture(GL_TEXTURE_2D, 0));
+    shader->stop_using();
+}
+
+bool GLGizmoTextureDisplacement::bump_preview_ready() const
+{
+    // Mirrors render_bump_preview_mesh()'s own preconditions. Kept as a separate query because the
+    // caller has to know whether the bump pass will draw *before* it hides the real volume for it.
+    if (m_c->selection_info() == nullptr || m_c->selection_info()->model_object() == nullptr)
+        return false;
+    if (texture_volume() == nullptr)
+        return false;
+    const TextureDisplacementLayer *layer = active_layer();
+    if (layer == nullptr || layer->empty())
+        return false;
+    // The same texture render_bump_preview_mesh() will bind, not the panel thumbnail - the two are
+    // separate caches and either can fail on its own.
+    const GLTexture *tex = const_cast<GLGizmoTextureDisplacement *>(this)->get_layer_height_texture(*layer);
+    if (tex == nullptr || tex->get_width() <= 0 || tex->get_height() <= 0)
+        return false;
+    return wxGetApp().get_shader("texture_displacement_bump") != nullptr;
+}
+
+void GLGizmoTextureDisplacement::rebuild_paint_overlay()
+{
+    m_paint_overlay_glmodel.reset();
+    const ModelVolume *mv = texture_volume();
+    if (mv == nullptr || m_triangle_selectors.empty())
+        return;
+
+    // The *live* selector, so an in-progress stroke shows immediately - which is the whole point:
+    // this is the only feedback that a brush actually added or erased anything until the (much more
+    // expensive) preview catches up at stroke end.
+    const indexed_triangle_set patch = m_triangle_selectors[0]->get_facets_strict(EnforcerBlockerType::ENFORCER);
+    if (patch.indices.empty())
+        return;
+
+    // In the true-displacement view the surface on screen is the *raised* one, and a tint built on
+    // the flat base mesh would sink underneath it wherever the relief is deepest - which is precisely
+    // where the user is looking. The bake is topology-preserving (patch vertex i is mesh vertex i, see
+    // build_texture_displacement()), so the displaced positions can be read straight across. Vertices
+    // the brush split live past the end of that array and keep their flat position; they sit on the
+    // patch boundary, where the displacement is smallest anyway.
+    const std::vector<Vec3f> *displaced = nullptr;
+    if (!m_use_bump_preview && m_preview_its.vertices.size() == mv->mesh().its.vertices.size() &&
+        !m_preview_its.vertices.empty())
+        displaced = &m_preview_its.vertices;
+
+    GLModel::Geometry init_data;
+    init_data.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    init_data.reserve_vertices(patch.indices.size() * 3);
+    init_data.reserve_indices(patch.indices.size() * 3);
+    unsigned n = 0;
+    for (const stl_triangle_vertex_indices &tri : patch.indices) {
+        for (int i = 0; i < 3; ++i) {
+            const size_t idx = size_t(tri[i]);
+            init_data.add_vertex((displaced != nullptr && idx < displaced->size()) ? (*displaced)[idx]
+                                                                                   : patch.vertices[idx]);
+        }
+        init_data.add_triangle(n, n + 1, n + 2);
+        n += 3;
+    }
+    m_paint_overlay_glmodel.init_from(std::move(init_data));
+    // GLModel::render() re-sets "uniform_color" from this field just before drawing, so the colour
+    // has to be set here rather than as a uniform at draw time.
+    m_paint_overlay_glmodel.set_color(ColorRGBA(0.16f, 0.79f, 0.35f, 0.38f));
+}
+
+void GLGizmoTextureDisplacement::render_paint_overlay()
+{
+    const ModelObject *mo = m_c->selection_info()->model_object();
+    const ModelVolume *mv = texture_volume();
+    if (mo == nullptr || mv == nullptr || !m_paint_overlay_glmodel.is_initialized())
+        return;
+    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    if (shader == nullptr)
+        return;
+
+    const Selection  &selection    = m_parent.get_selection();
+    const Transform3d trafo_matrix = mo->instances[selection.get_instance_idx()]->get_transformation().get_matrix() * mv->get_matrix();
+    const Camera     &camera       = wxGetApp().plater()->get_camera();
+
+    shader->start_using();
+    shader->set_uniform("view_model_matrix", camera.get_view_matrix() * trafo_matrix);
+    shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+    // Translucent, and pulled toward the camera so it wins the depth test against the coincident
+    // bump surface. Depth writes are off: this is a tint, and letting it own the depth buffer would
+    // make the wireframe and seam overlays drawn after it fight with geometry that is not really
+    // there. Blending is already enabled by render_painter_gizmo().
+    glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
+    glsafe(::glPolygonOffset(-1.5f, -1.5f));
+    glsafe(::glDepthMask(GL_FALSE));
+    m_paint_overlay_glmodel.render();
+    glsafe(::glDepthMask(GL_TRUE));
+    glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
     shader->stop_using();
 }
 
@@ -1178,10 +1388,12 @@ void GLGizmoTextureDisplacement::rebuild_preview()
 {
     // Bumped first: any in-flight job's result (captured generation from before this call) will
     // now compare unequal to m_preview_generation and be discarded when it completes, even if it
-    // finishes after the job queued below.
-    const uint64_t generation = ++m_preview_generation;
+    // finishes after the job queued below - and, since the counter is shared with the worker, that
+    // job also notices mid-run and aborts rather than computing a result nobody will use.
+    m_preview_generation->fetch_add(1);
     update_uv_editor();
     rebuild_bump_preview_mesh();
+    rebuild_paint_overlay();
     rebuild_uvcheck_mesh();
     rebuild_seam_overlay();
     // The adaptive subdivision preview is driven by the painted area, so it has to follow the paint
@@ -1194,13 +1406,43 @@ void GLGizmoTextureDisplacement::rebuild_preview()
     if (mv == nullptr || !mv->is_texture_displacement_painted()) {
         m_preview_glmodel.reset();
         m_preview_its = indexed_triangle_set{}; // no displaced mesh; wireframe falls back to the base
+        m_preview_job_pending = false;
         refresh_wireframe();
         return;
     }
     // In Fast/paint modes the wireframe follows the base mesh and can be built now; the true-displacement
     // view's wireframe needs the displaced mesh, which only exists once the job below completes.
-    if (m_use_bump_preview)
+    if (m_use_bump_preview) {
         refresh_wireframe();
+        // Fast view: the shader *is* the preview, and m_preview_glmodel is never drawn. Running the
+        // full CPU displacement anyway - which is what happened on every stroke and slider release -
+        // was the single largest cost in the gizmo, and it bought nothing. The switch back to the
+        // true-displacement view queues it (see the View row in on_render_input_window()).
+        m_preview_job_pending = false;
+        return;
+    }
+
+    queue_preview_job();
+}
+
+void GLGizmoTextureDisplacement::queue_preview_job()
+{
+    // A job in flight when the gizmo closes still runs its completion handler, which would otherwise
+    // happily queue the follow-up run it was holding - against a gizmo nobody is looking at any more.
+    if (m_state != On)
+        return;
+    const ModelVolume *mv = texture_volume();
+    if (mv == nullptr || !mv->is_texture_displacement_painted())
+        return;
+
+    // One in flight at a time; everything requested meanwhile collapses into a single follow-up run
+    // issued from the completion handler. See m_preview_job_running.
+    if (m_preview_job_running) {
+        m_preview_job_pending = true;
+        return;
+    }
+
+    const uint64_t generation = m_preview_generation->load();
 
     TextureDisplacementPreviewInput input;
     input.base_mesh = mv->mesh().its;
@@ -1209,20 +1451,35 @@ void GLGizmoTextureDisplacement::rebuild_preview()
     for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
         input.facets_data[size_t(i)] = mv->texture_displacement_facet(i).get_data();
 
+    m_preview_job_running = true;
     auto &worker = wxGetApp().plater()->get_ui_job_worker();
-    queue_job(worker, std::make_unique<TextureDisplacementPreviewJob>(std::move(input), generation,
+    queue_job(worker, std::make_unique<TextureDisplacementPreviewJob>(std::move(input), generation, m_preview_generation,
         [this](indexed_triangle_set its, uint64_t result_generation) {
-            if (result_generation != m_preview_generation)
-                return; // superseded by a newer edit while this was computing
-            m_preview_glmodel.reset();
-            if (!its.indices.empty()) {
+            m_preview_job_running = false;
+            if (result_generation != m_preview_generation->load()) {
+                // Superseded while this was computing (it will have aborted early and come back
+                // empty). Whatever the newest state is, it still needs a run.
+                m_preview_job_pending = true;
+            } else if (its.indices.empty()) {
+                // Aborted or cancelled rather than finished - the handler runs on every outcome so
+                // the in-flight latch above always clears. Keep whatever preview is already on screen
+                // rather than blanking it; there is no new result to show, not a new empty one.
+            } else {
+                m_preview_glmodel.reset();
                 m_preview_glmodel.init_from(its);
                 m_preview_glmodel.set_color(GLVolume::NEUTRAL_COLOR);
+                // Keep the displaced mesh so the wireframe overlay can be drawn on it (the
+                // true-displacement view), then refresh the wireframe from it.
+                m_preview_its = std::move(its);
+                refresh_wireframe();
+                // The paint tint rides the displaced surface in this view, so it follows the new mesh.
+                m_paint_overlay_dirty = true;
             }
-            // Keep the displaced mesh so the wireframe overlay can be drawn on it (the true-displacement
-            // view), then refresh the wireframe from it.
-            m_preview_its = std::move(its);
-            refresh_wireframe();
+            if (m_preview_job_pending) {
+                m_preview_job_pending = false;
+                if (!m_use_bump_preview)
+                    queue_preview_job(); // no-ops if the gizmo has closed in the meantime
+            }
             m_parent.set_as_dirty();
         }));
 }
@@ -1935,7 +2192,11 @@ Vec3f GLGizmoTextureDisplacement::adjust_handle_center(const TextureDisplacement
     // follows the cursor precisely, and is back on the anchor exactly when offset is zero.
     const float rad = layer.rotation_deg * float(M_PI) / 180.f;
     const float cs = std::cos(rad), sn = std::sin(rad);
-    const Vec2f unrotated(layer.offset.x() * cs + layer.offset.y() * sn, -layer.offset.x() * sn + layer.offset.y() * cs);
+    // Undo the non-square v scaling first - it is the last thing apply_uv_transform() does, so it is
+    // the first thing to come off on the way back.
+    const float aspect = layer_texture_aspect(layer);
+    const Vec2f o(layer.offset.x(), (aspect > 0.f) ? layer.offset.y() / aspect : layer.offset.y());
+    const Vec2f unrotated(o.x() * cs + o.y() * sn, -o.x() * sn + o.y() * cs);
     const Vec2f planar = -unrotated * layer.tiling_scale;
 
     Vec3f u_axis, v_axis;
@@ -2168,7 +2429,10 @@ bool GLGizmoTextureDisplacement::on_mouse_adjust_texture(const wxMouseEvent &mou
         const Vec2f delta_scaled = delta_planar * scale;
         const float rad          = layer->rotation_deg * float(M_PI) / 180.f;
         const float cs = std::cos(rad), sn = std::sin(rad);
-        const Vec2f delta_rotated(delta_scaled.x() * cs - delta_scaled.y() * sn, delta_scaled.x() * sn + delta_scaled.y() * cs);
+        Vec2f delta_rotated(delta_scaled.x() * cs - delta_scaled.y() * sn, delta_scaled.x() * sn + delta_scaled.y() * cs);
+        // ...and the same v scaling apply_uv_transform() applies for a non-square texture, so the
+        // handle keeps tracking the cursor exactly instead of drifting on the v axis.
+        delta_rotated.y() *= layer_texture_aspect(*layer);
         // Increasing `offset` shifts which texel is sampled at a fixed world position, which
         // visually slides the pattern the *opposite* way - subtracting is this session's
         // best-effort reasoning about the direction that feels like "dragging the texture",
@@ -2701,7 +2965,7 @@ void GLGizmoTextureDisplacement::subdivide_model()
 
 bool GLGizmoTextureDisplacement::collect_paint_region(
     std::vector<uint8_t> &region,
-    std::array<std::vector<uint8_t>, TEXTURE_DISPLACEMENT_MAX_LAYERS> *painted_tri) const
+    std::array<LayerPaintMap, TEXTURE_DISPLACEMENT_MAX_LAYERS> *paint) const
 {
     const ModelVolume *mv = texture_volume();
     if (mv == nullptr)
@@ -2711,21 +2975,24 @@ bool GLGizmoTextureDisplacement::collect_paint_region(
     const size_t                nvert = its.vertices.size();
 
     region.assign(ntri, 0);
-    if (painted_tri)
-        for (auto &pt : *painted_tri)
-            pt.clear();
+    if (paint)
+        for (LayerPaintMap &pm : *paint)
+            pm = LayerPaintMap{};
 
-    // Sorted-vertex-triple -> triangle index, so a fully-painted patch sub-triangle (which comes back
-    // with the original mesh's own three vertex indices) can be mapped to its source triangle. Only
-    // the paint carry-forward needs it, and the live subdivide preview calls this on every slider
-    // frame, so it is not built for the region-only path.
-    std::map<std::array<int, 3>, int> tri_by_verts;
-    if (painted_tri)
-        for (size_t i = 0; i < ntri; ++i) {
-            std::array<int, 3> k{ its.indices[i][0], its.indices[i][1], its.indices[i][2] };
-            std::sort(k.begin(), k.end());
-            tri_by_verts.emplace(k, int(i));
-        }
+    // Twice the area of each source triangle, for the "is this one covered edge to edge" test below.
+    // Only the paint carry-forward needs it, and the live subdivide preview calls this on every
+    // slider frame, so it is not built for the region-only path.
+    const auto tri_area2 = [](const Vec3f &a, const Vec3f &b, const Vec3f &c) {
+        return (b - a).cross(c - a).norm();
+    };
+    std::vector<float> source_area2;
+    if (paint) {
+        source_area2.resize(ntri);
+        for (size_t i = 0; i < ntri; ++i)
+            source_area2[i] = tri_area2(its.vertices[size_t(its.indices[i][0])],
+                                        its.vertices[size_t(its.indices[i][1])],
+                                        its.vertices[size_t(its.indices[i][2])]);
+    }
 
     bool any_paint = false;
     for (int slot = 0; slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++slot) {
@@ -2743,27 +3010,114 @@ bool GLGizmoTextureDisplacement::collect_paint_region(
         // subdivide_mesh_adaptive() already grades the size change outward on its own.
         for (const TriangleSelector::TriangleBitStreamMapping &m : data.triangles_to_split)
             if (size_t(m.triangle_idx) < ntri)
-                region[m.triangle_idx] = 1;
+                region[m.triangle_idx] |= REFINE_PAINTED;
 
-        if (painted_tri) {
+        if (paint) {
             TriangleSelector sel(mv->mesh());
             sel.deserialize(data, false);
-            (*painted_tri)[slot].assign(ntri, 0);
-            for (const stl_triangle_vertex_indices &t : sel.get_facets_strict(EnforcerBlockerType::ENFORCER).indices) {
-                // A sub-triangle produced by a *partial* stroke always carries at least one appended
-                // (split) vertex, so "all three indices are original" is exactly the test for a whole,
-                // fully-painted triangle - the only kind whose paint can be inherited wholesale.
-                if (size_t(t[0]) >= nvert || size_t(t[1]) >= nvert || size_t(t[2]) >= nvert)
+            // get_facets_strict() now reports which source triangle each sub-triangle came from, which
+            // is what lets partial coverage be carried forward geometrically instead of being rounded
+            // away. Note a *fully* painted source can still come back as several sub-triangles (T-joint
+            // splits forced by a refined neighbour), so "wholly painted" is an area test, not a
+            // one-piece test.
+            std::vector<int>           src;
+            const indexed_triangle_set patch = sel.get_facets_strict(EnforcerBlockerType::ENFORCER, &src);
+
+            LayerPaintMap &pm = (*paint)[slot];
+            pm.full.assign(ntri, 0);
+            pm.part_start.assign(ntri + 1, 0);
+
+            std::vector<float> covered2(ntri, 0.f);
+            for (size_t j = 0; j < patch.indices.size() && j < src.size(); ++j) {
+                if (size_t(src[j]) >= ntri)
                     continue;
-                std::array<int, 3> k{ t[0], t[1], t[2] };
-                std::sort(k.begin(), k.end());
-                if (auto it = tri_by_verts.find(k); it != tri_by_verts.end())
-                    (*painted_tri)[slot][it->second] = 1;
+                const stl_triangle_vertex_indices &t = patch.indices[j];
+                covered2[size_t(src[j])] += tri_area2(patch.vertices[size_t(t[0])], patch.vertices[size_t(t[1])],
+                                                      patch.vertices[size_t(t[2])]);
+            }
+            for (size_t i = 0; i < ntri; ++i)
+                pm.full[i] = (source_area2[i] > 0.f && covered2[i] >= 0.999f * source_area2[i]) ? 1 : 0;
+
+            // Only partly covered sources need their pieces kept - a full one answers every query with
+            // "painted", and an untouched one with "not painted".
+            for (size_t j = 0; j < patch.indices.size() && j < src.size(); ++j)
+                if (size_t(src[j]) < ntri && !pm.full[size_t(src[j])])
+                    ++pm.part_start[size_t(src[j]) + 1];
+            for (size_t i = 0; i < ntri; ++i)
+                pm.part_start[i + 1] += pm.part_start[i];
+            pm.part.resize(size_t(pm.part_start[ntri]));
+            {
+                std::vector<int> fill(pm.part_start.begin(), pm.part_start.begin() + ntri);
+                for (size_t j = 0; j < patch.indices.size() && j < src.size(); ++j) {
+                    const size_t S = size_t(src[j]);
+                    if (S >= ntri || pm.full[S])
+                        continue;
+                    const stl_triangle_vertex_indices &t = patch.indices[j];
+                    pm.part[size_t(fill[S]++)] = { patch.vertices[size_t(t[0])], patch.vertices[size_t(t[1])],
+                                                   patch.vertices[size_t(t[2])] };
+                }
             }
         }
         any_paint = true;
     }
-    return any_paint;
+    if (!any_paint)
+        return false;
+
+    // The band straddling the paint's edge. The bake steps the surface from full displacement to zero
+    // across it, and nothing else in the refinement criteria can see that step: the chord-error
+    // sampler has no per-point paint test, so just outside the paint it keeps reporting the same
+    // smooth height field and reports no error at all. Left alone, the transition therefore stays at
+    // whatever density the input had - which is what makes the rim of an unpainted island a ring of
+    // big, steeply tilted triangles.
+    //
+    // Seeded from the vertices shared by a painted and an unpainted triangle (the actual edge of the
+    // paint) and grown outward over vertex adjacency, so the band covers both sides of the step.
+    if (BORDER_BAND_RINGS > 0) {
+        // Vertex -> incident triangles, CSR-style (counted, prefix-summed, filled). This runs on every
+        // frame of the subdivide preview's sliders, so it must not allocate a small vector per vertex.
+        std::vector<int> vstart(nvert + 1, 0);
+        for (size_t i = 0; i < ntri; ++i)
+            for (int k = 0; k < 3; ++k)
+                if (size_t(its.indices[i][k]) < nvert)
+                    ++vstart[size_t(its.indices[i][k]) + 1];
+        for (size_t v = 0; v < nvert; ++v)
+            vstart[v + 1] += vstart[v];
+        std::vector<int> vtri(size_t(vstart[nvert]), 0);
+        {
+            std::vector<int> fill(vstart.begin(), vstart.begin() + nvert);
+            for (size_t i = 0; i < ntri; ++i)
+                for (int k = 0; k < 3; ++k)
+                    if (size_t(its.indices[i][k]) < nvert)
+                        vtri[size_t(fill[size_t(its.indices[i][k])]++)] = int(i);
+        }
+
+        // A vertex used by both a painted and an unpainted triangle sits exactly on the paint's edge.
+        std::vector<uint8_t> ring_vertex(nvert, 0);
+        for (size_t v = 0; v < nvert; ++v) {
+            bool painted = false, unpainted = false;
+            for (int k = vstart[v]; k < vstart[v + 1]; ++k)
+                ((region[size_t(vtri[size_t(k)])] & REFINE_PAINTED) ? painted : unpainted) = true;
+            ring_vertex[v] = (painted && unpainted) ? 1 : 0;
+        }
+
+        for (int ring = 0; ring < BORDER_BAND_RINGS; ++ring) {
+            std::vector<uint8_t> next = ring_vertex;
+            for (size_t v = 0; v < nvert; ++v) {
+                if (!ring_vertex[v])
+                    continue;
+                for (int k = vstart[v]; k < vstart[v + 1]; ++k) {
+                    const size_t t = size_t(vtri[size_t(k)]);
+                    region[t] |= REFINE_BORDER;
+                    // Grow through this triangle's other corners, for the following ring.
+                    for (int c = 0; c < 3; ++c)
+                        if (size_t(its.indices[t][c]) < nvert)
+                            next[size_t(its.indices[t][c])] = 1;
+                }
+            }
+            ring_vertex.swap(next);
+        }
+    }
+    return true;
 }
 
 bool GLGizmoTextureDisplacement::plan_adaptive_subdivision(const ModelVolume &mv, SubdivisionPlan &out) const
@@ -2772,7 +3126,7 @@ bool GLGizmoTextureDisplacement::plan_adaptive_subdivision(const ModelVolume &mv
         return false;
 
     std::vector<uint8_t> region;
-    if (!collect_paint_region(region, &out.painted_tri))
+    if (!collect_paint_region(region, &out.paint))
         return false;
 
     // Feature-adaptive: sample the combined displacement so refinement follows texture curvature. A
@@ -2796,7 +3150,7 @@ bool GLGizmoTextureDisplacement::plan_adaptive_subdivision(const ModelVolume &mv
         // baseline - otherwise the control would be meaningless (or a dead end) on a dense model.
         out.refined = subdivide_mesh_adaptive(mv.mesh().its, region, m_subdivide_target_mm,
                                              int(mv.mesh().its.indices.size()) + m_subdivide_budget_k * 1000,
-                                             &out.source, sampler, tol, floor);
+                                             &out.source, sampler, tol, floor, m_subdivide_border_mm);
     }
     return out.refined.indices.size() != mv.mesh().its.indices.size();
 }
@@ -2811,15 +3165,33 @@ void GLGizmoTextureDisplacement::apply_adaptive_subdivision(ModelVolume &mv, Sub
     mv.calculate_convex_hull();
     mv.restore_painting(saved_painting); // resets extra facets (incl. texture-displacement) + remaps the rest
 
-    // Carry each layer's paint onto the new mesh: a new triangle is painted iff its source triangle
-    // was fully painted in that layer. Children inherit their parent's source, so this is exact.
+    // Carry each layer's paint onto the new mesh. Children inherit their parent's source triangle, and
+    // subdivision only ever adds edge midpoints, so every new triangle lies inside its source and on
+    // the same surface - which means the source's painted *pieces* can be queried directly by point
+    // containment. That is what keeps a brush outline smooth: rounding each source to wholly painted
+    // or not instead leaves a ragged fringe of isolated triangles along any curved boundary, and the
+    // refined mesh then reproduces that fringe exactly rather than hiding it.
+    const indexed_triangle_set &new_its = mv.mesh().its;
     for (int slot = 0; slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++slot) {
-        if (plan.painted_tri[size_t(slot)].empty())
+        const LayerPaintMap &pm = plan.paint[size_t(slot)];
+        if (pm.empty())
             continue;
         TriangleSelector sel(mv.mesh());
-        for (size_t i = 0; i < plan.source.size(); ++i)
-            if (plan.painted_tri[size_t(slot)][size_t(plan.source[i])])
+        for (size_t i = 0; i < plan.source.size() && i < new_its.indices.size(); ++i) {
+            const size_t S = size_t(plan.source[i]);
+            if (S >= pm.full.size())
+                continue;
+            bool painted = pm.full[S] != 0;
+            if (!painted && pm.part_start[S] != pm.part_start[S + 1]) {
+                const stl_triangle_vertex_indices &t = new_its.indices[i];
+                const Vec3f centroid = (new_its.vertices[size_t(t[0])] + new_its.vertices[size_t(t[1])] +
+                                        new_its.vertices[size_t(t[2])]) / 3.f;
+                for (int k = pm.part_start[S]; k < pm.part_start[S + 1] && !painted; ++k)
+                    painted = point_in_triangle_coplanar(centroid, pm.part[size_t(k)]);
+            }
+            if (painted)
                 sel.set_facet(int(i), EnforcerBlockerType::ENFORCER);
+        }
         mv.texture_displacement_facet(slot).set(sel);
     }
 }
@@ -3063,7 +3435,7 @@ void GLGizmoTextureDisplacement::rebuild_subdivide_preview()
         const float floor = m_subdivide_feature ? m_subdivide_min_edge_mm : 0.f;
         its = subdivide_mesh_adaptive(mv->mesh().its, region, m_subdivide_target_mm,
                                       int(mv->mesh().its.indices.size()) + m_subdivide_budget_k * 1000,
-                                      nullptr, sampler, tol, floor);
+                                      nullptr, sampler, tol, floor, m_subdivide_border_mm);
     } else {
         if (m_subdivide_count < 1)
             return;
@@ -3135,6 +3507,26 @@ GLTexture *GLGizmoTextureDisplacement::get_layer_thumbnail(const TextureDisplace
     return m_thumbnails[slot].get();
 }
 
+GLTexture *GLGizmoTextureDisplacement::get_layer_height_texture(const TextureDisplacementLayer &layer)
+{
+    if (layer.empty())
+        return nullptr;
+
+    // One slot, not one per layer: the bump shader only ever shades the *active* layer, so a single
+    // full-resolution upload is enough and the VRAM cost stays at one texture rather than eight.
+    if (m_height_tex && m_height_tex_source == layer.image_data.get() && m_height_tex_smoothing == layer.smoothing)
+        return m_height_tex.get();
+
+    std::unique_ptr<GLTexture> texture = upload_height_thumbnail(decode_height_texture(layer), HEIGHT_TEX_MAX_PX);
+    if (!texture)
+        return nullptr;
+
+    m_height_tex           = std::move(texture);
+    m_height_tex_source    = layer.image_data.get();
+    m_height_tex_smoothing = layer.smoothing;
+    return m_height_tex.get();
+}
+
 void GLGizmoTextureDisplacement::bake(bool own_snapshot)
 {
     ModelVolume *mv = texture_volume();
@@ -3177,6 +3569,10 @@ static constexpr float STD_REMESH_SHARP_DEG   = 40.f;
 static constexpr float STD_SUBDIV_MAX_EDGE_MM = 20.f;
 static constexpr float STD_SUBDIV_DETAIL_MM   = 0.02f;
 static constexpr float STD_SUBDIV_MIN_EDGE_MM = 0.02f;
+// Edge length the band straddling the paint's edge is refined to. This is the one number that decides
+// how clean the rim of an unpainted island looks: the bake steps the surface from full displacement to
+// zero across that band, and nothing else in the criteria can see the step (see collect_paint_region()).
+static constexpr float STD_SUBDIV_BORDER_MM   = 0.4f;
 
 bool GLGizmoTextureDisplacement::apply_standard_mode_presets(ModelVolume *mv)
 {
@@ -3197,6 +3593,7 @@ bool GLGizmoTextureDisplacement::apply_standard_mode_presets(ModelVolume *mv)
     pin(m_subdivide_target_mm, STD_SUBDIV_MAX_EDGE_MM);
     pin(m_subdivide_detail_mm, STD_SUBDIV_DETAIL_MM);
     pin(m_subdivide_min_edge_mm, STD_SUBDIV_MIN_EDGE_MM);
+    pin(m_subdivide_border_mm, STD_SUBDIV_BORDER_MM);
     // Deliberately *not* pinned: the triangle budget stays visible and editable in Standard mode, so
     // pinning it would fight the user's own slider every frame.
     pin(m_remesh_target_edge_mm, STD_REMESH_EDGE_MM);
@@ -3226,6 +3623,7 @@ void GLGizmoTextureDisplacement::bake_standard()
     const bool   do_remesh = plan_remesh(*mv, STD_REMESH_EDGE_MM, STD_REMESH_SHARP_DEG, remeshed);
 
     Plater *plater = wxGetApp().plater();
+    bool    paint_transfer_failed = false;
     {
         // ONE undo step for the whole pipeline. take_snapshot() records the state *before* the change,
         // so a single Undo goes all the way back to the untouched mesh - which is the only thing "undo
@@ -3241,17 +3639,19 @@ void GLGizmoTextureDisplacement::bake_standard()
 
         // The remesh carries the paint across spatially, but if that remap came back empty the rest of
         // the pipeline has nothing to work from - stop here rather than silently baking a flat mesh.
-        if (!mv->is_texture_displacement_painted()) {
-            show_error(nullptr, _u8L("The painted area could not be transferred onto the remeshed model. Undo, "
-                                     "then switch to Pro mode to prepare the mesh before painting."));
-            return;
-        }
+        // Note this cannot just `return`: the remesh above has already replaced the volume's mesh, so
+        // the scene and the gizmo's own TriangleSelectors still have to be brought back into step with
+        // it below. Returning from here left the gizmo painting and raycasting against a mesh that no
+        // longer existed.
+        paint_transfer_failed = !mv->is_texture_displacement_painted();
 
         // Planning the subdivision has to happen inside the snapshot because it reads the mesh the
         // remesh just produced. It is the expensive step, but by here we are committed anyway.
-        SubdivisionPlan plan;
-        if (plan_adaptive_subdivision(*mv, plan))
-            apply_adaptive_subdivision(*mv, std::move(plan));
+        if (!paint_transfer_failed) {
+            SubdivisionPlan plan;
+            if (plan_adaptive_subdivision(*mv, plan))
+                apply_adaptive_subdivision(*mv, std::move(plan));
+        }
     }
 
     if (ObjectList *obj_list = wxGetApp().obj_list()) {
@@ -3263,6 +3663,12 @@ void GLGizmoTextureDisplacement::bake_standard()
     plater->changed_object(*mo);
     update_from_model_object(false); // reload selectors against the prepared mesh + carried paint
     m_parent.set_as_dirty();
+
+    if (paint_transfer_failed) {
+        show_error(nullptr, _u8L("The painted area could not be transferred onto the remeshed model. Undo, "
+                                 "then switch to Pro mode to prepare the mesh before painting."));
+        return;
+    }
 
     // ... and finally the displacement itself, in the background exactly as the Pro-mode button does -
     // except that it commits into the snapshot taken above instead of pushing another one.
@@ -3526,6 +3932,12 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
             rebuild_uvcheck_mesh();
             if (m_use_bump_preview)
                 rebuild_bump_preview_mesh();
+            else
+                // The Fast view skips the CPU displacement entirely (see rebuild_preview()), so
+                // leaving it means m_preview_glmodel may be stale or absent - ask for it now.
+                queue_preview_job();
+            // ...and the paint tint between the base and the displaced surface, for the same reason.
+            m_paint_overlay_dirty = true;
             refresh_wireframe(); // Normal<->Fast swaps the wireframe between displaced and base mesh
             update_uv_editor(); // mirror the checker / distortion heatmap into the UV pane too (#7)
             m_parent.set_as_dirty();
@@ -4224,6 +4636,20 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
                                       "surface never becomes flat."),
                                   m_imgui->scaled(20.f));
         }
+
+        // Applies in both adaptive sub-modes: it is not a texture-detail criterion, it is about the
+        // step the bake puts at the paint's edge, which exists whether or not "Follow texture detail"
+        // is on. 0 turns the band off and restores the old behaviour.
+        if (m_imgui->slider_float(std::string(_u8L("Edge detail (mm)")) + "##subdivborder", &m_subdivide_border_mm,
+                                  0.f, 5.f, "%.3f"))
+            preview_live();
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("Triangle size along the boundary of the painted area. The relief drops back to the "
+                                  "flat surface across that boundary, and the triangles spanning the drop are what you "
+                                  "see as a jagged rim around an unpainted region - smaller values make the outline "
+                                  "cleaner. Costs triangles along the outline only, not over the whole area. "
+                                  "0 turns it off."),
+                              m_imgui->scaled(20.f));
 
         ImGui::PopItemWidth();
         budget_slider();

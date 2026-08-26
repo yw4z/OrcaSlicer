@@ -30,6 +30,9 @@ uniform sampler2D height_tex;
 uniform vec2      height_tex_texel;
 uniform float      depth_mm;
 uniform float      tiling_scale;
+// Height map width / height. Scales the v axis so a non-square image keeps its proportions
+// instead of being squeezed into a square tile - mirrors libslic3r's apply_uv_transform().
+uniform float      tex_aspect;
 uniform float      rotation_rad;
 uniform vec2       uv_offset;
 uniform bool       invert;
@@ -70,7 +73,10 @@ vec2 project_uv(vec3 p, vec3 n)
     planar *= (tiling_scale > 1e-6) ? (1.0 / tiling_scale) : 1.0;
     float cs = cos(rotation_rad);
     float sn = sin(rotation_rad);
-    return vec2(planar.x * cs - planar.y * sn, planar.x * sn + planar.y * cs) + uv_offset;
+    vec2 r = vec2(planar.x * cs - planar.y * sn, planar.x * sn + planar.y * cs);
+    // After the rotation, so the rotation stays a rotation rather than becoming a shear.
+    r.y *= tex_aspect;
+    return r + uv_offset;
 }
 
 void main()
@@ -156,7 +162,10 @@ void main()
 
         float cs = cos(rotation_rad);
         float sn = sin(rotation_rad);
-        vec2  slope = amplitude * vec2(dh_duv.x * cs + dh_duv.y * sn, -dh_duv.x * sn + dh_duv.y * cs);
+        // One uv unit is tiling_scale mm along u but tiling_scale / tex_aspect mm along v, so the v
+        // component of the gradient carries the extra factor before being rotated back into t/b.
+        vec2  g     = vec2(dh_duv.x, dh_duv.y * tex_aspect);
+        vec2  slope = amplitude * vec2(g.x * cs + g.y * sn, -g.x * sn + g.y * cs);
 
         vec3 gradient = slope.x * t + slope.y * b;
         gradient -= triangle_normal * dot(triangle_normal, gradient);
