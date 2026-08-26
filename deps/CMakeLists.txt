@@ -368,6 +368,7 @@ include(libnoise/libnoise.cmake)
 include(Draco/Draco.cmake)
 
 include(FFMPEG/FFMPEG.cmake)
+include(Assimp/Assimp.cmake)
 
 
 # I *think* 1.1 is used for *just* md5 hashing?
@@ -451,6 +452,7 @@ set(_dep_list
     dep_python3
     dep_wxInspector
     dep_FFMPEG
+    dep_Assimp
     )
 
 if (MSVC)
