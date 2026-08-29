@@ -3990,7 +3990,7 @@ void Sidebar::update_mixed_filament_list()
     // Show/dismiss 3D canvas notification for broken mixed filaments
     auto*       notify        = plater->get_notification_manager();
     GLCanvas3D* view3d_canvas = plater->get_view3D_canvas3D();
-    if(view3d_canvas->is_initialized() && notify){
+    if(view3d_canvas && view3d_canvas->is_initialized() && notify){
         if (has_mixed && !broken_set.empty()) {
             notify->push_notification(NotificationType::BBLMixedFilamentBroken,
                 NotificationManager::NotificationLevel::ErrorNotificationLevel,
