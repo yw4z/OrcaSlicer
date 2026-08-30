@@ -115,7 +115,10 @@ bool AVVideoDecoder::toWxImage(wxImage &image, wxSize const &size2)
     if (result_h != size.GetHeight()) {
         return false;
     }
-    image = wxImage(size.GetWidth(), size.GetHeight(), bits_.data(), true);
+    // Copy: the frame outlives this decoder and is painted by the GUI thread while the
+    // next sws_scale is already overwriting bits_, so it must own its pixels. The Windows
+    // path below needs no equivalent, wxBitmap copies the bits into GDI.
+    image = wxImage(size.GetWidth(), size.GetHeight(), bits_.data(), true).Copy();
     if (!image.IsOk()) {
         fprintf(stderr, "AVVideoDecoder: image not ok %dx%d\n", size.GetWidth(), size.GetHeight());
         return false;
