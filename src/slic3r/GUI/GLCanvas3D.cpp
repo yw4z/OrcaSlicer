@@ -9486,7 +9486,7 @@ void GLCanvas3D::_render_canvas_toolbar()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding  , ImVec2(4.f, 10.f) * sc);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing    , ImVec2(0.f, 8.f ) * sc);
 
-    if (ImGui::BeginPopup("CanvasToolbarMenu")) {
+    if (ImGui::BeginPopup("CanvasToolbarMenu", ImGuiWindowFlags_NoMove)) {
         ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
 
         Plater*    p   = wxGetApp().plater();
