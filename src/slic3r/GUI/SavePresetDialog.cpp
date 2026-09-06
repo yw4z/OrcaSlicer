@@ -114,7 +114,7 @@ SavePresetDialog::Item::Item(Preset::Type type, const std::string &suffix, wxBox
     if (parent->m_mode == comDevelop) {
         // A new user copy of a system preset inherits from the selected system preset.
         const std::string parent_name = sel_preset.is_system ? sel_preset.name : sel_preset.inherits();
-        const bool        can_detach  = !parent_name.empty();
+        const bool        has_parent  = !parent_name.empty();
 
         wxBoxSizer *detach_sizer = new wxBoxSizer(wxHORIZONTAL);
 
@@ -123,7 +123,7 @@ SavePresetDialog::Item::Item(Preset::Type type, const std::string &suffix, wxBox
         auto detach_checkbox = new ::CheckBox(parent);
         detach_checkbox->SetToolTip(detach_tooltip);
 
-        auto detach_label    = new wxStaticText(parent, wxID_ANY, can_detach ? _L("Detach from parent") : _L("Save without parent"));
+        auto detach_label    = new wxStaticText(parent, wxID_ANY, has_parent ? _L("Detach from parent") : _L("Save without parent"));
         detach_label->SetFont(::Label::Body_14);
         detach_label->SetForegroundColour(wxColour("#363636"));
         detach_label->SetToolTip(detach_tooltip);
@@ -133,11 +133,11 @@ SavePresetDialog::Item::Item(Preset::Type type, const std::string &suffix, wxBox
         sizer->Add(detach_sizer, 0, wxEXPAND | wxTOP, BORDER_W);
         sizer->AddSpacer(FromDIP(5));
 
-        const wxString parent_text = can_detach ? from_u8(parent_name) : _L("Unique preset");
+        const wxString parent_text = has_parent ? from_u8(parent_name) : _L("Unique preset");
         auto parent_label          = new wxStaticText(parent, wxID_ANY, parent_text);
         parent_label->SetFont(::Label::Body_12);
         parent_label->SetForegroundColour(wxColour("#6B6B6B"));
-        parent_label->SetToolTip(can_detach ? _L("Parent preset") : _L("This preset does not inherit from another preset."));
+        parent_label->SetToolTip(has_parent ? _L("Parent preset") : _L("This preset does not inherit from another preset."));
         sizer->Add(parent_label, 0, wxEXPAND | wxLEFT, BORDER_W + FromDIP(24));
 
         sizer->AddSpacer(FromDIP(5));
