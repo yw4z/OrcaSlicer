@@ -123,8 +123,9 @@ SavePresetDialog::Item::Item(Preset::Type type, const std::string &suffix, wxBox
         auto detach_checkbox = new ::CheckBox(parent);
         detach_checkbox->SetToolTip(detach_tooltip);
 
-        auto detach_label    = new wxStaticText(parent, wxID_ANY, _L("Detach from parent"));
+        auto detach_label    = new wxStaticText(parent, wxID_ANY, can_detach ? _L("Detach from parent") : _L("Save without parent"));
         detach_label->SetFont(::Label::Body_14);
+        detach_label->SetForegroundColour(wxColour("#363636"));
         detach_label->SetToolTip(detach_tooltip);
 
         detach_sizer->Add(detach_checkbox, 0, wxALIGN_LEFT | wxLEFT, BORDER_W);
@@ -141,30 +142,22 @@ SavePresetDialog::Item::Item(Preset::Type type, const std::string &suffix, wxBox
 
         sizer->AddSpacer(FromDIP(5));
 
-        if (!can_detach) {
-            detach_checkbox->Disable();
-            detach_label->SetForegroundColour(wxColour("#6B6B6B"));
-        } 
-        else {
-            // Set initial state (unchecked by default)
-            detach_checkbox->SetValue(m_detach);
-            // Bind the checkbox event to update the detach state for this item
-            detach_checkbox->Bind(wxEVT_TOGGLEBUTTON, [this, detach_checkbox](wxCommandEvent& event) {
-                m_detach = detach_checkbox->GetValue();
-                event.Skip(); // Let CheckBox update its bitmap for the new state.
-            });
+        // Set initial state (unchecked by default)
+        detach_checkbox->SetValue(m_detach);
+        // Bind the checkbox event to update the detach state for this item
+        detach_checkbox->Bind(wxEVT_TOGGLEBUTTON, [this, detach_checkbox](wxCommandEvent& event) {
+            m_detach = detach_checkbox->GetValue();
+            event.Skip(); // Let CheckBox update its bitmap for the new state.
+        });
 
-            detach_label->SetForegroundColour(wxColour("#363636"));
-
-            auto on_toggle = [detach_checkbox]() {
-                detach_checkbox->SetValue(!detach_checkbox->GetValue());
-                wxCommandEvent ev(wxEVT_TOGGLEBUTTON, detach_checkbox->GetId());
-                ev.SetEventObject(detach_checkbox);
-                detach_checkbox->GetEventHandler()->ProcessEvent(ev);
-            };
-            detach_label->Bind(wxEVT_LEFT_DOWN,   [on_toggle](wxMouseEvent& e) {if(!e.LeftDClick()) on_toggle();});
-            detach_label->Bind(wxEVT_LEFT_DCLICK, [on_toggle](wxMouseEvent& e) {on_toggle();});
-        }
+        auto on_toggle = [detach_checkbox]() {
+            detach_checkbox->SetValue(!detach_checkbox->GetValue());
+            wxCommandEvent ev(wxEVT_TOGGLEBUTTON, detach_checkbox->GetId());
+            ev.SetEventObject(detach_checkbox);
+            detach_checkbox->GetEventHandler()->ProcessEvent(ev);
+        };
+        detach_label->Bind(wxEVT_LEFT_DOWN,   [on_toggle](wxMouseEvent& e) {if(!e.LeftDClick()) on_toggle();});
+        detach_label->Bind(wxEVT_LEFT_DCLICK, [on_toggle](wxMouseEvent& e) {on_toggle();});
     }
     
     m_radio_group->Bind(wxEVT_COMMAND_RADIOBOX_SELECTED, [this](wxCommandEvent &e) {
