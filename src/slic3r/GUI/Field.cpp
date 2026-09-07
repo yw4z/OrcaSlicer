@@ -926,10 +926,11 @@ void TextCtrl::BUILD() {
     if (m_opt.is_code)
         temp->SetFont(Slic3r::GUI::wxGetApp().normal_font());
 
-
-    temp->SetForegroundColour(StateColor::darkModeColorFor(*wxBLACK));
-    if(m_opt.multiline)
+    if(m_opt.multiline){
+        temp->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#262E30"))); // only effects wxTextCtrl
         temp->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
+    }
+
 	wxGetApp().UpdateDarkUI(temp);
 
     if (! m_opt.multiline && !wxOSX)
