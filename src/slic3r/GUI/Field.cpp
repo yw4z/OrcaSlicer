@@ -928,6 +928,8 @@ void TextCtrl::BUILD() {
 
 
     temp->SetForegroundColour(StateColor::darkModeColorFor(*wxBLACK));
+    if(m_opt.multiline)
+        temp->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
 	wxGetApp().UpdateDarkUI(temp);
 
     if (! m_opt.multiline && !wxOSX)
