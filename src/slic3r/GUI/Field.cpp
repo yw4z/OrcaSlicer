@@ -2476,7 +2476,7 @@ nlohmann::json plugin_overrides_as_json(const std::string& text)
 
 void PluginConfigField::BUILD()
 {
-    m_button = new ::Button(m_parent, _L("Configure"));
+    m_button = new ::Button(m_parent, _L("Configure") + dots);
     // ButtonType::Parameter gives the button the same height as the parameter fields above it.
     m_button->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
 
@@ -2506,7 +2506,7 @@ void PluginConfigField::update_button_label()
     const nlohmann::json entries = plugin_overrides_as_json(m_json);
     const size_t         count   = entries.is_array() ? entries.size() : 0;
 
-    m_button->SetLabel(count == 0 ? _L("Configure")
+    m_button->SetLabel(count == 0 ? _L("Configure" + dots)
                                   : wxString::Format(_L("Configure (%d)"), int(count)));
 }
 
