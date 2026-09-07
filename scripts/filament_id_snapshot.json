@@ -1461,14 +1461,6 @@
    "filament_type": "PLA",
    "filament_vendor": "Volumic"
   },
-  "OFD8loeT": {
-   "filaments": [
-    "re3D/re3D rPETG"
-   ],
-   "name": "re3D rPETG",
-   "filament_type": "PETG",
-   "filament_vendor": "re3D"
-  },
   "OFD9taow": {
    "filaments": [
     "FlyingBear/FlyingBear PLA Hyper"
@@ -1577,14 +1569,6 @@
    "name": "Generic PLA",
    "filament_type": "PLA",
    "filament_vendor": "Generic"
-  },
-  "OFDdEaoL": {
-   "filaments": [
-    "re3D/re3D PLA"
-   ],
-   "name": "re3D PLA",
-   "filament_type": "PLA",
-   "filament_vendor": "re3D"
   },
   "OFDe8uyM": {
    "filaments": [
@@ -4049,14 +4033,6 @@
    "filament_type": "PLA",
    "filament_vendor": "FilAr"
   },
-  "OFX0etlv": {
-   "filaments": [
-    "re3D/re3D PETG"
-   ],
-   "name": "re3D PETG",
-   "filament_type": "PETG",
-   "filament_vendor": "re3D"
-  },
   "OFX0ycRQ": {
    "filaments": [
     "BBL/Fiberon PA12-CF",
@@ -6084,14 +6060,6 @@
    "filament_type": "PLA",
    "filament_vendor": "CoLiDo"
   },
-  "OFm8rqoY": {
-   "filaments": [
-    "re3D/re3D rPP"
-   ],
-   "name": "re3D rPP",
-   "filament_type": "PP",
-   "filament_vendor": "re3D"
-  },
   "OFmCOW2Y": {
    "filaments": [
     "re3D/re3D rPETG"
@@ -7386,14 +7354,6 @@
    "name": "Fiberon PA6-GF",
    "filament_type": "PA-GF",
    "filament_vendor": "Polymaker"
-  },
-  "OFwbsgWj": {
-   "filaments": [
-    "re3D/re3D PC"
-   ],
-   "name": "re3D PC",
-   "filament_type": "PC",
-   "filament_vendor": "re3D"
   },
   "OFwc74ck": {
    "filaments": [
