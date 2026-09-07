@@ -15,9 +15,9 @@ has to be hand-maintained. See docs/HLSD/filament_id.md.
 One row per BambuStudio filament PRODUCT: one named spool product = one
 "@base"-declared filament_id, shared by every per-printer/per-nozzle
 instantiation of it (BambuStudio follows the same one-product-one-id shape
-Orca's own filament_id policy does). A row's key reuses whatever OF id Orca
-already ships for that same (filament_vendor, filament_type, filament) triple;
-a triple Orca does not ship anywhere yet gets a freshly generated one.
+Orca's own filament_id policy does). A row's key is the OF id that product's
+(filament_vendor, filament_type, filament) triple mints — the id Orca carries
+for it wherever it ships it, since the id is a function of the triple alone.
 
 Map format:
 {
@@ -57,7 +57,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from orca_id_tool import (  # noqa: E402
     BAMBU_MAP_PATH,
     OFL,
-    OF_ID_RE,
     PROFILES_DIR,
     analyze_tree,
     base_name,
@@ -77,8 +76,8 @@ BAMBUSTUDIO_REPO = "https://github.com/bambulab/BambuStudio"
 # Row derivation
 # ---------------------------------------------------------------------------
 
-def derive_rows(bs_filaments, orca_triples):
-    """orca_triples: {(vendor, type, name): orca_id} from analyze_tree()["triples"]."""
+def derive_rows(bs_filaments):
+    """One row per BambuStudio product, keyed by the OF id its triple mints."""
     by_filament = {}                       # filament_name -> (bambu_id, triple)
     for rec in bs_filaments.values():
         if not rec["instantiation"]:
@@ -98,48 +97,9 @@ def derive_rows(bs_filaments, orca_triples):
             raise SystemExit(f"Bambu id {bambu_id} is shared by "
                              f"{seen[bambu_id]!r} and {filament_name!r}")
         seen[bambu_id] = filament_name
-        orca_id = orca_triples.get(triple) or generate_filament_id(*triple)   # reuse a salted id if we ship one
-        rows[orca_id] = {"bambu_id": bambu_id, "vendor": triple[0], "type": triple[1], "name": triple[2]}
+        rows[generate_filament_id(*triple)] = {
+            "bambu_id": bambu_id, "vendor": triple[0], "type": triple[1], "name": triple[2]}
     return rows
-
-
-def orca_triples_from_analysis(orca_analysis, needed_triples):
-    """{(vendor, type, name): orca_id}, inverted from analyze_tree()["triples"]
-    (id -> [[vendor, type, name], ...]) and restricted to `needed_triples`
-    (the triples BambuStudio's own bundle ships, i.e. the only ones derive_rows
-    will ever look up).
-
-    Kept to ids matching the OF format: our own BBL bundle still declares
-    Bambu's GF ids today (analyze_tree already excludes those as BBL-island
-    declarations), but filtering here too means a future triple shipped under
-    a non-OF scheme can never key a map row, which must always be keyed by
-    the OF id the BBL bundle receives once it is re-minted onto the OF space.
-
-    A needed triple owned by more than one OF id would make derive_rows's
-    reuse step a guess, so that is a hard error rather than a silent pick.
-    Restricting the scan to needed_triples matters for that check: elsewhere
-    in the tree one triple legitimately resolves two different ids on purpose
-    (e.g. Cubicon's xCeler line declares its own id per printer instead of
-    inheriting its root's, sanctioned in scripts/filament_id_snapshot.json)
-    and that pre-existing, Bambu-unrelated divergence must not block a map
-    that never reads it.
-    """
-    needed_triples = set(needed_triples)
-    result = {}
-    for fid, triple_list in orca_analysis["triples"].items():
-        if not OF_ID_RE.match(fid):
-            continue
-        for triple in triple_list:
-            triple = tuple(triple)
-            if triple not in needed_triples:
-                continue
-            owner = result.get(triple)
-            if owner and owner != fid:
-                raise SystemExit(
-                    f"Orca triple {triple} resolves to more than one filament_id: "
-                    f"{owner!r} and {fid!r}")
-            result[triple] = fid
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -269,16 +229,11 @@ def main(argv=None):
                 print_error(e)
             raise SystemExit("unreadable BambuStudio filament profile(s)")
 
-        orca_analysis = analyze_tree(PROFILES_DIR)
-        needed_triples = {resolve_triple(rec["name"], bs_filaments, {})
-                          for rec in bs_filaments.values() if rec["instantiation"]}
-        orca_triples = orca_triples_from_analysis(orca_analysis, needed_triples)
-
-        rows = derive_rows(bs_filaments, orca_triples)
+        rows = derive_rows(bs_filaments)
         write_map(args.output, rows, commit, datetime.date.today().isoformat())
         print_success(f"wrote {len(rows)} row(s) to {args.output} (BambuStudio @ {commit})")
 
-        for line in drift_report(rows, orca_analysis):
+        for line in drift_report(rows, analyze_tree(PROFILES_DIR)):
             print_info(line)
     finally:
         if workdir:

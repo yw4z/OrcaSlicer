@@ -129,7 +129,7 @@ key needed). Tuning a generic material → **join the OrcaFilamentLibrary filame
 | Color | never a new id |
 | Second diameter of the same product (1.75 + 2.85) | sibling filament, new id |
 | "High-speed" tuned for a *different printer model* | same id (it is a printer variant) |
-| "High-speed" selectable *alongside* the normal preset on one printer | new id (it is a product line) |
+| "High-speed" selectable *alongside* the normal preset on one printer | new name, so a new id (it is a product line) |
 
 ## Structure rules
 
@@ -149,7 +149,9 @@ key needed). Tuning a generic material → **join the OrcaFilamentLibrary filame
    are both the filament `MyBrand PLA`.
 3. **Within one filament, variants' `compatible_printers` are pairwise disjoint** — per printer,
    at most one compatible instantiated preset per id, or AMS matching turns ambiguous. The
-   C++ validator's `-f` check enforces this.
+   C++ validator's `-f` check enforces this, tree-wide in CI. Since one product carries one id
+   and cannot be split onto two, this rule is the *only* remedy for such an ambiguity: narrow
+   the `compatible_printers`, or retire the preset that duplicates another.
 4. **Generics belong to OrcaFilamentLibrary.** A vendor tuning a generic material inherits
    `Generic X @System`, keeps the `Generic X` base name (that alias is what hides the library
    preset on your printers, and it is what makes its triple — and so its id — the library's)
@@ -194,12 +196,17 @@ Snapmaker bundles alike; the OFL generic `Generic/PLA/Generic PLA` mints `OFDSrz
 by 35 bundles — most by independent declarations converging on the same mint, the rest
 purely through inheritance from the OFL preset.
 
-On the rare collision with an existing id, the minter salts the input (`…/1`,
-`…/2`, …) until free, and the result is frozen in the profile file. Salting is also used
-deliberately: a *salt split* keeps two presets of one product on distinct ids where a single
-id would be AMS-ambiguous on the same printer — the "selectable alongside" situation from the
-table above, resolved without inventing a second filament name. The tooling recognizes salt
-iterations of a triple as conformant and preserves such splits across re-mints.
+Nothing but the triple feeds the mint — not the rest of the tree, not the snapshot, not what
+another preset of the product happens to carry. Determined triple, determined id: one product
+carries one id and there is no second acceptable value for it, so any other value on a preset
+is a mismatch `--check` reports and `--generate` pulls back. Two *different* products whose
+triples mint the same base62 value would be a collision (a roughly 36-bit id space against a
+few thousand products); nothing salts past it: `--check` reports it naming both products,
+`--generate` refuses to write it, and the remedy is a rename so their triples differ. Where
+two presets of one product would be AMS-ambiguous on a printer, the fix is likewise in the
+profiles — make their `compatible_printers` disjoint (structure rule 3), retire the redundant
+preset, or, if they really are different products, give them different names so their triples
+differ. Never a second id for one triple.
 
 Workflow for a new filament:
 
@@ -217,10 +224,10 @@ python scripts/orca_extra_profile_check.py        # 6. ...and everything else CI
 `(filament_vendor, filament_type, filament name)` triple: it inserts one where an instantiated
 filament resolves none, and re-derives one that does not match. A preset that *inherits* a
 mismatching id is the one case left to the author — check 3b names it, and the fix is to inherit
-a preset of the same filament or to give the preset its own key. It converges on an id the same
-product already holds and salts only past ids *other* products hold, so an id already equal to a
-salt iteration of its own triple is left alone and deliberate salt splits survive. The same run
-assigns `generate_preset_setting_id(vendor, type, name)` to every instantiated filament, process
+a preset of the same filament or to give the preset its own key. A declaration is left alone
+exactly when it already equals the one id its triple mints, and a collision (check 3d) is
+reported and left unwritten. The same run assigns
+`generate_preset_setting_id(vendor, type, name)` to every instantiated filament, process
 and machine preset of every vendor except BBL, which keeps its authoritative `G*` ids, strips
 `setting_id` from base profiles, and fixes the misspelled `settings_id` key — dropped, or, for
 BBL, whose ids have no formula to fall back on, restored under the correct name. It is idempotent and
@@ -231,9 +238,9 @@ check CI runs over both id kinds, of which `--check` is the `filament_id` half.
 - `--filament-id` limits the run to `filament_id`.
 - `--setting-id` limits the run to `setting_id`. The two exclude each other; pass neither to
   write both.
-- `--vendor VENDOR` confines the run to that bundle; repeatable. The ids are still derived
-  tree-wide, so a narrowed run writes exactly what a full one would — and reports any duplicate
-  it was not allowed to clear, since only a run covering both bundles can.
+- `--vendor VENDOR` confines the run to that bundle; repeatable. The id is a function of the
+  triple alone, so a narrowed run writes exactly what a full one would; `--check` reports
+  whatever it left outside.
 - `--dry-run` reports what `--generate` would do and writes nothing; with no mode of its own it
   implies `--generate`, so `--dry-run --vendor <Vendor>` previews just that bundle.
 - `--profiles DIR` points the tooling at a different profile tree (default
@@ -309,10 +316,10 @@ one-to-one in both directions.
 it from **BambuStudio's own shipped BBL bundle** — a sparse shallow clone of upstream `master`,
 or `--bambustudio-dir <a BambuStudio resources/profiles checkout>`. Our BBL bundle is a fork of
 Bambu's, tuned and extended independently, so it is not the source of truth for Bambu's ids.
-A row's key is whatever id our tree already mints for that same
-`(filament_vendor, filament_type, filament name)` triple; a product we do not ship gets a freshly
-generated key and the row sits inert until some bundle claims that triple — `OFdyfQvU` /
-`GFG03`, "Bambu PETG Matte", is such a row today.
+A row's key is the id the product's `(filament_vendor, filament_type, filament name)` triple
+mints — the same id any bundle of ours carries for it, since the id is a function of the triple
+alone; the row of a product we do not ship sits inert until some bundle claims that triple —
+`OFdyfQvU` / `GFG03`, "Bambu PETG Matte", is such a row today.
 
 **Regenerate it in the same commit as every BBL profile sync**, and read the drift report it
 prints. Two lines, both informational, neither blocking the write:
@@ -437,11 +444,12 @@ The checks, in brief:
   its snapshot entry, both directions: any `filament_vendor`/`filament_type`/name change
   surfaces as a snapshot diff.
 - **Identity** — the id is a function of the triple alone. A declared `OF*` id must equal the
-  mint (or a low salt iteration) of its declarer's own triple; the id an instantiated preset
-  *inherits* must equal the mint of *its* own triple, however it inherits it (a root, a real
-  filament, a library preset — structure rule 1); and every instantiated system filament must
-  resolve an effective id at all (recall: an id-less one is a hard load error in C++ that
-  discards the whole vendor bundle). The errors print the expected id.
+  one id its declarer's own triple mints, with no second acceptable value; the id an
+  instantiated preset *inherits* must equal the mint of *its* own triple, however it inherits
+  it (a root, a real filament, a library preset — structure rule 1); and every instantiated
+  system filament must resolve an effective id at all (recall: an id-less one is a hard load
+  error in C++ that discards the whole vendor bundle); and no two products mint one id (a
+  base62 collision, resolved by renaming one of them). The errors print the expected id.
 - **Reserved namespaces** — `GF*`, `QD_*`, `P<7-hex>` or `"null"` claimed by any vendor,
   BBL and Qidi included.
 - **Triple integrity** — every declarer must resolve a non-empty `filament_vendor` and

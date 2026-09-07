@@ -141,13 +141,10 @@ class SettingTree:
         return changed, errors, buf.getvalue()
 
     def run_filament_ids(self, vendors=None, dry_run=False):
-        """The OTHER half of --generate, against this tree's own (absent)
-        snapshot, so the id policy never consults the repo's real one."""
+        """The OTHER half of --generate."""
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            changed, errors = afi.generate_filament_ids(
-                self.profiles, os.path.join(self.dir, "filament_id_snapshot.json"),
-                vendors, dry_run)
+            changed, errors = afi.generate_filament_ids(self.profiles, vendors, dry_run)
         return changed, errors, buf.getvalue()
 
 

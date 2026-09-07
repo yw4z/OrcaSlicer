@@ -24,8 +24,11 @@ filament_id policy (see docs/HLSD/filament_id.md):
         filament_id = "OF" + base62_6( uuid5(FILAMENT_ID_NAMESPACE,
             "filament_product/<filament_vendor>/<filament_type>/<filament_name>") )
     8 chars total, which satisfies the AMS length limit. Nobody invents ids by
-    hand; on the astronomically rare collision with another product's id the
-    input is salted ("/1", "/2", ...) until free and the result is frozen in file.
+    hand, and nothing but the triple feeds the mint — not the rest of the tree,
+    not the snapshot. Two products whose triples mint one id (a base62
+    collision; odds ~1e-5 over the whole tree) is an error --check reports and
+    --generate refuses to write; the remedy is a rename so the triples differ,
+    never a salted or hand-picked second id.
     Identity changes (a filament rename, a filament_vendor/filament_type fix)
     change the id BY DESIGN.
   * Reserved id spaces that are never minted into or altered:
@@ -120,8 +123,6 @@ USER_CUSTOM_ID_RE = re.compile(r"^P[0-9A-Fa-f]{7}$", re.IGNORECASE)
 # Filament name = preset base name: strip the first "@..." suffix. The space before
 # "@" is optional because names like "Afinia PLA@HS" exist.
 BASE_NAME_RE = re.compile(r"\s?@.*$")
-# Salt iterations accepted by the identity check (check 3).
-MAX_CHECK_SALT = 8
 # A JSON string literal, for the byte-preserving key edits.
 _JSON_STR = r'"(?:[^"\\]|\\.)*"'
 
@@ -190,41 +191,18 @@ def base_name(name):
     return BASE_NAME_RE.sub("", name, count=1)
 
 
-def generate_filament_id(filament_vendor, filament_type, filament_name, salt=0):
+def generate_filament_id(filament_vendor, filament_type, filament_name):
     """Deterministic "OF" + 6-char base62 filament_id for a filament product.
 
-    input = "filament_product/<filament_vendor>/<filament_type>/<filament_name>"
-    (+ "/<salt>" when salted); u = uuid5(FILAMENT_ID_NAMESPACE, input); the id
-    tail is the low FILAMENT_ID_LENGTH base62 digits of int(u.bytes, "big"),
-    most-significant first — the same derivation as generate_preset_setting_id.
+    The triple is the only input: no salt, no state, no second value.
+    input = "filament_product/<filament_vendor>/<filament_type>/<filament_name>";
+    u = uuid5(FILAMENT_ID_NAMESPACE, input); the id tail is the low
+    FILAMENT_ID_LENGTH base62 digits of int(u.bytes, "big"), most-significant
+    first — the same derivation as generate_preset_setting_id.
     """
     key = f"filament_product/{filament_vendor}/{filament_type}/{filament_name}"
-    if salt:
-        key = f"{key}/{salt}"
     u = uuid.uuid5(FILAMENT_ID_NAMESPACE, key)
     return "OF" + _base62_tail(int.from_bytes(u.bytes, "big"), FILAMENT_ID_LENGTH)
-
-
-def mint_filament_id(filament_vendor, filament_type, filament_name, taken):
-    """Mint the product's id: the first salt iteration not in `taken`.
-
-    Bounded by MAX_CHECK_SALT, the last iteration the identity check accepts, so
-    the tool can never write an id its own --check would reject. Exhausting it
-    would take nine base62 collisions on one triple; it means something is wrong
-    with `taken`, not that a tenth salt is needed.
-    """
-    for salt in range(MAX_CHECK_SALT + 1):
-        candidate = generate_filament_id(filament_vendor, filament_type, filament_name, salt)
-        if candidate not in taken:
-            return candidate
-    raise RuntimeError(
-        f"could not mint a free filament_id for {filament_vendor}/{filament_type}/"
-        f"{filament_name}: salts 0..{MAX_CHECK_SALT} are all taken")
-
-
-def mint_iterations(triple):
-    """The ids that count as the mint of `triple`: salt 0..MAX_CHECK_SALT."""
-    return {generate_filament_id(*triple, salt=s) for s in range(MAX_CHECK_SALT + 1)}
 
 
 # ---------------------------------------------------------------------------
@@ -439,12 +417,15 @@ def analyze_tree(profiles_dir):
     triples = {}                # fid -> set of triples of its declarers
     declarer_triples = []       # (vendor, rec, fid, triple) per declarer
     filament_triples = {}       # (vendor, filament_name) -> {triple: [declarers]}
+    mints = {}                  # minted id -> triples minting it (declarers + instantiated)
 
     for vendor, filaments in vendors.items():
         occurring = vendor_ids.setdefault(vendor, set())
         for rec in filaments.values():
             triple = resolve_triple(rec["name"], filaments, ofl_filaments)
             rec["triple"] = triple
+            if rec.get("filament_id") or rec["instantiation"]:
+                mints.setdefault(generate_filament_id(*triple), set()).add(triple)
             if rec.get("filament_id"):
                 fid = rec["filament_id"]
                 occurring.add(fid)
@@ -466,16 +447,6 @@ def analyze_tree(profiles_dir):
             if not rec.get("filament_id") and OF_ID_RE.match(eff):
                 inherited.append((vendor, rec, eff, triple))
 
-    # Identity (check 3b): an inherited id must be the mint of the preset's
-    # OWN triple. A declared id is held to the same rule as a declarer (3a),
-    # and an id whose declarer already fails 3a is reported there once, not
-    # again under every preset inheriting it.
-    unminted = {fid for _v, _r, fid, triple in declarer_triples
-                if OF_ID_RE.match(fid) and fid not in mint_iterations(triple)}
-    id_mismatches = [
-        (vendor, rec, eff, triple) for vendor, rec, eff, triple in inherited
-        if eff not in unminted and eff not in mint_iterations(triple)]
-
     # Cross-bundle triple divergence (check 5, warning only): the same filament
     # name declared in several bundles with different triples cannot converge
     # on one id until the divergence is fixed.
@@ -495,12 +466,13 @@ def analyze_tree(profiles_dir):
         "vendor_ids": vendor_ids,
         "declared_ids": declared_ids,
         "missing_effective": sorted(missing_effective),
-        "id_mismatches": id_mismatches,
+        "inherited": inherited,
         "triples": {fid: sorted(list(t) for t in ts) for fid, ts in triples.items()},
-        "triple_sets": triples,
         "declarer_triples": declarer_triples,
         "filament_triples": filament_triples,
         "cross_bundle_triples": cross_bundle_triples,
+        # id -> the products (triples) minting it, where there is more than one
+        "collisions": {fid: sorted(ts) for fid, ts in mints.items() if len(ts) > 1},
     }
 
 
@@ -580,12 +552,14 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
     2. Snapshot equality, both directions: every id in the tree, the filaments
        claiming it and the triple its declarers resolve must equal the snapshot
        entry exactly (the snapshot diff is the maintainer gate).
-    3. Identity: the id is a function of the triple alone. (a) A declared id
-       must equal the mint of the declarer's own triple or a salted iteration;
-       (b) the id an instantiated preset inherits must equal the mint of ITS
-       own triple — how it inherits it (a root, a real filament, an OFL
-       preset) is irrelevant; (c) every instantiated filament resolves an
-       effective id at all (an id-less one is a hard load error in C++).
+    3. Identity: the id is a function of the triple alone, and there is no
+       second acceptable value. (a) A declared id must equal the one id the
+       declarer's own triple mints; (b) the id an instantiated preset inherits
+       must equal the one ITS own triple mints — how it inherits it (a root, a
+       real filament, an OFL preset) is irrelevant; (c) every instantiated
+       filament resolves an effective id at all (an id-less one is a hard load
+       error in C++); (d) no two products mint one id (a base62 collision,
+       resolved by renaming one of them).
     4. Reserved namespaces (GF*/QD_*/P-hex/"null", all ownerless) must not be
        claimed by any vendor.
     5. Triple integrity: (a) every declarer resolves non-empty filament_vendor
@@ -664,22 +638,36 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
                 errors += 1
 
     # -- 3. identity: the id is a function of the triple alone ---------------
+    # One triple, one id: a declaration must carry exactly the mint of its
+    # triple, and there is no second acceptable value — not a salt, not a
+    # hand-picked one, not whatever another preset of the product carries. Two
+    # presets of one product that would be AMS-ambiguous on a printer are fixed
+    # in the profiles, by making their compatible_printers disjoint or by
+    # retiring the redundant one.
     for vendor, rec, fid, triple in sorted(
             analysis["declarer_triples"], key=lambda x: (x[0], x[1]["file"])):
-        if not OF_ID_RE.match(fid) or fid in mint_iterations(triple):
-            continue
+        want = generate_filament_id(*triple)
+        if not OF_ID_RE.match(fid) or fid == want:
+            continue  # a non-OF id is check 1's error
         print_error(
             f'filament_id "{fid}" declared by "{rec["name"]}" ({rec["file"]}) does '
             f'not match the mint of its triple "{"/".join(triple)}": expected '
-            f'"{generate_filament_id(*triple)}" (or a salted iteration); paste the '
-            f'expected id, or fix the triple and run "{GENERATE_CMD} --vendor {vendor}" '
-            f"(preview with --dry-run), then --update-snapshot")
+            f'"{want}"; paste the expected id, or fix the triple and run '
+            f'"{GENERATE_CMD} --vendor {vendor}" (preview with --dry-run), then '
+            f"--update-snapshot")
         errors += 1
+    # (3b) An inherited id is held to the same single value, and every preset
+    # missing it is listed — a variant under a wrong root as much as a preset
+    # riding another product's root. Nothing is folded into the declarer's
+    # error: the report names each preset whose id is wrong.
     for vendor, rec, eff, triple in sorted(
-            analysis["id_mismatches"], key=lambda x: (x[0], x[1]["file"])):
+            analysis["inherited"], key=lambda x: (x[0], x[1]["file"])):
+        want = generate_filament_id(*triple)
+        if eff == want:
+            continue
         print_error(
             f'preset "{rec["name"]}" ({rec["file"]}) inherits filament_id "{eff}" but '
-            f'its own triple "{"/".join(triple)}" mints "{generate_filament_id(*triple)}"; '
+            f'its own triple "{"/".join(triple)}" mints "{want}"; '
             f"a preset carries the id of its own product: inherit a preset of the "
             f"same filament, or declare its own key")
         errors += 1
@@ -691,7 +679,15 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
             f'instantiated filament "{name}" ({file}) resolves no filament_id anywhere '
             f"in its inherits chain — this is a hard load error in the C++ loader; "
             f'run "{GENERATE_CMD}" (expected id for filament '
-            f'"{vendor}/{base_name(name)}": "{expected}", salted if taken)')
+            f'"{vendor}/{base_name(name)}": "{expected}")')
+        errors += 1
+    # (3d) The mint is injective over the tree's products, or two of them are
+    # indistinguishable to every device that matches on the id.
+    for fid, ts in sorted(analysis["collisions"].items()):
+        print_error(
+            f'filament_id "{fid}" is the mint of {len(ts)} different products '
+            f'({"; ".join("/".join(t) for t in ts)}): a base62 collision; rename one '
+            f"of them so their triples differ")
         errors += 1
 
     # -- 4. reserved namespaces ----------------------------------------------
@@ -993,75 +989,36 @@ def rewrite_filament_id(path, old_id, new_id, dry_run=False):
 # --generate
 # ---------------------------------------------------------------------------
 
-def make_want_id(analysis, snapshot=None):
-    """Build the id policy: want_id(triple) -> the id that triple must carry.
-
-    A triple's id is its first mint iteration that no OTHER product holds. An id
-    is blocked when the tree or the snapshot records it under a triple set other
-    than exactly {triple}, or when this run already handed it to a different
-    triple. Same-triple reuse is therefore convergence — one product, one id in
-    every bundle — and salting only ever steps past another product's id.
-
-    Only a CONFORMANT record holds an id: a declaration whose value is not a mint
-    iteration of its own triple is transient — this run rewrites it — so it must
-    not block the product that legitimately mints the id it is squatting on. That
-    also makes the policy independent of which vendors a run writes, so a
-    --vendor-narrowed run picks the same ids as a full one.
-    """
-    holders = {}  # id -> the set of triples that legitimately hold it
-    for fid, ts in analysis["triple_sets"].items():
-        conformant = {t for t in ts if fid in mint_iterations(t)}
-        if conformant:
-            holders[fid] = conformant
-    for fid, entry in (snapshot or {}).get("ids", {}).items():
-        triple = tuple(snapshot_triple(entry))
-        if fid in mint_iterations(triple):
-            holders.setdefault(fid, set()).add(triple)
-
-    assigned = {}   # triple -> the id chosen for it this run
-    run_taken = {}  # id -> the triple this run gave it to
-
-    def want_id(triple):
-        if triple not in assigned:
-            blocked = {fid for fid, ts in holders.items() if ts != {triple}}
-            blocked |= {fid for fid, t in run_taken.items() if t != triple}
-            cand = mint_filament_id(*triple, taken=blocked)
-            assigned[triple] = cand
-            run_taken[cand] = triple
-        return assigned[triple]
-
-    return want_id
-
-
 def _incomplete_triple(triple):
     """The name(s) of the empty mint-key fields, or "" when both are present."""
     return " and ".join(k for k, v in (("filament_vendor", triple[0]),
                                        ("filament_type", triple[1])) if not v)
 
 
-def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
-                          vendors=None, dry_run=False, changed_paths=None):
+def generate_filament_ids(profiles_dir=PROFILES_DIR, vendors=None, dry_run=False,
+                          changed_paths=None):
     """Make every filament carry the id its own triple mints.
 
     One rule, applied to declarations and to id-less filaments alike:
-      * a declared id that is not a mint iteration of the declarer's own triple —
-        a wrong OF id, or a foreign one such as a Bambu "GF*" arriving with an
-        upstream sync — is replaced in place;
+      * a declared id that is not the one its own triple mints — a wrong OF id,
+        or a foreign one such as a Bambu "GF*" arriving with an upstream sync —
+        is replaced in place;
       * an instantiated filament that resolves no id at all gets one inserted
         into its root(s): the id-less presets of the SAME filament its members
         inherit, or the member itself (a parent of another filament cannot carry
         this filament's id — check 3).
-    An id already equal to ANY salt iteration of its own triple is conformant
-    (check 3) and left alone, so deliberate salt splits — distinct presets of one
-    product kept apart for per-printer AMS matching — survive.
+    A declaration is left alone exactly when it already equals the one id its
+    triple mints (check 3). Two products minting one id (check 3d) are reported
+    and left unwritten: nothing salts past a collision, a rename resolves it.
 
-    `vendors` restricts what is WRITTEN; the analysis and the id policy always
-    span the whole tree, so a narrowed run mints exactly what a full one would.
-    `changed_paths`, when a set is passed, collects the files that changed. A
-    file whose layout offers no anchor for the edit is reported and counted as an
-    error, so one odd profile cannot abort the pass over all the others.
-    Never touches the snapshot — run --update-snapshot afterwards and review the
-    diff. Returns (files_changed, errors).
+    `vendors` restricts what is WRITTEN; the id is a function of the triple
+    alone, so a narrowed run writes exactly what a full one would, and --check
+    reports whatever it was not allowed to touch. `changed_paths`, when a set is
+    passed, collects the files that changed. A file whose layout offers no
+    anchor for the edit is reported and counted as an error, so one odd profile
+    cannot abort the pass over all the others. Never reads or touches the
+    snapshot — run --update-snapshot afterwards and review the diff. Returns
+    (files_changed, errors).
     """
     _utf8_console()
     analysis = analyze_tree(profiles_dir)
@@ -1080,24 +1037,26 @@ def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH
                 print_error(f'unknown vendor "{v}" in {profiles_dir}')
             return 0, errors + len(unknown)
 
-    want_id = make_want_id(analysis, load_snapshot(snapshot_path))
+    colliding = set()  # triples no run may write an id for
+    for fid, ts in sorted(analysis["collisions"].items()):
+        print_error(
+            f'cannot write filament_id "{fid}": it is the mint of {len(ts)} different '
+            f'products ({"; ".join("/".join(t) for t in ts)}), a base62 collision; '
+            f"rename one of them so their triples differ")
+        errors += 1
+        colliding.update(ts)
+
     verb = "would " if dry_run else ""
     files_changed = 0
     reminted = 0
     inserted = 0
-    held_here = set()   # ids the filaments this run may write legitimately hold
-    left_standing = {}  # id -> files still declaring one non-conformantly
 
     # 1. Declarations that are not the mint of their own triple.
     for vendor, rec, fid, triple in sorted(
             analysis["declarer_triples"], key=lambda x: (x[0], x[1]["file"])):
-        in_scope = wanted is None or vendor in wanted
-        if fid in mint_iterations(triple):
-            if in_scope:
-                held_here.add(fid)
-            continue
-        if not in_scope:
-            left_standing.setdefault(fid, []).append(rec["file"])
+        want = generate_filament_id(*triple)
+        if (fid == want or (wanted is not None and vendor not in wanted)
+                or triple in colliding):
             continue
         missing = _incomplete_triple(triple)
         if missing:
@@ -1106,21 +1065,15 @@ def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH
                 f'{missing}; the mint key needs both (generic materials use '
                 f'filament_vendor "Generic")')
             errors += 1
-            left_standing.setdefault(fid, []).append(rec["file"])
-            continue
-        want = want_id(triple)
-        if fid == want:
             continue
         try:
             rewrite_filament_id(rec["path"], fid, want, dry_run)
         except (OSError, RuntimeError, ValueError) as e:
             print_error(str(e))
             errors += 1
-            left_standing.setdefault(fid, []).append(rec["file"])
             continue
         files_changed += 1
         reminted += 1
-        held_here.add(want)
         if changed_paths is not None:
             # Index sub_paths are "/"-joined even on Windows, where the
             # setting_id pass reaches the same file through os.walk: normalize
@@ -1166,6 +1119,8 @@ def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH
             errors += 1
             continue
         triple = (*next(iter(fields)), filament_name)
+        if triple in colliding:
+            continue  # reported above
         missing = _incomplete_triple(triple)
         if missing:
             print_error(
@@ -1174,7 +1129,7 @@ def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH
                 f'filament_vendor "Generic")')
             errors += 1
             continue
-        new_id = want_id(triple)
+        new_id = generate_filament_id(*triple)
         for name in sorted(roots):
             root = roots[name]
             try:
@@ -1185,23 +1140,10 @@ def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH
                 continue
             files_changed += 1
             inserted += 1
-            held_here.add(new_id)
             if changed_paths is not None:
                 changed_paths.add(os.path.normpath(root["path"]))
             print_info(f'{verb}insert filament "{vendor}/{filament_name}": filament_id '
                        f'"{new_id}" -> {root["file"]}')
-
-    # A declaration that is not the mint of its own triple holds no id, so it
-    # never blocks the product the id belongs to — that is what makes a narrowed
-    # run mint exactly what a full one would. When the run is not allowed to
-    # rewrite that declaration, though, it stays behind on an id just handed to
-    # its rightful owner, and only a run that covers both can clear it.
-    for fid in sorted(held_here & set(left_standing)):
-        print_error(
-            f'filament_id "{fid}" belongs to a filament this run covers but is also '
-            f'declared by {", ".join(sorted(left_standing[fid]))}, which it did not '
-            f'rewrite; run "{GENERATE_CMD}" over both to clear the duplicate')
-        errors += 1
 
     print_info(f"filament_ids inserted  : {inserted}")
     print_info(f"filament_ids re-minted : {reminted}")
@@ -1376,10 +1318,10 @@ def build_parser():
     narrow.add_argument("--setting-id", action="store_true",
                         help="write setting_id only, skipping filament_id")
     narrow.add_argument("--vendor", metavar="VENDOR", action="append", default=[],
-                        help="write only in this vendor bundle; repeatable. The ids are "
-                             "still derived tree-wide, so a narrowed run writes exactly "
-                             "what a full one would, and reports what it was not allowed "
-                             "to fix")
+                        help="write only in this vendor bundle; repeatable. The id is a "
+                             "function of the triple alone, so a narrowed run writes "
+                             "exactly what a full one would; --check reports whatever "
+                             "it left outside")
     parser.add_argument("--dry-run", "--dryrun", dest="dry_run", action="store_true",
                         help="report what would change and write nothing; with no mode of "
                              "its own it previews --generate")
@@ -1462,7 +1404,7 @@ def main(argv=None):
     filament_files = errors = 0
     if do_filament:
         filament_files, e = generate_filament_ids(
-            args.profiles, snapshot_path, vendors, args.dry_run, changed)
+            args.profiles, vendors, args.dry_run, changed)
         errors += e
     if do_setting:
         _n, e = generate_setting_ids(args.profiles, vendors, args.dry_run, changed)
