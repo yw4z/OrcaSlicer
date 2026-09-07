@@ -1915,11 +1915,6 @@ void ColorPickerPopup::paintEvent(wxPaintEvent& evt)
 
 void ColorPickerPopup::OnDismiss() {}
 
-void ColorPickerPopup::Popup()
-{
-    PopupWindow::Popup();
-}
-
 bool ColorPickerPopup::ProcessLeftDown(wxMouseEvent& event) {
     return PopupWindow::ProcessLeftDown(event);
 }
