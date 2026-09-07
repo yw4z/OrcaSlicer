@@ -899,14 +899,6 @@
    "filament_type": "PHA",
    "filament_vendor": "Generic"
   },
-  "OF79Fbo6": {
-   "filaments": [
-    "Cubicon/Cubicon PC"
-   ],
-   "name": "Cubicon PC",
-   "filament_type": "PC",
-   "filament_vendor": "Cubicon"
-  },
   "OF7H3VJM": {
    "filaments": [
     "OrcaFilamentLibrary/eSUN PLA-Marble"
@@ -996,14 +988,6 @@
    "name": "Flashforge TPU-64D",
    "filament_type": "TPU-64D",
    "filament_vendor": "Flashforge"
-  },
-  "OF8Hx3Pi": {
-   "filaments": [
-    "Cubicon/Cubicon PETG"
-   ],
-   "name": "Cubicon PETG",
-   "filament_type": "PETG",
-   "filament_vendor": "Cubicon"
   },
   "OF8Jl6NT": {
    "filaments": [
@@ -1476,14 +1460,6 @@
    "name": "Désactivé",
    "filament_type": "PLA",
    "filament_vendor": "Volumic"
-  },
-  "OFD21ije": {
-   "filaments": [
-    "Cubicon/Cubicon PA-CF"
-   ],
-   "name": "Cubicon PA-CF",
-   "filament_type": "PA",
-   "filament_vendor": "Cubicon"
   },
   "OFD8loeT": {
    "filaments": [
@@ -2950,14 +2926,6 @@
    "filament_type": "PLA",
    "filament_vendor": "addnorth"
   },
-  "OFN9fefN": {
-   "filaments": [
-    "Cubicon/Cubicon ABS-A100"
-   ],
-   "name": "Cubicon ABS-A100",
-   "filament_type": "ABS",
-   "filament_vendor": "Cubicon"
-  },
   "OFNBlAPT": {
    "filaments": [
     "OrcaArena/Arena PETG Basic"
@@ -3513,14 +3481,6 @@
    "name": "Volumic PVA-BVOH (Performance)",
    "filament_type": "PVA",
    "filament_vendor": "Volumic"
-  },
-  "OFRmGKVX": {
-   "filaments": [
-    "Cubicon/Cubicon PLA+"
-   ],
-   "name": "Cubicon PLA+",
-   "filament_type": "PLA",
-   "filament_vendor": "Cubicon"
   },
   "OFRooa0F": {
    "filaments": [
@@ -4623,14 +4583,6 @@
    "filament_type": "PC-CF",
    "filament_vendor": "Generic"
   },
-  "OFafocjw": {
-   "filaments": [
-    "Cubicon/Cubicon ABS"
-   ],
-   "name": "Cubicon ABS",
-   "filament_type": "ABS",
-   "filament_vendor": "Cubicon"
-  },
   "OFausr3F": {
    "filaments": [
     "OrcaFilamentLibrary/FilAr PLA-mate Rosa"
@@ -4870,14 +4822,6 @@
    "name": "Snapmaker PLA Wood",
    "filament_type": "PLA",
    "filament_vendor": "Snapmaker"
-  },
-  "OFdkWDiy": {
-   "filaments": [
-    "Cubicon/Cubicon PLAi21"
-   ],
-   "name": "Cubicon PLAi21",
-   "filament_type": "PLA",
-   "filament_vendor": "Cubicon"
   },
   "OFdqkWtz": {
    "filaments": [
@@ -5295,14 +5239,6 @@
    "name": "Volumic PC (Performance)",
    "filament_type": "PC",
    "filament_vendor": "Volumic"
-  },
-  "OFgVQkqW": {
-   "filaments": [
-    "Cubicon/Cubicon ABSk"
-   ],
-   "name": "Cubicon ABSk",
-   "filament_type": "ABS",
-   "filament_vendor": "Cubicon"
   },
   "OFgXgt98": {
    "filaments": [
@@ -5806,14 +5742,6 @@
    "name": "Panchroma PLA Metallic",
    "filament_type": "PLA",
    "filament_vendor": "Polymaker"
-  },
-  "OFjcwUEm": {
-   "filaments": [
-    "Cubicon/Cubicon PLA"
-   ],
-   "name": "Cubicon PLA",
-   "filament_type": "PLA",
-   "filament_vendor": "Cubicon"
   },
   "OFjiXpyf": {
    "filaments": [
