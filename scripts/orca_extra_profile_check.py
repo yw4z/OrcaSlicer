@@ -3,8 +3,7 @@ import json
 import argparse
 from pathlib import Path
 
-from assign_vendor_setting_ids import generate_preset_setting_id
-from assign_filament_ids import check_filament_ids
+from orca_id_tool import generate_preset_setting_id, check_filament_ids
 
 OBSOLETE_KEYS = {
     "acceleration", "scale", "rotate", "duplicate", "duplicate_grid",
@@ -488,10 +487,11 @@ PROFILE_SUBDIRS = ("filament", "process", "machine")
 
 def check_setting_id_uniqueness(profiles_dir):
     """
-    Validate setting_id across every vendor (see scripts/assign_vendor_setting_ids.py):
+    Validate setting_id across every vendor (see scripts/orca_id_tool.py):
       1. Every instantiated preset must HAVE a setting_id.            (all vendors)
       2. A stored setting_id must equal generate_preset_setting_id(vendor, type, name); a stale
-         value means the JSON was edited without rerunning assign_vendor_setting_ids.py.
+         value means the JSON was edited without rerunning
+         "python scripts/orca_id_tool.py --generate --setting-id".
          (all vendors EXCEPT the formula-exempt ones, e.g. BBL)
       3. Base profiles (instantiation != "true") must not carry a setting_id.  (all vendors)
       4. setting_id must be globally unique - no two files may share one.       (all vendors)
@@ -523,7 +523,8 @@ def check_setting_id_uniqueness(profiles_dir):
                     errors += 1
                     print_error(
                         f'profile {rel} uses the misspelled key "settings_id" '
-                        f'(should be "setting_id"); run assign_vendor_setting_ids.py'
+                        f'(should be "setting_id"); run '
+                        f'"python scripts/orca_id_tool.py --generate --setting-id"'
                     )
                 sid = data.get("setting_id")
                 instantiated = data.get("instantiation") == "true"
@@ -533,7 +534,8 @@ def check_setting_id_uniqueness(profiles_dir):
                         errors += 1
                         print_error(
                             f'base profile {rel} (instantiation != "true") must not have a '
-                            f'setting_id ("{sid}"); run assign_vendor_setting_ids.py'
+                            f'setting_id ("{sid}"); run '
+                            f'"python scripts/orca_id_tool.py --generate --setting-id"'
                         )
                     continue
                 # Rule 1: every instantiated preset must have a setting_id.
@@ -541,7 +543,7 @@ def check_setting_id_uniqueness(profiles_dir):
                     errors += 1
                     print_error(
                         f"instantiated preset {rel} is missing a setting_id; "
-                        f"run assign_vendor_setting_ids.py"
+                        f'run "python scripts/orca_id_tool.py --generate --setting-id"'
                     )
                     continue
                 # Rule 2: the stored id must match the deterministic rule. BBL keeps its
@@ -553,7 +555,7 @@ def check_setting_id_uniqueness(profiles_dir):
                         print_error(
                             f'setting_id "{sid}" in {rel} does not match the expected '
                             f'"{expected}" for {vendor}/{sub}/{data.get("name", "")}; '
-                            f"run assign_vendor_setting_ids.py"
+                            f'run "python scripts/orca_id_tool.py --generate --setting-id"'
                         )
                         continue
                 # Rule 4: collect for the global-uniqueness check below.
@@ -631,7 +633,7 @@ def main():
     # Runs once over the whole tree regardless of the --vendor filter.
     errors_found += check_setting_id_uniqueness(profiles_dir)
 
-    # Global filament_id check (see scripts/assign_filament_ids.py): effective ids
+    # Global filament_id check (see scripts/orca_id_tool.py): effective ids
     # are resolved loader-faithfully and validated against the sanctioned snapshot
     # (scripts/filament_id_snapshot.json). Runs once over the whole tree.
     errors_found += check_filament_ids(profiles_dir)

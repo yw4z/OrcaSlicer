@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Mint deterministic filament_id values for OrcaSlicer system filament products and
-validate the tree against the sanctioned-state snapshot.
+Assign and validate the deterministic ids of OrcaSlicer system profiles: the
+per-product filament_id and the per-preset setting_id.
 
-Policy (companion to assign_vendor_setting_ids.py; see docs/HLSD/filament_id.md):
+Both ids are pure functions of the thing they name, so nothing here is ever
+invented: the tool only writes the id the rules below already imply, and a tree
+that already satisfies them is left untouched.
+
+filament_id policy (see docs/HLSD/filament_id.md):
   * filament_id is a PRODUCT id: one named spool product = one id, shared by all
     of that product's per-printer/per-nozzle variants in every bundle. The
     granularity is the name on the spool, not the brand: "AAA PLA Lite" and
@@ -20,8 +24,8 @@ Policy (companion to assign_vendor_setting_ids.py; see docs/HLSD/filament_id.md)
         filament_id = "OF" + base62_6( uuid5(FILAMENT_ID_NAMESPACE,
             "filament_product/<filament_vendor>/<filament_type>/<filament_name>") )
     8 chars total, which satisfies the AMS length limit. Nobody invents ids by
-    hand; on the astronomically rare collision with an existing id the input
-    is salted ("/1", "/2", ...) until free and the result is frozen in file.
+    hand; on the astronomically rare collision with another product's id the
+    input is salted ("/1", "/2", ...) until free and the result is frozen in file.
     Identity changes (a filament rename, a filament_vendor/filament_type fix)
     change the id BY DESIGN.
   * Reserved id spaces that are never minted into or altered:
@@ -41,25 +45,34 @@ Policy (companion to assign_vendor_setting_ids.py; see docs/HLSD/filament_id.md)
     diff to that file (the maintainer gate). It sanctions state, never
     exceptions: no check consults it to excuse a preset from the rules above.
 
+setting_id policy (see AGENTS.md "Critical Constraints"):
+  * setting_id is a PRESET id, a pure function of the preset's identity:
+        setting_id = base62_16( uuid5(NAMESPACE, "<vendor>/<type>/<name>") )
+    The same value is recomputed on the fly by the C++ app
+    (Slic3r::generate_preset_setting_id); the two MUST stay byte-identical, and
+    the validator (orca_extra_profile_check.py) imports the rule from here.
+    Uniqueness is therefore automatic: two presets collide only if they share
+    vendor + type + name, which the validator flags.
+  * Only instantiated presets (instantiation == "true") carry a setting_id;
+    base / template profiles do not.
+  * Bambu (BBL) owns the authoritative "G*" setting_id space and is the only
+    reserved vendor: its setting_ids are never rewritten, which keeps
+    Bambu-synced presets backward compatible. filament_id has no such exemption
+    — the GF* catalog space is frozen and ownerless, so BBL's filament_ids are
+    minted like every other vendor's.
+
 The effective-id resolution below is loader-faithful (PresetBundle.cpp
 load_vendor_configs_from_json): own filament_id key, else walk `inherits` within
 the vendor map, with OrcaFilamentLibrary base-bundle fallback; once a chain enters
 OFL it stays in OFL; a vendor chain that dead-ends id-less retries its direct
 parent in the OFL map. filament_vendor / filament_type resolve the same way.
 
-Run from anywhere:  python3 scripts/assign_filament_ids.py
-  (default)          mint + insert ids for id-less filaments, mint + replace
-                     non-OF-format declarations; idempotent, never rewrites a
-                     valid OF-format id; a no-op once every filament has one
-  --mint "Vendor/Type/Filament"
-                     print the id that triple would mint; touches nothing
-  --update-snapshot  regenerate the snapshot from the tree
-  --remint VENDOR    re-derive VENDOR's declared ids from their triples and
-                     rewrite mismatches in place (repeatable)
-  --drop-redundant-ids VENDOR
-                     delete declarations that re-declare an inherited OFL id
-  --check            run the validation checks (also run by CI through
-                     orca_extra_profile_check.py); exit nonzero on errors
+Run from anywhere:
+  python scripts/orca_id_tool.py --generate         write the ids every profile should carry
+  python scripts/orca_id_tool.py --dry-run          preview that; writes nothing
+  python scripts/orca_id_tool.py --check            validate filament_id state (what CI runs)
+  python scripts/orca_id_tool.py --update-snapshot  re-record the sanctioned filament_id state
+Narrow --generate with --filament-id / --setting-id and --vendor VENDOR (repeatable).
 """
 
 import argparse
@@ -69,11 +82,15 @@ import re
 import sys
 import uuid
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from assign_vendor_setting_ids import ALPHABET, NAMESPACE  # noqa: E402
+# The id namespace baked into both Python and C++ (Slic3r::generate_preset_setting_id).
+# Dedicated, distinct from the cloud namespace (f47ac10b-...) so the two id spaces never
+# coincide; it is the root of BOTH id rules below — never change it.
+NAMESPACE = uuid.UUID("c1f4d9e2-7a3b-5c8d-9e0f-1a2b3c4d5e6f")
+ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+SETTING_ID_LENGTH = 16
 
-# Dedicated namespace for filament_id, derived from the setting_id namespace baked
-# into both Python and C++ (assign_vendor_setting_ids.NAMESPACE). Never change it.
+# Dedicated namespace for filament_id, derived from the setting_id namespace above.
+# Never change it.
 # FILAMENT_ID_NAMESPACE == UUID("c4d3ff49-4c32-5534-a3e3-00894157ab97")
 FILAMENT_ID_NAMESPACE = uuid.uuid5(NAMESPACE, "filament_id")
 FILAMENT_ID_LENGTH = 6  # base62 digits after the "OF" prefix -> 8 chars total
@@ -88,6 +105,14 @@ BAMBU_MAP_PATH = os.path.normpath(
 
 OFL = "OrcaFilamentLibrary"
 
+# Bambu (BBL) is the only vendor exempt from the setting_id rule: it keeps its
+# authoritative "G*" cloud ids. No vendor is exempt from the filament_id rule.
+RESERVED_VENDORS = {"BBL"}
+
+# The profile types that carry a setting_id; the subdir name is also the type
+# name, matching Preset::get_type_string() on the C++ side.
+PROFILE_SUBDIRS = ("filament", "process", "machine")
+
 OF_ID_RE = re.compile(r"^OF[0-9A-Za-z]{6}$")
 # User-custom id space minted by CreatePresetsDialog.cpp ("P" + md5(name)[0:7]);
 # reserved case-insensitively, together with its "null" sentinel.
@@ -97,8 +122,11 @@ USER_CUSTOM_ID_RE = re.compile(r"^P[0-9A-Fa-f]{7}$", re.IGNORECASE)
 BASE_NAME_RE = re.compile(r"\s?@.*$")
 # Salt iterations accepted by the identity check (check 3).
 MAX_CHECK_SALT = 8
+# A JSON string literal, for the byte-preserving key edits.
+_JSON_STR = r'"(?:[^"\\]|\\.)*"'
 
-UPDATE_HINT = 'run "python scripts/assign_filament_ids.py --update-snapshot" and commit the diff for maintainer review'
+GENERATE_CMD = "python scripts/orca_id_tool.py --generate"
+UPDATE_HINT = 'run "python scripts/orca_id_tool.py --update-snapshot" and commit the diff for maintainer review'
 BAMBU_MAP_HINT = 'regenerate the map with "python scripts/update_bambu_filament_ids.py" and commit the diff for maintainer review'
 
 
@@ -131,6 +159,32 @@ def _utf8_console():
 # Minting
 # ---------------------------------------------------------------------------
 
+def _base62_tail(n, length):
+    """The low `length` base62 digits of n, most-significant first.
+
+    The shared tail of both id rules. Its output bytes are pinned by the C++
+    golden vectors (tests/libslic3r/test_preset_setting_id.cpp) and by the
+    filament_id snapshot — never change it.
+    """
+    digits = []
+    for _ in range(length):
+        digits.append(ALPHABET[n % 62])
+        n //= 62
+    return "".join(reversed(digits))
+
+
+def generate_preset_setting_id(vendor, type_name, name):
+    """Deterministic 16-char base62 setting_id for a preset.
+
+    input = f"{vendor}/{type_name}/{name}"; u = uuid5(NAMESPACE, input);
+    id = the low SETTING_ID_LENGTH base62 digits of int(u.bytes, "big"),
+    most-significant first. Kept byte-identical to the C++
+    Slic3r::generate_preset_setting_id.
+    """
+    u = uuid.uuid5(NAMESPACE, f"{vendor}/{type_name}/{name}")
+    return _base62_tail(int.from_bytes(u.bytes, "big"), SETTING_ID_LENGTH)
+
+
 def base_name(name):
     """Filament name of a preset: name with the first "@..." suffix stripped."""
     return BASE_NAME_RE.sub("", name, count=1)
@@ -148,22 +202,24 @@ def generate_filament_id(filament_vendor, filament_type, filament_name, salt=0):
     if salt:
         key = f"{key}/{salt}"
     u = uuid.uuid5(FILAMENT_ID_NAMESPACE, key)
-    n = int.from_bytes(u.bytes, "big")
-    digits = []
-    for _ in range(FILAMENT_ID_LENGTH):
-        digits.append(ALPHABET[n % 62])
-        n //= 62
-    return "OF" + "".join(reversed(digits))
+    return "OF" + _base62_tail(int.from_bytes(u.bytes, "big"), FILAMENT_ID_LENGTH)
 
 
 def mint_filament_id(filament_vendor, filament_type, filament_name, taken):
-    """Mint the product's id, salting past any id in `taken`."""
-    for salt in range(10000):
+    """Mint the product's id: the first salt iteration not in `taken`.
+
+    Bounded by MAX_CHECK_SALT, the last iteration the identity check accepts, so
+    the tool can never write an id its own --check would reject. Exhausting it
+    would take nine base62 collisions on one triple; it means something is wrong
+    with `taken`, not that a tenth salt is needed.
+    """
+    for salt in range(MAX_CHECK_SALT + 1):
         candidate = generate_filament_id(filament_vendor, filament_type, filament_name, salt)
         if candidate not in taken:
             return candidate
     raise RuntimeError(
-        f"could not mint a free filament_id for {filament_vendor}/{filament_type}/{filament_name}")
+        f"could not mint a free filament_id for {filament_vendor}/{filament_type}/"
+        f"{filament_name}: salts 0..{MAX_CHECK_SALT} are all taken")
 
 
 def mint_iterations(triple):
@@ -192,6 +248,33 @@ def list_vendor_names(profiles_dir):
         if f.endswith(".json")
         and os.path.isdir(os.path.join(profiles_dir, os.path.splitext(f)[0]))
     )
+
+
+def list_profile_dirs(profiles_dir):
+    """Every vendor directory under the tree, index or not.
+
+    What the setting_id pass walks, and what orca_extra_profile_check.py walks:
+    setting_id is a per-file property, so a bundle whose index has not landed yet
+    must still be assignable — otherwise the validator flags files the tool
+    refuses to touch. (filament_id is driven by each bundle's filament_list
+    instead, hence list_vendor_names above.)
+    """
+    profiles_dir = str(profiles_dir)
+    return sorted(d for d in os.listdir(profiles_dir)
+                  if os.path.isdir(os.path.join(profiles_dir, d)))
+
+
+def iter_profile_files(vendor_dir):
+    """Yield (json path, type) under a vendor bundle, in a deterministic order."""
+    for sub in PROFILE_SUBDIRS:
+        base = os.path.join(vendor_dir, sub)
+        if not os.path.isdir(base):
+            continue
+        for root, dirs, files in os.walk(base):
+            dirs.sort()  # deterministic traversal across filesystems
+            for name in sorted(files):
+                if name.endswith(".json"):
+                    yield os.path.join(root, name), sub
 
 
 def load_vendor_filaments(profiles_dir, vendor):
@@ -230,7 +313,7 @@ def load_vendor_filaments(profiles_dir, vendor):
     return presets, errors
 
 
-def resolve_filament_id(name, filaments, ofl_filaments, seen=None, in_ofl=False, skip_own=False):
+def resolve_filament_id(name, filaments, ofl_filaments, seen=None, in_ofl=False):
     """Walk the inherits chain for the effective filament_id, loader-faithfully.
 
     Mirrors PresetBundle.cpp load_vendor_configs_from_json: a hop resolves in the
@@ -239,10 +322,6 @@ def resolve_filament_id(name, filaments, ofl_filaments, seen=None, in_ofl=False,
     (a vendor file sharing an OFL preset's name must not shadow OFL-internal
     hops). Additionally, a vendor preset that never resolves an id inside the
     vendor is re-tried against the OFL map keyed by its direct parent name.
-
-    skip_own ignores the first preset's own filament_id key (used to compute the
-    id its inherits chain would resolve WITHOUT the declaration — the
-    --drop-redundant-ids redundancy test).
 
     Returns (filament_id or None, source, ofl_entry) where source is one of
     "own"/"inherited"/"missing"/"dangling"/"cycle" and ofl_entry is the name of
@@ -263,7 +342,7 @@ def resolve_filament_id(name, filaments, ofl_filaments, seen=None, in_ofl=False,
             rec, in_ofl, entry = ofl_filaments[name], True, name
     if rec is None:
         return None, "dangling", None
-    if rec.get("filament_id") and not skip_own:
+    if rec.get("filament_id"):
         return rec["filament_id"], "own" if len(seen) == 1 else "inherited", entry
     parent = rec.get("inherits")
     if parent:
@@ -541,8 +620,7 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
                 continue
             print_error(
                 f'filament_id "{fid}" ({vendor}) is not a minted "OF" id; new '
-                f'filament ids must come from "python scripts/assign_filament_ids.py" '
-                f'(see --mint)')
+                f'filament ids must come from "{GENERATE_CMD}"')
             errors += 1
 
     # -- 2. snapshot equality (both directions) -----------------------------
@@ -594,7 +672,8 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
             f'filament_id "{fid}" declared by "{rec["name"]}" ({rec["file"]}) does '
             f'not match the mint of its triple "{"/".join(triple)}": expected '
             f'"{generate_filament_id(*triple)}" (or a salted iteration); paste the '
-            f"expected id, or fix the triple and --remint the vendor")
+            f'expected id, or fix the triple and run "{GENERATE_CMD} --vendor {vendor}" '
+            f"(preview with --dry-run), then --update-snapshot")
         errors += 1
     for vendor, rec, eff, triple in sorted(
             analysis["id_mismatches"], key=lambda x: (x[0], x[1]["file"])):
@@ -611,7 +690,7 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
         print_error(
             f'instantiated filament "{name}" ({file}) resolves no filament_id anywhere '
             f"in its inherits chain — this is a hard load error in the C++ loader; "
-            f'run "python scripts/assign_filament_ids.py" (expected id for filament '
+            f'run "{GENERATE_CMD}" (expected id for filament '
             f'"{vendor}/{base_name(name)}": "{expected}", salted if taken)')
         errors += 1
 
@@ -722,20 +801,24 @@ def check_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
 # --update-snapshot
 # ---------------------------------------------------------------------------
 
-def update_snapshot(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH):
+def update_snapshot(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH, dry_run=False):
     """Regenerate the snapshot from the tree.
 
-    Refuses to sanction a reserved-namespace id (or a claim on one) and an id
-    declared under more than one triple: neither can ever pass --check, so
-    writing it into the snapshot would only hide the mistake until CI.
+    Refuses to sanction a tree it could not read whole, a reserved-namespace id
+    (or a claim on one) and an id declared under more than one triple: none of
+    them can ever pass --check, so writing them into the snapshot would only
+    hide the mistake until CI.
     Idempotent: a second run over an unchanged tree changes nothing. Returns 0
     on success.
     """
     analysis = analyze_tree(profiles_dir)
+    # A tree that could not be read whole cannot be sanctioned: the snapshot
+    # would silently drop the unreadable bundle's ids and claims, and the diff
+    # would read as a deliberate removal.
+    refusals = len(analysis["read_errors"])
     for msg in analysis["read_errors"]:
         print_error(msg)
 
-    refusals = 0
     for vendor in sorted(analysis["vendor_ids"]):
         for fid in sorted(analysis["vendor_ids"][vendor]):
             is_reserved, owner = reserved_space_owner(fid)
@@ -769,13 +852,15 @@ def update_snapshot(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH):
         for fid, entry in old_ids.items())
     changed = new_snap != (old_snap or {"ids": {}})
 
-    if changed:
+    if changed and not dry_run:
         write_snapshot(snapshot_path, new_snap)
 
     print_info(f"snapshot ids      : {len(new_snap['ids'])} (+{len(added_ids)} / -{len(removed_ids)})")
     print_info(f"claims added      : {added_claims}")
     print_info(f"claims removed    : {removed_claims}")
-    if changed:
+    if changed and dry_run:
+        print_success(f"dry run: {snapshot_path} would be rewritten; nothing written")
+    elif changed:
         print_success(f"snapshot written to {snapshot_path}")
     else:
         print_success("snapshot already up to date; nothing changed")
@@ -785,61 +870,92 @@ def update_snapshot(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH):
 # ---------------------------------------------------------------------------
 # Byte-preserving profile edits
 # ---------------------------------------------------------------------------
+# Binary IO throughout: a profile keeps its original line endings (LF or CRLF),
+# its BOM and its exact formatting apart from the one line being touched.
+
+def insert_key_line(text, key, value, before=(), after=()):
+    """Insert a `"key": value` line into a preset that lacks one.
+
+    Placed just before the first `before` anchor the file has (matching the
+    canonical key order), else just after the first `after` anchor, reusing that
+    anchor line's indentation and line ending. Returns (text, insertions made).
+    """
+    def line(m):
+        return (f'{m.group(1)}"{key}": {json.dumps(value, ensure_ascii=False)},'
+                f'{m.group(2)}')
+
+    for anchors, at_start in ((before, True), (after, False)):
+        for anchor in anchors:
+            m = re.search(r'^([ \t]*)"' + re.escape(anchor) + r'"[ \t]*:.*?(\r?\n)',
+                          text, re.MULTILINE)
+            if m:
+                cut = m.start() if at_start else m.end()
+                return text[:cut] + line(m) + text[cut:], 1
+    return text, 0
+
+
+def replace_key_value(text, key, new_value, old_value=None):
+    """Swap the JSON string VALUE on the `"key"` line, byte-preserving the rest.
+
+    When old_value is given the line must carry exactly that value, so a stale
+    rewrite fails loudly instead of clobbering an unexpected id.
+    Returns (text, replacements made).
+    """
+    value = (re.escape(json.dumps(old_value, ensure_ascii=False))
+             if old_value is not None else _JSON_STR)
+    pattern = re.compile(
+        r'(^[ \t]*"' + re.escape(key) + r'"[ \t]*:[ \t]*)' + value, re.MULTILINE)
+    return pattern.subn(
+        lambda m: m.group(1) + json.dumps(new_value, ensure_ascii=False), text, count=1)
+
+
+def delete_key_line(text, key, old_value=None):
+    """Delete the `"key"` line, byte-preserving the rest.
+
+    Handles both the canonical layout (trailing comma) and a last-property
+    layout (comma on the preceding line, consumed so no dangling comma is left).
+    Returns (text, deletions made).
+    """
+    value = (re.escape(json.dumps(old_value, ensure_ascii=False))
+             if old_value is not None else _JSON_STR)
+    member = r'"' + re.escape(key) + r'"[ \t]*:[ \t]*' + value
+    m = re.search(r'^[ \t]*' + member + r'[ \t]*,[ \t]*\r?\n', text, re.MULTILINE)
+    if m:
+        return text[:m.start()] + text[m.end():], 1
+    m = re.search(r',[ \t]*\r?\n[ \t]*' + member + r'[ \t]*(?=\r?\n)', text)
+    if m:
+        return text[:m.start()] + text[m.end():], 1
+    return text, 0
+
 
 def insert_filament_id(text, new_id):
-    """Insert a `"filament_id"` line into a preset that lacks one.
-
-    Placed just before `instantiation` (or, failing that, after the `name` line)
-    so it matches the canonical key order, reusing that anchor line's indentation
-    and line ending. Same byte-preserving approach as assign_vendor_setting_ids.
-    """
-    m = re.search(r'^([ \t]*)"instantiation"[ \t]*:.*?(\r?\n)', text, re.MULTILINE)
-    if m:
-        line = f'{m.group(1)}"filament_id": {json.dumps(new_id, ensure_ascii=False)},{m.group(2)}'
-        return text[:m.start()] + line + text[m.start():], 1
-    m = re.search(r'^([ \t]*)"name"[ \t]*:.*?(\r?\n)', text, re.MULTILINE)
-    if m:
-        line = f'{m.group(1)}"filament_id": {json.dumps(new_id, ensure_ascii=False)},{m.group(2)}'
-        return text[:m.end()] + line + text[m.end():], 1
-    return text, 0
+    """Insert a `"filament_id"` line before `instantiation`, else after `name`."""
+    return insert_key_line(text, "filament_id", new_id,
+                           before=("instantiation",), after=("name",))
 
 
 def replace_filament_id_value(text, old_id, new_id):
-    """Swap the JSON string VALUE on the `"filament_id"` line, byte-preserving
-    everything else. Returns (text, replacements made).
+    """Swap the value on the `"filament_id"` line; it must carry old_id."""
+    return replace_key_value(text, "filament_id", new_id, old_value=old_id)
+
+
+def insert_setting_id(text, new_id):
+    """Insert a `"setting_id"` line before `filament_id`, else `instantiation`.
+
+    Falls back to `name` — the one key every preset has — so the anchor does not
+    depend on whether filament_id has been written yet: a dry run, which does not
+    write it, must reach the same verdict as the real run that does.
     """
-    pattern = re.compile(
-        r'(^[ \t]*"filament_id"[ \t]*:[ \t]*)'
-        + re.escape(json.dumps(old_id, ensure_ascii=False)),
-        re.MULTILINE)
-    return pattern.subn(
-        lambda m: m.group(1) + json.dumps(new_id, ensure_ascii=False), text, count=1)
+    return insert_key_line(text, "setting_id", new_id,
+                           before=("filament_id", "instantiation"), after=("name",))
 
 
-def delete_filament_id_line(text, old_id):
-    """Delete the `"filament_id"` line, byte-preserving the rest.
-
-    Handles both the canonical layout (trailing comma) and a last-property
-    layout (comma on the preceding line). Returns (text, deletions made).
-    """
-    val = re.escape(json.dumps(old_id, ensure_ascii=False))
-    m = re.search(r'^[ \t]*"filament_id"[ \t]*:[ \t]*' + val + r'[ \t]*,[ \t]*\r?\n',
-                  text, re.MULTILINE)
-    if m:
-        return text[:m.start()] + text[m.end():], 1
-    m = re.search(r',[ \t]*\r?\n[ \t]*"filament_id"[ \t]*:[ \t]*' + val + r'[ \t]*(?=\r?\n)',
-                  text)
-    if m:
-        return text[:m.start()] + text[m.end():], 1
-    return text, 0
-
-
-def _edit_profile(path, edit):
+def _edit_profile(path, edit, dry_run=False, what="edit"):
     """Apply `edit(text) -> (text, n)` to the profile at path, byte-preserving.
 
-    Binary IO keeps the file's original line endings (LF or CRLF), BOM and exact
-    formatting apart from the edit; the result is re-parsed and returned so the
-    caller can verify the outcome. Raises when the edit found no anchor.
+    The result is re-parsed and returned so the caller can verify the outcome —
+    in a dry run too, where only the write itself is skipped. Raises when the
+    edit found no anchor or produced invalid JSON.
     """
     with open(path, "rb") as f:
         raw = f.read()
@@ -847,69 +963,177 @@ def _edit_profile(path, edit):
     text = raw.decode("utf-8-sig")
     text, n = edit(text)
     if n == 0:
-        raise RuntimeError(f"could not apply filament_id edit to {path}")
-    data = json.loads(text)  # fail loudly if the edit broke the JSON
-    with open(path, "wb") as f:
-        f.write((b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8"))
+        raise RuntimeError(f"could not apply {what} to {path}")
+    try:
+        data = json.loads(text)  # fail loudly if the edit broke the JSON
+    except ValueError as e:
+        raise RuntimeError(f"{what} broke the JSON in {path}: {e}") from None
+    if not dry_run:
+        with open(path, "wb") as f:
+            f.write((b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8"))
     return data
 
 
-def write_filament_id(path, new_id):
+def write_filament_id(path, new_id, dry_run=False):
     """Insert new_id into the profile at path, byte-preserving everything else."""
-    _edit_profile(path, lambda text: insert_filament_id(text, new_id))
+    _edit_profile(path, lambda text: insert_filament_id(text, new_id),
+                  dry_run, "filament_id insert")
 
 
-def rewrite_filament_id(path, old_id, new_id):
+def rewrite_filament_id(path, old_id, new_id, dry_run=False):
     """Replace the filament_id value old_id -> new_id; re-parses to verify."""
-    data = _edit_profile(path, lambda text: replace_filament_id_value(text, old_id, new_id))
+    data = _edit_profile(path, lambda text: replace_filament_id_value(text, old_id, new_id),
+                         dry_run, "filament_id rewrite")
     if data.get("filament_id") != new_id:
         raise RuntimeError(f'rewrite of filament_id "{old_id}" -> "{new_id}" in {path} '
                            f"did not take effect")
 
 
-def remove_filament_id(path, old_id):
-    """Delete the filament_id declaration line; re-parses to verify."""
-    data = _edit_profile(path, lambda text: delete_filament_id_line(text, old_id))
-    if "filament_id" in data:
-        raise RuntimeError(f'deletion of filament_id "{old_id}" from {path} did not take effect')
-
-
 # ---------------------------------------------------------------------------
-# Default run: mint + insert ids for id-less filaments
+# --generate
 # ---------------------------------------------------------------------------
 
-def assign_missing_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH):
-    """Mint + insert ids for id-less filaments; mint + replace non-OF-format
-    declarations. Never rewrites a valid (OF-format) existing id.
+def make_want_id(analysis, snapshot=None):
+    """Build the id policy: want_id(triple) -> the id that triple must carry.
 
-    A filament = (vendor, base name) group over instantiated presets with no
-    effective id. The minted id is a pure function of the filament's triple —
-    (filament_vendor, filament_type) resolved on the root(s), filament name —
-    and is inserted into the filament's root(s): the id-less presets of the
-    SAME filament its members inherit, or the member itself otherwise (a parent
-    of another filament cannot carry this filament's id — check 3).
+    A triple's id is its first mint iteration that no OTHER product holds. An id
+    is blocked when the tree or the snapshot records it under a triple set other
+    than exactly {triple}, or when this run already handed it to a different
+    triple. Same-triple reuse is therefore convergence — one product, one id in
+    every bundle — and salting only ever steps past another product's id.
 
-    A declaration whose value is not OF-format (e.g. a vendor bundle synced
-    from an upstream source that ships its own catalog ids, such as BBL's GF*)
-    is treated the same as a missing filament: a fresh id is minted for the
-    declarer's triple and the value is replaced in place (declarers that share
-    one triple across several per-printer roots converge on the same id, same
-    as the multi-root filaments above). This is what makes a future BBL sync
-    self-healing: upstream files arrive with GF ids, this pass replaces them,
-    and the generated Bambu catalog map (keyed by the ids this mints) already
-    knows the resulting rows.
-
-    Returns (files_changed, errors).
+    Only a CONFORMANT record holds an id: a declaration whose value is not a mint
+    iteration of its own triple is transient — this run rewrites it — so it must
+    not block the product that legitimately mints the id it is squatting on. That
+    also makes the policy independent of which vendors a run writes, so a
+    --vendor-narrowed run picks the same ids as a full one.
     """
+    holders = {}  # id -> the set of triples that legitimately hold it
+    for fid, ts in analysis["triple_sets"].items():
+        conformant = {t for t in ts if fid in mint_iterations(t)}
+        if conformant:
+            holders[fid] = conformant
+    for fid, entry in (snapshot or {}).get("ids", {}).items():
+        triple = tuple(snapshot_triple(entry))
+        if fid in mint_iterations(triple):
+            holders.setdefault(fid, set()).add(triple)
+
+    assigned = {}   # triple -> the id chosen for it this run
+    run_taken = {}  # id -> the triple this run gave it to
+
+    def want_id(triple):
+        if triple not in assigned:
+            blocked = {fid for fid, ts in holders.items() if ts != {triple}}
+            blocked |= {fid for fid, t in run_taken.items() if t != triple}
+            cand = mint_filament_id(*triple, taken=blocked)
+            assigned[triple] = cand
+            run_taken[cand] = triple
+        return assigned[triple]
+
+    return want_id
+
+
+def _incomplete_triple(triple):
+    """The name(s) of the empty mint-key fields, or "" when both are present."""
+    return " and ".join(k for k, v in (("filament_vendor", triple[0]),
+                                       ("filament_type", triple[1])) if not v)
+
+
+def generate_filament_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH,
+                          vendors=None, dry_run=False, changed_paths=None):
+    """Make every filament carry the id its own triple mints.
+
+    One rule, applied to declarations and to id-less filaments alike:
+      * a declared id that is not a mint iteration of the declarer's own triple —
+        a wrong OF id, or a foreign one such as a Bambu "GF*" arriving with an
+        upstream sync — is replaced in place;
+      * an instantiated filament that resolves no id at all gets one inserted
+        into its root(s): the id-less presets of the SAME filament its members
+        inherit, or the member itself (a parent of another filament cannot carry
+        this filament's id — check 3).
+    An id already equal to ANY salt iteration of its own triple is conformant
+    (check 3) and left alone, so deliberate salt splits — distinct presets of one
+    product kept apart for per-printer AMS matching — survive.
+
+    `vendors` restricts what is WRITTEN; the analysis and the id policy always
+    span the whole tree, so a narrowed run mints exactly what a full one would.
+    `changed_paths`, when a set is passed, collects the files that changed. A
+    file whose layout offers no anchor for the edit is reported and counted as an
+    error, so one odd profile cannot abort the pass over all the others.
+    Never touches the snapshot — run --update-snapshot afterwards and review the
+    diff. Returns (files_changed, errors).
+    """
+    _utf8_console()
     analysis = analyze_tree(profiles_dir)
     errors = 0
     for msg in analysis["read_errors"]:
         print_error(msg)
         errors += 1
+    wanted = None
+    if vendors is not None:
+        wanted = set(vendors)
+        # A vendor directory without a bundle index simply has no filaments to
+        # process; only a name that is no directory at all is an error.
+        unknown = sorted(wanted - set(list_profile_dirs(profiles_dir)))
+        if unknown:
+            for v in unknown:
+                print_error(f'unknown vendor "{v}" in {profiles_dir}')
+            return 0, errors + len(unknown)
 
-    # Group id-less instantiated presets by filament.
-    filaments = {}  # (vendor, filament_name) -> [rec]
+    want_id = make_want_id(analysis, load_snapshot(snapshot_path))
+    verb = "would " if dry_run else ""
+    files_changed = 0
+    reminted = 0
+    inserted = 0
+    held_here = set()   # ids the filaments this run may write legitimately hold
+    left_standing = {}  # id -> files still declaring one non-conformantly
+
+    # 1. Declarations that are not the mint of their own triple.
+    for vendor, rec, fid, triple in sorted(
+            analysis["declarer_triples"], key=lambda x: (x[0], x[1]["file"])):
+        in_scope = wanted is None or vendor in wanted
+        if fid in mint_iterations(triple):
+            if in_scope:
+                held_here.add(fid)
+            continue
+        if not in_scope:
+            left_standing.setdefault(fid, []).append(rec["file"])
+            continue
+        missing = _incomplete_triple(triple)
+        if missing:
+            print_error(
+                f'cannot re-mint "{rec["file"]}" (filament_id "{fid}"): resolves empty '
+                f'{missing}; the mint key needs both (generic materials use '
+                f'filament_vendor "Generic")')
+            errors += 1
+            left_standing.setdefault(fid, []).append(rec["file"])
+            continue
+        want = want_id(triple)
+        if fid == want:
+            continue
+        try:
+            rewrite_filament_id(rec["path"], fid, want, dry_run)
+        except (OSError, RuntimeError, ValueError) as e:
+            print_error(str(e))
+            errors += 1
+            left_standing.setdefault(fid, []).append(rec["file"])
+            continue
+        files_changed += 1
+        reminted += 1
+        held_here.add(want)
+        if changed_paths is not None:
+            # Index sub_paths are "/"-joined even on Windows, where the
+            # setting_id pass reaches the same file through os.walk: normalize
+            # or one file touched by both passes counts as two.
+            changed_paths.add(os.path.normpath(rec["path"]))
+        print_info(f'{verb}rewrite {rec["file"]}: "{fid}" -> "{want}" '
+                   f'(triple "{"/".join(triple)}")')
+
+    # 2. Instantiated filaments that resolve no id at all, grouped by filament.
+    filaments = {}  # (vendor, filament name) -> [rec]
     for vendor, name, _file in analysis["missing_effective"]:
+        if wanted is not None and vendor not in wanted:
+            continue
         rec = analysis["vendors"][vendor][name]
         if rec["id_source"] in ("cycle", "dangling"):
             print_error(f'cannot mint for "{vendor}/{name}": broken inherits chain '
@@ -918,50 +1142,22 @@ def assign_missing_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH):
             continue
         filaments.setdefault((vendor, base_name(name)), []).append(rec)
 
-    # Declarations whose value is not OF-format: treated as missing too (see
-    # docstring). Grouped by triple, not by (vendor, filament), so declarers
-    # that legitimately share one triple across several files converge on one
-    # freshly minted id instead of each getting their own.
-    non_of_declarers = [
-        (vendor, rec, fid, triple) for vendor, rec, fid, triple in analysis["declarer_triples"]
-        if not OF_ID_RE.match(fid)]
-
-    if not filaments and not non_of_declarers:
-        print_success("every instantiated filament already resolves an OF-format "
-                      "filament_id; nothing to do (0 files changed)")
-        return 0, errors
-
-    # Ids already spoken for: the whole tree (declared or effective) + snapshot.
-    snapshot = load_snapshot(snapshot_path) or {"ids": {}}
-    taken = set(snapshot["ids"])
-    for occurring in analysis["vendor_ids"].values():
-        taken |= occurring
-
-    # Root preset(s): the direct vendor-side parents of the members (id-less by
-    # construction) that belong to the same filament, or the member itself.
-    roots = {}  # (vendor, filament_name) -> {preset name: rec}
-    for key, members in sorted(filaments.items()):
-        vendor, filament_name = key
+    ofl_map = analysis["vendors"].get(OFL, {})
+    for (vendor, filament_name), members in sorted(filaments.items()):
         vendor_map = analysis["vendors"][vendor]
-        filament_roots = {}
+        # Root preset(s): the direct vendor-side parents of the members (id-less
+        # by construction) that belong to the same filament, or the member itself.
+        roots = {}
         for rec in members:
             parent = rec.get("inherits")
             root = vendor_map.get(parent) if parent else None
             if (root is None or root.get("filament_id")
                     or base_name(root["name"]) != filament_name):
                 root = rec  # root-less member carries the id itself
-            filament_roots[root["name"]] = root
-        roots[key] = filament_roots
-
-    ofl_map = analysis["vendors"].get(OFL, {})
-    files_changed = 0
-    filaments_minted = 0
-    for key, filament_roots in sorted(roots.items()):
-        vendor, filament_name = key
-        vendor_map = analysis["vendors"][vendor]
+            roots[root["name"]] = root
         fields = {(resolve_filament_field(n, "filament_vendor", vendor_map, ofl_map),
                    resolve_filament_field(n, "filament_type", vendor_map, ofl_map))
-                  for n in filament_roots}
+                  for n in roots}
         if len(fields) > 1:
             print_error(
                 f'cannot mint for filament "{vendor}/{filament_name}": its roots resolve '
@@ -969,252 +1165,321 @@ def assign_missing_ids(profiles_dir=PROFILES_DIR, snapshot_path=SNAPSHOT_PATH):
                 f"align the fields first")
             errors += 1
             continue
-        fvendor, ftype = next(iter(fields))
-        if not fvendor or not ftype:
-            missing = " and ".join(
-                k for k, v in (("filament_vendor", fvendor),
-                               ("filament_type", ftype)) if not v)
+        triple = (*next(iter(fields)), filament_name)
+        missing = _incomplete_triple(triple)
+        if missing:
             print_error(
                 f'cannot mint for filament "{vendor}/{filament_name}": it resolves empty '
                 f'{missing}; the mint key needs both (generic materials use '
                 f'filament_vendor "Generic")')
             errors += 1
             continue
-        new_id = mint_filament_id(fvendor, ftype, filament_name, taken)
-        taken.add(new_id)
-        filaments_minted += 1
-        for name in sorted(filament_roots):
-            root = filament_roots[name]
-            write_filament_id(root["path"], new_id)
+        new_id = want_id(triple)
+        for name in sorted(roots):
+            root = roots[name]
+            try:
+                write_filament_id(root["path"], new_id, dry_run)
+            except (OSError, RuntimeError, ValueError) as e:
+                print_error(str(e))
+                errors += 1
+                continue
             files_changed += 1
-            print_info(f'filament "{vendor}/{filament_name}": filament_id "{new_id}" '
-                       f'-> {root["file"]}')
+            inserted += 1
+            held_here.add(new_id)
+            if changed_paths is not None:
+                changed_paths.add(os.path.normpath(root["path"]))
+            print_info(f'{verb}insert filament "{vendor}/{filament_name}": filament_id '
+                       f'"{new_id}" -> {root["file"]}')
 
-    # Non-OF-format declarations: mint once per triple, rewrite every declarer
-    # that shares it (see docstring).
-    declarations_reminted = 0
-    assigned = {}  # triple -> id chosen this run
-    for vendor, rec, fid, triple in sorted(non_of_declarers, key=lambda x: (x[0], x[1]["file"])):
-        fvendor, ftype, filament_name = triple
-        if not fvendor or not ftype:
-            missing = " and ".join(
-                k for k, v in (("filament_vendor", fvendor),
-                               ("filament_type", ftype)) if not v)
-            print_error(
-                f'cannot re-mint "{rec["file"]}" (non-OF filament_id "{fid}"): resolves '
-                f'empty {missing}; the mint key needs both (generic materials use '
-                f'filament_vendor "Generic")')
-            errors += 1
-            continue
-        if triple not in assigned:
-            assigned[triple] = mint_filament_id(fvendor, ftype, filament_name, taken)
-            taken.add(assigned[triple])
-        new_id = assigned[triple]
-        rewrite_filament_id(rec["path"], fid, new_id)
-        files_changed += 1
-        declarations_reminted += 1
-        print_info(f'filament "{vendor}/{filament_name}": non-OF filament_id "{fid}" '
-                   f'-> "{new_id}" ({rec["file"]})')
+    # A declaration that is not the mint of its own triple holds no id, so it
+    # never blocks the product the id belongs to — that is what makes a narrowed
+    # run mint exactly what a full one would. When the run is not allowed to
+    # rewrite that declaration, though, it stays behind on an id just handed to
+    # its rightful owner, and only a run that covers both can clear it.
+    for fid in sorted(held_here & set(left_standing)):
+        print_error(
+            f'filament_id "{fid}" belongs to a filament this run covers but is also '
+            f'declared by {", ".join(sorted(left_standing[fid]))}, which it did not '
+            f'rewrite; run "{GENERATE_CMD}" over both to clear the duplicate')
+        errors += 1
 
-    print_info(f"filaments minted : {filaments_minted}")
-    print_info(f"non-OF reminted  : {declarations_reminted}")
-    print_info(f"files changed    : {files_changed}")
-    if files_changed:
-        print_warning(f"now {UPDATE_HINT}")
+    print_info(f"filament_ids inserted  : {inserted}")
+    print_info(f"filament_ids re-minted : {reminted}")
     return files_changed, errors
 
 
-# ---------------------------------------------------------------------------
-# --remint / --drop-redundant-ids (v3.1/v3.2 migration modes)
-# ---------------------------------------------------------------------------
+def generate_setting_ids(profiles_dir=PROFILES_DIR, vendors=None, dry_run=False,
+                         changed_paths=None):
+    """Make every preset carry the setting_id its identity mints.
 
-def remint_vendors(vendor_list, profiles_dir=PROFILES_DIR):
-    """Re-derive every declared id in the given vendors from its triple;
-    rewrite mismatching declarations in place (byte-preserving). Never touches
-    the snapshot — run --update-snapshot afterwards and review the diff.
-    Accepts BBL like any other vendor: the GF* catalog is reserved and
-    ownerless, so BBL's own declarations mint OF ids the same as everyone
-    else's.
-
-    A declaration already equal to ANY salt iteration of its own triple is
-    mint-conformant (check 3) and left alone — deliberate salt splits (distinct
-    presets of one product kept apart for per-printer AMS matching) survive.
-    A candidate id is blocked when it occurs in the tree with any triple set
-    other than exactly {T}. Equal-triple reuse
-    is convergence: the same product must end up under the same id everywhere.
-    Returns (rewritten, errors).
+    One walk over filament/, process/ and machine/ of every vendor bundle, and
+    one composite edit per file: drop the misspelled "settings_id" key (the app
+    never reads it), strip setting_id from base profiles (only instantiated
+    presets carry one), and set generate_preset_setting_id(vendor, type, name) on
+    instantiated presets — except BBL's, which keep their authoritative "G*"
+    cloud ids. `changed_paths`, when a set is passed, collects the files that
+    changed. Returns (files_changed, errors).
     """
     _utf8_console()
-    analysis = analyze_tree(profiles_dir)
+    profiles_dir = str(profiles_dir)
     errors = 0
-    for msg in analysis["read_errors"]:
-        print_error(msg)
-        errors += 1
-    unknown = sorted(set(vendor_list) - set(analysis["vendors"]))
-    if unknown:
-        for v in unknown:
-            print_error(f"--remint: unknown vendor {v!r}")
-        return 0, errors + len(unknown)
+    names = list_profile_dirs(profiles_dir)
+    if vendors is not None:
+        wanted = set(vendors)
+        unknown = sorted(wanted - set(names))
+        if unknown:
+            for v in unknown:
+                print_error(f'unknown vendor "{v}" in {profiles_dir}')
+            return 0, len(unknown)
+        names = [v for v in names if v in wanted]
+        for v in sorted(wanted & RESERVED_VENDORS):
+            print_info(f'{v} keeps its authoritative "G*" setting_ids; only its base '
+                       f"declarations are stripped")
 
-    occurring = set()
-    for vids in analysis["vendor_ids"].values():
-        occurring |= vids
-    triple_sets = analysis["triple_sets"]
-
-    assigned = {}       # triple -> id chosen this run (all declarers converge)
-    run_taken = {}      # id -> triple (a run-local mint may not collide either)
-
-    def want_id(triple):
-        if triple in assigned:
-            return assigned[triple]
-        for salt in range(10000):
-            cand = generate_filament_id(*triple, salt=salt)
-            if cand in occurring and triple_sets.get(cand, set()) != {triple}:
+    verb = "would " if dry_run else ""
+    files_changed = 0
+    counts = {"typos": 0, "stripped": 0, "assigned": 0}
+    for vendor in names:
+        for path, type_name in iter_profile_files(os.path.join(profiles_dir, vendor)):
+            try:
+                with open(path, "rb") as f:
+                    data = json.loads(f.read().decode("utf-8-sig"))
+                if not isinstance(data, dict):
+                    raise ValueError("top level is not a JSON object")
+            except (OSError, ValueError) as e:
+                print_error(f"unreadable profile {path}: {e}")
+                errors += 1
                 continue
-            if run_taken.get(cand, triple) != triple:
+
+            sid = data.get("setting_id")
+            # Strictly "true", exactly as orca_extra_profile_check.py tests it:
+            # a preset the validator calls a base profile must not be given an id
+            # here, or the two would fight over it forever.
+            instantiated = data.get("instantiation") == "true"
+            edits = []  # (counter key, description, edit function)
+            if "settings_id" in data:
+                edits.append(("typos", 'drop the misspelled "settings_id"',
+                              lambda text: delete_key_line(text, "settings_id")))
+                typo = data["settings_id"]
+                if (vendor in RESERVED_VENDORS and instantiated and sid is None
+                        and isinstance(typo, str) and typo):
+                    # A reserved vendor's ids are authoritative, so there is no
+                    # formula to fall back on: correct the key and keep the
+                    # value, or the drop would leave an instantiated preset with
+                    # no setting_id and nothing able to give it one.
+                    edits.append(("assigned", 'restore its value as "setting_id"',
+                                  lambda text, new=typo: insert_setting_id(text, new)))
+            if not instantiated:
+                if sid is not None:
+                    edits.append(("stripped", "strip the base profile's setting_id",
+                                  lambda text, old=sid: delete_key_line(
+                                      text, "setting_id", old)))
+            elif vendor not in RESERVED_VENDORS:
+                name = data.get("name")
+                if not name:
+                    # Report and carry on: an edit already queued for this file
+                    # (a misspelled key) is still worth applying.
+                    print_error(f'instantiated preset has no "name": {path}')
+                    errors += 1
+                else:
+                    new_id = generate_preset_setting_id(vendor, type_name, name)
+                    if sid is None:
+                        edits.append(("assigned", "insert the setting_id",
+                                      lambda text, new=new_id: insert_setting_id(text, new)))
+                    elif sid != new_id:
+                        edits.append(("assigned", "replace the setting_id",
+                                      lambda text, new=new_id, old=sid: replace_key_value(
+                                          text, "setting_id", new, old)))
+            if not edits:
                 continue
-            assigned[triple] = cand
-            run_taken[cand] = triple
-            return cand
-        raise RuntimeError(f"could not mint a free filament_id for triple {triple}")
 
-    scanned = 0
-    rewritten = 0
-    for vendor in sorted(set(vendor_list)):
-        recs = sorted(
-            (rec for rec in analysis["vendors"][vendor].values() if rec.get("filament_id")),
-            key=lambda r: r["file"])
-        for rec in recs:
-            fid = rec["filament_id"]
-            scanned += 1
-            # Any salt iteration of the declarer's own triple is already
-            # mint-conformant (check 3) — leave it. This keeps deliberate salt
-            # splits (two presets of one product that must stay distinct for
-            # per-printer AMS matching, validator -f) stable across re-mints.
-            if fid in mint_iterations(rec["triple"]):
+            def apply(text, _edits=edits, _path=path):
+                for _key, what, edit in _edits:
+                    text, n = edit(text)
+                    if n == 0:
+                        raise RuntimeError(f"could not {what} in {_path}")
+                return text, len(_edits)
+
+            try:
+                _edit_profile(path, apply, dry_run)
+            except (OSError, RuntimeError, ValueError) as e:
+                print_error(str(e))
+                errors += 1
                 continue
-            want = want_id(rec["triple"])
-            if fid == want:
-                continue
-            rewrite_filament_id(rec["path"], fid, want)
-            rewritten += 1
-            print_info(f'{rec["file"]}: "{fid}" -> "{want}" '
-                       f'(triple "{"/".join(rec["triple"])}")')
-    print_info(f"declarations scanned : {scanned}")
-    print_info(f"declarations reminted: {rewritten}")
-    if rewritten:
-        print_warning(f"now {UPDATE_HINT}")
-    return rewritten, errors
+            files_changed += 1
+            if changed_paths is not None:
+                changed_paths.add(os.path.normpath(path))
+            for key, _what, _edit in edits:
+                counts[key] += 1
+            rel = os.path.relpath(path, profiles_dir).replace(os.sep, "/")
+            print_info(f"{verb}update {rel}: "
+                       f"{', '.join(what for _key, what, _edit in edits)}")
 
-
-def drop_redundant_ids(vendor, profiles_dir=PROFILES_DIR):
-    """Delete filament_id declarations in `vendor` that merely re-declare an OFL
-    filament's id path: ignoring its own key, the preset's inherits chain enters
-    OFL and resolves an OFL-declared id, and the preset keeps the OFL filament's
-    base name. Such a preset is a specialization and rides the OFL id (v3.2(b)).
-    Never touches the snapshot. Returns (dropped, errors).
-    """
-    _utf8_console()
-    analysis = analyze_tree(profiles_dir)
-    errors = 0
-    for msg in analysis["read_errors"]:
-        print_error(msg)
-        errors += 1
-    if vendor == "BBL":
-        print_error("--drop-redundant-ids BBL is forbidden (the GF* catalog is frozen)")
-        return 0, errors + 1
-    if vendor not in analysis["vendors"]:
-        print_error(f"--drop-redundant-ids: unknown vendor {vendor!r}")
-        return 0, errors + 1
-
-    vendor_map = analysis["vendors"][vendor]
-    ofl_map = analysis["vendors"].get(OFL, {})
-    ofl_declared = {r["filament_id"] for r in ofl_map.values() if r.get("filament_id")}
-    dropped = 0
-    for rec in sorted(vendor_map.values(), key=lambda r: r["file"]):
-        fid = rec.get("filament_id")
-        if not fid or not rec.get("inherits"):
-            continue
-        resolved, _src, entry = resolve_filament_id(
-            rec["name"], vendor_map, ofl_map, skip_own=True)
-        if not (entry and resolved and resolved in ofl_declared):
-            continue
-        if base_name(rec["name"]) != base_name(entry):
-            continue
-        remove_filament_id(rec["path"], fid)
-        dropped += 1
-        print_info(f'{rec["file"]}: dropped filament_id "{fid}" '
-                   f'(rides OFL "{entry}", id "{resolved}")')
-    print_info(f"declarations dropped : {dropped}")
-    if dropped:
-        print_warning(f"now {UPDATE_HINT}")
-    return dropped, errors
+    print_info(f'misspelled "settings_id" dropped : {counts["typos"]}')
+    print_info(f'base setting_ids stripped        : {counts["stripped"]}')
+    print_info(f'setting_ids assigned             : {counts["assigned"]}')
+    return files_changed, errors
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
-def main(argv=None):
-    _utf8_console()
+EXAMPLES = """\
+examples:
+  orca_id_tool.py --generate
+      give every profile the id its identity mints, in every vendor bundle
+  orca_id_tool.py --dry-run
+      preview exactly that; writes nothing
+  orca_id_tool.py --generate --setting-id
+      setting_id only (filament, process and machine presets)
+  orca_id_tool.py --generate --filament-id --vendor Creality --vendor Elegoo
+      filament_id only, and only in those two bundles
+  orca_id_tool.py --check
+      validate filament_id state against the snapshot (the filament_id half
+      of scripts/orca_extra_profile_check.py, which is what CI runs)
+  orca_id_tool.py --update-snapshot
+      re-record the sanctioned filament_id state after a --generate run
+
+a maintenance round:
+  --dry-run  ->  --generate  ->  --update-snapshot  ->  --check  ->  commit the diff
+"""
+
+
+def build_parser():
     parser = argparse.ArgumentParser(
-        description="Mint deterministic filament_id values for id-less filaments "
-                    "and validate the tree against the sanctioned snapshot.")
-    parser.add_argument("--mint", metavar='"Vendor/Type/Filament"',
-                        help="print the id the (filament_vendor, filament_type, "
-                             "filament name) triple would mint; touches nothing")
-    parser.add_argument("--update-snapshot", action="store_true",
-                        help="regenerate scripts/filament_id_snapshot.json from "
-                             "the tree")
-    parser.add_argument("--check", action="store_true",
-                        help="run the filament_id checks; exit nonzero on errors")
-    parser.add_argument("--remint", metavar="VENDOR", action="append",
-                        help="re-derive VENDOR's declared filament_ids from their "
-                             "triples and rewrite mismatches in place; repeatable")
-    parser.add_argument("--drop-redundant-ids", metavar="VENDOR",
-                        help="delete filament_id declarations in VENDOR that "
-                             "re-declare the OFL filament id they already resolve "
-                             "through inherits")
+        prog="orca_id_tool.py", allow_abbrev=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Assign and validate the deterministic ids of OrcaSlicer system\n"
+                    "profiles: the per-product filament_id and the per-preset setting_id.\n"
+                    "\n"
+                    "Both are pure functions of the profile's own identity, so this tool\n"
+                    "never invents an id: it writes the one the rules already imply, and\n"
+                    "leaves a conforming tree alone.",
+        epilog=EXAMPLES)
+    modes = parser.add_argument_group("modes (pick one; no mode prints this help)")
+    modes.add_argument("--generate", action="store_true",
+                       help="write the id every profile should carry: filament_id from "
+                            "each filament's (filament_vendor, filament_type, name) "
+                            "triple, setting_id from each preset's (vendor, type, name). "
+                            "Idempotent and byte-preserving")
+    modes.add_argument("--check", action="store_true",
+                       help="validate filament_id state against "
+                            "scripts/filament_id_snapshot.json; exit nonzero on errors")
+    modes.add_argument("--update-snapshot", action="store_true",
+                       help="re-record the sanctioned filament_id state in "
+                            "scripts/filament_id_snapshot.json; commit the diff for "
+                            "maintainer review")
+    narrow = parser.add_argument_group("narrowing --generate")
+    narrow.add_argument("--filament-id", action="store_true",
+                        help="write filament_id only, skipping setting_id")
+    narrow.add_argument("--setting-id", action="store_true",
+                        help="write setting_id only, skipping filament_id")
+    narrow.add_argument("--vendor", metavar="VENDOR", action="append", default=[],
+                        help="write only in this vendor bundle; repeatable. The ids are "
+                             "still derived tree-wide, so a narrowed run writes exactly "
+                             "what a full one would, and reports what it was not allowed "
+                             "to fix")
+    parser.add_argument("--dry-run", "--dryrun", dest="dry_run", action="store_true",
+                        help="report what would change and write nothing; with no mode of "
+                             "its own it previews --generate")
     parser.add_argument("--profiles", default=PROFILES_DIR,
                         help="profiles directory (default: resources/profiles)")
+    parser.add_argument("--snapshot", default=None, metavar="PATH",
+                        help="the sanctioned filament_id state of that tree (default: "
+                             "scripts/filament_id_snapshot.json, which describes "
+                             "resources/profiles and no other tree)")
+    return parser
+
+
+def main(argv=None):
+    _utf8_console()
+    argv = sys.argv[1:] if argv is None else list(argv)
+    parser = build_parser()
+    if not argv:
+        parser.print_help()
+        return 0
     args = parser.parse_args(argv)
 
+    modes = [flag for flag, on in (("--generate", args.generate),
+                                   ("--check", args.check),
+                                   ("--update-snapshot", args.update_snapshot)) if on]
+    if len(modes) > 1:
+        parser.error(f"{' and '.join(modes)} cannot be combined; pick one mode")
+    if args.filament_id and args.setting_id:
+        parser.error("--filament-id and --setting-id each exclude the other; "
+                     "pass neither to write both")
+    narrowing = [flag for flag, on in (("--filament-id", args.filament_id),
+                                       ("--setting-id", args.setting_id),
+                                       ("--vendor", bool(args.vendor))) if on]
+    if not modes:
+        if args.dry_run:
+            mode = "--generate"  # --dry-run previews the writing mode
+        elif narrowing:
+            parser.error(f"{', '.join(narrowing)} narrows --generate; "
+                         f"add --generate (or --dry-run to preview it)")
+        else:
+            parser.print_help()
+            return 0
+    else:
+        mode = modes[0]
+        if narrowing and mode != "--generate":
+            parser.error(f"{', '.join(narrowing)} applies to --generate, not {mode}")
 
-    if args.mint:
-        parts = args.mint.split("/", 2)
-        if len(parts) != 3 or not all(parts):
-            parser.error('--mint expects "filament_vendor/filament_type/filament_name" '
-                         "with all three components non-empty (check 5 rejects empty "
-                         "vendor/type in the tree)")
-        snapshot = load_snapshot(SNAPSHOT_PATH) or {"ids": {}}
-        taken = set(snapshot["ids"])
-        print(mint_filament_id(parts[0], parts[1], parts[2], taken))
-        return 0
+    snapshot_path = args.snapshot or SNAPSHOT_PATH
+    if (args.snapshot is None and mode in ("--check", "--update-snapshot")
+            and os.path.abspath(args.profiles) != os.path.abspath(PROFILES_DIR)):
+        # The repo snapshot is the sanctioned state of resources/profiles alone:
+        # checking another tree against it is meaningless, and re-recording one
+        # into it would overwrite the tracked file with a foreign tree's state.
+        parser.error(f"{mode} reads and writes the sanctioned state of the tree it is "
+                     f"given, so --profiles needs --snapshot PATH for that tree too")
 
-    if args.remint:
-        if args.update_snapshot or args.check or args.drop_redundant_ids:
-            parser.error("--remint cannot be combined with other modes")
-        _changed, errors = remint_vendors(args.remint, args.profiles)
-        return 1 if errors else 0
-
-    if args.drop_redundant_ids:
-        if args.update_snapshot or args.check:
-            parser.error("--drop-redundant-ids cannot be combined with other modes")
-        _changed, errors = drop_redundant_ids(args.drop_redundant_ids, args.profiles)
-        return 1 if errors else 0
-
-    if args.update_snapshot:
-        return update_snapshot(args.profiles, SNAPSHOT_PATH)
-
-    if args.check:
-        errors = check_filament_ids(args.profiles, SNAPSHOT_PATH)
+    if mode == "--check":
+        errors = check_filament_ids(args.profiles, snapshot_path)
         if errors:
             print_error(f"filament_id check: {errors} error(s)")
             return 1
         print_success("filament_id check: no errors")
         return 0
 
-    _changed, errors = assign_missing_ids(args.profiles, SNAPSHOT_PATH)
+    if mode == "--update-snapshot":
+        return update_snapshot(args.profiles, snapshot_path, dry_run=args.dry_run)
+
+    vendors = sorted(set(args.vendor)) or None
+    if vendors:
+        unknown = sorted(set(vendors) - set(list_profile_dirs(args.profiles)))
+        if unknown:
+            for v in unknown:
+                print_error(f'unknown vendor "{v}" in {args.profiles}')
+            return 1
+
+    # Both by default. filament_id runs first so its keys are in place before the
+    # setting_id pass reads the files back.
+    do_filament = args.filament_id or not args.setting_id
+    do_setting = args.setting_id or not args.filament_id
+    changed = set()  # one file the two passes both touch is still one file
+    filament_files = errors = 0
+    if do_filament:
+        filament_files, e = generate_filament_ids(
+            args.profiles, snapshot_path, vendors, args.dry_run, changed)
+        errors += e
+    if do_setting:
+        _n, e = generate_setting_ids(args.profiles, vendors, args.dry_run, changed)
+        errors += e
+
+    summary = (f"dry run: {len(changed)} file(s) would change; nothing written"
+               if args.dry_run else f"{len(changed)} file(s) changed")
+    if errors:
+        print_error(f"{summary}; {errors} error(s)")
+    else:
+        print_success(summary)
+    if filament_files and not args.dry_run:
+        # A filament_id write may or may not move the sanctioned state (an id
+        # repaired back to the value the snapshot already records does not), so
+        # regenerate and let the diff — empty or not — say.
+        print_warning('now run "python scripts/orca_id_tool.py --update-snapshot" '
+                      "and commit any resulting diff for maintainer review")
     return 1 if errors else 0
 
 

@@ -9,7 +9,7 @@ OrcaFilamentLibrary (OFL), Qidi, or Snapmaker bundle. The granularity is the nam
 not the brand behind it: `AAA PLA Lite` and `AAA PLA Pro` are two filaments with two ids, not
 variants of one.
 
-**How it is generated:** an id is computed, never invented. `scripts/assign_filament_ids.py`
+**How it is generated:** an id is computed, never invented. `scripts/orca_id_tool.py`
 mints it as a deterministic hash of the product's identity — the triple
 `(filament_vendor, filament_type, filament name)`, where the filament name is the preset name
 with its `@...` variant suffix stripped — producing an 8-character `OF*` code that is the
@@ -34,7 +34,7 @@ This page is the rule for authoring `filament_id` in system profiles
 
 > [!IMPORTANT]
 > **Never write a `filament_id` value by hand.** A new filament gets its id from
-> `python scripts/assign_filament_ids.py`; one already in the tree has one — inherit it.
+> `python scripts/orca_id_tool.py --generate`; one already in the tree has one — inherit it.
 
 ## The design, in two pieces
 
@@ -158,7 +158,8 @@ key needed). Tuning a generic material → **join the OrcaFilamentLibrary filame
    different product by rule 5, so it then needs its own id.
 5. **Ids follow the product identity.** The id is a pure function of the product triple
    `(filament_vendor, filament_type, filament name)`, so correcting any of them re-mints the id
-   **by design** (via `--remint <Vendor>`; the exact sequence is in the FAQ). Nothing forwards
+   **by design**, applied by `--generate` (preview with `--dry-run`, confine with `--vendor`) and
+   gated by the `--update-snapshot` diff; the exact sequence is in the FAQ. Nothing forwards
    the old value, so anything outside the tree that stored it — a device tray, a calibration
    record, a saved project — falls back to matching by filament type until the user re-selects
    the filament. Re-mint deliberately, and only to fix a genuinely wrong identity.
@@ -167,7 +168,7 @@ key needed). Tuning a generic material → **join the OrcaFilamentLibrary filame
 ## Minting — nobody invents ids
 
 New ids are deterministic, computed exactly like the `setting_id` precedent
-(`scripts/assign_vendor_setting_ids.py`):
+(the `setting_id` half of `scripts/orca_id_tool.py`):
 
 ```text
 FILAMENT_ID_NAMESPACE = uuid5(setting-id NAMESPACE, "filament_id")
@@ -204,36 +205,49 @@ Workflow for a new filament:
 
 ```bash
 # 1. Author the filament with NO filament_id key anywhere.
-python scripts/assign_filament_ids.py                    # 2. mint + insert ids into the root preset(s)
-python scripts/assign_filament_ids.py --update-snapshot  # 3. record the new claims in the snapshot
-python scripts/assign_filament_ids.py --check            # 4. verify — the same checks CI runs
-# 5. Commit the profile edits together with scripts/filament_id_snapshot.json.
+python scripts/orca_id_tool.py --dry-run          # 2. preview the ids — writes nothing
+python scripts/orca_id_tool.py --generate         # 3. apply them to the profile file(s)
+python scripts/orca_id_tool.py --update-snapshot  # 4. record the new claims in the snapshot
+python scripts/orca_id_tool.py --check            # 5. validate the filament_id state
+python scripts/orca_extra_profile_check.py        # 6. ...and everything else CI checks
+# 7. Commit the profile edits together with scripts/filament_id_snapshot.json, for review.
 ```
 
-The default run mints ids for id-less filaments and replaces any declaration that is not in
-`OF` format; it never rewrites a valid `OF` id, so it is idempotent and a no-op once every
-filament has one. It edits profile files byte-preservingly (indentation, BOM, and line endings
-intact) and re-parses them to fail loudly.
-`--mint "filament_vendor/filament_type/filament_name"` prints the id a **new** mint of that
-triple would get, without touching anything — note that for a triple whose id already exists
-it prints the next *free* salt iteration, not the live id (asking for
-`Polymaker/PLA/PolyLite PLA` today prints the salt-1 id, because `OF5CgdDq` is taken).
+`--generate` makes every filament's id equal the mint of its own
+`(filament_vendor, filament_type, filament name)` triple: it inserts one where an instantiated
+filament resolves none, and re-derives one that does not match. A preset that *inherits* a
+mismatching id is the one case left to the author — check 3b names it, and the fix is to inherit
+a preset of the same filament or to give the preset its own key. It converges on an id the same
+product already holds and salts only past ids *other* products hold, so an id already equal to a
+salt iteration of its own triple is left alone and deliberate salt splits survive. The same run
+assigns `generate_preset_setting_id(vendor, type, name)` to every instantiated filament, process
+and machine preset of every vendor except BBL, which keeps its authoritative `G*` ids, strips
+`setting_id` from base profiles, and fixes the misspelled `settings_id` key — dropped, or, for
+BBL, whose ids have no formula to fall back on, restored under the correct name. It is idempotent and
+byte-preserving (indentation, BOM, and line endings intact, every edited file re-parsed to fail
+loudly), and a no-op on a tree that already passes `scripts/orca_extra_profile_check.py` — the
+check CI runs over both id kinds, of which `--check` is the `filament_id` half.
 
-Maintenance modes (`--remint` is also the step for identity fixes — see the FAQ; the rest are
-normally only used by id migrations):
-
-- `--remint VENDOR` re-derives a vendor's declared ids from their triples — any vendor, BBL
-  included, since no bundle is exempt from the mint rule. A declaration already equal to a
-  salt iteration of its own triple is conformant and left alone, so deliberate salt splits
-  survive; convergence onto an id another bundle already uses for the *same* triple is legal
-  by design — that is the point.
-- `--drop-redundant-ids VENDOR` deletes declarations that merely re-declare an inherited
-  OrcaFilamentLibrary id.
+- `--filament-id` limits the run to `filament_id`.
+- `--setting-id` limits the run to `setting_id`. The two exclude each other; pass neither to
+  write both.
+- `--vendor VENDOR` confines the run to that bundle; repeatable. The ids are still derived
+  tree-wide, so a narrowed run writes exactly what a full one would — and reports any duplicate
+  it was not allowed to clear, since only a run covering both bundles can.
+- `--dry-run` reports what `--generate` would do and writes nothing; with no mode of its own it
+  implies `--generate`, so `--dry-run --vendor <Vendor>` previews just that bundle.
 - `--profiles DIR` points the tooling at a different profile tree (default
-  `resources/profiles`).
+  `resources/profiles`). `--check` and `--update-snapshot` read and write the sanctioned state of
+  the tree they are given, so pointing them elsewhere needs `--snapshot PATH` for that tree too —
+  `scripts/filament_id_snapshot.json` describes `resources/profiles` and no other tree.
+
+**Identity fixes need no separate mode.** `--generate` re-derives an id that no longer matches its
+triple exactly the way it fills in a missing one, so a rename or a `filament_vendor` /
+`filament_type` correction is just: fix the config, run `--generate` (confine it with `--vendor`,
+preview it with `--dry-run`), then `--update-snapshot` and review the diff.
 
 If you skip the tooling, CI fails and prints the remedy: the expected id for your filament and
-the instruction to run `python scripts/assign_filament_ids.py`; once the id is minted, the
+the instruction to run `python scripts/orca_id_tool.py --generate`; once the id is minted, the
 snapshot checks likewise point at `--update-snapshot` and tell you to commit the resulting
 diff.
 
@@ -466,18 +480,20 @@ ambiguity check behind structure rule 3.
   `Generic PLA` base name, set `compatible_printers`; no id key needed.
 - **A branded filament that borrows a generic's settings?** Fine — inherit `Generic X @System`
   (or any real filament) for the settings and declare the id of your own filament; run
-  `python scripts/assign_filament_ids.py` to mint it. Inheritance never changes the id.
+  `python scripts/orca_id_tool.py --generate` to mint it. Inheritance never changes the id.
 - **I need to fix a filament's `filament_vendor` or `filament_type`.** Fix the config, run
-  `--remint <Vendor>` then `--update-snapshot`, and commit the profile and snapshot diffs
-  together. The id re-derives from the corrected identity, and nothing forwards the old
-  value, so a tray or record still holding it falls back to matching by filament type.
+  `--generate --vendor <Vendor>` (preview with `--dry-run`), then `--update-snapshot`, and commit
+  the profile and snapshot diffs together. The id re-derives from the corrected identity, and
+  nothing forwards the old value, so a tray or record still holding it falls back to matching by
+  filament type.
 - **I need to rename a filament.** Rename the presets (adding `renamed_from`, which keeps the
-  preset *name* resolving), then `--remint <Vendor>`, then `--update-snapshot`. The id follows
-  the new filament name; as with any identity fix, the old id is not forwarded.
+  preset *name* resolving), then `--generate --vendor <Vendor>` (preview with `--dry-run`), then
+  `--update-snapshot`. The id follows the new filament name; as with any identity fix, the old id
+  is not forwarded.
 - **Can I reuse a `QD_*` id for a Qidi profile?** No — nobody can. It is the device protocol's
   own id space: the box composes those values at runtime and no preset carries one. Author
   Qidi filaments like any other vendor's.
-- **CI says my filament needs an id.** Run `python scripts/assign_filament_ids.py`, then
+- **CI says my filament needs an id.** Run `python scripts/orca_id_tool.py --generate`, then
   `--update-snapshot`, and commit both diffs. Do not type an id by hand.
 
 For general profile authoring, see the profile development guide on the

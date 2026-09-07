@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for scripts/assign_filament_ids.py (stdlib unittest, no external deps).
+"""Tests for scripts/orca_id_tool.py (stdlib unittest, no external deps).
 
 Run from the repo root:  python -m unittest discover -s scripts/tests -v
 """
@@ -17,7 +17,7 @@ import uuid
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import assign_filament_ids as afi  # noqa: E402
+import orca_id_tool as afi  # noqa: E402
 import update_bambu_filament_ids as ubfi  # noqa: E402
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -99,6 +99,17 @@ class SyntheticTree:
         if register:
             self.add_to_index(vendor, data["name"])
 
+    def set_sub_path(self, vendor, name, sub_path):
+        """Rewrite one index entry's sub_path (the file itself does not move)."""
+        idx_path = os.path.join(self.profiles, vendor + ".json")
+        with open(idx_path, encoding="utf-8") as f:
+            index = json.load(f)
+        for entry in index["filament_list"]:
+            if entry["name"] == name:
+                entry["sub_path"] = sub_path
+        with open(idx_path, "w", encoding="utf-8") as f:
+            json.dump(index, f, indent=4, ensure_ascii=False)
+
     def remove_preset(self, vendor, name):
         os.remove(self.preset_path(vendor, name))
         idx_path = os.path.join(self.profiles, vendor + ".json")
@@ -109,12 +120,25 @@ class SyntheticTree:
         with open(idx_path, "w", encoding="utf-8") as f:
             json.dump(index, f, indent=4, ensure_ascii=False)
 
+    def bytes_map(self):
+        """{relative path -> file bytes} over every .json in the tree."""
+        raw = {}
+        for root, dirs, files in os.walk(self.profiles):
+            dirs.sort()
+            for name in sorted(files):
+                if not name.endswith(".json"):
+                    continue
+                path = os.path.join(root, name)
+                with open(path, "rb") as f:
+                    raw[os.path.relpath(path, self.profiles)] = f.read()
+        return raw
+
     # -- pipeline wrappers ---------------------------------------------------
 
-    def update_snapshot(self):
+    def update_snapshot(self, dry_run=False):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = afi.update_snapshot(self.profiles, self.snapshot)
+            rc = afi.update_snapshot(self.profiles, self.snapshot, dry_run)
         return rc, buf.getvalue()
 
     def check(self, map_path=None):
@@ -124,23 +148,32 @@ class SyntheticTree:
             errors = afi.check_filament_ids(self.profiles, self.snapshot, **kwargs)
         return errors, buf.getvalue()
 
-    def assign(self):
+    # assign() and remint() are the same one pass over the tree — every filament
+    # ends up with the id its own triple mints, whether that means inserting a
+    # missing key or rewriting a non-conformant one. Both names are kept because
+    # they read differently at the call sites.
+    def assign(self, vendors=None, dry_run=False):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            changed, errors = afi.assign_missing_ids(self.profiles, self.snapshot)
+            changed, errors = afi.generate_filament_ids(
+                self.profiles, self.snapshot, vendors, dry_run)
         return changed, errors, buf.getvalue()
 
-    def remint(self, vendors):
+    def remint(self, vendors, dry_run=False):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            changed, errors = afi.remint_vendors(vendors, self.profiles)
+            changed, errors = afi.generate_filament_ids(
+                self.profiles, self.snapshot, vendors, dry_run)
         return changed, errors, buf.getvalue()
 
-    def drop_redundant(self, vendor):
+    def cli(self, *flags):
+        """Run main() against this tree, capturing stdout."""
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            dropped, errors = afi.drop_redundant_ids(vendor, self.profiles)
-        return dropped, errors, buf.getvalue()
+            rc = afi.main([*flags, "--profiles", self.profiles,
+                           "--snapshot", self.snapshot])
+        return rc, buf.getvalue()
+
 
 def make_clean_tree(apla_id="AX01", generic_id="OGFL99"):
     """Baseline tree: OFL base+generic, a vendor filament, a clean tuned generic.
@@ -182,8 +215,8 @@ class OfCleanTreeCase(unittest.TestCase):
     real OF-format ids (check 1 now rejects "AX01"/"OGFL99" unconditionally,
     with no snapshot exemption), so an otherwise-untouched tree still passes
     check_filament_ids. Tests that specifically need a non-OF baseline to
-    remint or drop (TestRemint, TestDropRedundantIds, TestUpdateSnapshot) keep
-    using SyntheticTreeCase instead.
+    remint (TestRemint, TestUpdateSnapshot) keep using SyntheticTreeCase
+    instead.
     """
     def setUp(self):
         self.t = make_clean_tree(
@@ -243,6 +276,81 @@ class TestMint(unittest.TestCase):
         self.assertEqual(afi.mint_filament_id(*triple, set()),
                          afi.generate_filament_id(*triple))
 
+    def test_mint_never_returns_a_salt_the_identity_check_rejects(self):
+        # mint_filament_id stops at MAX_CHECK_SALT, the last iteration check 3
+        # accepts, so the tool can never write an id its own --check rejects.
+        triple = ("Polymaker", "PLA", "PolyLite PLA")
+        all_taken = afi.mint_iterations(triple)
+        self.assertEqual(len(all_taken), afi.MAX_CHECK_SALT + 1)
+        last = afi.mint_filament_id(*triple, all_taken - {afi.generate_filament_id(
+            *triple, salt=afi.MAX_CHECK_SALT)})
+        self.assertIn(last, afi.mint_iterations(triple))
+        with self.assertRaises(RuntimeError):
+            afi.mint_filament_id(*triple, all_taken)
+
+    def test_want_id_policy(self):
+        # The whole id policy: a triple's id is its first mint iteration that no
+        # OTHER product holds, in the tree or in the snapshot.
+        triple = ("Polymaker", "PLA", "PolyLite PLA")
+        other = ("Elegoo", "PETG", "Rapid PETG")
+        salt0 = afi.generate_filament_id(*triple)
+        salt1 = afi.generate_filament_id(*triple, salt=1)
+
+        def snapshot(**entries):
+            return {"ids": {fid: {"filaments": [], "name": t[2],
+                                  "filament_type": t[1], "filament_vendor": t[0]}
+                            for fid, t in entries.items()}}
+
+        # nobody holds it: salt 0
+        self.assertEqual(afi.make_want_id({"triple_sets": {}})(triple), salt0)
+        # the tree holds it under this very triple: reuse is convergence
+        self.assertEqual(
+            afi.make_want_id({"triple_sets": {salt0: {triple}}})(triple), salt0)
+        # Another triple "holds" it, but salt0 is not a mint iteration of THAT
+        # triple, so the holder is a wrong declaration this very run rewrites.
+        # A transient squatter must not push a product off its own id.
+        self.assertEqual(
+            afi.make_want_id({"triple_sets": {salt0: {other}}})(triple), salt0)
+        self.assertEqual(
+            afi.make_want_id({"triple_sets": {salt0: {triple, other}}})(triple), salt0)
+        # The snapshot is read the same way: only a conformant record holds.
+        self.assertEqual(
+            afi.make_want_id({"triple_sets": {}}, snapshot(**{salt0: other}))(triple),
+            salt0)
+        # ... and the snapshot's own triple reuses it
+        self.assertEqual(
+            afi.make_want_id({"triple_sets": {}}, snapshot(**{salt0: triple}))(triple),
+            salt0)
+        # Unused here, but salting must still be reachable: see
+        # test_want_id_salts_past_a_genuine_collision.
+        self.assertNotEqual(salt0, salt1)
+        # memoized: one triple keeps one id for the whole run
+        want_id = afi.make_want_id({"triple_sets": {}})
+        self.assertEqual(want_id(triple), want_id(triple))
+        # ... and a second triple never gets the id this run already handed out
+        self.assertNotEqual(want_id(triple), want_id(other))
+
+    def test_want_id_salts_past_a_genuine_collision(self):
+        # Salting exists for one case only: two products whose triples mint the
+        # same id. That needs a base62 collision, so force one — salt 0 of every
+        # triple collapses to a single value while the salted iterations stay
+        # distinct. `other` then CONFORMANTLY holds the shared salt-0 id, and
+        # `triple` must step past it instead of stealing it.
+        triple = ("V", "PLA", "X")
+        other = ("W", "ABS", "Y")
+        real = afi.generate_filament_id
+
+        def colliding(vendor, ftype, name, salt=0):
+            return "OFcolid" if salt == 0 else real(vendor, ftype, name, salt)
+
+        afi.generate_filament_id = colliding
+        try:
+            self.assertIn("OFcolid", afi.mint_iterations(other))  # holder conforms
+            got = afi.make_want_id({"triple_sets": {"OFcolid": {other}}})(triple)
+        finally:
+            afi.generate_filament_id = real
+        self.assertEqual(got, real(*triple, salt=1))
+
 
 class TestBaseName(unittest.TestCase):
     def test_filament_name_derivation(self):
@@ -256,6 +364,27 @@ class TestBaseName(unittest.TestCase):
         ]
         for name, filament_name in cases:
             self.assertEqual(afi.base_name(name), filament_name, msg=name)
+
+
+# ---------------------------------------------------------------------------
+# vendor discovery
+# ---------------------------------------------------------------------------
+
+class TestVendorDiscovery(unittest.TestCase):
+    def test_a_bundle_is_a_subdir_with_a_matching_index(self):
+        # Neither half alone makes a bundle: resources/profiles tracks a "user"
+        # directory with no user.json, and an index without its directory is a
+        # leftover. Both are skipped, tree-wide.
+        t = SyntheticTree()
+        self.addCleanup(t.cleanup)
+        t.add_vendor("VendorA", [])
+        os.makedirs(os.path.join(t.profiles, "user", "filament"))
+        with open(os.path.join(t.profiles, "Orphan.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"name": "Orphan", "filament_list": []}, f)
+        self.assertEqual(afi.list_vendor_names(t.profiles), ["VendorA"])
+        self.assertEqual(sorted(afi.analyze_tree(t.profiles)["vendors"]),
+                         ["VendorA"])
 
 
 # ---------------------------------------------------------------------------
@@ -322,12 +451,6 @@ class TestResolver(unittest.TestCase):
     def test_missing_id(self):
         fid, src, _e = self.resolve("A", [self.rec("A")], [])
         self.assertEqual((fid, src), (None, "missing"))
-
-    def test_skip_own_resolves_inherited(self):
-        fid, _src, _e = self.resolve(
-            "A", [self.rec("A", "OWN", inherits="B"), self.rec("B", "PARENT")], [],
-            skip_own=True)
-        self.assertEqual(fid, "PARENT")
 
 
 class TestTripleResolution(unittest.TestCase):
@@ -692,6 +815,16 @@ class TestCheck6(OfCleanTreeCase):
         self.assertGreater(errors, 0)
         self.assertIn("regenerate the map", out)
 
+    def test_non_of_map_key_is_an_error(self):
+        # The map is keyed by OUR ids; a Bambu id in the key column means the
+        # map was generated or hand-edited the wrong way round.
+        map_path = self._write_map({
+            "GFB00": {"bambu_id": "GFB00", "vendor": "V", "type": "PLA",
+                      "name": "Foo"}})
+        errors, out = self.t.check(map_path)
+        self.assertEqual(errors, 1, out)
+        self.assertIn('"GFB00" is not a minted "OF" id', out)
+
     def test_duplicate_bambu_id_is_an_error(self):
         map_path = self._write_map({
             "OFaaaaaa": {"bambu_id": "GFZ00", "vendor": "V", "type": "PLA", "name": "Foo"},
@@ -786,6 +919,21 @@ class TestUpdateSnapshot(SyntheticTreeCase):
         self.assertEqual(list(snap["ids"]["AX01"]),
                          ["filaments", "name", "filament_type", "filament_vendor"])
 
+    def test_refuses_a_tree_it_could_not_read(self):
+        # A bundle that does not parse contributes no ids, so sanctioning the
+        # rest would record the loss as a deliberate removal.
+        with open(self.t.snapshot, "rb") as f:
+            before = f.read()
+        with open(os.path.join(self.t.profiles, "VendorA",
+                               "filament", "APLA @base.json"), "w",
+                  encoding="utf-8") as f:
+            f.write("{ not json")
+        rc, out = self.t.update_snapshot()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("unreadable filament profile", out)
+        with open(self.t.snapshot, "rb") as f:
+            self.assertEqual(f.read(), before)
+
     def test_refuses_an_id_declared_under_two_triples(self):
         # VendorB re-declares APLA's id for a different product: one id, two
         # triples. No single entry can describe it, and check 3 rejects it anyway.
@@ -818,16 +966,36 @@ class TestUpdateSnapshot(SyntheticTreeCase):
         with open(self.t.snapshot, "rb") as f:
             self.assertEqual(f.read(), before)  # nothing written on refusal
 
+    def test_dry_run_reports_without_writing(self):
+        self.t.write_preset("VendorA", preset("ANEW @P2", inherits="APLA @base",
+                                              compatible_printers=["P2"]))
+        with open(self.t.snapshot, "rb") as f:
+            before = f.read()
+        rc, out = self.t.update_snapshot(dry_run=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("would be rewritten", out)
+        self.assertIn("claims added      : 1", out)
+        with open(self.t.snapshot, "rb") as f:
+            self.assertEqual(f.read(), before)
+        # the real run writes exactly what the dry run reported
+        rc, out = self.t.update_snapshot()
+        self.assertEqual(rc, 0)
+        self.assertIn("snapshot written", out)
+        snap = load_json_file(self.t.snapshot)
+        self.assertEqual(snap["ids"]["AX01"]["filaments"],
+                         ["VendorA/ANEW", "VendorA/APLA"])
+
 
 # ---------------------------------------------------------------------------
-# default run: mint + insert
+# --generate: one rule for inserts and rewrites alike
 # ---------------------------------------------------------------------------
 
 class TestAssign(OfCleanTreeCase):
     def test_noop_on_fully_idded_tree(self):
         changed, errors, out = self.t.assign()
         self.assertEqual((changed, errors), (0, 0))
-        self.assertIn("nothing to do (0 files changed)", out)
+        self.assertIn("filament_ids inserted  : 0", out)
+        self.assertIn("filament_ids re-minted : 0", out)
 
     def test_mints_into_filament_root_and_rootless_member(self):
         self.t.write_preset("VendorA", preset("FNEW @base", instantiation=False,
@@ -855,7 +1023,7 @@ class TestAssign(OfCleanTreeCase):
         # idempotent: second run is a no-op
         changed, errors, out = self.t.assign()
         self.assertEqual((changed, errors), (0, 0))
-        self.assertIn("nothing to do", out)
+        self.assertIn("filament_ids inserted  : 0", out)
 
     def test_refuses_filament_with_incomplete_triple(self):
         self.t.write_preset("VendorA", preset("ENEW @base", instantiation=False))
@@ -866,6 +1034,21 @@ class TestAssign(OfCleanTreeCase):
         self.assertGreater(errors, 0)
         self.assertIn("resolves empty filament_vendor and filament_type", out)
         self.assertIn("mint key needs both", out)
+
+    def test_refuses_to_re_mint_a_declaration_with_an_incomplete_triple(self):
+        # The rewrite half of the same guard: a declared id that is not its
+        # triple's mint still cannot be re-derived without a filament_vendor.
+        self.t.write_preset("VendorA", preset("QNEW @base", filament_id="OFZZZZZZ",
+                                              instantiation=False,
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("QNEW @P1", inherits="QNEW @base",
+                                              compatible_printers=["P1"]))
+        before = self.t.bytes_map()
+        changed, errors, out = self.t.assign()
+        self.assertEqual((changed, errors), (0, 1), out)
+        self.assertIn("resolves empty filament_vendor", out)
+        self.assertIn("mint key needs both", out)
+        self.assertEqual(self.t.bytes_map(), before)
 
     def test_refuses_filament_with_divergent_root_fields(self):
         self.t.write_preset("VendorA", preset("HNEW @base1", instantiation=False,
@@ -909,10 +1092,10 @@ class TestAssign(OfCleanTreeCase):
         errors, out = self.t.check()
         self.assertEqual(errors, 0, out)
 
-    def test_non_of_declaration_is_treated_as_missing(self):
+    def test_non_of_declaration_is_re_minted(self):
         # A declaration that isn't OF-format (e.g. a vendor bundle synced from
-        # an upstream catalog, like BBL's GF ids) is reminted like a missing
-        # filament, not left alone.
+        # an upstream catalog, like BBL's GF ids) is not the mint of its own
+        # triple, so the same pass rewrites it in place.
         self.t.write_preset("VendorA", preset("Synced PLA @base", filament_id="GFZZ00",
                                               instantiation=False,
                                               filament_vendor="ZV", filament_type="PLA"))
@@ -927,9 +1110,10 @@ class TestAssign(OfCleanTreeCase):
         want = afi.generate_filament_id("ZV", "PLA", "Synced PLA")
         self.assertEqual(root["filament_id"], want)
         # the value was replaced in place, not appended as a second key
-        raw = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
         self.assertEqual(raw.count('"filament_id"'), 1)
-        # idempotent: the id is OF-format now, so a second run is a no-op
+        # idempotent: the id is its triple's mint now, so a second run is a no-op
         changed, errors, _out = self.t.assign()
         self.assertEqual((changed, errors), (0, 0))
 
@@ -958,6 +1142,148 @@ class TestAssign(OfCleanTreeCase):
         b2 = load_json_file(self.t.preset_path("VendorA", "Synced ABS @P2base"))
         self.assertEqual(b1["filament_id"], want)
         self.assertEqual(b2["filament_id"], want)
+
+    def test_converges_on_an_existing_tree_id_for_the_same_triple(self):
+        # BEHAVIOUR CHANGE: an id-less filament whose product is already shipped
+        # (with its conforming id) in another bundle converges on that id
+        # instead of salting past it. One product, one id, in every bundle.
+        want = afi.generate_filament_id("CV", "PLA", "CPLA")
+        self.t.add_vendor("VendorB", [
+            preset("CPLA @base", filament_id=want, instantiation=False,
+                   filament_vendor="CV", filament_type="PLA"),
+            preset("CPLA @PB", inherits="CPLA @base",
+                   compatible_printers=["PB 0.4 nozzle"]),
+        ])
+        self.t.write_preset("VendorA", preset("CPLA @base", instantiation=False,
+                                              filament_vendor="CV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("CPLA @P1", inherits="CPLA @base",
+                                              compatible_printers=["P1"]))
+        changed, errors, out = self.t.assign()
+        self.assertEqual((changed, errors), (1, 0), out)
+        root = load_json_file(self.t.preset_path("VendorA", "CPLA @base"))
+        self.assertEqual(root["filament_id"], want)
+
+    def test_a_squatted_id_is_still_minted_for_its_own_product(self):
+        # VendorB's "Other" declares the id that belongs to VendorA's "DPLA" —
+        # a copy-paste, not a real claim, since it is not the mint of Other's
+        # own triple. That declaration is transient (--generate rewrites it), so
+        # it must NOT push DPLA onto a salted id: DPLA gets its canonical one.
+        want0 = afi.generate_filament_id("DV", "PLA", "DPLA")
+        self.t.add_vendor("VendorB", [
+            preset("Other @base", filament_id=want0, instantiation=False,
+                   filament_vendor="OV", filament_type="ABS"),
+        ])
+        self.t.write_preset("VendorA", preset("DPLA @base", instantiation=False,
+                                              filament_vendor="DV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("DPLA @P1", inherits="DPLA @base",
+                                              compatible_printers=["P1"]))
+        changed, errors, out = self.t.assign(["VendorA"])
+        # VendorB is outside the write set, so the id DPLA just took is still
+        # declared there: the run says so rather than leaving a silent duplicate.
+        self.assertEqual((changed, errors), (1, 1), out)
+        self.assertIn("declared by VendorB/filament/Other @base.json", out)
+        # ...and keeps saying so until a run that covers VendorB clears it.
+        self.assertEqual(self.t.assign(["VendorA"])[:2], (0, 1))
+        root = load_json_file(self.t.preset_path("VendorA", "DPLA @base"))
+        self.assertEqual(root["filament_id"], want0)
+        # A full run re-mints Other to its own triple and the duplicate is gone.
+        other = load_json_file(self.t.preset_path("VendorB", "Other @base"))
+        self.assertEqual(other["filament_id"], want0)
+        changed, errors, out = self.t.assign()
+        self.assertEqual((changed, errors), (1, 0), out)
+        other = load_json_file(self.t.preset_path("VendorB", "Other @base"))
+        self.assertEqual(other["filament_id"],
+                         afi.generate_filament_id("OV", "ABS", "Other"))
+
+    def test_mismatching_of_declaration_is_re_derived(self):
+        # BEHAVIOUR CHANGE: the default run used to leave an OF-format id alone
+        # and needed a separate mode to fix it. One rule now: an id that is not
+        # a mint iteration of its own triple is rewritten.
+        self.t.write_preset("VendorA", preset("KNEW @base", filament_id="OFZZZZZZ",
+                                              instantiation=False,
+                                              filament_vendor="KV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("KNEW @P1", inherits="KNEW @base",
+                                              compatible_printers=["P1"]))
+        want = afi.generate_filament_id("KV", "PLA", "KNEW")
+        changed, errors, out = self.t.assign()
+        self.assertEqual((changed, errors), (1, 0), out)
+        self.assertIn('"OFZZZZZZ" -> "%s"' % want, out)
+        root = load_json_file(self.t.preset_path("VendorA", "KNEW @base"))
+        self.assertEqual(root["filament_id"], want)
+        changed, errors, _out = self.t.assign()
+        self.assertEqual((changed, errors), (0, 0))
+
+    def test_vendor_filter_limits_rewrites_and_inserts_alike(self):
+        # A mismatching declarer in VendorA and an id-less filament in VendorB;
+        # only VendorA is written, and VendorB's bytes are untouched.
+        self.t.write_preset("VendorA", preset("LNEW @base", filament_id="OFZZZZZZ",
+                                              instantiation=False,
+                                              filament_vendor="LV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("LNEW @P1", inherits="LNEW @base",
+                                              compatible_printers=["P1"]))
+        self.t.add_vendor("VendorB", [
+            preset("MNEW @base", instantiation=False,
+                   filament_vendor="MV", filament_type="PLA"),
+            preset("MNEW @PB", inherits="MNEW @base",
+                   compatible_printers=["PB 0.4 nozzle"]),
+        ])
+        before = self.t.bytes_map()
+        changed, errors, out = self.t.assign(["VendorA"])
+        self.assertEqual((changed, errors), (1, 0), out)
+        root = load_json_file(self.t.preset_path("VendorA", "LNEW @base"))
+        self.assertEqual(root["filament_id"],
+                         afi.generate_filament_id("LV", "PLA", "LNEW"))
+        after = self.t.bytes_map()
+        for rel, raw in before.items():
+            if rel.split(os.sep)[0].startswith("VendorB"):
+                self.assertEqual(after[rel], raw, rel)
+        # ... and the deferred half is exactly what a VendorB run then writes
+        changed, errors, out = self.t.assign(["VendorB"])
+        self.assertEqual((changed, errors), (1, 0), out)
+        b_root = load_json_file(self.t.preset_path("VendorB", "MNEW @base"))
+        self.assertEqual(b_root["filament_id"],
+                         afi.generate_filament_id("MV", "PLA", "MNEW"))
+
+    def test_unknown_vendor_reports_and_writes_nothing(self):
+        # A real insert is pending, so "wrote nothing" means the unknown vendor
+        # aborted the run before any write — not that the tree was already done.
+        self.t.write_preset("VendorA", preset("PNEW @base", instantiation=False,
+                                              filament_vendor="PV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("PNEW @P1", inherits="PNEW @base",
+                                              compatible_printers=["P1"]))
+        before = self.t.bytes_map()
+        changed, errors, out = self.t.assign(["Nope"])
+        self.assertEqual((changed, errors), (0, 1))
+        self.assertIn("unknown vendor", out)
+        self.assertEqual(self.t.bytes_map(), before)
+        # ... and that pending insert is real: a known-vendor run makes it.
+        changed, errors, out = self.t.assign(["VendorA"])
+        self.assertEqual((changed, errors), (1, 0), out)
+        self.assertEqual(
+            load_json_file(self.t.preset_path("VendorA", "PNEW @base"))["filament_id"],
+            afi.generate_filament_id("PV", "PLA", "PNEW"))
+
+    def test_dry_run_reports_the_real_run_and_writes_nothing(self):
+        self.t.write_preset("VendorA", preset("NNEW @base", instantiation=False,
+                                              filament_vendor="NV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset("NNEW @P1", inherits="NNEW @base",
+                                              compatible_printers=["P1"]))
+        before = self.t.bytes_map()
+        dry_changed, errors, out = self.t.assign(dry_run=True)
+        self.assertEqual((dry_changed, errors), (1, 0), out)
+        self.assertIn("would insert", out)
+        self.assertEqual(self.t.bytes_map(), before)
+        changed, errors, out = self.t.assign()
+        self.assertEqual((changed, errors), (dry_changed, 0), out)
+        root = load_json_file(self.t.preset_path("VendorA", "NNEW @base"))
+        self.assertEqual(root["filament_id"],
+                         afi.generate_filament_id("NV", "PLA", "NNEW"))
 
 
 # ---------------------------------------------------------------------------
@@ -1056,7 +1382,7 @@ class TestInsertEditing(unittest.TestCase):
             afi.rewrite_filament_id(path, "OFold123", "OFxxx999")  # stale old id
 
     def test_delete_line_with_trailing_comma(self):
-        text, n = afi.delete_filament_id_line(self.CRLF_WITH_ID, "OFold123")
+        text, n = afi.delete_key_line(self.CRLF_WITH_ID, "filament_id", "OFold123")
         self.assertEqual(n, 1)
         self.assertNotIn("filament_id", json.loads(text))
         self.assertEqual(text, self.CRLF_WITH_ID.replace(
@@ -1065,15 +1391,40 @@ class TestInsertEditing(unittest.TestCase):
     def test_delete_last_property_line(self):
         lf_text = ('{\n    "name": "K @base",\n    "instantiation": "false",\n'
                    '    "filament_id": "OFold123"\n}\n')
-        text, n = afi.delete_filament_id_line(lf_text, "OFold123")
+        text, n = afi.delete_key_line(lf_text, "filament_id", "OFold123")
         self.assertEqual(n, 1)
         data = json.loads(text)
         self.assertNotIn("filament_id", data)
         self.assertEqual(data["instantiation"], "false")
+        # the preceding comma goes with it, and nothing else moves
+        self.assertEqual(text, '{\n    "name": "K @base",\n'
+                               '    "instantiation": "false"\n}\n')
+
+    def test_dry_run_edits_verify_but_write_nothing(self):
+        t = SyntheticTree()
+        self.addCleanup(t.cleanup)
+        t.add_vendor("VendorA", [])
+        fresh = t.preset_path("VendorA", "JNEW @base")
+        with open(fresh, "wb") as f:
+            f.write(self.CRLF_TEXT.encode("utf-8"))
+        idded = t.preset_path("VendorA", "JOLD @base")
+        with open(idded, "wb") as f:
+            f.write(self.CRLF_WITH_ID.encode("utf-8"))
+
+        afi.write_filament_id(fresh, "OFabc123", dry_run=True)
+        afi.rewrite_filament_id(idded, "OFold123", "OFnew456", dry_run=True)
+        with open(fresh, "rb") as f:
+            self.assertEqual(f.read(), self.CRLF_TEXT.encode("utf-8"))
+        with open(idded, "rb") as f:
+            self.assertEqual(f.read(), self.CRLF_WITH_ID.encode("utf-8"))
+        # the edit is still applied and verified in memory: only the write is
+        # skipped, so a stale old id fails just as loudly
+        with self.assertRaises(RuntimeError):
+            afi.rewrite_filament_id(idded, "OFstale1", "OFnew456", dry_run=True)
 
 
 # ---------------------------------------------------------------------------
-# --remint
+# --generate: re-minting non-conformant declarations
 # ---------------------------------------------------------------------------
 
 class TestRemint(SyntheticTreeCase):
@@ -1138,17 +1489,23 @@ class TestRemint(SyntheticTreeCase):
         a = load_json_file(self.t.preset_path("VendorA", "APLA @base"))
         self.assertEqual(a["filament_id"], want)
 
-    def test_blocked_by_other_triple_occurrence(self):
+    def test_not_blocked_by_a_non_conformant_occurrence(self):
+        # VendorB carries APLA's id under a PETG triple of its own, so that
+        # declaration is wrong and this run's job is to rewrite it. It must not
+        # cost VendorA's APLA the id its triple actually mints.
         want0 = afi.generate_filament_id(*self.TRIPLE)
         self.t.add_vendor("VendorB", [
             preset("BPLA @base", filament_id=want0, instantiation=False,
                    filament_vendor="BV", filament_type="PETG"),
         ])
-        changed, errors, _out = self.t.remint(["VendorA"])
-        self.assertEqual((changed, errors), (1, 0))
+        changed, errors, out = self.t.remint(["VendorA"])
+        self.assertEqual((changed, errors), (1, 1), out)
+        self.assertIn("declared by VendorB/filament/BPLA @base.json", out)
         root = load_json_file(self.t.preset_path("VendorA", "APLA @base"))
-        self.assertEqual(root["filament_id"],
-                         afi.generate_filament_id(*self.TRIPLE, salt=1))
+        self.assertEqual(root["filament_id"], want0)
+        # Widening the run to both bundles clears it.
+        changed, errors, out = self.t.remint(["VendorA", "VendorB"])
+        self.assertEqual((changed, errors), (1, 0), out)
 
     def test_bbl_is_reminted_like_any_vendor(self):
         self.t.add_vendor("BBL", [
@@ -1164,59 +1521,195 @@ class TestRemint(SyntheticTreeCase):
         self.assertEqual(root["filament_id"],
                          afi.generate_filament_id("Bambu Lab", "ABS", "Bambu ABS"))
 
-
-# ---------------------------------------------------------------------------
-# --drop-redundant-ids
-# ---------------------------------------------------------------------------
-
-class TestDropRedundantIds(SyntheticTreeCase):
-    def test_drops_only_ofl_riding_same_base_name_declarations(self):
-        # Redundant: same base name, rides the OFL generic, re-declares its id.
-        self.t.write_preset("VendorA", preset("Generic PLA @P2",
-                                              inherits="Generic PLA @System",
-                                              compatible_printers=["P2"],
-                                              filament_id="OGFL99"))
-        # Renamed rider: not dropped (a repoint worksheet decision, not a drop).
-        self.t.write_preset("VendorA", preset("Tuned PLA @P3",
-                                              inherits="Generic PLA @System",
-                                              compatible_printers=["P3"],
-                                              filament_id="OGFL99"))
-        dropped, errors, out = self.t.drop_redundant("VendorA")
-        self.assertEqual(errors, 0, out)
-        self.assertEqual(dropped, 1)
-        self.assertIn('dropped filament_id "OGFL99"', out)
-        self.assertIn('rides OFL "Generic PLA @System"', out)
-        gone = load_json_file(self.t.preset_path("VendorA", "Generic PLA @P2"))
-        self.assertNotIn("filament_id", gone)
-        kept = load_json_file(self.t.preset_path("VendorA", "Tuned PLA @P3"))
-        self.assertEqual(kept["filament_id"], "OGFL99")
-        # vendor-rooted filaments are untouched
+    def test_dry_run_leaves_every_file_untouched(self):
+        before = self.t.bytes_map()
+        changed, errors, out = self.t.remint(["VendorA"], dry_run=True)
+        self.assertEqual((changed, errors), (1, 0), out)
+        self.assertIn("would rewrite", out)
+        self.assertEqual(self.t.bytes_map(), before)
+        # the real run then makes exactly that one change
+        changed, errors, _out = self.t.remint(["VendorA"])
+        self.assertEqual((changed, errors), (1, 0))
         root = load_json_file(self.t.preset_path("VendorA", "APLA @base"))
-        self.assertEqual(root["filament_id"], "AX01")
-
-    def test_bbl_is_forbidden(self):
-        dropped, errors, out = self.t.drop_redundant("BBL")
-        self.assertEqual(dropped, 0)
-        self.assertGreater(errors, 0)
-        self.assertIn("forbidden", out)
+        self.assertEqual(root["filament_id"],
+                         afi.generate_filament_id(*self.TRIPLE))
 
 
 # ---------------------------------------------------------------------------
-# --mint CLI
+# CLI
 # ---------------------------------------------------------------------------
 
-class TestMintCli(unittest.TestCase):
-    def test_prints_an_of_id(self):
+class TestCli(unittest.TestCase):
+    """main(argv) over a synthetic tree. The clean tree's baseline ids are
+    deliberately non-conformant ("AX01"/"OGFL99"), so a --generate run always
+    has both a filament_id rewrite and setting_id inserts to do."""
+
+    def setUp(self):
+        self.t = make_clean_tree()
+        self.addCleanup(self.t.cleanup)
+
+    def test_bare_invocation_prints_help(self):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = afi.main(["--mint", "Polymaker/PLA/PolyLite PLA"])
+            rc = afi.main([])
         self.assertEqual(rc, 0)
-        self.assertRegex(buf.getvalue().strip(), r"^OF[0-9A-Za-z]{6}$")
+        self.assertIn("usage:", buf.getvalue())
+        self.assertIn("--generate", buf.getvalue())
+        # ... and so does any invocation naming no mode: help, and no work
+        before = self.t.bytes_map()
+        rc, out = self.t.cli()
+        self.assertEqual(rc, 0)
+        self.assertIn("usage:", out)
+        self.assertEqual(self.t.bytes_map(), before)
 
-    def test_requires_exactly_three_parts(self):
-        with self.assertRaises(SystemExit), \
-                contextlib.redirect_stderr(io.StringIO()):
-            afi.main(["--mint", "Vendor/Filament"])
+    def test_another_tree_needs_its_own_snapshot(self):
+        # --profiles retargets the tree, but the sanctioned state of that tree
+        # is not the repo snapshot: checking against it is meaningless and
+        # re-recording into it would overwrite the tracked file.
+        with open(afi.SNAPSHOT_PATH, "rb") as f:
+            repo_snapshot = f.read()
+        for mode in ("--check", "--update-snapshot"):
+            with self.assertRaises(SystemExit) as caught:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    afi.main([mode, "--profiles", self.t.profiles])
+            self.assertEqual(caught.exception.code, 2, mode)
+        with open(afi.SNAPSHOT_PATH, "rb") as f:
+            self.assertEqual(f.read(), repo_snapshot)
+        # Named explicitly, both modes run against that tree.
+        rc, out = self.t.cli("--update-snapshot")
+        self.assertEqual(rc, 0, out)
+        # --generate only reads the snapshot as a list of ids not to reuse, so
+        # it keeps working without one.
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = afi.main(["--dry-run", "--profiles", self.t.profiles])
+        self.assertEqual(rc, 0, buf.getvalue())
+
+    def test_filament_id_and_setting_id_together_are_rejected(self):
+        # Each flag's help promises it skips the other kind, so the pair cannot
+        # quietly mean "both".
+        with self.assertRaises(SystemExit) as caught:
+            with contextlib.redirect_stderr(io.StringIO()):
+                afi.main(["--generate", "--filament-id", "--setting-id",
+                          "--profiles", self.t.profiles])
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_a_run_with_errors_does_not_report_success(self):
+        # An unreadable profile must not be buried under a green summary line.
+        path = self.t.preset_path("VendorA", "APLA @base")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("{ not json")
+        rc, out = self.t.cli("--generate")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("error(s)", out)
+        self.assertNotIn("SUCCESS", out)
+
+    def test_dry_run_alone_previews_generate(self):
+        before = self.t.bytes_map()
+        rc, out = self.t.cli("--dry-run")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("would ", out)
+        self.assertIn("nothing written", out)
+        self.assertEqual(self.t.bytes_map(), before)
+
+    def test_the_reported_count_is_files_not_edits(self):
+        # A file both passes touch is still one file. "SoloPLA @P1" needs a
+        # filament_id rewrite AND a setting_id insert, so an edit-counting
+        # summary would over-report the tree.
+        self.t.write_preset("VendorA", preset(
+            "SoloPLA @P1", filament_id="AX01", filament_vendor="AVendor",
+            filament_type="PLA", compatible_printers=["P1"]))
+        before = self.t.bytes_map()
+
+        rc, out = self.t.cli("--generate")
+
+        self.assertEqual(rc, 0, out)
+        after = self.t.bytes_map()
+        touched = {p for p in after if after[p] != before.get(p)}
+        self.assertIn("VendorA/filament/SoloPLA @P1.json".replace("/", os.sep), touched)
+        self.assertIn("rewrite VendorA/filament/SoloPLA @P1.json", out)
+        self.assertIn("update VendorA/filament/SoloPLA @P1.json", out)
+        summary = [l for l in out.splitlines() if "file(s) changed" in l]
+        self.assertEqual(len(summary), 1, out)
+        self.assertIn(f"{len(touched)} file(s) changed", summary[0])
+
+    def test_dryrun_is_the_same_flag(self):
+        before = self.t.bytes_map()
+        rc, out = self.t.cli("--dryrun")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("would ", out)  # the same preview, not a silent no-op
+        self.assertIn("nothing written", out)
+        self.assertEqual(self.t.bytes_map(), before)
+
+    def test_generate_vendor_writes_only_in_that_bundle(self):
+        before = self.t.bytes_map()
+        rc, out = self.t.cli("--generate", "--vendor", "VendorA")
+        self.assertEqual(rc, 0, out)
+        after = self.t.bytes_map()
+        changed = sorted(rel for rel in before if after[rel] != before[rel])
+        self.assertTrue(changed, out)
+        for rel in changed:
+            self.assertTrue(rel.startswith("VendorA" + os.sep), rel)
+        # The bundles it spared were not simply already conformant: the
+        # un-narrowed run goes on to write in them too.
+        rc, out = self.t.cli("--generate")
+        self.assertEqual(rc, 0, out)
+        final = self.t.bytes_map()
+        self.assertTrue(any(final[rel] != after[rel] for rel in after
+                            if not rel.startswith("VendorA" + os.sep)), out)
+
+    def test_generate_unknown_vendor_returns_1(self):
+        before = self.t.bytes_map()
+        rc, out = self.t.cli("--generate", "--vendor", "Nope")
+        self.assertEqual(rc, 1)
+        self.assertIn("unknown vendor", out)
+        self.assertEqual(self.t.bytes_map(), before)
+
+    def test_setting_id_only_leaves_filament_ids_alone(self):
+        rc, out = self.t.cli("--generate", "--setting-id")
+        self.assertEqual(rc, 0, out)
+        root = load_json_file(self.t.preset_path("VendorA", "APLA @base"))
+        self.assertEqual(root["filament_id"], "AX01")  # not re-minted
+        member = load_json_file(self.t.preset_path("VendorA", "APLA @P1"))
+        self.assertNotIn("filament_id", member)
+        self.assertEqual(member["setting_id"],
+                         afi.generate_preset_setting_id("VendorA", "filament",
+                                                        "APLA @P1"))
+
+    def test_filament_id_only_inserts_no_setting_id(self):
+        rc, out = self.t.cli("--generate", "--filament-id")
+        self.assertEqual(rc, 0, out)
+        root = load_json_file(self.t.preset_path("VendorA", "APLA @base"))
+        self.assertEqual(root["filament_id"],
+                         afi.generate_filament_id("AVendor", "PLA", "APLA"))
+        for name in ("APLA @base", "APLA @P1"):
+            self.assertNotIn(
+                "setting_id", load_json_file(self.t.preset_path("VendorA", name)))
+
+    def test_check_mode_returns_1_on_errors(self):
+        # What CI keys off: --check exits nonzero when the tree does not match
+        # the snapshot it is validated against.
+        before = self.t.bytes_map()
+        rc, out = self.t.cli("--check")
+        self.assertEqual(rc, 1)
+        self.assertIn("error(s)", out)
+        self.assertEqual(self.t.bytes_map(), before)  # --check never writes
+
+    def test_removed_and_conflicting_flags_are_rejected(self):
+        for argv in (["--remint", "VendorA"],          # removed mode
+                     ["--mint", "A/B/C"],              # removed mode
+                     ["--drop-redundant-ids", "VendorA"],  # removed mode
+                     ["--assign"],                     # removed mode
+                     ["--generate", "--check"],        # two modes
+                     ["--vendor", "VendorA"],          # narrowing without a mode
+                     ["--filament-id"],                # narrowing without a mode
+                     ["--check", "--vendor", "VendorA"]):  # narrowing on --check
+            with self.subTest(argv=argv):
+                with self.assertRaises(SystemExit) as cm, \
+                        contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    afi.main([*argv, "--profiles", self.t.profiles])
+                self.assertEqual(cm.exception.code, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -1231,6 +1724,13 @@ class TestRealTree(unittest.TestCase):
             errors = afi.check_filament_ids(REAL_PROFILES)
         self.assertEqual(errors, 0, buf.getvalue())
 
+    def test_check_cli_returns_0(self):
+        # The exact CI invocation, return code included.
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = afi.main(["--check"])
+        self.assertEqual(rc, 0, buf.getvalue())
+
     def test_every_instantiated_filament_resolves_an_id(self):
         analysis = afi.analyze_tree(REAL_PROFILES)
         self.assertEqual(analysis["missing_effective"], [])
@@ -1241,6 +1741,46 @@ class TestRealTree(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestReviewFixes(OfCleanTreeCase):
+    def test_one_file_reached_by_two_spellings_counts_once(self):
+        # The filament pass reaches a file through its index sub_path, the
+        # setting_id pass through os.walk. Those two spellings differ whenever
+        # the sub_path is not already normalized - always, on Windows, where
+        # every sub_path keeps the "/" the index stores. One file is one file.
+        # One preset per write path: SoloPLA has no id (inserted), WrongPLA
+        # declares one that is not its own mint (rewritten). Both are
+        # instantiated, so the setting_id pass reaches them too.
+        self.t.write_preset("VendorA", preset("SoloPLA @P1",
+                                              compatible_printers=["P1 0.4 nozzle"],
+                                              filament_vendor="SV",
+                                              filament_type="PLA"))
+        self.t.write_preset("VendorA", preset(
+            "WrongPLA @P1", filament_id=afi.generate_filament_id("WV", "PLA", "Nope"),
+            compatible_printers=["P1 0.4 nozzle"],
+            filament_vendor="WV", filament_type="PLA"))
+        for name in ("SoloPLA @P1", "WrongPLA @P1"):
+            self.t.set_sub_path("VendorA", name, f"filament/./{name}.json")
+        touched = set()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            afi.generate_filament_ids(self.t.profiles, self.t.snapshot,
+                                      None, False, touched)
+            afi.generate_setting_ids(self.t.profiles, None, False, touched)
+        for name in ("SoloPLA @P1", "WrongPLA @P1"):
+            self.assertEqual([t for t in touched if t.endswith(name + ".json")],
+                             [self.t.preset_path("VendorA", name)], sorted(touched))
+        self.assertEqual(sorted(touched),
+                         sorted(os.path.normpath(t) for t in touched))
+
+    def test_a_broken_edit_names_the_file(self):
+        # An edit that produces invalid JSON is refused, and the message has to
+        # say which of ~12,000 files it was: a bare JSONDecodeError does not.
+        path = self.t.preset_path("VendorA", "APLA @base")
+        with self.assertRaises(RuntimeError) as caught:
+            afi._edit_profile(path, lambda text: (text.replace("{", "{,", 1), 1),
+                              what="test edit")
+        self.assertIn(path, str(caught.exception))
+        self.assertIn("test edit", str(caught.exception))
+
     def test_check3_skips_of_id_inherited_from_other_vendor(self):
         # An OFL filament carries its own minted OF id and a vendor tunes it
         # correctly (same base name, non-empty printers). The new claim must
