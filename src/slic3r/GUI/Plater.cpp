@@ -3980,16 +3980,16 @@ void Sidebar::update_mixed_filament_list()
     p->m_panel_mixed_warning->Show(false);
 
     // Show/dismiss 3D canvas notification for broken mixed filaments
-    if (has_mixed && !broken_set.empty()) {
-        auto* notify = wxGetApp().plater()->get_notification_manager();
-        if (notify)
+    auto*       notify        = plater->get_notification_manager();
+    GLCanvas3D* view3d_canvas = plater->get_view3D_canvas3D();
+    if(view3d_canvas && view3d_canvas->is_initialized() && notify){
+        if (has_mixed && !broken_set.empty()) {
             notify->push_notification(NotificationType::BBLMixedFilamentBroken,
                 NotificationManager::NotificationLevel::ErrorNotificationLevel,
                 _u8L("Mixed filament has invalid or mismatched components. Please re-edit affected entries."));
-    } else {
-        auto* notify = wxGetApp().plater()->get_notification_manager();
-        if (notify)
+        } else {
             notify->close_notification_of_type(NotificationType::BBLMixedFilamentBroken);
+        }
     }
 
     if (has_mixed) {
@@ -8282,7 +8282,8 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
     bool dlg_cont = true;
     bool is_user_cancel = false;
     bool translate_old = false;
-    int current_width = 0, current_depth = 0, current_height = 0, project_filament_count = 1;
+    int current_width = 0, current_depth = 0, project_filament_count = 1;
+    double current_height = 0;
 
     if (input_files.empty())
         return std::vector<size_t>();
@@ -8951,6 +8952,12 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                             if (wipe_tower_y_opt)
                                 file_wipe_tower_y = *wipe_tower_y_opt;
 
+                            // Convert the printer's filament ids to Orca ids before loading.
+                            if (auto* agent = wxGetApp().getAgent()) {
+                                if (auto* ids = config.opt<ConfigOptionStrings>("filament_ids"))
+                                    for (std::string& id : ids->values)
+                                        id = agent->to_orca_filament_id(id);
+                            }
                             preset_bundle->load_config_model(filename.string(), std::move(config), file_version, &published_config);
 
                             // Mixed-filament definitions that collided with one of the
@@ -16462,6 +16469,7 @@ void Plater::calib_retraction(const Calib_Params& params)
     obj->config.set_key_value("wall_sequence", new ConfigOptionEnum<WallSequence>(WallSequence::InnerOuter));
     obj->config.set_key_value("overhang_reverse", new ConfigOptionBool(false));
     obj->config.set_key_value("precise_z_height", new ConfigOptionBool(false));
+    obj->config.set_key_value("seam_slope_type", new ConfigOptionEnum<SeamScarfType>(SeamScarfType::None));
 
 
     changed_objects({ 0 });
@@ -19029,6 +19037,8 @@ int Plater::export_3mf(const boost::filesystem::path& output_path, SaveStrategy 
         nozzle_diameter_str = nozzle_diameter_option->serialize();
 
     std::string printer_model_id = preset_bundle.printers.get_edited_preset().get_printer_type(&preset_bundle);
+    // The printer reads slice_info.config and knows only its own catalog ids.
+    auto* id_agent = preset_bundle.is_bbl_vendor() ? wxGetApp().getAgent() : nullptr;
 
     for (int i = 0; i < plate_data_list.size(); i++) {
         PlateData *plate_data = plate_data_list[i];
@@ -19038,6 +19048,8 @@ int Plater::export_3mf(const boost::filesystem::path& output_path, SaveStrategy 
             std::string display_filament_type;
             it->type  = cfg.get_filament_type(display_filament_type, it->id);
             it->filament_id = filament_id_opt ? filament_id_opt->get_at(it->id) : "";
+            if (id_agent)
+                it->filament_id = id_agent->from_orca_filament_id(it->filament_id);
             it->color = filament_color ? filament_color->get_at(it->id) : "#FFFFFF";
             // save filament info used in curr plate
             int index = p->partplate_list.get_curr_plate_index();
