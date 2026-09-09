@@ -42,6 +42,9 @@ public:
     // emitted G-code for an identity-transform belt configuration.
     bool must_emit_all_axes() const override { return true; }
     bool suppress_lift_at_unknown_position() const override { return true; }
+    // The machine frame shears and scales, so a circle is an ellipse in machine
+    // coordinates and G2/G3 cannot describe it.
+    bool supports_arc_moves() const override { return false; }
 
     bool world_coordinates() const { return m_world_coordinates; }
 

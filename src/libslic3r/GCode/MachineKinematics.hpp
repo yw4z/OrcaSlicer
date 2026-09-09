@@ -40,11 +40,20 @@ public:
     // axis permutation forces full emission without physically coupling axes.
     virtual bool must_emit_all_axes() const = 0;
 
-    // True when a separate in-place lift must be suppressed while the current
-    // position is unknown, because _travel_to_z() re-emits the logical X/Y
-    // through this mapping and an uninitialised position would map to a bogus
-    // machine point.
+    // True when a lift must be suppressed while the current position is unknown,
+    // because _travel_to_z() re-emits the logical X/Y through this mapping and an
+    // uninitialised position would map to a bogus machine point -- for a reverse
+    // mapping, the far corner of the bed.
     virtual bool suppress_lift_at_unknown_position() const = 0;
+
+    // True when a G2/G3 arc in the logical XY plane is still the same arc in the
+    // machine frame. Arc moves emit only X, Y, I and J, so this asks a narrower
+    // question than must_emit_all_axes(): whether logical X and Y reach the
+    // machine unchanged. A mapping that only negates or reverses Z keeps its
+    // arcs; one that permutes X or Y moves the arc out of the plane that I/J
+    // describes, and a shear turns the circle into an ellipse G2/G3 cannot
+    // express at all.
+    virtual bool supports_arc_moves() const = 0;
 
     // Configuration.  GCodeWriter forwards its setters here so that the state
     // lives with the strategy and a strategy installed before the setters run
@@ -67,11 +76,13 @@ public:
     Vec3d to_build_volume(const Vec3d &machine) const override { return machine; }
 
     bool must_emit_all_axes() const override { return this->has_axis_remap(); }
-    // The base writer has never suppressed the lift, not even under a remap that
-    // makes _travel_to_z re-emit X/Y.  That is arguably a latent bug, but fixing
-    // it here would change emitted G-code, so today's behaviour is preserved and
-    // the divergence from BeltKinematics is deliberate.
-    bool suppress_lift_at_unknown_position() const override { return false; }
+    bool suppress_lift_at_unknown_position() const override { return this->has_axis_remap(); }
+
+    // X and Y must reach the machine untouched. Because the remap is a
+    // permutation, pinning those two also pins Z to Z, so a mapping that only
+    // negates or reverses Z still supports arcs -- every word a G2/G3 emits is
+    // unchanged by it.
+    bool supports_arc_moves() const override { return m_remap_x == 0 && m_remap_y == 1; }
 
     void set_axis_remap(int rx, int ry, int rz) override
         { m_remap_x = rx; m_remap_y = ry; m_remap_z = rz; }

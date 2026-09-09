@@ -90,6 +90,10 @@ public:
     virtual std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     //BBS: generate G2 or G3 extrude which moves by arc
     std::string extrude_arc_to_xy(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
+    // Linear approximation of an arc, used when the machine mapping cannot
+    // express a G2/G3. Must be called before m_pos is updated: center_offset is
+    // relative to the current position.
+    std::string extrude_arc_as_polyline(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
     virtual std::string extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     std::string retract(bool before_wipe = false, double retract_length = 0);
     std::string retract_for_toolchange(bool before_wipe = false, double retract_length = 0);
@@ -185,6 +189,10 @@ protected:
     // evaluator, distance from the plane decides; otherwise the layer-coarse
     // m_is_first_layer flag does.
     bool point_on_first_layer(const Vec3d &point_logical) const;
+
+    // True when a lift must be skipped because this mapping would emit the
+    // stored logical X/Y and that position is not yet known.
+    bool must_skip_lift_now() const;
 
     // True when travel speed is selected per destination point rather than per
     // layer. Set for writers that install a first-layer plane. The historical

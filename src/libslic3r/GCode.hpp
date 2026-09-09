@@ -379,7 +379,11 @@ protected:
     virtual void init_belt_writer(Print &print, bool is_bbl_printers) {}
     virtual void write_belt_header(GCodeOutputStream &file, const Print &print) {}
     virtual void on_set_origin(const PrintObject *obj, const Point &inst_shift) {}
-    virtual bool should_disable_arc_fitting() const { return false; }
+    // Arc fitting is suppressed whenever the writer's machine mapping cannot
+    // represent a G2/G3 arc. Belt printers get this through BeltKinematics
+    // rather than through an override of their own.
+    virtual bool should_disable_arc_fitting() const
+        { return ! m_writer->kinematics().supports_arc_moves(); }
 
     void            _do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb);
 
