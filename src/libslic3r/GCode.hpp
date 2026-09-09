@@ -831,6 +831,18 @@ protected:
     // Counter standing in for Layer::id() on apron layers, which precede layer 0.
     size_t m_belt_brim_layer_idx{0};
 
+    // Belt brim only.  Brim and coincident apron bands are emitted before m_layer
+    // is switched to their object, so belt_height_above_floor() would otherwise
+    // read the previously visited object's belt description -- making a brim's
+    // classification depend on plate visiting order.  Those paths publish the
+    // owner here for the duration of the emission.  Never left set.
+    const PrintObject *m_belt_floor_object{nullptr};
+    struct BeltFloorObjectGuard {
+        const PrintObject *&slot;
+        BeltFloorObjectGuard(const PrintObject *&s, const PrintObject *o) : slot(s) { slot = o; }
+        ~BeltFloorObjectGuard() { slot = nullptr; }
+    };
+
     std::set<unsigned int>                  m_initial_layer_extruders;
     std::vector<std::vector<unsigned int>>  m_sorted_layer_filaments;
     // BBS
@@ -853,6 +865,12 @@ protected:
     // otherwise we delegate to the legacy per-layer test.  This is the
     // entry point used by per-path call sites in _extrude.
     bool on_first_layer(const Vec3d &point_slicing_mm) const {
+        // Belt printers: measure height above the belt surface itself, in the
+        // slicing frame. See belt_height_above_floor() for why this does not go
+        // through FirstLayerPlane.
+        double h;
+        if (this->belt_height_above_floor(point_slicing_mm, h))
+            return h <= m_config.initial_layer_print_height.value + EPSILON;
         if (m_first_layer_plane && m_first_layer_plane->is_active())
             return m_first_layer_plane->is_first_layer(
                 point_slicing_mm, m_config.initial_layer_print_height.value);
@@ -863,10 +881,40 @@ protected:
     // perpendicular distance to the plane in band_thickness_mm units;
     // otherwise it returns the legacy slicing layer index.
     int effective_layer_index_for_point(const Vec3d &point_slicing_mm) const {
+        double h;
+        if (this->belt_height_above_floor(point_slicing_mm, h)) {
+            const double lh = this->first_layer_band_mm();
+            return h <= 0. ? 0 : int(std::floor(h / lh));
+        }
         if (m_first_layer_plane && m_first_layer_plane->is_active())
             return m_first_layer_plane->effective_layer_index(point_slicing_mm);
         return on_first_layer() ? 0 : layer_id();
     }
+
+    // Band thickness for the *effective layer index* only.  FirstLayerPlane keeps
+    // two separate thresholds and so must this path: is_first_layer() tests
+    // against initial_layer_print_height, while effective_layer_index() counts
+    // bands of first_layer_plane_thickness.  Conflating them would apply
+    // first-layer treatment through a whole 1mm band on a 0.2mm first layer.
+    double first_layer_band_mm() const {
+        double band = m_config.first_layer_plane_thickness.value;
+        if (band <= 0.) band = m_config.initial_layer_print_height.value;
+        return band > 0. ? band : 0.2;
+    }
+
+    // Height of a slicing-frame point above the belt surface, or false when this
+    // is not a belt print.
+    //
+    // The belt surface is known exactly in the slicing frame from the slicing
+    // parameters (belt_floor_shear_factor / _from_axis / _z_shift) -- the same
+    // description the support generator uses. FirstLayerPlane instead derives its
+    // plane by composing gcode_remap_* with the g-code back-transform, so its
+    // answer changes with the machine's *output* axis convention: on a printer
+    // with a non-identity remap it reported ~86mm of clearance for geometry
+    // sitting directly on the belt, and no extrusion was ever classified as
+    // first-layer. Measuring against the belt itself is independent of every
+    // remap and back-transform.
+    bool belt_height_above_floor(const Vec3d &point_slicing_mm, double &height_mm) const;
     int layer_id() const {
         if (m_layer == nullptr)
             return -1;

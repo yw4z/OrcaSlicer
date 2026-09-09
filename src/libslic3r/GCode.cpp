@@ -6,6 +6,7 @@
 #include "libslic3r.h"
 #include "I18N.hpp"
 #include "GCode.hpp"
+#include <cstdio>
 #include "Exception.hpp"
 #include "ExtrusionEntity.hpp"
 #include "EdgeGrid.hpp"
@@ -5234,6 +5235,10 @@ std::string GCode::generate_object_brim(const Print &print, const PrintObject &o
         // geometry is already in plate coordinates.
         m_config.apply(print.default_region_config());
         m_config.apply(object.config(), true);
+        // m_layer is not switched to this object until after brim emission, so name
+        // the belt-floor owner explicitly or the classification borrows whichever
+        // object was visited last.
+        BeltFloorObjectGuard floor_owner{ m_belt_floor_object, &object };
         const Point &offset = object.instances()[instance_id].shift;
         this->set_origin(unscale(offset));
         this->on_set_origin(&object, offset);
@@ -6642,6 +6647,9 @@ LayerResult GCode::process_layer(
             // Speeds, flow and retraction all read m_config.
             m_config.apply(print.default_region_config());
             m_config.apply(object.config(), true);
+            // Apron bands have no Layer at all (m_layer is null here), so the belt
+            // floor owner has to be named the same way the object brim names it.
+            BeltFloorObjectGuard floor_owner{ m_belt_floor_object, &object };
             const size_t i_begin = single_object_instance_idx == size_t(-1) ? 0 : single_object_instance_idx;
             const size_t i_end   = single_object_instance_idx == size_t(-1) ? object.instances().size()
                                                                            : single_object_instance_idx + 1;
@@ -10305,6 +10313,48 @@ std::string GCode::set_object_info(Print *print) {
     }
 
     return gcode.str();
+}
+
+bool GCode::belt_height_above_floor(const Vec3d &point_slicing_mm, double &height_mm) const
+{
+    // The owning object, which is what carries the belt description.  During
+    // object-brim and coincident-apron emission m_layer still points at whichever
+    // object was visited last (or at nothing at all), so those paths publish the
+    // owner explicitly -- otherwise a brim's speed would depend on plate order.
+    const PrintObject *object = m_belt_floor_object != nullptr ? m_belt_floor_object
+                              : (m_layer != nullptr ? m_layer->object() : nullptr);
+    if (object == nullptr)
+        return false;
+    // Respect an explicit first-layer-plane choice: only Auto and BeltAffine mean
+    // "use the belt". A user who selected XY, YZ or XZ has asked for the
+    // FirstLayerPlane evaluator and must keep it.
+    const FirstLayerPlaneMode mode = m_config.first_layer_plane.value;
+    if (mode != FirstLayerPlaneMode::Auto && mode != FirstLayerPlaneMode::BeltAffine)
+        return false;
+    // Likewise for a dialled-in plane offset.  It is expressed as a machine-Z
+    // shift that FirstLayerPlane converts into a perpendicular distance in the
+    // slicing frame; this evaluator measures along slicing Z instead, so there is
+    // no faithful translation of it here.  Honour the user's setting by deferring
+    // to the evaluator that implements it rather than silently dropping it.
+    if (std::abs(m_config.first_layer_plane_offset.value) > EPSILON)
+        return false;
+
+    const SlicingParameters &sp = object->slicing_parameters();
+    // Deliberately NOT BeltFloorContext: its init() folds in
+    // belt_support_floor_offset, a support-generator diagnostic. Letting that
+    // option move the model's first-layer speed band would be a surprising
+    // coupling -- a negative value would switch the slowdown off entirely.
+    // The belt surface itself is just shear * u + z_shift.
+    if (std::abs(sp.belt_floor_shear_factor) < EPSILON)
+        return false;
+    const double u = sp.belt_floor_from_axis == 0 ? point_slicing_mm.x() : point_slicing_mm.y();
+    const double floor_z = sp.belt_floor_shear_factor * u + sp.belt_floor_z_shift;
+    // Measured along the slicing Z, not perpendicular to the belt: layers are
+    // horizontal slabs in the sliced frame, so the slab holding the material that
+    // rests on the belt at this point is the one within one layer height of it.
+    // A perpendicular measure would shrink the band by 1/cos(tilt).
+    height_mm = point_slicing_mm.z() - floor_z;
+    return true;
 }
 
 // convert a model-space scaled point into G-code coordinates
