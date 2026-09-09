@@ -4,6 +4,9 @@
 #include <cmath>
 #include <limits>
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+
 namespace Slic3r {
 namespace TextureBake {
 
@@ -204,20 +207,30 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
         }
     }
 
-    // Pass 2: one sample per unique position.
-    std::vector<double>  grey(unique_count, 0.0);
-    std::vector<uint8_t> grey_set(unique_count, 0);
-    for (size_t i = 0; i < count; ++i) {
-        const size_t vid = size_t(vertex_id[i]);
-        if (grey_set[vid])
-            continue;
-        grey_set[vid] = 1;
-        grey[vid] = double(sample(geometry.pos[i], smooth_nrm[vid].cast<float>(),
-                                  blend_nrm[vid].cast<float>()));
-    }
+    // Pass 2: one sample per unique position. A representative corner is picked first so the sampling
+    // itself is a flat parallel loop - it is a texture fetch plus projection maths per layer, and by
+    // far the most expensive thing in this stage.
+    std::vector<double> grey(unique_count, 0.0);
+    std::vector<int>    representative(unique_count, -1);
+    for (size_t i = 0; i < count; ++i)
+        if (representative[size_t(vertex_id[i])] < 0)
+            representative[size_t(vertex_id[i])] = int(i);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, unique_count),
+                      [&](const tbb::blocked_range<size_t> &range) {
+                          for (size_t vid = range.begin(); vid < range.end(); ++vid) {
+                              const int rep = representative[vid];
+                              if (rep < 0)
+                                  continue;
+                              grey[vid] = double(sample(geometry.pos[size_t(rep)],
+                                                        smooth_nrm[vid].cast<float>(),
+                                                        blend_nrm[vid].cast<float>()));
+                          }
+                      });
 
-    // Pass 3: move every copy of a position by the identical vector.
-    for (size_t i = 0; i < count; ++i) {
+    // Pass 3: move every copy of a position by the identical vector. Each iteration writes only its
+    // own output slot, so the loop is independent per corner.
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, count), [&](const tbb::blocked_range<size_t> &range) {
+    for (size_t i = range.begin(); i < range.end(); ++i) {
         const Vec3f &p   = geometry.pos[i];
         const size_t vid = size_t(vertex_id[i]);
 
@@ -249,17 +262,18 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
             moved.z() = double(p.z());
 
         out.pos[i] = moved.cast<float>();
-
-        if (on_progress && (i % 5000) == 0 && !on_progress(double(i) / double(count)))
-            return geometry; // cancelled: hand back the input untouched
     }
+    });
 
     // Per-face, not averaged across shared positions: averaging can flip an excluded face's normal
     // when its neighbours moved outward.
-    for (size_t t = 0; t + 2 < count; t += 3) {
-        const Vec3f n = (out.pos[t + 1] - out.pos[t]).cross(out.pos[t + 2] - out.pos[t]).normalized();
-        out.nrm[t] = out.nrm[t + 1] = out.nrm[t + 2] = n;
-    }
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, count / 3), [&](const tbb::blocked_range<size_t> &r) {
+        for (size_t f = r.begin(); f < r.end(); ++f) {
+            const size_t t = f * 3;
+            const Vec3f  n = (out.pos[t + 1] - out.pos[t]).cross(out.pos[t + 2] - out.pos[t]).normalized();
+            out.nrm[t] = out.nrm[t + 1] = out.nrm[t + 2] = n;
+        }
+    });
     out.exclude_weight = geometry.exclude_weight;
     return out;
 }

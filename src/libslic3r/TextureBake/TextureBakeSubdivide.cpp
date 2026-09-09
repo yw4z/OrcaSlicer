@@ -4,6 +4,10 @@
 #include <cmath>
 #include <unordered_map>
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+
 namespace Slic3r {
 namespace TextureBake {
 
@@ -104,13 +108,18 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         return out; // changed stays false: nothing left to refine
     }
 
-    // Step 1.5.
-    size_t predicted = 0;
-    for (size_t t = 0; t < tri_count; ++t) {
-        const int a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
-        const int n = int(is_marked(a, b)) + int(is_marked(b, c)) + int(is_marked(c, a));
-        predicted += (n == 0) ? 1 : size_t(n + 1);
-    }
+    // Step 1.5. Read-only against the finished mark set, so it reduces in parallel.
+    const size_t predicted = tbb::parallel_reduce(
+        tbb::blocked_range<size_t>(0, tri_count), size_t(0),
+        [&](const tbb::blocked_range<size_t> &range, size_t acc) {
+            for (size_t t = range.begin(); t < range.end(); ++t) {
+                const int a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
+                const int n = int(is_marked(a, b)) + int(is_marked(b, c)) + int(is_marked(c, a));
+                acc += (n == 0) ? 1 : size_t(n + 1);
+            }
+            return acc;
+        },
+        std::plus<size_t>());
     if (predicted > size_t(safety_cap)) {
         out.indices        = indices;
         out.face_excluded  = face_excluded;
@@ -255,18 +264,20 @@ IndexedMesh to_indexed(const TriSoup &geometry)
 
     // Per-face normals: unit for the angle test, raw for the area-weighted accumulation.
     std::vector<Vec3d> face_unit(n), face_raw(n);
-    for (size_t t = 0; t + 2 < n; t += 3) {
-        const Vec3d  a   = geometry.pos[t].cast<double>();
-        const Vec3d  b   = geometry.pos[t + 1].cast<double>();
-        const Vec3d  c   = geometry.pos[t + 2].cast<double>();
-        const Vec3d  r   = (b - a).cross(c - a);
-        const double len = r.norm();
-        const Vec3d  u   = (len > 0.0) ? Vec3d(r / len) : Vec3d(0.0, 0.0, 1.0);
-        for (int v = 0; v < 3; ++v) {
-            face_unit[t + size_t(v)] = u;
-            face_raw[t + size_t(v)]  = r;
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, n / 3), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t f = range.begin(); f < range.end(); ++f) {
+            const size_t t   = f * 3;
+            const Vec3d  a   = geometry.pos[t].cast<double>();
+            const Vec3d  r   = (geometry.pos[t + 1].cast<double>() - a).cross(
+                                 geometry.pos[t + 2].cast<double>() - a);
+            const double len = r.norm();
+            const Vec3d  u   = (len > 0.0) ? Vec3d(r / len) : Vec3d(0.0, 0.0, 1.0);
+            for (int v = 0; v < 3; ++v) {
+                face_unit[t + size_t(v)] = u;
+                face_raw[t + size_t(v)]  = r;
+            }
         }
-    }
+    });
 
     out.indices.resize(n);
     out.pos_canon_map = QuantizedPointMap(WELD_GRID_GEOMETRY, std::min(n, size_t(1) << 22));

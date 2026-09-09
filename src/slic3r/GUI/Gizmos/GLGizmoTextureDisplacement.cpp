@@ -3828,8 +3828,13 @@ bool GLGizmoTextureDisplacement::plan_remesh(const indexed_triangle_set &src, fl
         target_edge_mm = float(budget_edge);
     }
 
-    indexed_triangle_set remeshed =
-        MeshBoolean::cgal::remesh_isotropic(src, double(target_edge_mm), 3, double(sharp_angle_deg));
+    // Five iterations with three relaxation passes each, rather than CGAL's three-and-one. Splitting
+    // and collapsing bring edge lengths near the target but leave the vertices where they fell, so it
+    // is the relaxation count that decides how even the result looks - and three passes in total was
+    // nowhere near enough. Fifteen costs proportionally more, but only on an explicit Remesh.
+    indexed_triangle_set remeshed = MeshBoolean::cgal::remesh_isotropic(
+        src, double(target_edge_mm), /* iterations */ 5, double(sharp_angle_deg),
+        /* relaxation steps */ 3);
     // remesh_isotropic() signals failure by handing the input straight back, so compare against it
     // structurally. Vertex count alone is not enough: a remesh that only redistributes triangles at
     // roughly the current density legitimately lands on the same count, and treating that as failure
@@ -5405,6 +5410,24 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
                                   "simplification off, which is worth comparing on its own."),
                               m_imgui->scaled(20.f));
         ImGui::PopItemWidth();
+        m_preview_params_dirty |= ImGui::Checkbox(_u8L("Keep above build plate").c_str(),
+                                                  &opts.v2_clamp_below_plate);
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("Push anything the displacement drove below the build plate back up to it. "
+                                  "Only geometry that would end up under the model's own bottom is moved - "
+                                  "relief that goes downward but stays above the plate is left as it is."),
+                              m_imgui->scaled(20.f));
+
+        m_preview_params_dirty |= ImGui::Checkbox(_u8L("Align mesh to texture edges").c_str(),
+                                                  &opts.v2_relocate);
+        if (ImGui::IsItemHovered())
+            m_imgui->tooltip(_u8L("Slide vertices sideways onto the edges in the texture before displacing them. "
+                                  "Displacement can only move vertices up and down, so without this a sharp step "
+                                  "in the image lands wherever the triangles happen to be and comes out as a "
+                                  "staircase. Moving the vertices onto the step first gives a straight wall at the "
+                                  "same triangle count."),
+                              m_imgui->scaled(20.f));
+
         m_preview_params_dirty |= ImGui::Checkbox(_u8L("Clean up slivers").c_str(), &opts.v2_regularize);
         if (ImGui::IsItemHovered())
             m_imgui->tooltip(_u8L("Collapse the thin triangles refinement inherits from the model's own "

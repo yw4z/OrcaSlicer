@@ -6,6 +6,11 @@
 #include <limits>
 #include <queue>
 
+#include <boost/log/trivial.hpp>
+
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+
 namespace Slic3r {
 namespace TextureBake {
 
@@ -74,13 +79,19 @@ Vec3d face_normal_unit(const std::vector<Vec3d> &pos, int a, int b, int c)
 }
 
 // Versions are captured at push time; a mismatch on pop means a later collapse invalidated the entry.
-// Lazy deletion, far cheaper than removing entries eagerly.
+// Lazy deletion, far cheaper than removing entries eagerly - but it means the heap accumulates stale
+// duplicates, so it grows to several times the edge count and its size has to be reserved up front.
+// Left to grow on its own it reallocates and copies the whole array repeatedly, which on a
+// multi-million-entry heap costs more than every collapse put together.
+//
+// The collapse target is stored as float rather than double: it is a position on a mesh already held
+// in float, and halving the entry cuts the memory the sift operations drag through cache.
 struct HeapEntry
 {
     double   cost;
     int      v1, v2;
     uint32_t ver1, ver2;
-    Vec3d    p;
+    Vec3f    p;
     bool     operator>(const HeapEntry &o) const { return cost > o.cost; }
 };
 
@@ -143,16 +154,29 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     }
 
     std::vector<Quadric> quadrics(vert_count);
-    for (size_t f = 0; f < face_count; ++f) {
-        const int a = faces[f * 3], b = faces[f * 3 + 1], c = faces[f * 3 + 2];
-        if (a < 0)
-            continue;
-        const Vec3d nrm = face_normal_unit(pos, a, b, c);
-        if (nrm.isZero())
-            continue;
-        const double d = -nrm.dot(pos[size_t(a)]);
-        for (const int v : { a, b, c })
-            quadrics[size_t(v)].add_plane(nrm.x(), nrm.y(), nrm.z(), d);
+    {
+        // The plane per face is independent; accumulating it into the three incident vertices is not,
+        // so only the first half is parallel.
+        std::vector<Vec4d> planes(face_count, Vec4d::Zero());
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, face_count),
+                          [&](const tbb::blocked_range<size_t> &range) {
+                              for (size_t f = range.begin(); f < range.end(); ++f) {
+                                  const int a = faces[f * 3], b = faces[f * 3 + 1], c = faces[f * 3 + 2];
+                                  if (a < 0)
+                                      continue;
+                                  const Vec3d nrm = face_normal_unit(pos, a, b, c);
+                                  if (nrm.isZero())
+                                      continue;
+                                  planes[f] = Vec4d(nrm.x(), nrm.y(), nrm.z(), -nrm.dot(pos[size_t(a)]));
+                              }
+                          });
+        for (size_t f = 0; f < face_count; ++f) {
+            const Vec4d &pl = planes[f];
+            if (pl.head<3>().isZero())
+                continue;
+            for (int k = 0; k < 3; ++k)
+                quadrics[size_t(faces[f * 3 + size_t(k)])].add_plane(pl.x(), pl.y(), pl.z(), pl.w());
+        }
     }
 
     // Two penalty planes per endpoint on a sharp interior edge, each perpendicular to one adjacent
@@ -250,7 +274,22 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     uint32_t              epoch = 1, lk_epoch = 1;
     size_t                active_faces = face_count;
 
-    std::priority_queue<HeapEntry, std::vector<HeapEntry>, std::greater<HeapEntry>> heap;
+    // A plain vector driven by the heap algorithms, so the capacity can be reserved. Lazy deletion
+    // means roughly one entry per edge plus one per re-push after each collapse; the reserve below is
+    // sized from the edge count and simply grows if a mesh needs more.
+    std::vector<HeapEntry> heap;
+    heap.reserve(std::min<size_t>(face_count * 3, size_t(1) << 24));
+    const auto heap_push = [&](HeapEntry e) {
+        heap.push_back(e);
+        std::push_heap(heap.begin(), heap.end(), std::greater<HeapEntry>());
+    };
+    const auto heap_pop = [&]() {
+        std::pop_heap(heap.begin(), heap.end(), std::greater<HeapEntry>());
+        const HeapEntry e = heap.back();
+        heap.pop_back();
+        return e;
+    };
+    size_t pops = 0, stale_pops = 0;
 
     const auto push_edge = [&](int v1, int v2) {
         Vec3d p;
@@ -269,8 +308,8 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         }
         // Where quadric costs are all near zero, shorter edges first keeps triangle quality up.
         const double len2 = (pos[size_t(v2)] - pos[size_t(v1)]).squaredNorm();
-        heap.push({ eval_sum(quadrics, v1, v2, p) + len2 * 1e-8, v1, v2, version[size_t(v1)],
-                    version[size_t(v2)], p });
+        heap_push({ eval_sum(quadrics, v1, v2, p) + len2 * 1e-8, v1, v2, version[size_t(v1)],
+                    version[size_t(v2)], p.cast<float>() });
     };
 
     {
@@ -384,27 +423,32 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             reached_target = true;
         }
 
-        const HeapEntry top = heap.top();
-        heap.pop();
+        const HeapEntry top = heap_pop();
+        ++pops;
         // The popped entry is the cheapest left, so exceeding the tolerance ends the run.
         if (reached_target && top.cost > harvest_ceil)
             break;
 
         const int v1 = top.v1, v2 = top.v2;
-        if (!active[size_t(v1)] || !active[size_t(v2)])
+        if (!active[size_t(v1)] || !active[size_t(v2)]) {
+            ++stale_pops;
             continue;
-        if (version[size_t(v1)] != top.ver1 || version[size_t(v2)] != top.ver2)
+        }
+        if (version[size_t(v1)] != top.ver1 || version[size_t(v2)] != top.ver2) {
+            ++stale_pops;
             continue;
+        }
         if (shared_face_count(v1, v2) < 2)
             continue;
         lk_epoch += 2; // +2 so ep and ep+1 cannot collide with the next call
         if (has_link_violation(v1, v2, lk_epoch))
             continue;
-        if (check_flipped(v1, v2, top.p) || check_flipped(v2, v1, top.p))
+        const Vec3d target = top.p.cast<double>();
+        if (check_flipped(v1, v2, target) || check_flipped(v2, v1, target))
             continue;
 
         // v1 survives at the new position, v2 goes.
-        pos[size_t(v1)] = top.p;
+        pos[size_t(v1)] = target;
         quadrics[size_t(v1)] += quadrics[size_t(v2)];
         ++version[size_t(v1)];
 
@@ -458,6 +502,9 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             }
         }
     }
+
+    BOOST_LOG_TRIVIAL(info) << "TextureBake decimate: pops=" << pops << " stale=" << stale_pops
+                            << " heap_peak=" << heap.capacity() << " faces=" << active_faces;
 
     // Rebuild from the surviving faces, with per-face normals.
     TriSoup &out = result.geometry;

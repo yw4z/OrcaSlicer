@@ -2,7 +2,7 @@
 
 // The bake pipeline:
 //
-//   subdivide -> [regularize -> re-subdivide] -> displace -> [decimate]
+//   subdivide -> [regularize -> re-subdivide] -> [relocate] -> displace -> [decimate]
 //             -> bottom clamp -> bottom snap -> [resolve T-junctions]
 //
 // Regularization sits between two subdivisions on purpose: it dissolves the slivers refinement
@@ -21,6 +21,7 @@
 #include "TextureBakeDisplace.hpp"
 #include "TextureBakeIndex.hpp"
 #include "TextureBakeRegularize.hpp"
+#include "TextureBakeRelocate.hpp"
 #include "TextureBakeRepair.hpp"
 #include "TextureBakeSubdivide.hpp"
 
@@ -47,6 +48,11 @@ struct PipelineSettings
     // re-refining what it just merged.
     double regularize_second_pass_mul = 1.1;
 
+    // Slide vertices onto the height map's own edges before displacing, so a step lands on a mesh
+    // edge instead of being quantised to wherever the grid fell.
+    bool             relocate = false;
+    RelocateSettings relocate_opts;
+
     DisplaceSettings displace;
 
     // Export mode only.
@@ -55,6 +61,10 @@ struct PipelineSettings
     double harvest_tol   = DECIMATE_DEFAULT_HARVEST_TOL;
     // Lock the untextured region against both regularization and decimation.
     bool preserve_untextured = true;
+
+    // Push anything that displaced below the plate back up to it. Downward movement is otherwise left
+    // alone, so relief on the underside is kept - only what would sink through the plate is stopped.
+    bool clamp_below_plate = false;
 
     // Snap vertices within this of the bottom plane onto it. 0 disables.
     double bottom_snap_tol = 0.1;

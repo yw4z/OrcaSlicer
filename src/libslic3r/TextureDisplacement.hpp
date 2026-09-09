@@ -373,6 +373,13 @@ struct TextureDisplacementOptions
     float v2_refine_mm       = 0.3f;
     bool  v2_regularize      = false;
     int   v2_max_triangles_k = 750; // 0 skips simplification, which is worth comparing on its own
+    // Stop displacement pushing geometry through the build plate. Only what would end up below the
+    // model's own bottom is moved; downward relief above that is untouched.
+    bool  v2_clamp_below_plate = false;
+    // Slide vertices onto the texture's own edges before displacing. Displacement moves vertices along
+    // the normal only, so without this a step in the image is reproduced wherever the triangle grid
+    // happens to fall, as a staircase rather than a straight wall.
+    bool  v2_relocate          = false;
 
     // Colour, all of which belongs to the stack rather than to any one layer: it is about how the
     // printer will realise the colours, not about which image they came from.
@@ -390,8 +397,8 @@ struct TextureDisplacementOptions
     {
         int mix_mode = int(color_mix_mode);
         ar(displace_border, smooth_enabled, smooth_strength, smooth_iterations, smooth_skip_border,
-           pipeline_v2, v2_refine_mm, v2_regularize, v2_max_triangles_k, color_mix_enabled, mix_mode,
-           color_despeckle);
+           pipeline_v2, v2_refine_mm, v2_regularize, v2_max_triangles_k, v2_clamp_below_plate,
+           v2_relocate, color_mix_enabled, mix_mode, color_despeckle);
         color_mix_mode = ColorMixMode(mix_mode);
     }
 };

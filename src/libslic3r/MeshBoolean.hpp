@@ -89,8 +89,13 @@ std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &
 // Edges whose dihedral angle exceeds `sharp_angle_deg`, and any open border, are held fixed so hard
 // features survive instead of being eroded by the relaxation pass; pass 0 to remesh everything.
 // Returns the input unchanged if remeshing fails (e.g. a non-manifold or self-intersecting input).
+// `n_relaxation_steps` is the number of tangential relaxation passes run inside each iteration. That
+// relaxation is what actually evens out the triangle distribution - splitting and collapsing alone
+// only bring edge *lengths* near the target, leaving the vertices wherever they happened to land. CGAL
+// defaults it to 1, which on a few iterations is not enough to look uniform.
 indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double target_edge_length,
-                                      unsigned n_iterations = 3, double sharp_angle_deg = 40.0);
+                                      unsigned n_iterations = 3, double sharp_angle_deg = 40.0,
+                                      unsigned n_relaxation_steps = 1);
 }
 
 namespace mcut {

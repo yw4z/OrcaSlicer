@@ -1,7 +1,10 @@
 #include "TextureBakePipeline.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+
+#include <boost/log/trivial.hpp>
 
 namespace Slic3r {
 namespace TextureBake {
@@ -111,6 +114,15 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
     const auto     report = [&](const char *stage, double f) {
         return !on_progress || on_progress(stage, f);
     };
+    // Per-stage wall time. The stages differ in cost by orders of magnitude depending on the model, so
+    // without this it is guesswork which one to attack.
+    auto       clock_now = [] { return std::chrono::steady_clock::now(); };
+    auto       t_stage   = clock_now();
+    const auto lap       = [&](const char *stage, size_t tris) {
+        const double ms = std::chrono::duration<double, std::milli>(clock_now() - t_stage).count();
+        BOOST_LOG_TRIVIAL(info) << "TextureBake " << stage << ": " << ms << " ms, " << tris << " tris";
+        t_stage = clock_now();
+    };
 
     if (input.empty() || !sample) {
         result.geometry = input;
@@ -122,6 +134,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         input, settings.refine_length, face_excluded, /* fast */ false, settings.safety_cap,
         [&](double f, size_t, double) { return report("subdivide", f); });
     result.safety_cap_hit = sub.safety_cap_hit;
+    lap("subdivide", sub.geometry.triangle_count());
     if (!report("subdivide", 1.0)) {
         result.canceled = true;
         return result;
@@ -134,6 +147,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         RegularizeResult reg = regularize_mesh(sub.geometry, sub.face_parent_id,
                                                settings.refine_length, ropts);
         result.collapse_count = reg.collapse_count;
+        lap("regularize", reg.geometry.triangle_count());
         if (!report("regularize", 1.0)) {
             result.canceled = true;
             return result;
@@ -159,15 +173,31 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                                   ? reg.face_parent_id[size_t(mid)] : -1;
             }
             sub.face_parent_id = std::move(composed);
+            lap("re-subdivide", sub.geometry.triangle_count());
         } else {
             sub.geometry       = std::move(reg.geometry);
             sub.face_parent_id = std::move(reg.face_parent_id);
         }
     }
 
-    // 3. Displace.
+    // 3. Align the mesh to the height field's edges, then displace.
+    if (settings.relocate) {
+        std::vector<uint8_t> locked;
+        if (settings.preserve_untextured && !sub.geometry.exclude_weight.empty()) {
+            locked.assign(sub.geometry.triangle_count(), 0);
+            for (size_t t = 0; t < locked.size(); ++t)
+                locked[t] = sub.geometry.exclude_weight[t * 3] > 0.99f ? 1 : 0;
+        }
+        RelocateResult rel = relocate_to_contours(sub.geometry, sample, settings.relocate_opts, locked);
+        BOOST_LOG_TRIVIAL(info) << "TextureBake relocate: moved=" << rel.moved
+                                << " rejected=" << rel.rejected;
+        sub.geometry = std::move(rel.geometry);
+        lap("relocate", sub.geometry.triangle_count());
+    }
+
     TriSoup displaced = apply_displacement(sub.geometry, sample, settings.displace, bounds,
                                            [&](double f) { return report("displace", f); });
+    lap("displace", displaced.triangle_count());
     if (!report("displace", 1.0)) {
         result.canceled = true;
         return result;
@@ -189,6 +219,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                                           [&](double f) { return report("decimate", f); });
             result.locked_over_budget = dec.locked_over_budget;
             displaced                 = std::move(dec.geometry);
+            lap("decimate", displaced.triangle_count());
             parent.clear(); // no longer meaningful
         }
         if (!report("decimate", 1.0)) {
@@ -198,14 +229,16 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
     }
 
     // 5. Flatten the bed-contact surface.
-    if (settings.displace.bottom_angle_limit > 0.f)
+    if (settings.clamp_below_plate || settings.displace.bottom_angle_limit > 0.f)
         clamp_below_bottom(displaced, bounds.min.z());
     if (settings.bottom_snap_tol > 0.0)
         snap_bottom_to_flat(displaced, bounds.min.z(), settings.bottom_snap_tol);
 
     // 6. Close the T-junctions decimation left behind. Only meaningful when it ran.
-    if (mode == PipelineMode::Export && parent.empty())
+    if (mode == PipelineMode::Export && parent.empty()) {
         displaced = resolve_t_junctions(displaced);
+        lap("repair", displaced.triangle_count());
+    }
 
     result.geometry       = std::move(displaced);
     result.face_parent_id = std::move(parent);

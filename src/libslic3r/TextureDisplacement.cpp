@@ -1405,12 +1405,17 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
     settings.regularize    = options.v2_regularize;
     settings.max_triangles = size_t(std::max(0, options.v2_max_triangles_k)) * 1000;
     settings.preserve_untextured = true;
+    settings.clamp_below_plate   = options.v2_clamp_below_plate;
+    settings.relocate            = options.v2_relocate;
     // The sampler already returns millimetres, so the displacement stage must not scale it again.
     settings.displace.amplitude = 1.f;
     settings.displace.symmetric = false;
     // The paint decides what moves here, so the angle limits stay off.
     settings.displace.bottom_angle_limit = 0.f;
     settings.displace.top_angle_limit    = 0.f;
+    // The sampler above takes the smooth normal, never the smoothed blend normal, so computing the
+    // latter would build a full adjacency graph and run its iterations for a value nothing reads.
+    settings.displace.blend_normal_smoothing = 0;
 
     TextureBake::DisplaceBounds bounds;
     bounds.min = bounds.max = mesh.vertices.empty() ? Vec3f::Zero() : mesh.vertices.front();

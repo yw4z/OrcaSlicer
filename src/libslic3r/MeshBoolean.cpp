@@ -261,7 +261,8 @@ indexed_triangle_set cgal_to_indexed_triangle_set(const CGALMesh &cgalmesh)
 // /////////////////////////////////////////////////////////////////////////////
 
 indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double target_edge_length,
-                                      unsigned n_iterations, double sharp_angle_deg)
+                                      unsigned n_iterations, double sharp_angle_deg,
+                                      unsigned n_relaxation_steps)
 {
     if (mesh.indices.empty() || target_edge_length <= 0.0)
         return mesh;
@@ -305,6 +306,7 @@ indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double t
 
         CGALProc::isotropic_remeshing(faces(cgal_mesh), target_edge_length, cgal_mesh,
                                       CGALParams::number_of_iterations(n_iterations)
+                                          .number_of_relaxation_steps(n_relaxation_steps)
                                           .edge_is_constrained_map(ecm)
                                           .protect_constraints(true));
     } catch (const std::exception &) {
