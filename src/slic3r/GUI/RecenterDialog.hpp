@@ -13,6 +13,7 @@ private:
     ScalableBitmap  m_home_bmp;
     wxString hint1;
     wxString hint2;
+    wxColour text_color; // ORCA
 
     void init_bitmap();
     void OnPaint(wxPaintEvent& event);
