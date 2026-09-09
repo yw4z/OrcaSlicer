@@ -13,6 +13,7 @@
 #include "SVG.hpp"
 #include "TreeSupportCommon.hpp"
 #include "TreeSupport.hpp"
+#include <cstdio>
 #include "TreeSupport3D.hpp"
 #include "BeltFloorContext.hpp"
 #include <libnest2d/backends/libslic3r/geometries.hpp>
@@ -712,6 +713,17 @@ void TreeSupport::detect_overhangs(bool check_support_necessity/* = false*/)
     const double tilt_x_rad = Geometry::deg2rad(print_cfg.build_plate_tilt_x.value);
     const double tilt_y_rad = Geometry::deg2rad(print_cfg.build_plate_tilt_y.value);
     const bool   has_tilt   = std::abs(tilt_x_rad) > EPSILON || std::abs(tilt_y_rad) > EPSILON;
+
+    // Belt printers: the object is pre-rotated by the belt angle before slicing, so a wall
+    // that is vertical in the world advances by one layer height per layer in the sliced
+    // frame. The build-plate tilt shift above compensates for that, but its direction has to
+    // follow the belt shear -- the sign and axis are already known exactly from the slicing
+    // parameters, so take them from there rather than from tan(build_plate_tilt), which
+    // carries a magnitude but no direction. Non-belt tilted beds keep the existing behaviour.
+    BeltFloorContext ovh_belt_ctx;
+    const bool belt_ovh_active = ovh_belt_ctx.init(m_slicing_params, print_cfg);
+    const double belt_shear    = ovh_belt_ctx.shear_factor();
+    const int    belt_axis     = ovh_belt_ctx.from_axis();
     // FIXME this is a fudge constant!
     double support_tree_tip_diameter = 0.8;
     auto   enforcer_overhang_offset  = scaled<double>(support_tree_tip_diameter);
@@ -855,15 +867,61 @@ void TreeSupport::detect_overhangs(bool check_support_necessity/* = false*/)
                 ExPolygons& lower_polys = lower_layer->lslices_extrudable;
 
                 // Apply build plate tilt: shift lower layer polygons to simulate tilted gravity
+                //
+                // On a belt the object's very first slice can come out empty (the bottom
+                // vertex is a sub-extrudable sliver), leaving the layer above it with an
+                // empty predecessor even though it rests on the belt. That case needs no
+                // special handling here: the belt surface is unioned into effective_lower
+                // below and sampled at the bottom of the layer, so a contacting island is
+                // covered and a genuinely floating one still reports its overhang. Doing it
+                // that way keeps the decision per-island -- an earlier whole-layer skip,
+                // conditioned on the nearest point of the *union* of the cross-section,
+                // let one contacting island silence a separate floating one.
                 ExPolygons shifted_lower;
-                if (has_tilt) {
+                if (belt_ovh_active || has_tilt) {
                     shifted_lower = lower_polys; // copy
                     const double lh = lower_layer->height;
-                    Point tilt_shift(coord_t(scale_(lh * tan(tilt_y_rad))),
-                                     coord_t(scale_(lh * tan(tilt_x_rad))));
+                    Point tilt_shift(0, 0);
+                    if (belt_ovh_active) {
+                        // Advance the lower layer along the belt by exactly the amount a
+                        // world-vertical wall moves per layer, so such a wall stops reading
+                        // as an overhang. Sign comes from the shear, not from a tilt angle.
+                        const coord_t d = coord_t(-scale_(lh * belt_shear));
+                        if (belt_axis == 0) tilt_shift.x() = d; else tilt_shift.y() = d;
+                    } else {
+                        tilt_shift = Point(coord_t(scale_(lh * tan(tilt_y_rad))),
+                                           coord_t(scale_(lh * tan(tilt_x_rad))));
+                    }
                     translate(shifted_lower, tilt_shift);
                 }
-                const ExPolygons &effective_lower = has_tilt ? shifted_lower : lower_polys;
+                ExPolygons effective_lower = (belt_ovh_active || has_tilt) ? shifted_lower : lower_polys;
+
+                // Belt printers: material resting on the belt is held up by the belt, not by
+                // the layer below it, so the belt surface counts as support from underneath.
+                // Without this the object's belt-contact face reads as a fresh overhang on
+                // every layer -- the leading strip that produced the spurious support nub.
+                if (belt_ovh_active) {
+                    // surface_polygon() is a +/-1000mm half-plane. Unioning that raw with
+                    // 20mm-scale geometry and then offsetting it puts a huge dynamic range
+                    // through Clipper, which left intermittent artefacts every few layers.
+                    // Clip it to the layer's own bounding box first.
+                    // Evaluate the belt surface at the BOTTOM of the layer, not its top:
+                    // a layer meets the belt across its whole thickness, and print_z is the
+                    // top. On the object's first layer -- which is thicker, and whose lower
+                    // layer is empty -- using print_z left the leading 0.37mm uncovered and
+                    // produced the one remaining spurious overhang.
+                    Polygons belt_surface = ovh_belt_ctx.surface_polygon(layer->print_z - layer->height);
+                    if (! belt_surface.empty()) {
+                        BoundingBox clip_bb = get_extents(curr_polys);
+                        clip_bb.merge(get_extents(lower_polys));
+                        clip_bb.offset(scale_(10.));
+                        belt_surface = intersection(belt_surface, Polygons{ clip_bb.polygon() });
+                        if (! belt_surface.empty()) {
+                            append(effective_lower, union_ex(belt_surface));
+                            effective_lower = union_ex(effective_lower);
+                        }
+                    }
+                }
 
                 // normal overhang
                 ExPolygons lower_layer_offseted = offset_ex(effective_lower, support_offset_scaled, SUPPORT_SURFACES_OFFSET_PARAMETERS);
@@ -882,8 +940,13 @@ void TreeSupport::detect_overhangs(bool check_support_necessity/* = false*/)
                     for (const ExPolygon& expoly : curr_polys) {
                         bool  is_sharp_tail = false;
                         // 1. nothing below
-                        // this is a sharp tail region if it's floating and non-ignorable
-                        if (!overlaps(offset_ex(expoly, 0.1 * extrusion_width_scaled), lower_polys)) {
+                        // this is a sharp tail region if it's floating and non-ignorable.
+                        // On a belt, "below" has to include the belt itself and the
+                        // shear-advanced lower layer, or every belt-contact island reads as
+                        // a sharp tail -- which is what the empty-predecessor skip above was
+                        // really masking. effective_lower is exactly that notion of below.
+                        const ExPolygons &tail_lower = belt_ovh_active ? effective_lower : lower_polys;
+                        if (!overlaps(offset_ex(expoly, 0.1 * extrusion_width_scaled), tail_lower)) {
                             is_sharp_tail = !offset_ex(expoly, -0.1 * extrusion_width_scaled).empty();
                         }
 

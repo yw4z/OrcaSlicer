@@ -95,29 +95,6 @@ TreeModelVolumes::TreeModelVolumes(
 #else
     {
         m_anti_overhang = print_object.slice_support_blockers();
-        // Belt floor: add belt surface polygons to anti_overhang so support
-        // is never generated inside the belt.  Only in global shear mode —
-        // in local mode the belt floor clipping handles everything and
-        // anti_overhang at the bottom layers would block all support.
-        {
-            const auto &sp   = print_object.slicing_parameters();
-            const auto &pcfg = print_object.print()->config();
-            BeltFloorContext ctx;
-            ctx.init_local(sp, pcfg, print_object.belt_global_z_offset());
-            if (ctx.is_active()
-                && std::abs(print_object.belt_global_z_offset()) > EPSILON
-                && pcfg.belt_support_floor_mode.value == BeltSupportFloorMode::GeneratorOnly) {
-                size_t num_layers_needed = print_object.layer_count();
-                // Ensure m_anti_overhang is large enough.
-                if (m_anti_overhang.size() < num_layers_needed)
-                    m_anti_overhang.resize(num_layers_needed, Polygons{});
-                for (size_t layer_idx = 0; layer_idx < num_layers_needed; ++layer_idx) {
-                    double print_z = print_object.get_layer(layer_idx)->print_z
-                                   - print_object.belt_global_z_offset();
-                    append(m_anti_overhang[layer_idx], ctx.surface_polygon(print_z));
-                }
-            }
-        }
         TreeSupportMeshGroupSettings mesh_settings(print_object);
         const TreeSupportSettings config{ mesh_settings, print_object.slicing_parameters() };
         m_current_min_xy_dist = config.xy_min_distance;
@@ -144,6 +121,38 @@ TreeModelVolumes::TreeModelVolumes(
                     for (int i = num_extra; i >= 1; --i)
                         belt_layers.push_back(sp2.first_object_layer_height - i * sp2.layer_height);
                     m_raft_layers.insert(m_raft_layers.begin(), belt_layers.begin(), belt_layers.end());
+                }
+            }
+        }
+        // Belt floor: add belt surface polygons to anti_overhang so support is
+        // never generated inside the belt.
+        //
+        // This MUST run after m_raft_layers is final. m_anti_overhang is consumed
+        // in the same index space as m_layer_outlines -- object layer i lives at
+        // index num_raft_layers + i -- but slice_support_blockers() returns it in
+        // object-layer space. Without the shift below, every entry lands
+        // num_raft_layers too low: with the belt raft that is tens of layers, so
+        // the belt suppression is applied to the wrong layers entirely and the
+        // topmost object layers get none at all.
+        {
+            const size_t num_raft = m_raft_layers.size();
+            const size_t num_obj  = print_object.layer_count();
+            if (num_raft > 0 && ! m_anti_overhang.empty())
+                // Shift the support blockers into the same space.
+                m_anti_overhang.insert(m_anti_overhang.begin(), num_raft, Polygons{});
+            const auto &sp   = print_object.slicing_parameters();
+            const auto &pcfg = print_object.print()->config();
+            BeltFloorContext ctx;
+            ctx.init_local(sp, pcfg, print_object.belt_global_z_offset());
+            if (ctx.is_active()
+                && std::abs(print_object.belt_global_z_offset()) > EPSILON
+                && pcfg.belt_support_floor_mode.value == BeltSupportFloorMode::GeneratorOnly) {
+                if (m_anti_overhang.size() < num_raft + num_obj)
+                    m_anti_overhang.resize(num_raft + num_obj, Polygons{});
+                for (size_t i = 0; i < num_obj; ++i) {
+                    const double print_z = print_object.get_layer(i)->print_z
+                                         - print_object.belt_global_z_offset();
+                    append(m_anti_overhang[num_raft + i], ctx.surface_polygon(print_z));
                 }
             }
         }
