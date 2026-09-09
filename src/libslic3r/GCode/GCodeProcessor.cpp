@@ -2774,7 +2774,7 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     };
 
     // Belt-printer post-gcode shear/scale/post_remap is applied as the final
-    // step of BeltGCodeWriter::to_machine_coords, so MoveVertex.position is
+    // step of BeltKinematics::to_machine, so MoveVertex.position is
     // in the printer's machine frame.  Undo it here so XY area and Z height
     // checks operate in the build-volume frame that printable_area /
     // printable_height are defined in.  For non-belt printers
@@ -7111,7 +7111,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     // During the start G-code "prepare" stage the toolhead Z is not yet a real
     // print height on a normal printer, so it is pinned to the first-layer height
     // to keep the preview tidy. Belt printers are the exception: there the Z is
-    // written explicitly by BeltGCodeWriter and the designed-view back-transform
+    // written explicitly by the belt kinematics and the designed-view back-transform
     // couples machine Z into the rendered model Y (the belt tilt mixes the height
     // and belt-feed axes). Overriding Z therefore back-transforms the last
     // prepare-stage move (the unretract before the first extrusion) to model

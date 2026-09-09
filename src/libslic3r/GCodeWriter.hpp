@@ -9,7 +9,11 @@
 #include "Polygon.hpp"
 #include "PrintConfig.hpp"
 #include "GCode/CoolingBuffer.hpp"
+#include "GCode/MachineKinematics.hpp"
+#include <memory>
 namespace Slic3r {
+
+class FirstLayerPlane;
 
 class GCodeWriter {
 public:
@@ -28,7 +32,8 @@ public:
         m_lifted(0),
         m_to_lift(0),
         m_to_lift_type(LiftType::NormalLift),
-        m_current_speed(3600), m_is_first_layer(true)
+        m_current_speed(3600), m_is_first_layer(true),
+        m_kinematics(std::make_unique<CartesianKinematics>())
         {}
     Extruder* filament(size_t extruder_id) { assert(extruder_id < m_curr_filament_extruder.size()); return m_curr_filament_extruder[extruder_id]; }
     const Extruder* filament(size_t extruder_id) const { assert(extruder_id < m_curr_filament_extruder.size()); return m_curr_filament_extruder[extruder_id]; }
@@ -142,10 +147,28 @@ public:
     void set_build_volume_max(const Vec3d &max);
     bool has_axis_remap() const;
 
+    // Install the machine frame mapping.  Any axis remap / build volume already
+    // configured is carried over, so install order does not matter.
+    void set_kinematics(std::unique_ptr<MachineKinematics> kinematics);
+    const MachineKinematics& kinematics() const { return *m_kinematics; }
+
+    // First-layer plane evaluator.  When set to an active plane, travel speed
+    // selection consults the plane per destination point instead of the
+    // layer-coarse m_is_first_layer flag.  Borrowed pointer; lifetime is owned
+    // by GCode, which constructs the plane after the writer exists -- so this is
+    // deliberately a setter and not a constructor argument.
+    void set_first_layer_plane(const FirstLayerPlane *plane, double first_layer_height_mm)
+        { m_first_layer_plane = plane; m_first_layer_thickness_mm = first_layer_height_mm; }
+
+    // Force every lift to a plain vertical lift.  Spiral and slope lifts compute
+    // their slope in the logical frame and do not account for a machine mapping
+    // that couples axes.
+    void set_force_normal_lift(bool force) { m_force_normal_lift = force; }
+
     // Returns whether this flavor supports separate print and travel acceleration.
     static bool supports_separate_travel_acceleration(GCodeFlavor flavor);
 protected:
-    // Position/lift/offset state — accessible to subclasses (e.g. BeltGCodeWriter)
+    // Position/lift/offset state.
     Vec3d           m_pos = Vec3d::Zero();
     double          m_x_offset{ 0 };
     double          m_y_offset{ 0 };
@@ -158,17 +181,44 @@ protected:
 
     virtual std::string _travel_to_z(double z, const std::string &comment);
 
-    // Axis remap state — accessible to subclasses.
+    // Whether a destination gets first-layer treatment.  With an active plane
+    // evaluator, distance from the plane decides; otherwise the layer-coarse
+    // m_is_first_layer flag does.
+    bool point_on_first_layer(const Vec3d &point_logical) const;
+
+    // True when travel speed is selected per destination point rather than per
+    // layer. Set for writers that install a first-layer plane. The historical
+    // path emits the raw configured travel speed in the final branch of
+    // travel_to_xyz(), ignoring the first-layer selection computed at the top of
+    // that function; a plane-driven writer uses the first-layer-aware value
+    // throughout. Both are preserved exactly -- unifying them would change
+    // emitted feedrates and belongs in its own commit.
+    bool uses_pointwise_travel_speed() const { return m_first_layer_plane != nullptr; }
+
+    // Borrowed; null = inactive.
+    const FirstLayerPlane *m_first_layer_plane = nullptr;
+    double                 m_first_layer_thickness_mm = 0.;
+    bool                   m_force_normal_lift = false;
+
+    // The machine frame mapping.  Owns the axis-remap state that used to live
+    // here as m_remap_* / m_build_vol_max; the setters above forward to it.
+    // Never null: a CartesianKinematics at the identity remap reproduces the
+    // historical behaviour exactly.
+    std::unique_ptr<MachineKinematics> m_kinematics;
+
+    // Last configured remap / build volume, replayed onto a newly installed
+    // kinematics so set_kinematics() and the setters are order-independent.
     int             m_remap_x = 0;  // RemapAxis: 0=+X, 1=+Y, 2=+Z, 3=-X, etc.
     int             m_remap_y = 1;
     int             m_remap_z = 2;
     Vec3d           m_build_vol_max = Vec3d::Zero();
 
-    // Apply axis remap to a point. Returns pos unchanged if remap is identity.
+    // Apply the machine frame mapping to a point. Returns pos unchanged when the
+    // mapping is the identity.
     Vec3d apply_axis_remap(const Vec3d &pos) const;
 
     // Motion uses the global/base process variant until a filament becomes active.
-    // Protected so BeltGCodeWriter indexes the per-extruder speed options (travel_speed,
+    // Protected so subclasses index the per-extruder speed options (travel_speed,
     // travel_speed_z, initial_layer_travel_speed) exactly as the base writer does.
     size_t     m_cached_extruder_idx;
 

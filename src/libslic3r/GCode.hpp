@@ -4,7 +4,7 @@
 #include "libslic3r.h"
 #include "ExPolygon.hpp"
 #include "GCodeWriter.hpp"
-#include "BeltGCodeWriter.hpp"
+#include "GCode/BeltKinematics.hpp"
 #include "FirstLayerPlane.hpp"
 #include "Layer.hpp"
 #include "Point.hpp"

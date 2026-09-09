@@ -15760,7 +15760,7 @@ void Plater::_calib_apply_belt_mode()
 void Plater::calib_pa(const Calib_Params& params)
 {
     // ORCA-Belt: PA Line / PA Pattern have the belt plumbing in place
-    // (BeltGCodeWriter::set_world_coordinates draws them on the belt surface)
+    // (belt kinematics in world-coordinates mode draws them on the belt surface)
     // but are not validated yet — keep them gated to the PA Tower for now.
     {
         double angle_rad = 0.;

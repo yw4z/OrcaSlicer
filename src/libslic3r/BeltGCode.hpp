@@ -7,7 +7,7 @@ namespace Slic3r {
 // Belt-printer-specific GCode export.
 //
 // Inherits from GCode and overrides virtual hooks to:
-// - Create a BeltGCodeWriter instead of a plain GCodeWriter
+// - Install a BeltKinematics on the GCodeWriter
 // - Write belt configuration to the G-code header
 // - Adjust the origin for global pre-slice transforms when switching instances
 // - Disable arc fitting (G2/G3 not supported on belt printers)

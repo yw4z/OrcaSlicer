@@ -1147,7 +1147,7 @@ std::vector<int> GCodeViewer::get_plater_extruder()
 
 // Belt printers: compute the full machine->model back-transform from the print
 // config, so the "designed" (upright) G-code preview maps each toolpath vertex
-// back to Cartesian space. The G-code forward pipeline is (BeltGCodeWriter::
+// back to Cartesian space. The G-code forward pipeline is (BeltKinematics::
 // to_machine_coords):  gcode = MachineFrame( AxisRemap( X ) ), with X = model if
 // gcode_back_transform (write already un-rotated to Cartesian) else BeltForward(
 // model). So the inverse is:

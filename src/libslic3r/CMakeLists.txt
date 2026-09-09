@@ -84,8 +84,6 @@ set(lisbslic3r_sources
     BeltBrim.hpp
     BeltGCode.cpp
     BeltGCode.hpp
-    BeltGCodeWriter.cpp
-    BeltGCodeWriter.hpp
     BeltPurge.cpp
     BeltSliceStrategy.cpp
     BeltSliceStrategy.hpp
@@ -243,6 +241,10 @@ set(lisbslic3r_sources
     GCode/BeltBackTransform.hpp
     GCode/MachineFrameTransform.cpp
     GCode/MachineFrameTransform.hpp
+    GCode/BeltKinematics.cpp
+    GCode/BeltKinematics.hpp
+    GCode/MachineKinematics.cpp
+    GCode/MachineKinematics.hpp
     GCode/ConflictChecker.cpp
     GCode/ConflictChecker.hpp
     GCode/CoolingBuffer.cpp

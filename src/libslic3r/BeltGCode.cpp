@@ -1,5 +1,6 @@
 #include "BeltGCode.hpp"
-#include "BeltGCodeWriter.hpp"
+#include "GCodeWriter.hpp"
+#include "GCode/BeltKinematics.hpp"
 #include "BeltTransform.hpp"
 #include "Print.hpp"
 
@@ -10,11 +11,12 @@ void BeltGCode::init_belt_writer(Print &print, bool is_bbl_printers)
     if (!print.config().belt_printer.value)
         return;
 
-    auto belt_writer = std::make_unique<BeltGCodeWriter>();
+    auto belt_writer = std::make_unique<GCodeWriter>();
     belt_writer->set_is_bbl_machine(is_bbl_printers);
-    // Axis remap and build volume max are set by base GCode after init_belt_writer returns.
-    belt_writer->set_belt_back_transform(print.config());
-    belt_writer->set_machine_frame_transform(print.config());
+    // Axis remap and build volume max are set by base GCode after init_belt_writer
+    // returns; set_kinematics() replays them, so install order does not matter.
+    install_belt_kinematics(*belt_writer, print.config());
+    belt_writer->set_force_normal_lift(true);
     m_writer = std::move(belt_writer);
 }
 

@@ -2986,8 +2986,11 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // circuit to the legacy Layer::id() == 0 path so g-code stays bit-
     // identical to the pre-feature behavior.
     m_first_layer_plane = std::make_unique<FirstLayerPlane>(print.config());
-    if (auto *belt_writer = dynamic_cast<BeltGCodeWriter*>(m_writer.get())) {
-        belt_writer->set_first_layer_plane(
+    // Belt writers only: the plane also switches travel-speed selection to be
+    // per-point (see GCodeWriter::uses_pointwise_travel_speed()), which must not
+    // change for non-belt printers.
+    if (print.config().belt_printer.value) {
+        m_writer->set_first_layer_plane(
             m_first_layer_plane.get(),
             print.config().initial_layer_print_height.value);
     }
@@ -3888,12 +3891,12 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         // ORCA-Belt: the PA line test draws directly on the build surface in
         // logical bed coordinates — on a belt printer that surface is the
         // belt plane, not the slicing plane.
-        BeltGCodeWriter* belt_writer = dynamic_cast<BeltGCodeWriter*>(m_writer.get());
-        if (belt_writer != nullptr)
-            belt_writer->set_world_coordinates(true);
+        const bool belt_world_coords = print.config().belt_printer.value;
+        if (belt_world_coords)
+            install_belt_kinematics(*m_writer, print.config(), /*world_coordinates=*/true);
         gcode += pa_test.generate_test(params.start, params.step, std::llround(std::ceil((params.end - params.start) / params.step)) + 1);
-        if (belt_writer != nullptr)
-            belt_writer->set_world_coordinates(false);
+        if (belt_world_coords)
+            install_belt_kinematics(*m_writer, print.config(), /*world_coordinates=*/false);
 
         file.write(gcode);
     } else {
@@ -8400,7 +8403,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
     // mesh transform is now rotation ∘ pre-remap, both orthogonal, so |det(T)|
     // is always 1 and this is currently a no-op; it is retained as a guard in
     // case a non-orthogonal mesh transform is ever reintroduced.  (Machine-frame
-    // shear/scale acts on the g-code in BeltGCodeWriter, not here.)
+    // shear/scale acts on the g-code in BeltKinematics, not here.)
     if (m_config.belt_printer.value) {
         double det = std::abs(BeltTransformPipeline::build_forward_transform(m_config).linear().determinant());
         if (det > EPSILON)

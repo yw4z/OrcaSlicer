@@ -19,7 +19,7 @@
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include <algorithm>
 #include <limits>
-#include "libslic3r/BeltGCodeWriter.hpp"
+#include "libslic3r/GCode/BeltKinematics.hpp"
 #include "libslic3r/BeltTransform.hpp"
 #include "libslic3r/GCodeReader.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -39,9 +39,8 @@ TEST_CASE("Belt machine coordinates retain a non-45-degree slicing angle", "[GCo
     config.gcode_remap_y.value              = RemapAxis::PosZ;
     config.gcode_remap_z.value              = RemapAxis::PosY;
 
-    BeltGCodeWriter writer;
-    writer.set_belt_back_transform(config);
-    writer.set_machine_frame_transform(config);
+    GCodeWriter writer;
+    install_belt_kinematics(writer, config);
     writer.set_axis_remap(int(config.gcode_remap_x.value),
                           int(config.gcode_remap_y.value),
                           int(config.gcode_remap_z.value));
@@ -52,7 +51,7 @@ TEST_CASE("Belt machine coordinates retain a non-45-degree slicing angle", "[GCo
     // machine-frame shear/scale are applied.
     const Vec3d model(4., 10., 3.);
     Transform3d forward = BeltTransformPipeline::build_forward_transform(config);
-    const Vec3d machine = writer.to_machine_coords(forward * model);
+    const Vec3d machine = writer.kinematics().to_machine(forward * model);
 
     // The conventional X-tilt remap produces (x, z, y). At 30 degrees the
     // gantry coordinate is z/sin(30) and belt travel is y + z*cot(30).
@@ -905,7 +904,7 @@ TEST_CASE("Custom G-code motion limits are restored before generated moves", "[G
 // is_current_position_clear(), mirroring the SlopeLift branch.
 SCENARIO("Belt: the first travel does not lift through the uninitialised origin", "[GCodeWriter][belt]")
 {
-    GIVEN("A fresh BeltGCodeWriter configured for an X-tilt 45 degree belt") {
+    GIVEN("A fresh belt-kinematics GCodeWriter configured for an X-tilt 45 degree belt") {
         // Machine-frame + slicer->world back-transform config (X tilt, 45 deg).
         PrintConfig belt_config;
         belt_config.belt_printer.value               = true;
@@ -917,9 +916,8 @@ SCENARIO("Belt: the first travel does not lift through the uninitialised origin"
         belt_config.belt_frame_tilt_decouple.value   = false;
         belt_config.belt_frame_tilt_angle.value      = 45.0;
 
-        BeltGCodeWriter writer;
-        writer.set_machine_frame_transform(belt_config);
-        writer.set_belt_back_transform(belt_config);
+        GCodeWriter writer;
+        install_belt_kinematics(writer, belt_config);
 
         std::vector<unsigned int> extruder_ids { 0 };
         writer.set_extruders(extruder_ids);

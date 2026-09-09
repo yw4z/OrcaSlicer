@@ -1,4 +1,5 @@
 #include "GCodeWriter.hpp"
+#include "FirstLayerPlane.hpp"
 #include "CustomGCode.hpp"
 #include "Geometry.hpp"
 #include "I18N.hpp"
@@ -24,34 +25,46 @@ namespace Slic3r {
 
 bool GCodeWriter::full_gcode_comment = true;
 
+bool GCodeWriter::point_on_first_layer(const Vec3d &point_logical) const
+{
+    if (m_first_layer_plane && m_first_layer_plane->is_active())
+        return m_first_layer_plane->is_first_layer(point_logical, m_first_layer_thickness_mm);
+    return m_is_first_layer;
+}
+
 void GCodeWriter::set_axis_remap(int rx, int ry, int rz)
 {
     m_remap_x = rx;
     m_remap_y = ry;
     m_remap_z = rz;
+    m_kinematics->set_axis_remap(rx, ry, rz);
 }
 
 void GCodeWriter::set_build_volume_max(const Vec3d &max)
 {
     m_build_vol_max = max;
+    m_kinematics->set_build_volume_max(max);
 }
 
+void GCodeWriter::set_kinematics(std::unique_ptr<MachineKinematics> kinematics)
+{
+    assert(kinematics);
+    m_kinematics = std::move(kinematics);
+    // Replay whatever was configured on the previous strategy so callers may
+    // install the kinematics before or after set_axis_remap/set_build_volume_max.
+    m_kinematics->set_axis_remap(m_remap_x, m_remap_y, m_remap_z);
+    m_kinematics->set_build_volume_max(m_build_vol_max);
+}
+
+// Kept as the writer-facing name for "this move must emit every axis word".
 bool GCodeWriter::has_axis_remap() const
 {
-    return m_remap_x != 0 || m_remap_y != 1 || m_remap_z != 2;
+    return m_kinematics->must_emit_all_axes();
 }
 
 Vec3d GCodeWriter::apply_axis_remap(const Vec3d &pos) const
 {
-    if (!has_axis_remap())
-        return pos;
-    auto remap = [this, &pos](int r) -> double {
-        int axis = r % 3;
-        if (r < 3) return pos[axis];
-        if (r < 6) return -pos[axis];
-        return m_build_vol_max[axis] - pos[axis];
-    };
-    return { remap(m_remap_x), remap(m_remap_y), remap(m_remap_z) };
+    return m_kinematics->to_machine(pos);
 }
 
 bool GCodeWriter::supports_separate_travel_acceleration(GCodeFlavor flavor)
@@ -795,7 +808,7 @@ std::string GCodeWriter::travel_to_xy(const Vec2d &point, const std::string &com
     } else {
         w.emit_xy(point_on_plate);
     }
-    auto speed = m_is_first_layer
+    auto speed = this->point_on_first_layer(Vec3d(point.x(), point.y(), m_pos.z()))
         ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
     w.emit_f(speed * 60.0);
     //BBS
@@ -808,6 +821,8 @@ it will not perform subsequent lifts, even if Z was raised manually
 (i.e. with travel_to_z()) and thus _lifted was reduced. */
 std::string GCodeWriter::lazy_lift(LiftType lift_type, bool spiral_vase)
 {
+    if (m_force_normal_lift)
+        lift_type = LiftType::NormalLift;
     // check whether the above/below conditions are met
     double target_lift = 0;
     {
@@ -836,7 +851,7 @@ std::string GCodeWriter::lazy_lift(LiftType lift_type, bool spiral_vase)
 // BBS: immediately execute an undelayed lift move with a spiral lift pattern
 // designed specifically for subsequent gcode injection (e.g. timelapse)
 std::string GCodeWriter::eager_lift(const LiftType type) {
-    const LiftType effective_type = type;
+    const LiftType effective_type = m_force_normal_lift ? LiftType::NormalLift : type;
     std::string lift_move;
     double target_lift = 0;
     {
@@ -888,7 +903,12 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
         // BBS
     Vec3d dest_point = point;
     auto travel_speed =
-        m_is_first_layer ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
+        this->point_on_first_layer(point) ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
+    // See uses_pointwise_travel_speed(): the historical path deliberately emits the
+    // raw configured speed in the final branch below, ignoring travel_speed.
+    const double final_travel_speed = this->uses_pointwise_travel_speed()
+        ? travel_speed
+        : this->config.travel_speed.get_at(m_cached_extruder_idx);
     //BBS: a z_hop need to be handle when travel
     if (std::abs(m_to_lift) > EPSILON) {
         assert(std::abs(m_lifted) < EPSILON);
@@ -946,7 +966,16 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
                 w0.emit_comment(GCodeWriter::full_gcode_comment, comment);
                 slop_move = w0.string();
             }
-            else if (m_to_lift_type == LiftType::NormalLift) {
+            else if (m_to_lift_type == LiftType::NormalLift &&
+                     (! m_kinematics->suppress_lift_at_unknown_position() ||
+                      this->is_current_position_clear())) {
+                // Only lift in place when the current position is known, for a mapping
+                // that makes _travel_to_z re-emit logical X/Y: at print start (and after
+                // custom gcode) m_pos.xy is still the uninitialised origin, which would
+                // map to a bogus machine point. The xy_z_move below then travels straight
+                // to the destination with full XYZ and establishes the correct position.
+                // Mappings that do not need this (the historical Cartesian behaviour)
+                // report false and keep lifting unconditionally.
                 slop_move = _travel_to_z(target.z(), "normal lift Z");
             }
         }
@@ -1002,20 +1031,20 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
     if (has_axis_remap()) {
         // Remap may couple XY with Z; emit full XYZ in machine coordinates.
         w.emit_xyz(apply_axis_remap(point_on_plate));
-        w.emit_f(this->config.travel_speed.get_at(m_cached_extruder_idx) * 60.0);
+        w.emit_f(final_travel_speed * 60.0);
         w.emit_comment(GCodeWriter::full_gcode_comment, comment);
         out_string = w.string();
     } else if (!this->is_current_position_clear())
     {
         //force to move xy first then z after filament change
         w.emit_xy(Vec2d(point_on_plate.x(), point_on_plate.y()));
-        w.emit_f(this->config.travel_speed.get_at(m_cached_extruder_idx) * 60.0);
+        w.emit_f(final_travel_speed * 60.0);
         w.emit_comment(GCodeWriter::full_gcode_comment, comment);
         out_string = w.string() + _travel_to_z(point_on_plate.z(), comment);
     } else {
         GCodeG1Formatter w;
         w.emit_xyz(point_on_plate);
-        w.emit_f(this->config.travel_speed.get_at(m_cached_extruder_idx) * 60.0);
+        w.emit_f(final_travel_speed * 60.0);
         w.emit_comment(GCodeWriter::full_gcode_comment, comment);
         out_string = w.string();
     }
@@ -1050,8 +1079,9 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment)
 
     double speed = this->config.travel_speed_z.get_at(m_cached_extruder_idx);
     if (speed == 0.) {
-        speed = m_is_first_layer ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx)
-                                 : this->config.travel_speed.get_at(m_cached_extruder_idx);
+        speed = this->point_on_first_layer(Vec3d(m_pos.x(), m_pos.y(), z))
+                    ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx)
+                    : this->config.travel_speed.get_at(m_cached_extruder_idx);
     }
 
     GCodeG1Formatter w;
