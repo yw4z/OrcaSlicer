@@ -2,6 +2,7 @@
 #define slic3r_PluginsDialog_hpp_
 
 #include "Widgets/WebViewHostDialog.hpp"
+#include "Widgets/ProgressDialog.hpp"
 #include "PluginSource.hpp"
 #include "PluginStatus.hpp"
 #include "PluginSort.hpp"
