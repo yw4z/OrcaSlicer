@@ -39,7 +39,6 @@
 #include "Plater.hpp"
 #include "WebViewDialog.hpp"
 #include "../Utils/Process.hpp"
-#include "format.hpp"
 // BBS
 #include "PartPlate.hpp"
 #include "Preferences.hpp"
@@ -49,11 +48,9 @@
 #include "../Utils/NetworkAgentFactory.hpp"
 #include "../Utils/PrintHost.hpp"
 
-#include <fstream>
-#include <string_view>
-
 #include "GUI_App.hpp"
 #include "UnsavedChangesDialog.hpp"
+#include "PublishSettingsDialog.hpp"
 #include "MsgDialog.hpp"
 #include "Notebook.hpp"
 #include "GUI_Factories.hpp"
@@ -743,10 +740,14 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
             if (m_plater) { m_plater->add_file(); }
             return;
         }
+        if (evt.CmdDown() && evt.ShiftDown() && evt.GetKeyCode() == 'E') {
+            if (can_export_model()) publish_project();
+            return;
+        }
         evt.Skip();
     });
 
-    Bind(wxEVT_SHOW, [this](wxShowEvent &evt) {
+    Bind(wxEVT_SHOW, [](wxShowEvent &evt) {
         DeviceManager *manger = wxGetApp().getDeviceManager();
         if (manger) {
             evt.IsShown() ? manger->start_refresher() : manger->stop_refresher();
@@ -1737,6 +1738,22 @@ bool MainFrame::save_project_as(const wxString& filename)
         m_plater->reset_project_dirty_after_save();
     }
     return ret;
+}
+
+void MainFrame::publish_project()
+{
+    if (m_plater == nullptr)
+        return;
+    // Seed the dialog from the session selection (a remembered state or a freshly loaded
+    // published 3MF); a null pointer means "fresh", keeping the dirty defaults.
+    std::vector<std::string> pending_keys;
+    std::vector<Slic3r::PublishedMaterialEntry> pending_material;
+    const bool has_prior = m_plater->get_pending_published(pending_keys, pending_material);
+    PublishSettingsDialog dlg(this, has_prior ? &pending_keys : nullptr, has_prior ? &pending_material : nullptr);
+    if (dlg.ShowModal() != wxID_OK)
+        return;
+    m_plater->set_pending_published(dlg.GetPublishedKeys(), dlg.GetPublishedMaterialKeys());
+    m_plater->export_published_3mf(dlg.GetPublishedKeys(), dlg.GetPublishedMaterialKeys());
 }
 
 bool MainFrame::can_upload() const
@@ -2834,6 +2851,20 @@ void MainFrame::init_menubar_as_editor()
             [this](){return m_plater != nullptr && can_save_as(); }, this);
 #endif
 
+        // BBS: publish
+        fileMenu->AppendSeparator();
+        auto publish_handler = [this](wxCommandEvent&) { publish_project(); };
+
+#ifndef __APPLE__
+        append_menu_item(fileMenu, wxID_ANY, _L("Publish 3MF") + dots + "\t" + ctrl + shift + "E", _L("Export a 3MF file with the selected settings embedded"),
+            publish_handler, "menu_publish", nullptr,
+            [this](){return can_export_model(); }, this);
+#else
+        append_menu_item(fileMenu, wxID_ANY, _L("Publish 3MF") + dots + "\t" + ctrl + shift + "E", _L("Export a 3MF file with the selected settings embedded"),
+            publish_handler, "", nullptr,
+            [this](){return can_export_model(); }, this);
+#endif
+
 
         fileMenu->AppendSeparator();
 
@@ -2850,12 +2881,12 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) { m_plater->add_model(); } }, "", nullptr,
             [this](){return can_add_models(); }, this);
 #endif
-        append_menu_item(import_menu, wxID_ANY, _L("Import Zip Archive") + dots, _L("Load models contained within a zip archive"),
+        append_menu_item(import_menu, wxID_ANY, _L("Import ZIP Archive") + dots, _L("Load models contained within a ZIP archive"),
             [this](wxCommandEvent&) { if (m_plater) m_plater->import_zip_archive(); }, "menu_import", nullptr,
             [this]() { return can_add_models(); });
         append_menu_item(import_menu, wxID_ANY, _L("Import Configs") + dots /*+ "\t" + ctrl + "I"*/, _L("Load configs"),
             [this](wxCommandEvent&) { load_config_file(); }, "menu_import", nullptr,
-            [this](){return true; }, this);
+            [](){return true; }, this);
 
         append_submenu(fileMenu, import_menu, wxID_ANY, _L("Import"), "");
 
@@ -2968,7 +2999,7 @@ void MainFrame::init_menubar_as_editor()
             _L("Duplicate the current plate"),[this](wxCommandEvent&) {
                 m_plater->duplicate_plate();
             },
-            "menu_remove", nullptr, [this](){return true;}, this);
+            "menu_remove", nullptr, [](){return true;}, this);
         editMenu->AppendSeparator();
 #else
         // BBS undo
@@ -3068,10 +3099,10 @@ void MainFrame::init_menubar_as_editor()
             "", nullptr, [this](){return can_clone(); }, this);
         editMenu->AppendSeparator();
         append_menu_item(editMenu, wxID_ANY, _L("Duplicate Current Plate"),
-            _L("Duplicate the current plate"),[this, handle_key_event](wxCommandEvent&) {
+            _L("Duplicate the current plate"),[this](wxCommandEvent&) {
                 m_plater->duplicate_plate();
             },
-            "", nullptr, [this](){return true;}, this);
+            "", nullptr, [](){return true;}, this);
         editMenu->AppendSeparator();
 
 #endif
@@ -3135,13 +3166,13 @@ void MainFrame::init_menubar_as_editor()
         //BBS perspective view
         wxWindowID camera_id_base = wxWindow::NewControlId(int(wxID_CAMERA_COUNT));
         auto perspective_item = append_menu_radio_item(viewMenu, wxID_CAMERA_PERSPECTIVE + camera_id_base, _L("Use Perspective View"), _L("Use Perspective View"),
-            [this](wxCommandEvent&) {
+            [](wxCommandEvent&) {
                 wxGetApp().app_config->set_bool("use_perspective_camera", true);
                 wxGetApp().update_ui_from_settings();
             }, nullptr);
         //BBS orthogonal view
         auto orthogonal_item = append_menu_radio_item(viewMenu, wxID_CAMERA_ORTHOGONAL + camera_id_base, _L("Use Orthogonal View"), _L("Use Orthogonal View"),
-            [this](wxCommandEvent&) {
+            [](wxCommandEvent&) {
                 wxGetApp().app_config->set_bool("use_perspective_camera", false);
                 wxGetApp().update_ui_from_settings();
             }, nullptr);
@@ -3157,7 +3188,7 @@ void MainFrame::init_menubar_as_editor()
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
             this, [this]() { return is_prepare_or_preview_tab(); },
-            [this]() { return wxGetApp().app_config->get_bool("auto_perspective"); }, this);
+            []() { return wxGetApp().app_config->get_bool("auto_perspective"); }, this);
 
         viewMenu->AppendSeparator();
         append_menu_check_item(viewMenu, wxID_ANY, _L("Show &G-code Window") + sep + "C", _L("Show G-code window in Preview scene."),
@@ -3166,7 +3197,7 @@ void MainFrame::init_menubar_as_editor()
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
             this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREVIEW; },
-            [this]() { return wxGetApp().show_gcode_window(); }, this);
+            []() { return wxGetApp().show_gcode_window(); }, this);
 
         append_menu_check_item(
             viewMenu, wxID_ANY, _L("Show 3D Navigator"), _L("Show 3D navigator in Prepare and Preview scene."),
@@ -3175,7 +3206,7 @@ void MainFrame::init_menubar_as_editor()
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
             this, [this]() { return is_prepare_or_preview_tab(); },
-            [this]() { return wxGetApp().show_3d_navigator(); }, this);
+            []() { return wxGetApp().show_3d_navigator(); }, this);
 
         append_menu_check_item(viewMenu, wxID_ANY, _L("Show Gridlines"), _L("Show Gridlines on plate"),
             [this](wxCommandEvent&) {
@@ -3183,7 +3214,7 @@ void MainFrame::init_menubar_as_editor()
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             }, this,
             [this]() { return is_prepare_or_preview_tab(); },
-            [this]() { return wxGetApp().show_plate_gridlines(); }, this);
+            []() { return wxGetApp().show_plate_gridlines(); }, this);
 
         append_menu_item(
             viewMenu, wxID_ANY, _L("Reset Window Layout"), _L("Reset to default window layout"),
@@ -3212,7 +3243,7 @@ void MainFrame::init_menubar_as_editor()
                 m_plater->get_current_canvas3D()->post_event(SimpleEvent(wxEVT_PAINT));
             },
             this, [this]() { return m_tabpanel->GetSelectedPageName() == TAB_ID_PREPARE; },
-            [this]() { return wxGetApp().show_outline(); }, this);
+            []() { return wxGetApp().show_outline(); }, this);
 
         /*viewMenu->AppendSeparator();
         append_menu_check_item(viewMenu, wxID_ANY, _L("Show &Wireframe") + "\t" + ctrl + shift + _L("Enter"), _L("Show wireframes in 3D scene."),
@@ -3338,11 +3369,11 @@ void MainFrame::init_menubar_as_editor()
     //parent_menu->Insert(0, about_item);
     append_menu_item(
         parent_menu, wxID_ANY, _L(about_title), "",
-        [this](wxCommandEvent &) { Slic3r::GUI::about();},
+        [](wxCommandEvent &) { Slic3r::GUI::about();},
         "", nullptr, []() { return true; }, this, 0);
     append_menu_item(
         parent_menu, wxID_ANY, _L("Preferences") + "\t" + ctrl + ",", "",
-        [this](wxCommandEvent &) {
+        [](wxCommandEvent &) {
             wxGetApp().open_preferences();
         },
         "", nullptr, []() { return true; }, this, 1);
@@ -3361,7 +3392,7 @@ void MainFrame::init_menubar_as_editor()
 
     append_menu_item(
         m_topbar->GetTopMenu(), wxID_ANY, _L("Preferences") + "\t" + ctrl + "P", "",
-        [this](wxCommandEvent &) {
+        [](wxCommandEvent &) {
             // Orca: Use GUI_App::open_preferences instead of direct call so windows associations are updated on exit
             wxGetApp().open_preferences();
         },
@@ -3393,14 +3424,14 @@ void MainFrame::init_menubar_as_editor()
                     into_u8(_L("Syncing presets from cloud\u2026")));
             wxGetApp().restart_sync_user_preset();
         }, "", nullptr,
-        [this]() {
+        []() {
             return wxGetApp().is_user_login() && !wxGetApp().app_config->get_stealth_mode();
         }, this);
 
     top_menu->AppendSeparator();
     append_menu_item(
         top_menu, wxID_ANY, _L("Plugins") + "\t", "",
-        [this](wxCommandEvent &) {
+        [](wxCommandEvent &) {
             wxGetApp().open_plugins_dialog();
         },
         "", nullptr, []() { return true; }, this);
@@ -3501,7 +3532,7 @@ void MainFrame::init_menubar_as_editor()
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // help
-    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"), [this](wxCommandEvent &)
+    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"), [](wxCommandEvent &)
                      { wxLaunchDefaultBrowser("https://www.orcaslicer.com/wiki/calibration_guide", wxBROWSER_NEW_WINDOW); }, "", nullptr, [this]()
                      {return m_plater->is_view3D_shown();; }, this);
 
@@ -3530,13 +3561,13 @@ void MainFrame::init_menubar_as_editor()
                     into_u8(_L("Syncing presets from cloud\u2026")));
             wxGetApp().restart_sync_user_preset();
         }, "", nullptr,
-        [this]() {
+        []() {
             return wxGetApp().is_user_login() && !wxGetApp().app_config->get_stealth_mode();
         }, this);
 
     fileMenu->AppendSeparator();
     append_menu_item(
-        fileMenu, wxID_ANY, _L("Plugins"), "", [this](wxCommandEvent&) { wxGetApp().open_plugins_dialog(); }, "", nullptr,
+        fileMenu, wxID_ANY, _L("Plugins"), "", [](wxCommandEvent&) { wxGetApp().open_plugins_dialog(); }, "", nullptr,
         []() { return true; }, this);
 
     fileMenu->AppendSeparator();
@@ -3640,7 +3671,7 @@ void MainFrame::init_menubar_as_editor()
         [this]() {return m_plater->is_view3D_shown();; }, this);
     // help
     append_menu_item(calib_menu, wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"),
-        [this](wxCommandEvent&) { wxLaunchDefaultBrowser("https://www.orcaslicer.com/wiki/calibration_guide", wxBROWSER_NEW_WINDOW); }, "", nullptr,
+        [](wxCommandEvent&) { wxLaunchDefaultBrowser("https://www.orcaslicer.com/wiki/calibration_guide", wxBROWSER_NEW_WINDOW); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     m_menubar->Append(calib_menu,wxString::Format("&%s", _L("Calibration")));
@@ -4212,15 +4243,23 @@ std::wstring MainFrame::FileHistory::GetThumbnailUrl(int index) const
     return wss.str();
 }
 
+bool MainFrame::FileHistory::GetPublished(int index) const
+{
+    return index >= 0 && index < static_cast<int>(m_published_files.size()) && m_published_files[index];
+}
+
 void MainFrame::FileHistory::AddFileToHistory(const wxString &file)
 {
     if (this->m_fileMaxFiles == 0)
         return;
     wxFileHistory::AddFileToHistory(file);
-    if (m_load_called)
+    if (m_load_called) {
         m_thumbnails.push_front(bbs_3mf_get_thumbnail(into_u8(file).c_str()));
-    else
+        m_published_files.push_front(bbs_3mf_is_published(into_u8(file)));
+    } else {
         m_thumbnails.push_front("");
+        m_published_files.push_front(false);
+    }
 }
 
 void MainFrame::FileHistory::RemoveFileFromHistory(size_t i)
@@ -4229,6 +4268,7 @@ void MainFrame::FileHistory::RemoveFileFromHistory(size_t i)
         return;
     wxFileHistory::RemoveFileFromHistory(i);
     m_thumbnails.erase(m_thumbnails.begin() + i);
+    m_published_files.erase(m_published_files.begin() + i);
 }
 
 size_t MainFrame::FileHistory::FindFileInHistory(const wxString & file)
@@ -4244,6 +4284,7 @@ void MainFrame::FileHistory::LoadThumbnails()
             if (!thumbnail.empty()) {
                 m_thumbnails[i] = thumbnail;
             }
+            m_published_files[i] = bbs_3mf_is_published(into_u8(GetHistoryFile(i)));
         }
     });
     m_load_called = true;
@@ -4264,6 +4305,7 @@ void MainFrame::get_recent_projects(boost::property_tree::wptree &tree, int imag
         std::wstring proj = m_recent_projects.GetHistoryFile(i).ToStdWstring();
         item.put(L"project_name", proj.substr(proj.find_last_of(L"/\\") + 1));
         item.put(L"path", proj);
+        item.put(L"published", m_recent_projects.GetPublished(i) ? L"1" : L"0");
         boost::system::error_code ec;
         std::time_t t = boost::filesystem::last_write_time(proj, ec);
         if (!ec) {
@@ -4488,10 +4530,9 @@ std::string MainFrame::get_dir_name(const wxString &full_name) const
 // ----------------------------------------------------------------------------
 
 SettingsDialog::SettingsDialog(MainFrame* mainframe)
-:DPIDialog(NULL, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "settings_dialog"),
+:DPIDialog(NULL, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "settings_dialog")
 //: DPIDialog(mainframe, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize,
 //        wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX, "settings_dialog"),
-    m_main_frame(mainframe)
 {
     if (wxGetApp().is_gcode_viewer())
         return;
