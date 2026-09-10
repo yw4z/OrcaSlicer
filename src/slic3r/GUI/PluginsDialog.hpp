@@ -107,12 +107,12 @@ private:
                          const wxString& title,
                          const wxString& message,
                          int maximum = 100,
-                         int style   = wxPD_APP_MODAL | wxPD_AUTO_HIDE,
+                         int style   = wxPD_APP_MODAL | wxPD_AUTO_HIDE, // | wxPD_CAN_ABORT for cancel button
                          bool finish_after_dialog_destroyed = false)
     {
         const auto alive = m_alive;
-        wxProgressDialog* progress = new wxProgressDialog(title, message, maximum, this, style);
-        wxTimer* timer             = new wxTimer();
+        ProgressDialog* progress = new ProgressDialog(title, message, maximum, this, style);
+        wxTimer* timer           = new wxTimer();
 
         timer->Bind(wxEVT_TIMER, [alive, progress, message](wxTimerEvent&) {
             if (alive->load(std::memory_order_acquire) && progress)
