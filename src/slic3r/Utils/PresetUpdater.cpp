@@ -1106,8 +1106,8 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
 
         const auto is_vendor_enabled = (vendor_name == PresetBundle::ORCA_DEFAULT_BUNDLE) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
                                        || (enabled_vendors.find(vendor_name) != enabled_vendors.end());
-        if (enabled_config_update) {
-            if (is_vendor_installed(vendor_name)) {
+        if (is_vendor_installed(vendor_name)) {
+            if (enabled_config_update) {
                 if (is_vendor_enabled) {
                     // Orca: whichever form of the vendor resources ships at the newer
                     // version is the one installing lays down, and the one to judge
@@ -1122,17 +1122,12 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
                                                 << resource_ver.to_string() << " from resource, old version " << vendor_ver.to_string();
                         bundles.insert(vendor_name);
                     }
-                }
-                else {
-                    //need to be removed because not installed
+                } else {
+                    // need to be removed because not installed
                     remove_installed_vendor(vendor_name);
                 }
             }
-            else if (is_vendor_enabled) {
-                bundles.insert(vendor_name);
-            }
-        }
-        else if (is_vendor_enabled) {
+        } else if (is_vendor_enabled) {
             bundles.insert(vendor_name);
         }
     }
