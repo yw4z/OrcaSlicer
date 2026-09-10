@@ -23,7 +23,6 @@
 #include "MsgDialog.hpp"
 
 #include "PresetComboBoxes.hpp"
-#include "Widgets/RoundedRectangle.hpp"
 #include "Widgets/CheckBox.hpp"
 #include "Widgets/DialogButtons.hpp"
 #include "Widgets/HyperLink.hpp"
