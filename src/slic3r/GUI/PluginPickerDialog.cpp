@@ -124,7 +124,7 @@ void PluginPickerDialog::build_capability_ui(const wxString& plugin_type_label)
 
     if (has_capabilities) {
         m_choice->SetSelection(0);
-        m_choice->Bind(wxEVT_CHOICE, [this](wxCommandEvent& evt) {
+        m_choice->Bind(wxEVT_COMBOBOX, [this](wxCommandEvent& evt) {
             update_capability_description(evt.GetSelection());
         });
     } else {
