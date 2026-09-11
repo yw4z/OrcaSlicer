@@ -121,6 +121,9 @@ jobs:
           # use __DATE__ or __TIME__, and the precompiled header, whose
           # macros ccache cannot see.
           echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
+          # Hash the includes the compiler reports instead of preprocessing
+          # every miss before compiling it.
+          echo "CCACHE_DEPEND=1" >> "$GITHUB_ENV"
           # The restored directory carries the previous run's counters.
           ccache -z
 
