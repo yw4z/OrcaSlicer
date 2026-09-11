@@ -117,12 +117,10 @@ jobs:
         run: |
           echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
           echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          # Headers a fresh checkout has just written, and the few files that
-          # use __DATE__ or __TIME__.
-          echo "CCACHE_SLOPPINESS=time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
-          # Clang rebuilds the precompiled header with a fresh timestamp on
-          # every run, so everything that includes it would miss.
-          echo "ORCA_EXTRA_BUILD_ARGS=-DSLIC3R_PCH=OFF" >> "$GITHUB_ENV"
+          # Headers a fresh checkout has just written, the few files that
+          # use __DATE__ or __TIME__, and the precompiled header, whose
+          # macros ccache cannot see.
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
           # The restored directory carries the previous run's counters.
           ccache -z
 
