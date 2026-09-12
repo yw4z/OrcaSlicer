@@ -2157,6 +2157,7 @@ void PrinterAgentChoice::msw_rescale()
 void PluginField::BUILD()
 {
     auto* panel = new wxPanel(m_parent, wxID_ANY);
+    panel->SetBackgroundColour(*wxWHITE);
     wxGetApp().UpdateDarkUI(panel);
     window = panel;
 
@@ -2199,9 +2200,8 @@ void PluginField::rebuild_ui()
     m_rows.clear();
     m_standalone_add_btn = nullptr;
 
-    if (m_values.empty()) {
-        add_empty_state_row();
-    } else {
+    add_empty_state_row();
+    if (!m_values.empty()) {
         for (size_t i = 0; i < m_values.size(); ++i)
             add_plugin_row(display_name_for_value(m_values[i]), i == m_values.size() - 1);
     }
@@ -2218,94 +2218,43 @@ void PluginField::rebuild_ui()
 
 void PluginField::add_empty_state_row()
 {
-    const auto button_size = wxSize(def_width_thinner() * m_em_unit, -1);
-    auto row_sizer = new wxBoxSizer(wxHORIZONTAL);
-
-    wxTextCtrl* display = new wxTextCtrl(window, wxID_ANY, _L("No plugin selected"),
-        wxDefaultPosition, wxSize(def_width_wider() * m_em_unit, wxDefaultCoord),
-        wxTE_READONLY);
-    display->SetEditable(false);
-    wxGetApp().UpdateDarkUI(display);
-    display->SetToolTip(_L("No plugin selected"));
-
-    auto add_btn = new ScalableButton(window, wxID_ANY, "param_add", wxEmptyString,
-        button_size, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
-    wxGetApp().UpdateDarkUI(add_btn);
-    add_btn->SetToolTip(_L("Add plugin"));
+    auto add_btn = new Button(window, _L("Add plugin"), "param_add", 0, 16);
+    add_btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
 
     add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_add_clicked(); });
 
-    row_sizer->Add(display, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-    row_sizer->Add(add_btn, 0, wxALIGN_CENTER_VERTICAL);
-    m_main_sizer->Add(row_sizer, 0, wxEXPAND);
-
-    PluginRow row;
-    row.display = display;
-    row.add_btn = add_btn;
-    row.sizer = row_sizer;
-    m_rows.push_back(row);
+    m_main_sizer->Add(add_btn, 0, wxEXPAND | wxBOTTOM, window->FromDIP(SidebarProps::ContentMarginV()));
 
     m_standalone_add_btn = add_btn;
 }
 
 void PluginField::add_plugin_row(const wxString& value, bool is_last)
 {
-    const auto button_size = wxSize(def_width_thinner() * m_em_unit, -1);
     auto row_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    ScalableButton* select_btn = new ScalableButton(window, wxID_ANY, "search", wxEmptyString,
-        button_size, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
-    wxGetApp().UpdateDarkUI(select_btn);
-    select_btn->SetToolTip(_L("Select plugin"));
-
-    wxTextCtrl* display = new wxTextCtrl(window, wxID_ANY, value,
-        wxDefaultPosition, wxSize(def_width_wider() * m_em_unit, wxDefaultCoord),
-        wxTE_READONLY);
-    display->SetEditable(false);
-    wxGetApp().UpdateDarkUI(display);
+    ComboBox* display = new ComboBox(window, wxID_ANY, value, wxDefaultPosition, wxDefaultSize, 0, NULL, wxCB_READONLY | CB_NO_DROP_ICON);
+    display->SetIcon("edit");
     display->SetToolTip(get_tooltip_text(value));
 
-    ScalableButton* remove_btn = nullptr;
-    if (!m_opt.readonly) {
-        remove_btn = new ScalableButton(window, wxID_ANY, "cross", wxEmptyString,
-            button_size, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
-        wxGetApp().UpdateDarkUI(remove_btn);
-        remove_btn->SetToolTip(_L("Remove plugin"));
-    }
+    ScalableButton* remove_btn = new ScalableButton(window, wxID_ANY, "cross", wxEmptyString,
+        wxDefaultSize, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
+    remove_btn->SetToolTip(_L("Remove plugin"));
 
-    ScalableButton* add_btn = nullptr;
-    if (is_last && !m_opt.readonly) {
-        add_btn = new ScalableButton(window, wxID_ANY, "param_add", wxEmptyString,
-            button_size, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
-        wxGetApp().UpdateDarkUI(add_btn);
-        add_btn->SetToolTip(_L("Add plugin"));
-        add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_add_clicked(); });
-    }
+    if (m_opt.readonly)
+        remove_btn->Disable();
 
     const size_t row_index = m_rows.size();
-    select_btn->Bind(wxEVT_BUTTON, [this, row_index](wxCommandEvent&) { on_select_clicked(row_index); });
-    if (remove_btn)
-        remove_btn->Bind(wxEVT_BUTTON, [this, row_index](wxCommandEvent&) { on_remove_clicked(row_index); });
+    display->Bind(wxEVT_LEFT_DOWN, [this, row_index](wxMouseEvent&  ) { on_select_clicked(row_index); });
+    remove_btn->Bind(wxEVT_BUTTON, [this, row_index](wxCommandEvent&) { on_remove_clicked(row_index); });
 
-    row_sizer->Add(select_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-    row_sizer->Add(display, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-    if (remove_btn)
-        row_sizer->Add(remove_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-    if (add_btn)
-        row_sizer->Add(add_btn, 0, wxALIGN_CENTER_VERTICAL);
-    else if (!m_opt.readonly) {
-        // Reserve space equal to the add button so all rows align.
-        row_sizer->Add(button_size.GetWidth(), button_size.GetHeight(), 0, wxALIGN_CENTER_VERTICAL);
-    }
+    row_sizer->Add(display   , 1, wxALIGN_CENTER_VERTICAL);
+    row_sizer->Add(remove_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, window->FromDIP(SidebarProps::ElementSpacing()));
 
-    const int bottom_gap = is_last ? 0 : 4;
-    m_main_sizer->Add(row_sizer, 0, wxEXPAND | (bottom_gap > 0 ? wxBOTTOM : 0), bottom_gap);
+    m_main_sizer->Add(row_sizer, 0, wxEXPAND | wxBOTTOM, window->FromDIP(is_last ? SidebarProps::ContentMarginV() : 4));
 
     PluginRow row;
-    row.select_btn = select_btn;
     row.display = display;
     row.remove_btn = remove_btn;
-    row.add_btn = add_btn;
     row.sizer = row_sizer;
     m_rows.push_back(row);
 }
@@ -2357,9 +2306,9 @@ void PluginField::on_add_clicked()
     m_values.push_back(selected);
     m_value = m_values;
 
-    rebuild_ui();
-
-    on_change_field();
+    // Defer: don't destroy the clicked button from inside its own handler.
+    if(window)
+        window->CallAfter([this]() {rebuild_ui(); on_change_field();});
 }
 
 void PluginField::on_remove_clicked(size_t index)
@@ -2370,8 +2319,9 @@ void PluginField::on_remove_clicked(size_t index)
     m_values.erase(m_values.begin() + index);
     m_value = m_values;
 
-    rebuild_ui();
-    on_change_field();
+    // Defer: don't destroy the clicked button from inside its own handler.
+    if(window)
+        window->CallAfter([this]() {rebuild_ui(); on_change_field();});
 }
 
 wxString PluginField::get_row_value(size_t index) const
@@ -2385,7 +2335,7 @@ void PluginField::set_row_value(size_t index, const wxString& value)
 {
     if (index >= m_rows.size() || !m_rows[index].display)
         return;
-    m_rows[index].display->ChangeValue(value);
+    m_rows[index].display->SetValue(value);
     m_rows[index].display->SetToolTip(get_tooltip_text(value));
 }
 
@@ -2428,14 +2378,10 @@ boost::any& PluginField::get_value()
 void PluginField::enable()
 {
     for (auto& row : m_rows) {
-        if (row.select_btn)
-            row.select_btn->Enable();
         if (row.display)
             row.display->Enable();
         if (row.remove_btn)
             row.remove_btn->Enable();
-        if (row.add_btn)
-            row.add_btn->Enable();
     }
     if (m_standalone_add_btn)
         m_standalone_add_btn->Enable();
@@ -2444,14 +2390,10 @@ void PluginField::enable()
 void PluginField::disable()
 {
     for (auto& row : m_rows) {
-        if (row.select_btn)
-            row.select_btn->Disable();
         if (row.display)
             row.display->Disable();
         if (row.remove_btn)
             row.remove_btn->Disable();
-        if (row.add_btn)
-            row.add_btn->Disable();
     }
     if (m_standalone_add_btn)
         m_standalone_add_btn->Disable();
@@ -2866,11 +2808,11 @@ void PointCtrl::BUILD()
 	//temp->Add(static_text_y, 0, wxALIGN_CENTER_VERTICAL, 0);
 	temp->Add(y_input);
 
-    x_textctrl->Bind(wxEVT_TEXT_ENTER, ([this](wxCommandEvent e) { propagate_value(x_textctrl); }), x_textctrl->GetId());
-	y_textctrl->Bind(wxEVT_TEXT_ENTER, ([this](wxCommandEvent e) { propagate_value(y_textctrl); }), y_textctrl->GetId());
+	x_textctrl->Bind(wxEVT_TEXT_ENTER, ([this](wxCommandEvent e) { propagate_input_value(x_textctrl); }), x_textctrl->GetId());
+	y_textctrl->Bind(wxEVT_TEXT_ENTER, ([this](wxCommandEvent e) { propagate_input_value(y_textctrl); }), y_textctrl->GetId());
 
-    x_textctrl->Bind(wxEVT_KILL_FOCUS, ([this](wxEvent& e) { e.Skip(); propagate_value(x_textctrl); }), x_textctrl->GetId());
-    y_textctrl->Bind(wxEVT_KILL_FOCUS, ([this](wxEvent& e) { e.Skip(); propagate_value(y_textctrl); }), y_textctrl->GetId());
+	x_textctrl->Bind(wxEVT_KILL_FOCUS, ([this](wxEvent& e) { e.Skip(); propagate_input_value(x_textctrl); }), x_textctrl->GetId());
+	y_textctrl->Bind(wxEVT_KILL_FOCUS, ([this](wxEvent& e) { e.Skip(); propagate_input_value(y_textctrl); }), y_textctrl->GetId());
 
 	// 	// recast as a wxWindow to fit the calling convention
     window = dynamic_cast<wxWindow*>(x_input);
@@ -2919,7 +2861,7 @@ bool PointCtrl::value_was_changed(wxTextCtrl* win)
 	return boost::any_cast<Vec2d>(m_value) != boost::any_cast<Vec2d>(val);
 }
 
-void PointCtrl::propagate_value(wxTextCtrl* win)
+void PointCtrl::propagate_input_value(wxTextCtrl* win)
 {
     if (win->GetValue().empty())
         on_kill_focus();
