@@ -1399,7 +1399,7 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
     hsizer_ams->Add(ams_label, 0, wxALIGN_CENTER | wxRIGHT, FromDIP(5));
     if (btn_edit)
         hsizer_ams->Add(btn_edit, 0, wxALIGN_CENTER | wxRIGHT, FromDIP(5));
-    hsizer_ams->Add(ams_not_installed_msg, 0, wxALIGN_CENTER);
+    hsizer_ams->Add(ams_not_installed_msg, 1, wxALIGN_CENTER);
 
     ams_panel->SetSizer(hsizer_ams);
 
