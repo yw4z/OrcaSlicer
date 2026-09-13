@@ -9,6 +9,7 @@
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/FilamentMixer.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -128,6 +129,39 @@ bool ensure_belt_purge_tower(Model &model, PartPlateList &partplate_list, Object
             for (const ModelVolume *mv : mo->volumes)
                 for (int e : mv->get_extruders())
                     filaments.insert(e > 0 ? e : obj_extruder);
+        }
+    }
+
+    // A mixed filament slot is VIRTUAL: it never reaches a nozzle. At slice time
+    // ToolOrdering::resolve_mixed_filaments() replaces it with its physical
+    // components, so the toolchanges the prism has to absorb are between those
+    // components, not to the mixed slot itself. Counting the slot as a filament
+    // of its own therefore over-provisions the prism by one island per mixed slot
+    // -- the "extra purge tower" -- and, when every component is already used by
+    // another object, by an island that can never be reached at all.
+    //
+    // Expand here with the same helper the backend uses (Print.cpp's sequential
+    // path), so the GUI sizes the prism against the same filament set the slicer
+    // will actually produce. No-op when no filament is mixed.
+    {
+        // Copies, not references: a ternary with an empty-vector fallback would bind
+        // a reference to a temporary.
+        std::vector<unsigned char> is_mixed;
+        std::vector<std::string>   comp_strs;
+        if (const auto *o = full_cfg.option<ConfigOptionBools>("filament_is_mixed"))
+            is_mixed = o->values;
+        if (const auto *o = full_cfg.option<ConfigOptionStrings>("filament_mixed_components"))
+            comp_strs = o->values;
+        if (has_any_mixed_filament(is_mixed)) {
+            std::vector<unsigned int> zero_based;
+            zero_based.reserve(filaments.size());
+            for (int f : filaments)
+                if (f > 0)
+                    zero_based.push_back((unsigned int) (f - 1));
+            zero_based = expand_mixed_filaments(zero_based, is_mixed, comp_strs);
+            filaments.clear();
+            for (unsigned int f : zero_based)
+                filaments.insert((int) f + 1);
         }
     }
 
