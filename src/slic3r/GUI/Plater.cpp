@@ -1374,8 +1374,8 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
         btn_edit->Hide();
         btn_edit->Bind(wxEVT_COMMAND_BUTTON_CLICKED, [this, index, combo_diameter](auto &evt) {
             PopupWindow *window = new AMSCountPopupWindow(this, index);
-            auto         size   = GetSize();
-            auto         pos    = ClientToScreen({0, size.y - FromDIP(8) - combo_diameter->GetSize().y});
+            auto size = GetSize();
+            auto pos  = ClientToScreen({0, size.y - FromDIP(8) - combo_diameter->GetSize().y});
             size.SetWidth(size.GetWidth() + FromDIP(10));
             window->Position(pos, {0, 0});
             window->Popup();
@@ -1383,8 +1383,25 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
 
         auto hovered = std::make_shared<wxWindow *>();
         for (wxWindow *w : std::initializer_list<wxWindow *>{this, btn_edit, ams_not_installed_msg, ams_label, ams_panel}) {
-            w->Bind(wxEVT_ENTER_WINDOW, [w, hovered, this](wxMouseEvent &evt) { *hovered = w; btn_edit->Show(); ams_label->Hide(); hsizer_ams->Layout();});
-            w->Bind(wxEVT_LEAVE_WINDOW, [w, hovered, this](wxMouseEvent &evt) { if (*hovered == w) { btn_edit->Hide(); ams_label->Show(); hsizer_ams->Layout(); *hovered = nullptr; } });
+            // ORCA using CallAfter fixes crash on linux while clicking edit button
+            w->Bind(wxEVT_ENTER_WINDOW, [w, hovered, this](wxMouseEvent &evt) {
+                *hovered = w;
+                this->CallAfter([this]() {
+                    btn_edit->Show();
+                    ams_label->Hide();
+                    hsizer_ams->Layout();
+                });
+            });
+            w->Bind(wxEVT_LEAVE_WINDOW, [w, hovered, this](wxMouseEvent &evt) {
+                if (*hovered == w) {
+                    *hovered = nullptr;
+                    this->CallAfter([this]() {
+                        btn_edit->Hide();
+                        ams_label->Show();
+                        hsizer_ams->Layout();
+                    });
+                }
+            });
         }
     }
 
