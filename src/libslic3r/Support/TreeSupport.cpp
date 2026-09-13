@@ -13,7 +13,6 @@
 #include "SVG.hpp"
 #include "TreeSupportCommon.hpp"
 #include "TreeSupport.hpp"
-#include <cstdio>
 #include "TreeSupport3D.hpp"
 #include "BeltFloorContext.hpp"
 #include <libnest2d/backends/libslic3r/geometries.hpp>
