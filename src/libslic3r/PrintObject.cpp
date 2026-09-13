@@ -1119,6 +1119,13 @@ void PrintObject::clear_layers()
         for (Layer *l : m_belt_truncated_layers)
             delete l;
         m_belt_truncated_layers.clear();
+        // Fills dropped for plastic saving are owned by the stash while they sit
+        // outside their layer's collection, so they are freed here too. Order
+        // matters only in that these point at layers deleted just above, and we
+        // never dereference the layer -- just the entity.
+        for (const BeltDroppedFill &d : m_belt_dropped_fills)
+            delete d.entity;
+        m_belt_dropped_fills.clear();
     }
 }
 

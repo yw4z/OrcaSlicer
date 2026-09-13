@@ -582,6 +582,28 @@ private:
     // Wipe-tower-only invalidations do not necessarily reslice the object, so
     // truncation must be reversible when later toolchanges move upward.
     void belt_restore_truncated_layers();
+    // Belt purge prism, plastic saving: drop the fills on one layer that no
+    // toolchange claimed. `claimed` reports whether an entity was overridden as
+    // purge; everything else on that layer would otherwise print as solid infill
+    // in the prism's own filament for nothing. Perimeters are never touched, so
+    // the bar keeps a continuous wall along the belt.
+    //
+    // Entities are STASHED, not deleted, with their original positions -- the
+    // same reversibility contract belt_truncate_layers_above() has, and the
+    // reason the original version of this had to be removed: psWipeTower can
+    // rerun without regenerating infill, and a later tool ordering may claim what
+    // this one did not. Returns the number of entities dropped.
+    size_t belt_drop_unclaimed_fills(Layer *layer, const std::function<bool(const ExtrusionEntity*)> &claimed);
+    // Put every stashed fill back at its original index. Must run before a replan.
+    void   belt_restore_dropped_fills();
+    // Undo every edit _plan_belt_purge() made to this object's layers, leaving
+    // m_layers exactly as the object steps produced it. Fills first: they point
+    // into layers that are still live, and truncated layers were stashed whole
+    // with their own fills untouched, so the two stashes never share an entity.
+    // Print::process() calls this before any object step may rerun (those steps
+    // regenerate per-layer content over m_layers only, so a stale stash would
+    // otherwise be restored on top of fresh content); the plan calls it too.
+    void   belt_undo_purge_plan() { belt_restore_dropped_fills(); belt_restore_truncated_layers(); }
     //BBS
     ExPolygons _shrink_contour_holes(double contour_delta, double hole_delta, const ExPolygons& polys) const;
     // BBS
@@ -625,6 +647,16 @@ private:
     SlicingParameters                       m_slicing_params;
     LayerPtrs                               m_layers;
     LayerPtrs                               m_belt_truncated_layers;
+    // Fills removed by belt_drop_unclaimed_fills(), owned by this vector until
+    // restored or until clear_layers() deletes them. An entity is in exactly one
+    // of the live collection or this stash, never both.
+    struct BeltDroppedFill {
+        Layer           *layer      { nullptr };
+        size_t           region_idx { 0 };
+        size_t           index      { 0 };   // position in the original fills.entities
+        ExtrusionEntity *entity     { nullptr };
+    };
+    std::vector<BeltDroppedFill>            m_belt_dropped_fills;
     SupportLayerPtrs                        m_support_layers;
     // Belt brim, generated in posSupportMaterial by BeltBrim.cpp.  Object-local
     // slicing frame, one entry per object layer plus a prologue of brim-only
