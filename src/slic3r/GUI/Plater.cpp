@@ -145,7 +145,6 @@
 #include "Widgets/RadioGroup.hpp"
 #include "Widgets/CheckBox.hpp"
 #include "Widgets/Button.hpp"
-#include "Widgets/StaticGroup.hpp"
 
 #include "GUI_ObjectTable.hpp"
 #include "libslic3r/Thread.hpp"
@@ -472,8 +471,8 @@ enum class ActionButtonType : int {
     abSendGCode
 };
 
-// Background for the extruder-group title chip and its edit buttons, matching the StaticGroup
-// interior. macOS keeps a lighter #F7F7F7 tint in light mode; dark mode uses the mapped colour.
+// Background for the extruder-group title chip and its edit buttons, matching the interior
+// macOS keeps a lighter #F7F7F7 tint in light mode; dark mode uses the mapped colour.
 static wxColour extruder_group_chip_bg()
 {
 #ifdef __WXOSX__
@@ -1328,8 +1327,7 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
     ShowBadge(true);
     SetTopMargin(FromDIP(7)); // ORCA
 
-    // The title lives in an interactive row inside the card (with the nozzle-count badge and its edit
-    // button) instead of being painted on the border by StaticGroup.
+    // The title lives in an interactive row inside the card (with the nozzle-count badge and its edit button)
     hover_label = new HoverLabel(this, title);
     hover_label->SetPosition(wxPoint(FromDIP(PRINTER_PANEL_RADIUS), 0)); // position it without putting in a sizer so it will look like title
 
