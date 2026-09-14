@@ -549,30 +549,11 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
             continue;
 
         try {
-            PresetBundle library_bundle;
-            const PresetBundle *base_bundle = nullptr;
-            if (vendor_id != ORCA_FILAMENT_LIBRARY &&
-                boost::filesystem::is_regular_file(root_dir / (std::string(ORCA_FILAMENT_LIBRARY) + ".json"))) {
-                library_bundle.m_preserve_vendor_source_paths = true;
-                library_bundle.load_vendor_configs_from_json(root_dir.string(), ORCA_FILAMENT_LIBRARY, LoadSystem,
-                                                             compatibility_rule, nullptr, false);
-                if (library_bundle.error_count() != 0) {
-                    error = "OrcaFilamentLibrary contains invalid presets";
-                    return false;
-                }
-                base_bundle = &library_bundle;
-            }
-
-            PresetBundle source_bundle;
-            source_bundle.m_preserve_vendor_source_paths = true;
-            source_bundle.load_vendor_configs_from_json(root_dir.string(), vendor_id, LoadSystem,
-                                                        compatibility_rule, base_bundle, false);
-            if (source_bundle.error_count() != 0) {
-                error = "Vendor bundle contains invalid presets";
+            const SourceManifestBundles *loaded = load_source_manifest(root_dir, vendor_id, compatibility_rule, error);
+            if (loaded == nullptr)
                 return false;
-            }
 
-            const Preset *resolved = find_loaded(source_bundle);
+            const Preset *resolved = find_loaded(*loaded->vendor);
             if (resolved == nullptr) {
                 if (error.empty())
                     error = "Source file is not an instantiated preset in its vendor manifest";
@@ -589,6 +570,39 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
 
     error = "Preset was not found in the loaded bundle";
     return false;
+}
+
+const PresetBundle::SourceManifestBundles *PresetBundle::load_source_manifest(const boost::filesystem::path &root_dir,
+                                                                            const std::string &vendor_id,
+                                                                            ForwardCompatibilitySubstitutionRule compatibility_rule,
+                                                                            std::string &error)
+{
+    auto key = std::make_tuple(root_dir.string(), vendor_id, static_cast<int>(compatibility_rule));
+    if (auto it = m_source_manifest_bundles.find(key); it != m_source_manifest_bundles.end())
+        return &it->second;
+
+    SourceManifestBundles loaded;
+    if (vendor_id != ORCA_FILAMENT_LIBRARY &&
+        boost::filesystem::is_regular_file(root_dir / (std::string(ORCA_FILAMENT_LIBRARY) + ".json"))) {
+        loaded.library = std::make_unique<PresetBundle>();
+        loaded.library->m_preserve_vendor_source_paths = true;
+        loaded.library->load_vendor_configs_from_json(root_dir.string(), ORCA_FILAMENT_LIBRARY, LoadSystem,
+                                                      compatibility_rule, nullptr, false);
+        if (loaded.library->error_count() != 0) {
+            error = "OrcaFilamentLibrary contains invalid presets";
+            return nullptr;
+        }
+    }
+
+    loaded.vendor = std::make_unique<PresetBundle>();
+    loaded.vendor->m_preserve_vendor_source_paths = true;
+    loaded.vendor->load_vendor_configs_from_json(root_dir.string(), vendor_id, LoadSystem,
+                                                 compatibility_rule, loaded.library.get(), false);
+    if (loaded.vendor->error_count() != 0) {
+        error = "Vendor bundle contains invalid presets";
+        return nullptr;
+    }
+    return &m_source_manifest_bundles.emplace(std::move(key), std::move(loaded)).first->second;
 }
 
 bool PresetBundle::resolve_preset_config_type(DynamicPrintConfig &config, Preset::Type &type,

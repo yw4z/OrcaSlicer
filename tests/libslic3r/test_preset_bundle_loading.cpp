@@ -987,6 +987,50 @@ TEST_CASE("Resolution terminates when no vendor manifest exists", "[Preset][Bund
     CHECK(error == "Preset was not found in the loaded bundle");
 }
 
+TEST_CASE("Manifest-backed resolution reuses the vendor tree it already loaded", "[Preset][Bundle][Regression]")
+{
+    ScopedTemporaryDir dir;
+    const fs::path      process_dir = dir.path() / "Acme" / "process";
+    fs::create_directories(process_dir);
+    std::ofstream((dir.path() / "Acme.json").string())
+        << R"({"version":"1.0.0","name":"Acme","process_list":[)"
+        << R"({"name":"fdm_process_common","sub_path":"process/base.json"},)"
+        << R"({"name":"Acme First","sub_path":"process/first.json"},)"
+        << R"({"name":"Acme Second","sub_path":"process/second.json"}]})";
+    auto write_base = [&](double travel_speed) {
+        std::ofstream((process_dir / "base.json").string())
+            << R"({"type":"process","name":"fdm_process_common","from":"system",)"
+            << R"("instantiation":"false","travel_speed":[")" << travel_speed << R"("]})";
+    };
+    auto write_child = [&](const std::string &file, const std::string &name) {
+        std::ofstream((process_dir / file).string())
+            << R"({"type":"process","name":")" << name << R"(","from":"system",)"
+            << R"("instantiation":"true","inherits":"fdm_process_common"})";
+    };
+    write_base(111.0);
+    write_child("first.json", "Acme First");
+    write_child("second.json", "Acme Second");
+
+    auto travel_speed = [&](PresetBundle &bundle, const std::string &file) {
+        DynamicPrintConfig raw;
+        raw.option<ConfigOptionString>(BBL_JSON_KEY_INHERITS, true)->value = "fdm_process_common";
+        std::string error;
+        REQUIRE(bundle.resolve_preset_config(raw, Preset::TYPE_PRINT, (process_dir / file).string(),
+                                             ForwardCompatibilitySubstitutionRule::EnableSilent, error));
+        return raw.option<ConfigOptionFloats>("travel_speed")->values.front();
+    };
+
+    PresetBundle bundle;
+    CHECK_THAT(travel_speed(bundle, "first.json"), Catch::Matchers::WithinAbs(111.0, 1e-6));
+
+    // Only a reload would see this change.
+    write_base(222.0);
+    CHECK_THAT(travel_speed(bundle, "second.json"), Catch::Matchers::WithinAbs(111.0, 1e-6));
+
+    PresetBundle fresh;
+    CHECK_THAT(travel_speed(fresh, "second.json"), Catch::Matchers::WithinAbs(222.0, 1e-6));
+}
+
 // Orca: a filament in the Orca Filament Library that names its compatible printers has to hide the generic
 // library filament sharing its alias, the same way a vendor owned filament does. Otherwise both are compatible
 // with that printer and the plater combo box lists the shared alias twice.
