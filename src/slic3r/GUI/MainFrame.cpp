@@ -739,7 +739,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
             }
             // Defer out of the native key-event stack: open_speed_dial() may create a WebView and
             // run script, the same window work the codebase avoids doing on native callbacks.
-            this->CallAfter([this] { wxGetApp().open_speed_dial(); });
+            this->CallAfter([] { wxGetApp().open_speed_dial(); });
             return;
         }
         if (evt.CmdDown() && evt.GetKeyCode() == 'R') { if (m_slice_enable) { wxGetApp().plater()->update(true, true); wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SLICE_PLATE)); this->m_tabpanel->SelectPageByName(TAB_ID_PREVIEW); } return; }
