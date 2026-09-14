@@ -124,7 +124,7 @@ SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
                         wxEmptyString,
                         wxDefaultPosition,
                         wxDefaultSize,
-                        wxBORDER_NONE | wxFRAME_NO_TASKBAR | wxFRAME_FLOAT_ON_PARENT)
+                        wxBORDER_NONE | wxFRAME_NO_TASKBAR | wxFRAME_FLOAT_ON_PARENT | wxFRAME_SHAPED)
 {
     SetBackgroundColour(bg_color());
     Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
@@ -144,6 +144,12 @@ SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
         SetSizer(sizer);
         SetClientSize(FromDIP(wxSize(kPopupWidth, kPopupMinHeight)));
     }
+    // Re-cut the shape region whenever layout changes the client size; SetShape itself
+    // does not generate size events, so this cannot recurse.
+    Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+        event.Skip();
+        apply_rounded_shape();
+    });
     apply_rounded_shape();
 }
 
@@ -256,7 +262,8 @@ void SpeedDialWebDialog::resize_to_content(int height)
 // with a shape region (same mask trick as FilamentPickerDialog). Binary edges, no anti-aliasing.
 void SpeedDialWebDialog::apply_rounded_shape()
 {
-    const wxSize size = GetSize();
+    // BORDER_NONE means the window is all client area, so the client size is the shape size.
+    const wxSize size = GetClientSize();
     if (size.GetWidth() <= 0 || size.GetHeight() <= 0)
         return;
 
