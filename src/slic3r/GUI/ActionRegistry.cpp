@@ -346,6 +346,27 @@ void ActionRegistry::init()
         upsert(NativeCommands::make_action(c));
 }
 
+void ActionRegistry::relocalize_builtins()
+{
+    assert(wxThread::IsMain());
+    if (!m_started)
+        return;
+
+    // Drop only the built-in commands; plugins and the dynamically materialised families are
+    // either unlocalized or rebuilt per snapshot. remove() only erases the map entry, and upsert()
+    // re-seeds favourites/stats from config, so key-based ids keep their pinned state.
+    std::vector<std::string> stale;
+    for (const auto& [id, action] : m_actions)
+        if (action->source_key() == kOrcaSourceKey && action->kind == AppActionKind::Command)
+            stale.push_back(id);
+    for (const std::string& id : stale)
+        remove(id);
+
+    NativeCommands::rebuild_catalog();
+    for (const NativeCommand& c : NativeCommands::catalog())
+        upsert(NativeCommands::make_action(c));
+}
+
 void ActionRegistry::refresh_source(const std::string& plugin_key, ActionChange change)
 {
     assert(wxThread::IsMain());

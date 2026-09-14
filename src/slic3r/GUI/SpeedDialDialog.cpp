@@ -67,6 +67,53 @@ void focus_webview(wxWebView* browser, bool page_ready)
         browser->RunScript("focusInput();");
 }
 
+// Localized strings for the Speed Dial page, injected as a document-start user script. The page's
+// T() reads window.ORCA_UI_STRINGS, so these flow through the same .po pipeline as the rest of the
+// UI (the JS literals are only a fallback before the script runs / in the node vm test).
+// %% is a literal '%': T() collapses it after substituting %s. Keep the shortcut tokens out of the
+// translated text so the platform prefix (Alt+/⌥+, Ctrl+/⌘+) stays correct.
+nlohmann::json speed_dial_ui_strings()
+{
+    const std::string alt  = GUI::shortkey_alt_prefix();
+    const std::string ctrl = GUI::shortkey_ctrl_prefix();
+    return {
+        {"shortcut_alt", alt},
+        {"shortcut_ctrl", ctrl},
+
+        {"sd_search",          _u8L("Search actions")},
+        {"sd_clear",           _u8L("Clear")},
+        {"sd_search_n",        _u8L("Search %s actions")},
+        {"sd_recent",          _u8L("Recent")},
+        {"sd_plugins",         _u8L("Plugins")},
+        {"sd_other",           _u8L("Other")},
+        {"sd_no_match_total",  _u8L("No actions match (Total: %s)")},
+        {"sd_no_actions",      _u8L("No actions yet")},
+        {"sd_no_tabs_match",   _u8L("No tabs match")},
+        {"sd_no_tabs",         _u8L("No tabs")},
+        {"sd_result_count",    _u8L("Showing %s of %s actions")},
+        {"sd_result_count_all", _u8L("%s actions")},
+        {"sd_tab_count",       _u8L("%s tabs")},
+        {"sd_tab_match_count", _u8L("%s matches")},
+        {"sd_favs_full",       _u8L("Favourites are full (%s max)")},
+        {"sd_go_to_pct",       _u8L("Go to %s%% of the layer range")},
+        {"sd_enter_pct",       _u8L("Enter a layer percentage (0-100)")},
+        {"sd_go_layer_ph",     _u8L("Go to layer %% (0-100)")},
+        {"sd_go_tab_ph",       _u8L("Go to tab")},
+        {"sd_fav_slot",        _u8L("Favourite %s (%s)")},
+        {"sd_pin_fav",         _u8L("Pin to favourites (%s)")},
+        {"sd_unpin_fav",       _u8L("Unpin from favourites (%s)")},
+        {"sd_remove_fav",      _u8L("Remove from favourites")},
+        {"sd_move_left",       _u8L("Move left")},
+        {"sd_move_right",      _u8L("Move right")},
+        {"sd_unpin",           _u8L("Unpin")},
+        {"sd_mode_advanced",   _u8L("Advanced")},
+        {"sd_mode_expert",     _u8L("Expert")},
+        {"sd_mode_develop",    _u8L("Developer")},
+        {"sd_wiki_f1",         _u8L("Wiki (F1)")},
+        {"sd_no_wiki",         _u8L("No wiki page for this action")},
+    };
+}
+
 } // namespace
 
 SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
@@ -98,6 +145,18 @@ SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
 }
 
 SpeedDialWebDialog::~SpeedDialWebDialog() { m_alive->store(false, std::memory_order_release); }
+
+// Document-start hook: hand the page its translated strings before speeddial.js runs, so the first
+// paint is already localized. The table is built when the dialog is created; a live language switch
+// rebuilds the GUI (and with it this dialog), so the next open re-injects the new locale.
+void SpeedDialWebDialog::add_user_scripts()
+{
+    if (wxWebView* wv = browser()) {
+        const std::string js = "window.ORCA_UI_STRINGS = " +
+                               speed_dial_ui_strings().dump(-1, ' ', false, nlohmann::json::error_handler_t::ignore) + ";";
+        wv->AddUserScript(wxString::FromUTF8(js));
+    }
+}
 
 void SpeedDialWebDialog::request_show()
 {

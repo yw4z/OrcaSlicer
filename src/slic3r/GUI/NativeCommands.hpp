@@ -24,8 +24,12 @@ struct NativeCommand
 };
 
 namespace NativeCommands {
-// The full built-in command catalog, built once on first use. UI thread only.
+// The full built-in command catalog. Built on first use and reused; call rebuild_catalog() after a
+// live UI language switch so the translated titles/groups match the new locale. UI thread only.
 const std::vector<NativeCommand>& catalog();
+
+// Rebuilds the catalog in the current locale. UI thread only.
+void rebuild_catalog();
 
 // Dispatches `key` to its runner (unknown keys return a quiet Info). UI thread only.
 AppActionRunResult run(const std::string& key, const std::string& param = {});

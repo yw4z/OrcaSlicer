@@ -4607,6 +4607,12 @@ void GUI_App::recreate_GUI(const wxString &msg_name)
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "recreate_GUI enter";
     m_is_recreating_gui = true;
 
+    // The palette injects its translated strings once, at creation; drop the cached dialog so the
+    // next open rebuilds it in the current locale (and can't outlive the old mainframe).
+    if (m_speed_dial_dialog) {
+        m_speed_dial_dialog->Destroy();
+        m_speed_dial_dialog = nullptr;
+    }
 
     mainframe->shutdown();
     ProgressDialog dlg(msg_name, msg_name, 100, nullptr, wxPD_AUTO_HIDE);
@@ -8523,6 +8529,9 @@ void GUI_App::open_preferences(size_t open_on_tab, const std::string& highlight_
                 this->plater_->get_current_canvas3D()->force_set_focus();
             return;
         }
+        // Built-in Speed Dial command titles are copied from the catalog at init and don't follow a
+        // live locale switch; rebuild them in the new language before the GUI (and palette) rebuilds.
+        m_action_registry.relocalize_builtins();
     }
 
     if (need_recreate_gui)

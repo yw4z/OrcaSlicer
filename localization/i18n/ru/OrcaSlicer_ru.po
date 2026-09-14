@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: OrcaSlicer V2.5.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 17:15+0800\n"
+"POT-Creation-Date: 2026-09-14 12:09+0800\n"
 "PO-Revision-Date: 2026-02-25 13:38+0300\n"
 "Last-Translator: Felix14_v2\n"
 "Language-Team: Felix14_v2 (ДС/ТГ: @felix14_v2, почта: aleks111001@list.ru), Andylg <andylg@yandex.ru>\n"
@@ -4140,6 +4140,21 @@ msgstr "OrcaSlicer начинал свой путь с тем же замысл�
 msgid "Today, OrcaSlicer is the most widely used and actively developed open-source slicer in the 3D printing community. Many of its innovations have been adopted by other slicers, making it a driving force for the entire industry."
 msgstr "В наши дни OrcaSlicer – самый прогрессивный и распространённый в сообществе слайсер с открытым исходным кодом. Благодаря множеству инноваций он становится основой других слайсеров и движущей силой всей индустрии 3D-печати."
 
+msgid "Script plugin skipped."
+msgstr ""
+
+msgid "Script plugin finished."
+msgstr ""
+
+msgid "Printer"
+msgstr "Принтер"
+
+msgid "Recent Projects"
+msgstr ""
+
+msgid "Go to Plate"
+msgstr ""
+
 msgid "AMS Materials Setting"
 msgstr "Настройка материалов AMS"
 
@@ -5346,10 +5361,11 @@ msgid "Value %s is out of range. The valid range is from %d to %d."
 msgstr "Значение %s выходит за пределы допустимого диапазона. Допустимый диапазон - от %d до %d."
 
 #, c-format, boost-format
-msgid ""
-"Is it %s%% or %s %s?"
-msgstr ""
-"Имелось ввиду %s%% или %s %s?"
+msgid "Is it %s%% or %s %s?"
+msgstr "Имелось ввиду %s%% или %s %s?"
+
+msgid "%"
+msgstr "%"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -5731,9 +5747,6 @@ msgstr "Смена цвета"
 msgctxt "Noun"
 msgid "Print"
 msgstr "Печать"
-
-msgid "Printer"
-msgstr "Принтер"
 
 msgid "Time Estimation"
 msgstr "Оценка времени"
@@ -7512,6 +7525,231 @@ msgstr "Не показывать снова"
 msgid "Please refer to Wiki before use->"
 msgstr "Перед использованием обратитесь к руководству →"
 
+msgid "Plates are a filament (FFF) feature."
+msgstr ""
+
+msgid "Open the 3D view first."
+msgstr ""
+
+msgid "Select an object first."
+msgstr ""
+
+msgid "Slice and Preview"
+msgstr ""
+
+msgid "Slice & Export"
+msgstr ""
+
+msgid "Go to layer (percent)"
+msgstr ""
+
+msgid "Commands"
+msgstr ""
+
+msgid "Go to tab..."
+msgstr ""
+
+msgid "Load Project"
+msgstr ""
+
+msgid "Save Project As"
+msgstr ""
+
+msgid "Mode: Simple"
+msgstr ""
+
+msgid "Mode: Advanced"
+msgstr ""
+
+msgid "Mode: Expert"
+msgstr ""
+
+msgid "Toggle Developer Mode"
+msgstr ""
+
+msgid "Developer mode enabled."
+msgstr ""
+
+msgid "Developer mode disabled."
+msgstr ""
+
+msgid "Export STL"
+msgstr "Экспорт в STL"
+
+msgid "Export 3MF"
+msgstr "Экспорт в 3MF"
+
+msgid "Export Sliced File"
+msgstr ""
+
+msgid "Export All Sliced Files"
+msgstr ""
+
+msgid "Max Volumetric Speed Calibration"
+msgstr "Калибровка макс. объёмного расхода"
+
+msgid "Pressure Advance Calibration"
+msgstr ""
+
+msgid "Flow Ratio Calibration"
+msgstr "Калибровка коэффициента потока"
+
+msgid "Retraction Calibration"
+msgstr ""
+
+msgid "Cornering Calibration"
+msgstr ""
+
+msgid "Input Shaping Frequency Calibration"
+msgstr ""
+
+msgid "Input Shaping Damping Calibration"
+msgstr ""
+
+msgid "VFA Calibration"
+msgstr ""
+
+msgid "View: Top"
+msgstr ""
+
+msgid "View: Bottom"
+msgstr ""
+
+msgid "View: Front"
+msgstr ""
+
+msgid "View: Rear"
+msgstr ""
+
+msgid "View: Left"
+msgstr ""
+
+msgid "View: Right"
+msgstr ""
+
+msgid "View: Isometric"
+msgstr ""
+
+msgid "View: Default"
+msgstr ""
+
+msgid "Fit Bed to View"
+msgstr ""
+
+msgid "Toggle Perspective"
+msgstr ""
+
+msgid "Delete All Objects"
+msgstr "Удалить все модели"
+
+msgid "Mirror X"
+msgstr ""
+
+msgid "Mirror Y"
+msgstr ""
+
+msgid "Mirror Z"
+msgstr ""
+
+msgid "Split to Objects"
+msgstr "Разделить на модели"
+
+msgid "Split to Parts"
+msgstr ""
+
+msgid "Center Selected on Plate"
+msgstr ""
+
+msgid "Drop to Bed"
+msgstr ""
+
+msgid "Scale to Fit Print Volume"
+msgstr ""
+
+msgid "Increase Instances"
+msgstr ""
+
+msgid "Decrease Instances"
+msgstr ""
+
+msgid "Auto-Arrange"
+msgstr ""
+
+msgid "Auto-Orient"
+msgstr ""
+
+msgid "Add Plate"
+msgstr ""
+
+msgid "Cannot add another plate (maximum reached)."
+msgstr ""
+
+msgid "Duplicate Plate"
+msgstr ""
+
+msgid "Cannot duplicate a plate (maximum reached)."
+msgstr ""
+
+msgid "Cannot delete the only plate."
+msgstr ""
+
+msgid "Rename Plate"
+msgstr ""
+
+msgid "Toggle Plate Lock"
+msgstr ""
+
+msgid "No plates available."
+msgstr ""
+
+msgid "Synchronize Filament List from AMS"
+msgstr ""
+
+msgid "Connect a printer to synchronize the AMS filament list."
+msgstr ""
+
+msgid "Open Preset Bundle"
+msgstr ""
+
+msgid "Sign in to sync presets."
+msgstr ""
+
+msgid "Export All Objects as STLs"
+msgstr ""
+
+msgid "Export All Objects as DRC (one file)"
+msgstr ""
+
+msgid "Export All Objects as DRCs"
+msgstr ""
+
+msgid "Export Toolpaths as OBJ"
+msgstr ""
+
+msgid "About OrcaSlicer"
+msgstr ""
+
+msgid "Open Wiki"
+msgstr ""
+
+msgid "Open YouTube Channel"
+msgstr ""
+
+msgid "Open Plugins"
+msgstr ""
+
+msgid "Refresh Plugins"
+msgstr ""
+
+msgid "Install Plugin"
+msgstr ""
+
+msgid "Install Local Plugin"
+msgstr ""
+
+msgid "Unknown command."
+msgstr ""
+
 msgid "3D Mouse disconnected."
 msgstr "3D-мышь отключена."
 
@@ -8361,17 +8599,11 @@ msgstr ""
 msgid "Delete Object"
 msgstr "Удалить модель"
 
-msgid "Delete All Objects"
-msgstr "Удалить все модели"
-
 msgid "Reset Project"
 msgstr "Сбросить проект"
 
 msgid "The selected object couldn't be split."
 msgstr "Невозможно разделить выбранную модель."
-
-msgid "Split to Objects"
-msgstr "Разделить на модели"
 
 msgid "Disable Auto-Drop to preserve Z positioning?\n"
 msgstr "Отключить притягивание компонентов к столу для сохранения высоты?\n"
@@ -9427,9 +9659,6 @@ msgstr "Затемнять слои, находящиеся ниже текущ�
 msgid "Dimmed layer brightness"
 msgstr "Яркость затемнённых слоёв"
 
-msgid "%"
-msgstr "%"
-
 msgid ""
 "How brightly the dimmed layers are rendered when \"Dim lower layers\" is enabled.\n"
 "99% is barely darkened, 0% renders them black. Capped at 99% because 100% would be the same as disabling the option."
@@ -9975,6 +10204,126 @@ msgstr "Для «%1%» добавить «%2%» как новый профиль
 #, boost-format
 msgid "Simply switch to \"%1%\""
 msgstr "Просто переключиться на «%1%»"
+
+msgid "Expert"
+msgstr ""
+
+msgid "Simple"
+msgstr ""
+
+msgid "Search actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Search %s actions"
+msgstr ""
+
+msgid "Recent"
+msgstr ""
+
+msgid "Other"
+msgstr "Прочее"
+
+#, c-format, boost-format
+msgid "No actions match (Total: %s)"
+msgstr ""
+
+msgid "No actions yet"
+msgstr ""
+
+msgid "No tabs match"
+msgstr ""
+
+msgid "No tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Showing %s of %s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s matches"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourites are full (%s max)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to %s%% of the layer range"
+msgstr ""
+
+msgid "Enter a layer percentage (0-100)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to layer %% (0-100)"
+msgstr ""
+
+msgid "Go to tab"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourite %s (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Pin to favourites (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Unpin from favourites (%s)"
+msgstr ""
+
+msgid "Remove from favourites"
+msgstr ""
+
+msgid "Move left"
+msgstr ""
+
+msgid "Move right"
+msgstr ""
+
+msgid "Unpin"
+msgstr ""
+
+msgid "Wiki (F1)"
+msgstr ""
+
+msgid "No wiki page for this action"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a Developer setting. Enable Developer mode to edit it?"
+msgstr ""
+
+msgid "Developer setting"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a %s setting. Switch from %s mode to %s mode to edit it?"
+msgstr ""
+
+msgid "Switch settings mode"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Run \"%s\"?"
+msgstr ""
+
+msgid "Run plugin"
+msgstr ""
+
+msgid "Don't ask again for this action"
+msgstr ""
 
 msgid "Task canceled"
 msgstr "Задание отменено"
@@ -10995,9 +11344,6 @@ msgstr "Совместимые настройки"
 
 msgid "Printable space"
 msgstr "Область печати"
-
-msgid "Printer Agent"
-msgstr "Сетевой агент"
 
 msgid "Select the network agent implementation for printer communication. Available agents are registered at startup."
 msgstr "Реализация сетевого агента для обмена информацией с принтером. Доступные реализации определяются при запуске."
@@ -12786,6 +13132,9 @@ msgstr "Сжатие G-кода перед отправкой"
 
 msgid "Enable this if the printer accepts a 3MF file as the print job. When enabled, Orca Slicer sends the sliced file as a .gcode.3mf, instead of a plain .gcode file."
 msgstr "Рекомендуется для принтеров, поддерживающих печать из архивов 3MF. Файлы печати будут отправляться с расширением \".gcode.3mf\"."
+
+msgid "Printer Agent"
+msgstr "Сетевой агент"
 
 msgid "Select the network agent implementation for printer communication."
 msgstr "Реализация сетевого агента для обмена информацией с принтером."
@@ -17334,9 +17683,6 @@ msgstr "Часто в импортируемых в программу моде�
 msgid "Slicing Mode"
 msgstr "Режим нарезки"
 
-msgid "Other"
-msgstr "Прочее"
-
 msgid "Use \"Even-odd\" for 3DLabPrint airplane models. Use \"Close holes\" to close all holes in the model."
 msgstr ""
 "Режим нарезки «Чётный-нечётный» применяется для моделей с намеренно нарушенной целостностью. Например, для моделей самолётов с ресурса 3DLabPrint.\n"
@@ -18363,9 +18709,6 @@ msgstr "слишком большая ширина линии "
 msgid " not in range "
 msgstr " вне диапазона "
 
-msgid "Export 3MF"
-msgstr "Экспорт в 3MF"
-
 msgid "This exports the project as a 3MF file."
 msgstr "Экспорт проекта в 3MF."
 
@@ -18381,9 +18724,6 @@ msgstr "Загрузка данных о нарезке"
 
 msgid "Load cached slicing data from directory."
 msgstr "Загрузка кэша данных нарезки из папки."
-
-msgid "Export STL"
-msgstr "Экспорт в STL"
 
 msgid "Export the objects as single STL."
 msgstr "Экспорт моделей в единый STL-файл."
@@ -19086,9 +19426,6 @@ msgstr "Файл содержит неверное количество верш
 
 msgid "This OBJ file couldn't be read because it's empty."
 msgstr "Этот OBJ файл не может быть прочитан, так как он пуст."
-
-msgid "Max Volumetric Speed Calibration"
-msgstr "Калибровка макс. объёмного расхода"
 
 msgid "Manage Result"
 msgstr "Управление результатами"
@@ -19943,9 +20280,6 @@ msgstr "Скорость должна быть в диапазоне от 0 до
 #, c-format, boost-format
 msgid "NOTE: High values may cause Layer shift (>%s)"
 msgstr "Примечание: высокие значения могут привести к смещению слоёв (>%s)"
-
-msgid "Flow Ratio Calibration"
-msgstr "Калибровка коэффициента потока"
 
 msgid "Calibration Test Type"
 msgstr "Вариант калибровки"

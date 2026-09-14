@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Orca Slicer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 17:15+0800\n"
+"POT-Creation-Date: 2026-09-14 12:09+0800\n"
 "PO-Revision-Date: 2025-06-02 17:12+0900\n"
 "Last-Translator: crwusiz <crwusiz@gmail.com>\n"
 "Language-Team: \n"
@@ -4185,6 +4185,21 @@ msgstr "OrcaSlicer도 같은 정신으로 시작하여 PrusaSlicer, BambuStudio,
 msgid "Today, OrcaSlicer is the most widely used and actively developed open-source slicer in the 3D printing community. Many of its innovations have been adopted by other slicers, making it a driving force for the entire industry."
 msgstr "오늘날 OrcaSlicer는 3D 프린팅 커뮤니티에서 가장 널리 사용되고 가장 활발하게 개발되는 오픈 소스 슬라이서입니다. 그 혁신 가운데 다수가 다른 슬라이서에도 채택되어 업계 전체를 이끄는 원동력이 되고 있습니다."
 
+msgid "Script plugin skipped."
+msgstr ""
+
+msgid "Script plugin finished."
+msgstr ""
+
+msgid "Printer"
+msgstr "프린터"
+
+msgid "Recent Projects"
+msgstr ""
+
+msgid "Go to Plate"
+msgstr ""
+
 msgid "AMS Materials Setting"
 msgstr "AMS 재료 설정"
 
@@ -5375,10 +5390,11 @@ msgid "Value %s is out of range. The valid range is from %d to %d."
 msgstr "값 %s이 범위를 벗어났습니다. 유효한 범위는 %d에서 %d까지입니다."
 
 #, c-format, boost-format
-msgid ""
-"Is it %s%% or %s %s?"
-msgstr ""
-"%s%% 또는 %s %s입니까?"
+msgid "Is it %s%% or %s %s?"
+msgstr "%s%% 또는 %s %s입니까?"
+
+msgid "%"
+msgstr "%"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -5740,9 +5756,6 @@ msgstr "색 변경"
 msgctxt "Noun"
 msgid "Print"
 msgstr "출력"
-
-msgid "Printer"
-msgstr "프린터"
 
 msgid "Time Estimation"
 msgstr "추정 시간"
@@ -7473,6 +7486,234 @@ msgstr "이 대화 상자를 다시 표시하지 마세요."
 msgid "Please refer to Wiki before use->"
 msgstr "사용하기 전에 Wiki를 참조하십시오->"
 
+msgid "Plates are a filament (FFF) feature."
+msgstr ""
+
+msgid "Open the 3D view first."
+msgstr ""
+
+msgid "Select an object first."
+msgstr ""
+
+msgid "Slice and Preview"
+msgstr ""
+
+msgid "Slice & Export"
+msgstr ""
+
+msgid "Go to layer (percent)"
+msgstr ""
+
+msgid "Commands"
+msgstr ""
+
+msgid "Go to tab..."
+msgstr ""
+
+msgid "Load Project"
+msgstr ""
+
+msgid "Save Project As"
+msgstr ""
+
+msgid "Mode: Simple"
+msgstr ""
+
+msgid "Mode: Advanced"
+msgstr ""
+
+msgid "Mode: Expert"
+msgstr ""
+
+msgid "Toggle Developer Mode"
+msgstr ""
+
+msgid "Developer mode enabled."
+msgstr ""
+
+msgid "Developer mode disabled."
+msgstr ""
+
+msgid "Export STL"
+msgstr "STL 내보내기"
+
+msgid "Export 3MF"
+msgstr "3MF 내보내기"
+
+msgid "Export Sliced File"
+msgstr ""
+
+msgid "Export All Sliced Files"
+msgstr ""
+
+msgid "Max Volumetric Speed Calibration"
+msgstr "최대 압출 속도 교정"
+
+msgid "Pressure Advance Calibration"
+msgstr ""
+
+# AI Translated
+msgid "Flow Ratio Calibration"
+msgstr "압출량 비율 교정"
+
+msgid "Retraction Calibration"
+msgstr ""
+
+msgid "Cornering Calibration"
+msgstr ""
+
+msgid "Input Shaping Frequency Calibration"
+msgstr ""
+
+msgid "Input Shaping Damping Calibration"
+msgstr ""
+
+msgid "VFA Calibration"
+msgstr ""
+
+msgid "View: Top"
+msgstr ""
+
+msgid "View: Bottom"
+msgstr ""
+
+msgid "View: Front"
+msgstr ""
+
+msgid "View: Rear"
+msgstr ""
+
+msgid "View: Left"
+msgstr ""
+
+msgid "View: Right"
+msgstr ""
+
+msgid "View: Isometric"
+msgstr ""
+
+msgid "View: Default"
+msgstr ""
+
+msgid "Fit Bed to View"
+msgstr ""
+
+msgid "Toggle Perspective"
+msgstr ""
+
+# AI Translated
+msgid "Delete All Objects"
+msgstr "모든 객체 삭제"
+
+msgid "Mirror X"
+msgstr ""
+
+msgid "Mirror Y"
+msgstr ""
+
+msgid "Mirror Z"
+msgstr ""
+
+# AI Translated
+msgid "Split to Objects"
+msgstr "객체로 분할"
+
+msgid "Split to Parts"
+msgstr ""
+
+msgid "Center Selected on Plate"
+msgstr ""
+
+msgid "Drop to Bed"
+msgstr ""
+
+msgid "Scale to Fit Print Volume"
+msgstr ""
+
+msgid "Increase Instances"
+msgstr ""
+
+msgid "Decrease Instances"
+msgstr ""
+
+msgid "Auto-Arrange"
+msgstr ""
+
+msgid "Auto-Orient"
+msgstr ""
+
+msgid "Add Plate"
+msgstr ""
+
+msgid "Cannot add another plate (maximum reached)."
+msgstr ""
+
+msgid "Duplicate Plate"
+msgstr ""
+
+msgid "Cannot duplicate a plate (maximum reached)."
+msgstr ""
+
+msgid "Cannot delete the only plate."
+msgstr ""
+
+msgid "Rename Plate"
+msgstr ""
+
+msgid "Toggle Plate Lock"
+msgstr ""
+
+msgid "No plates available."
+msgstr ""
+
+msgid "Synchronize Filament List from AMS"
+msgstr ""
+
+msgid "Connect a printer to synchronize the AMS filament list."
+msgstr ""
+
+msgid "Open Preset Bundle"
+msgstr ""
+
+msgid "Sign in to sync presets."
+msgstr ""
+
+msgid "Export All Objects as STLs"
+msgstr ""
+
+msgid "Export All Objects as DRC (one file)"
+msgstr ""
+
+msgid "Export All Objects as DRCs"
+msgstr ""
+
+msgid "Export Toolpaths as OBJ"
+msgstr ""
+
+msgid "About OrcaSlicer"
+msgstr ""
+
+msgid "Open Wiki"
+msgstr ""
+
+msgid "Open YouTube Channel"
+msgstr ""
+
+msgid "Open Plugins"
+msgstr ""
+
+msgid "Refresh Plugins"
+msgstr ""
+
+msgid "Install Plugin"
+msgstr ""
+
+msgid "Install Local Plugin"
+msgstr ""
+
+msgid "Unknown command."
+msgstr ""
+
 msgid "3D Mouse disconnected."
 msgstr "3D 마우스가 분리됨."
 
@@ -8342,19 +8583,11 @@ msgid "Delete Object"
 msgstr "객체 삭제"
 
 # AI Translated
-msgid "Delete All Objects"
-msgstr "모든 객체 삭제"
-
-# AI Translated
 msgid "Reset Project"
 msgstr "프로젝트 초기화"
 
 msgid "The selected object couldn't be split."
 msgstr "선택한 객체를 분할할 수 없습니다."
-
-# AI Translated
-msgid "Split to Objects"
-msgstr "객체로 분할"
 
 # AI Translated
 msgid "Disable Auto-Drop to preserve Z positioning?\n"
@@ -9497,9 +9730,6 @@ msgstr "슬라이스된 미리보기에서 레이어 슬라이더를 움직일 �
 msgid "Dimmed layer brightness"
 msgstr "어둡게 표시된 레이어의 밝기"
 
-msgid "%"
-msgstr "%"
-
 # AI Translated
 msgid ""
 "How brightly the dimmed layers are rendered when \"Dim lower layers\" is enabled.\n"
@@ -10067,6 +10297,126 @@ msgstr "%1%에 대해, %2%를 새 사전 설정으로 추가합니다"
 #, boost-format
 msgid "Simply switch to \"%1%\""
 msgstr "\"%1%\"로 단순 전환"
+
+msgid "Expert"
+msgstr ""
+
+msgid "Simple"
+msgstr ""
+
+msgid "Search actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Search %s actions"
+msgstr ""
+
+msgid "Recent"
+msgstr ""
+
+msgid "Other"
+msgstr "기타"
+
+#, c-format, boost-format
+msgid "No actions match (Total: %s)"
+msgstr ""
+
+msgid "No actions yet"
+msgstr ""
+
+msgid "No tabs match"
+msgstr ""
+
+msgid "No tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Showing %s of %s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s matches"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourites are full (%s max)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to %s%% of the layer range"
+msgstr ""
+
+msgid "Enter a layer percentage (0-100)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to layer %% (0-100)"
+msgstr ""
+
+msgid "Go to tab"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourite %s (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Pin to favourites (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Unpin from favourites (%s)"
+msgstr ""
+
+msgid "Remove from favourites"
+msgstr ""
+
+msgid "Move left"
+msgstr ""
+
+msgid "Move right"
+msgstr ""
+
+msgid "Unpin"
+msgstr ""
+
+msgid "Wiki (F1)"
+msgstr ""
+
+msgid "No wiki page for this action"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a Developer setting. Enable Developer mode to edit it?"
+msgstr ""
+
+msgid "Developer setting"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a %s setting. Switch from %s mode to %s mode to edit it?"
+msgstr ""
+
+msgid "Switch settings mode"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Run \"%s\"?"
+msgstr ""
+
+msgid "Run plugin"
+msgstr ""
+
+msgid "Don't ask again for this action"
+msgstr ""
 
 msgid "Task canceled"
 msgstr "작업이 취소됨"
@@ -11102,10 +11452,6 @@ msgstr "호환 프로세스 사전설정"
 
 msgid "Printable space"
 msgstr "출력 가능 공간"
-
-# AI Translated
-msgid "Printer Agent"
-msgstr "프린터 에이전트"
 
 # AI Translated
 msgid "Select the network agent implementation for printer communication. Available agents are registered at startup."
@@ -12974,6 +13320,10 @@ msgstr "G-code 대신 3MF 사용"
 # AI Translated
 msgid "Enable this if the printer accepts a 3MF file as the print job. When enabled, Orca Slicer sends the sliced file as a .gcode.3mf, instead of a plain .gcode file."
 msgstr "프린터가 출력 작업으로 3MF 파일을 허용하는 경우 이 옵션을 활성화하십시오. 활성화하면 Orca Slicer가 슬라이스된 파일을 일반 .gcode 파일 대신 .gcode.3mf로 전송합니다."
+
+# AI Translated
+msgid "Printer Agent"
+msgstr "프린터 에이전트"
 
 # AI Translated
 msgid "Select the network agent implementation for printer communication."
@@ -17295,9 +17645,6 @@ msgstr "간격 폐쇄 반경의 2배보다 작은 균열은 삼각형 메시 슬
 msgid "Slicing Mode"
 msgstr "슬라이싱 모드"
 
-msgid "Other"
-msgstr "기타"
-
 msgid "Use \"Even-odd\" for 3DLabPrint airplane models. Use \"Close holes\" to close all holes in the model."
 msgstr "3DLabPrint 비행기 모델에는 \"짝수-홀수\"를 사용하세요. \"구멍 닫기\"를 사용하여 모델의 모든 구멍을 닫습니다."
 
@@ -18247,9 +18594,6 @@ msgstr "너무 넓은 선 너비 "
 msgid " not in range "
 msgstr " 범위를 벗어남 "
 
-msgid "Export 3MF"
-msgstr "3MF 내보내기"
-
 msgid "This exports the project as a 3MF file."
 msgstr "프로젝트를 3MF로 내보내기."
 
@@ -18264,9 +18608,6 @@ msgstr "슬라이싱 데이터 로드"
 
 msgid "Load cached slicing data from directory."
 msgstr "디렉토리에 캐시된 슬라이싱 데이터 로드"
-
-msgid "Export STL"
-msgstr "STL 내보내기"
 
 msgid "Export the objects as single STL."
 msgstr "객체를 단일 STL로 내보냅니다."
@@ -18942,9 +19283,6 @@ msgstr "파일에 잘못된 꼭지점 인덱스가 포함되어 있습니다."
 
 msgid "This OBJ file couldn't be read because it's empty."
 msgstr "이 OBJ 파일은 비어 있어서 읽을 수 없습니다."
-
-msgid "Max Volumetric Speed Calibration"
-msgstr "최대 압출 속도 교정"
 
 msgid "Manage Result"
 msgstr "결과 관리"
@@ -19827,10 +20165,6 @@ msgstr ""
 #, c-format, boost-format
 msgid "NOTE: High values may cause Layer shift (>%s)"
 msgstr "참고: 값이 크면 레이어 밀림이 발생할 수 있습니다 (>%s)"
-
-# AI Translated
-msgid "Flow Ratio Calibration"
-msgstr "압출량 비율 교정"
 
 # AI Translated
 msgid "Calibration Test Type"

@@ -282,16 +282,17 @@ std::vector<NativeCommand> build_command_catalog()
     add_with_icon("calib_vfa", _u8L("VFA Calibration"), _u8L("Calibration"), "calib_sf", [](const std::string&) { return calib_command(CalibKind::VFA); });
 
     // ---- View ----
+    // Titles are built with _u8L here (not via a variable) so xgettext can extract them.
     for (auto [key, dir, title] :
-         std::initializer_list<std::tuple<const char*, const char*, const char*>>{{"view_top", "top", "View: Top"},
-                                                                                  {"view_bottom", "bottom", "View: Bottom"},
-                                                                                  {"view_front", "front", "View: Front"},
-                                                                                  {"view_rear", "rear", "View: Rear"},
-                                                                                  {"view_left", "left", "View: Left"},
-                                                                                  {"view_right", "right", "View: Right"},
-                                                                                  {"view_iso", "iso", "View: Isometric"}}) {
+         std::initializer_list<std::tuple<const char*, const char*, std::string>>{{"view_top", "top", _u8L("View: Top")},
+                                                                                  {"view_bottom", "bottom", _u8L("View: Bottom")},
+                                                                                  {"view_front", "front", _u8L("View: Front")},
+                                                                                  {"view_rear", "rear", _u8L("View: Rear")},
+                                                                                  {"view_left", "left", _u8L("View: Left")},
+                                                                                  {"view_right", "right", _u8L("View: Right")},
+                                                                                  {"view_iso", "iso", _u8L("View: Isometric")}}) {
         std::string k = key, d = dir;
-        add(k, Slic3r::GUI::I18N::translate_utf8(title), _u8L("View"),
+        add(k, title, _u8L("View"),
             [d](const std::string&) { return view_command(wxGetApp().plater(), d); });
     }
     add("view_default", _u8L("View: Default"), _u8L("View"), [](const std::string&) {
@@ -626,12 +627,24 @@ std::vector<NativeCommand> build_command_catalog()
     return out;
 }
 
+std::vector<NativeCommand>& catalog_storage()
+{
+    static std::vector<NativeCommand> commands = build_command_catalog();
+    return commands;
+}
+
 } // namespace
 
 const std::vector<NativeCommand>& NativeCommands::catalog()
 {
-    static const std::vector<NativeCommand> commands = build_command_catalog();
-    return commands;
+    return catalog_storage();
+}
+
+void NativeCommands::rebuild_catalog()
+{
+    // build_command_catalog() re-runs _u8L under the current locale, so replacing the storage
+    // refreshes every translated title/group after a language switch.
+    catalog_storage() = build_command_catalog();
 }
 
 std::unique_ptr<AppAction> NativeCommands::make_action(const NativeCommand& command)

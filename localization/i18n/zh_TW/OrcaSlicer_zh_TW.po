@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Orca Slicer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 17:15+0800\n"
+"POT-Creation-Date: 2026-09-14 12:09+0800\n"
 "PO-Revision-Date: 2025-11-28 13:48-0600\n"
 "Last-Translator: tntchn <15895303+tntchn@users.noreply.github.com>\n"
 "Language-Team: \n"
@@ -4113,6 +4113,21 @@ msgstr "OrcaSlicer 也源於同樣的精神，汲取了 PrusaSlicer、BambuStudi
 msgid "Today, OrcaSlicer is the most widely used and actively developed open-source slicer in the 3D printing community. Many of its innovations have been adopted by other slicers, making it a driving force for the entire industry."
 msgstr "如今，OrcaSlicer 是 3D 列印社群中使用最廣泛、開發最活躍的開源切片軟體。它的許多創新已被其他切片軟體採用，使其成為推動整個產業的動力。"
 
+msgid "Script plugin skipped."
+msgstr ""
+
+msgid "Script plugin finished."
+msgstr ""
+
+msgid "Printer"
+msgstr "列印裝置"
+
+msgid "Recent Projects"
+msgstr ""
+
+msgid "Go to Plate"
+msgstr ""
+
 msgid "AMS Materials Setting"
 msgstr "AMS 線材設定"
 
@@ -5315,10 +5330,11 @@ msgid "Value %s is out of range. The valid range is from %d to %d."
 msgstr "數值 %s 超出範圍。有效範圍是從 %d 到 %d。"
 
 #, c-format, boost-format
-msgid ""
-"Is it %s%% or %s %s?"
-msgstr ""
-"是 %s%% 還是 %s %s？"
+msgid "Is it %s%% or %s %s?"
+msgstr "是 %s%% 還是 %s %s？"
+
+msgid "%"
+msgstr "%"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -5677,9 +5693,6 @@ msgstr "顏色更換"
 msgctxt "Noun"
 msgid "Print"
 msgstr "列印"
-
-msgid "Printer"
-msgstr "列印裝置"
 
 msgid "Time Estimation"
 msgstr "時間預估"
@@ -7407,6 +7420,233 @@ msgstr "不要再顯示此提示"
 msgid "Please refer to Wiki before use->"
 msgstr "使用前請參考 Wiki ->"
 
+msgid "Plates are a filament (FFF) feature."
+msgstr ""
+
+msgid "Open the 3D view first."
+msgstr ""
+
+msgid "Select an object first."
+msgstr ""
+
+msgid "Slice and Preview"
+msgstr ""
+
+msgid "Slice & Export"
+msgstr ""
+
+msgid "Go to layer (percent)"
+msgstr ""
+
+msgid "Commands"
+msgstr ""
+
+msgid "Go to tab..."
+msgstr ""
+
+msgid "Load Project"
+msgstr ""
+
+msgid "Save Project As"
+msgstr ""
+
+msgid "Mode: Simple"
+msgstr ""
+
+msgid "Mode: Advanced"
+msgstr ""
+
+msgid "Mode: Expert"
+msgstr ""
+
+msgid "Toggle Developer Mode"
+msgstr ""
+
+msgid "Developer mode enabled."
+msgstr ""
+
+msgid "Developer mode disabled."
+msgstr ""
+
+msgid "Export STL"
+msgstr "匯出為 STL 檔案"
+
+msgid "Export 3MF"
+msgstr "匯出為 3MF 檔案"
+
+msgid "Export Sliced File"
+msgstr ""
+
+msgid "Export All Sliced Files"
+msgstr ""
+
+msgid "Max Volumetric Speed Calibration"
+msgstr "最大體積流量校正"
+
+msgid "Pressure Advance Calibration"
+msgstr ""
+
+msgid "Flow Ratio Calibration"
+msgstr "流量比例校正"
+
+msgid "Retraction Calibration"
+msgstr ""
+
+msgid "Cornering Calibration"
+msgstr ""
+
+msgid "Input Shaping Frequency Calibration"
+msgstr ""
+
+msgid "Input Shaping Damping Calibration"
+msgstr ""
+
+msgid "VFA Calibration"
+msgstr ""
+
+msgid "View: Top"
+msgstr ""
+
+msgid "View: Bottom"
+msgstr ""
+
+msgid "View: Front"
+msgstr ""
+
+msgid "View: Rear"
+msgstr ""
+
+msgid "View: Left"
+msgstr ""
+
+msgid "View: Right"
+msgstr ""
+
+msgid "View: Isometric"
+msgstr ""
+
+msgid "View: Default"
+msgstr ""
+
+msgid "Fit Bed to View"
+msgstr ""
+
+msgid "Toggle Perspective"
+msgstr ""
+
+# AI Translated
+msgid "Delete All Objects"
+msgstr "刪除所有物件"
+
+msgid "Mirror X"
+msgstr ""
+
+msgid "Mirror Y"
+msgstr ""
+
+msgid "Mirror Z"
+msgstr ""
+
+# AI Translated
+msgid "Split to Objects"
+msgstr "分割為物件"
+
+msgid "Split to Parts"
+msgstr ""
+
+msgid "Center Selected on Plate"
+msgstr ""
+
+msgid "Drop to Bed"
+msgstr ""
+
+msgid "Scale to Fit Print Volume"
+msgstr ""
+
+msgid "Increase Instances"
+msgstr ""
+
+msgid "Decrease Instances"
+msgstr ""
+
+msgid "Auto-Arrange"
+msgstr ""
+
+msgid "Auto-Orient"
+msgstr ""
+
+msgid "Add Plate"
+msgstr ""
+
+msgid "Cannot add another plate (maximum reached)."
+msgstr ""
+
+msgid "Duplicate Plate"
+msgstr ""
+
+msgid "Cannot duplicate a plate (maximum reached)."
+msgstr ""
+
+msgid "Cannot delete the only plate."
+msgstr ""
+
+msgid "Rename Plate"
+msgstr ""
+
+msgid "Toggle Plate Lock"
+msgstr ""
+
+msgid "No plates available."
+msgstr ""
+
+msgid "Synchronize Filament List from AMS"
+msgstr ""
+
+msgid "Connect a printer to synchronize the AMS filament list."
+msgstr ""
+
+msgid "Open Preset Bundle"
+msgstr ""
+
+msgid "Sign in to sync presets."
+msgstr ""
+
+msgid "Export All Objects as STLs"
+msgstr ""
+
+msgid "Export All Objects as DRC (one file)"
+msgstr ""
+
+msgid "Export All Objects as DRCs"
+msgstr ""
+
+msgid "Export Toolpaths as OBJ"
+msgstr ""
+
+msgid "About OrcaSlicer"
+msgstr ""
+
+msgid "Open Wiki"
+msgstr ""
+
+msgid "Open YouTube Channel"
+msgstr ""
+
+msgid "Open Plugins"
+msgstr ""
+
+msgid "Refresh Plugins"
+msgstr ""
+
+msgid "Install Plugin"
+msgstr ""
+
+msgid "Install Local Plugin"
+msgstr ""
+
+msgid "Unknown command."
+msgstr ""
+
 msgid "3D Mouse disconnected."
 msgstr "3D 滑鼠已中斷連線。"
 
@@ -8253,19 +8493,11 @@ msgid "Delete Object"
 msgstr "刪除物件"
 
 # AI Translated
-msgid "Delete All Objects"
-msgstr "刪除所有物件"
-
-# AI Translated
 msgid "Reset Project"
 msgstr "重設專案"
 
 msgid "The selected object couldn't be split."
 msgstr "選取的模型不可分割。"
-
-# AI Translated
-msgid "Split to Objects"
-msgstr "分割為物件"
 
 msgid "Disable Auto-Drop to preserve Z positioning?\n"
 msgstr "停用自動落板以保留 Z 定位？\n"
@@ -9324,9 +9556,6 @@ msgstr "在切片預覽中拖曳層滑桿時，將目前層以下的各層算繪
 msgid "Dimmed layer brightness"
 msgstr "變暗層的亮度"
 
-msgid "%"
-msgstr "%"
-
 # AI Translated
 msgid ""
 "How brightly the dimmed layers are rendered when \"Dim lower layers\" is enabled.\n"
@@ -9862,6 +10091,126 @@ msgstr "為「%1%」，增加「%2%」為一個新預設"
 #, boost-format
 msgid "Simply switch to \"%1%\""
 msgstr "直接切換到「%1%」"
+
+msgid "Expert"
+msgstr ""
+
+msgid "Simple"
+msgstr ""
+
+msgid "Search actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Search %s actions"
+msgstr ""
+
+msgid "Recent"
+msgstr ""
+
+msgid "Other"
+msgstr "其他"
+
+#, c-format, boost-format
+msgid "No actions match (Total: %s)"
+msgstr ""
+
+msgid "No actions yet"
+msgstr ""
+
+msgid "No tabs match"
+msgstr ""
+
+msgid "No tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Showing %s of %s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s matches"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourites are full (%s max)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to %s%% of the layer range"
+msgstr ""
+
+msgid "Enter a layer percentage (0-100)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to layer %% (0-100)"
+msgstr ""
+
+msgid "Go to tab"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourite %s (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Pin to favourites (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Unpin from favourites (%s)"
+msgstr ""
+
+msgid "Remove from favourites"
+msgstr ""
+
+msgid "Move left"
+msgstr ""
+
+msgid "Move right"
+msgstr ""
+
+msgid "Unpin"
+msgstr ""
+
+msgid "Wiki (F1)"
+msgstr ""
+
+msgid "No wiki page for this action"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a Developer setting. Enable Developer mode to edit it?"
+msgstr ""
+
+msgid "Developer setting"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a %s setting. Switch from %s mode to %s mode to edit it?"
+msgstr ""
+
+msgid "Switch settings mode"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Run \"%s\"?"
+msgstr ""
+
+msgid "Run plugin"
+msgstr ""
+
+msgid "Don't ask again for this action"
+msgstr ""
 
 msgid "Task canceled"
 msgstr "任務已取消"
@@ -10878,9 +11227,6 @@ msgstr "相容的切片設定"
 
 msgid "Printable space"
 msgstr "可列印區域"
-
-msgid "Printer Agent"
-msgstr "列印裝置代理"
 
 msgid "Select the network agent implementation for printer communication. Available agents are registered at startup."
 msgstr "選擇列印裝置通訊的網路代理實施。可用代理在啟動時註冊。"
@@ -12669,6 +13015,9 @@ msgstr "使用 3MF 取代 G-code"
 
 msgid "Enable this if the printer accepts a 3MF file as the print job. When enabled, Orca Slicer sends the sliced file as a .gcode.3mf, instead of a plain .gcode file."
 msgstr "若列印裝置接受 3MF 檔案作為列印作業，請啟用此選項。啟用後，Orca Slicer 會將切片後的檔案以 .gcode.3mf 形式傳送，而非單純的 .gcode 檔案。"
+
+msgid "Printer Agent"
+msgstr "列印裝置代理"
 
 msgid "Select the network agent implementation for printer communication."
 msgstr "選擇用於列印裝置通訊的網路代理實作。"
@@ -16781,9 +17130,6 @@ msgstr "在三角網格切片過程中，寬度小於 2 倍間隙閉合半徑的
 msgid "Slicing Mode"
 msgstr "切片模式"
 
-msgid "Other"
-msgstr "其他"
-
 msgid "Use \"Even-odd\" for 3DLabPrint airplane models. Use \"Close holes\" to close all holes in the model."
 msgstr "針對 3DLabPrint 飛機模型，請選擇『奇偶』模式。若需閉合模型中的所有孔洞，請啟用『閉合孔洞』選項。"
 
@@ -17697,9 +18043,6 @@ msgstr "線寬過大"
 msgid " not in range "
 msgstr " 不在合理的區間"
 
-msgid "Export 3MF"
-msgstr "匯出為 3MF 檔案"
-
 msgid "This exports the project as a 3MF file."
 msgstr "將專案匯出為 3MF 檔案。"
 
@@ -17714,9 +18057,6 @@ msgstr "載入切片資料"
 
 msgid "Load cached slicing data from directory."
 msgstr "從資料夾載入快取的切片資料"
-
-msgid "Export STL"
-msgstr "匯出為 STL 檔案"
 
 msgid "Export the objects as single STL."
 msgstr "將所有物件匯出為單一 STL 檔案。"
@@ -18374,9 +18714,6 @@ msgstr "檔案包含無效的頂點索引。"
 
 msgid "This OBJ file couldn't be read because it's empty."
 msgstr "無法讀取此 OBJ 檔案，因為它是空的。"
-
-msgid "Max Volumetric Speed Calibration"
-msgstr "最大體積流量校正"
 
 msgid "Manage Result"
 msgstr "管理結果"
@@ -19222,9 +19559,6 @@ msgstr ""
 #, c-format, boost-format
 msgid "NOTE: High values may cause Layer shift (>%s)"
 msgstr "注意：較高的值可能會導致層移位 (>%s)"
-
-msgid "Flow Ratio Calibration"
-msgstr "流量比例校正"
 
 msgid "Calibration Test Type"
 msgstr "校正測試類型"

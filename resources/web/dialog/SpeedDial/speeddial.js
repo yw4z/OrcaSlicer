@@ -31,19 +31,22 @@ var SCORE_CONTIGUOUS = 100000;
 var SCORE_TITLE = 2000;
 var SCORE_GROUP = 1000;
 
-// Localized lookup for strings this page builds at runtime. text.js (loaded before this script)
-// defines LangText; a missing entry falls back to the English literal. Extra args replace
-// successive %s placeholders.
+// Localized lookup for strings this page builds at runtime. The host injects the translated table
+// as a document-start user script (SpeedDialWebDialog::add_user_scripts); the English literal is a
+// fallback for the node vm test / before the injection runs. Extra args replace successive %s
+// placeholders; %% collapses to a literal % (the C++ table escapes percent signs for gettext).
+var UI_STRINGS = (typeof ORCA_UI_STRINGS !== "undefined" && ORCA_UI_STRINGS) || {};
+
 function T(key, fallback) {
-    var table = (typeof LangText !== "undefined" && LangText) || null;
-    var lang = "en";
-    try { lang = localStorage.getItem(LANG_COOKIE_NAME) || "en"; } catch (e) {}
-    var s = table && table[lang] && table[lang][key] !== undefined ? table[lang][key] :
-        table && table.en && table.en[key] !== undefined ? table.en[key] : fallback;
+    var s = UI_STRINGS[key] !== undefined ? UI_STRINGS[key] : fallback;
     for (var i = 2; i < arguments.length; i++)
         s = s.replace("%s", arguments[i]);
-    return s;
+    return s.split("%%").join("%");
 }
+
+// Platform shortcut prefixes ("Alt+"/"⌥+", "Ctrl+"/"⌘+"), injected alongside the strings.
+function shortcutAlt() { return UI_STRINGS.shortcut_alt || "Alt+"; }
+function shortcutCtrl() { return UI_STRINGS.shortcut_ctrl || "Ctrl+"; }
 
 // ---- windowed list render ----------------------------------------------------
 // The command list is rendered in windows (append-on-scroll) so a huge settings pool doesn't build
@@ -255,8 +258,9 @@ function favDigitFromEvent(e) {
 }
 
 function resultCountText(total, shown, query) {
-    var n = total + " " + T("sd_actions", "actions");
-    return (query || "").trim() ? T("sd_showing", "Showing") + " " + shown + " " + T("sd_of", "of") + " " + n : n;
+    return (query || "").trim() ?
+        T("sd_result_count", "Showing %s of %s actions", shown, total) :
+        T("sd_result_count_all", "%s actions", total);
 }
 
 // Display label for a notebook tab. Trim any stray whitespace; pages added with an empty title
@@ -575,7 +579,7 @@ window.HandleStudio = function (payload) {
         var fid = payload.id;
         if (fid && FAVS.indexOf(fid) !== -1) FAVS.splice(FAVS.indexOf(fid), 1);
         render({ resize: true, keepScroll: true });
-        flashHint(T("sd_favs_full", "Favourites are full") + " (" + (payload.limit || K_FAV_LIMIT) + " " + T("sd_max", "max") + ")");
+        flashHint(T("sd_favs_full", "Favourites are full (%s max)", (payload.limit || K_FAV_LIMIT)));
     }
 };
 
@@ -638,7 +642,8 @@ function pinSvg(on) {
 function setPinState(pin, on) {
     pin.classList.toggle("on", on);
     pin.innerHTML = pinSvg(on);
-    pin.title = on ? T("sd_unpin_fav", "Unpin from favourites (Ctrl+B)") : T("sd_pin_fav", "Pin to favourites (Ctrl+B)");
+    pin.title = on ? T("sd_unpin_fav", "Unpin from favourites (%s)", shortcutCtrl() + "B") :
+        T("sd_pin_fav", "Pin to favourites (%s)", shortcutCtrl() + "B");
 }
 
 // ---- render ------------------------------------------------------------------
@@ -672,8 +677,9 @@ function renderFav() {
             var badge = document.createElement("span");
             badge.className = "fav-slot";
             badge.textContent = slot;
-            badge.title = slot === "0" ? T("sd_favourite", "Favourite") + " 10 (Alt+0)" :
-                T("sd_favourite", "Favourite") + " " + slot + " (Alt+" + slot + ")";
+            // Slot "0" is the 10th favourite (Alt/Option+0).
+            var slot_num = slot === "0" ? "10" : slot;
+            badge.title = T("sd_fav_slot", "Favourite %s (%s)", slot_num, shortcutAlt() + slot);
             tile.appendChild(badge);
         }
         // Direct removal: a hover-revealed ✕ in the tile's corner. click() stops propagation so it
@@ -924,7 +930,7 @@ function renderCommandsList() {
         matchIndex = {};
 
     if (!total) {
-        renderEmpty(showList ? (T("sd_no_match", "No actions match") + " (" + T("sd_total", "Total") + ": " + ACTIONS.length + ")")
+        renderEmpty(showList ? T("sd_no_match_total", "No actions match (Total: %s)", ACTIONS.length)
                              : T("sd_no_actions", "No actions yet"));
         renderEnd = 0;
         builtKey = buildKey() + "|0";
@@ -983,7 +989,7 @@ function renderTabList() {
     listEl.className = "dial-list";
     if (countEl) {
         countEl.hidden = false;
-        countEl.textContent = q ? list.length + " " + T("sd_matches", "matches") : list.length + " " + T("sd_tabs", "tabs");
+        countEl.textContent = q ? T("sd_tab_match_count", "%s matches", list.length) : T("sd_tab_count", "%s tabs", list.length);
     }
     list.forEach(function (t, i) { listEl.appendChild(renderTabRow(t, i)); });
 }
@@ -1029,7 +1035,7 @@ function renderDetail() {
         var link = document.createElement("button");
         link.type = "button";
         link.className = "detail-wiki";
-        link.textContent = T("sd_wiki", "Wiki") + " (F1)";
+        link.textContent = T("sd_wiki_f1", "Wiki (F1)");
         link.onclick = function (ev) { ev.stopPropagation(); SendMessage({ command: "open_wiki", id: a.id }); };
         detailEl.appendChild(link);
     }

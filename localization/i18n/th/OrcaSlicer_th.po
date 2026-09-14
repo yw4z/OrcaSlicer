@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Orca Slicer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 17:15+0800\n"
+"POT-Creation-Date: 2026-09-14 12:09+0800\n"
 "PO-Revision-Date: 2026-06-19 13:40+0700\n"
 "Last-Translator: Icezaza\n"
 "Language-Team: Thai\n"
@@ -4150,6 +4150,21 @@ msgstr "OrcaSlicer เริ่มต้นด้วยจิตวิญญา�
 msgid "Today, OrcaSlicer is the most widely used and actively developed open-source slicer in the 3D printing community. Many of its innovations have been adopted by other slicers, making it a driving force for the entire industry."
 msgstr "ปัจจุบัน OrcaSlicer เป็นตัวแบ่งส่วนข้อมูลแบบโอเพ่นซอร์สที่ใช้กันอย่างแพร่หลายและได้รับการพัฒนาอย่างแข็งขันที่สุดในชุมชนการพิมพ์ 3 มิติ นวัตกรรมหลายอย่างของบริษัทได้ถูกนำไปใช้โดยตัวแบ่งส่วนข้อมูลอื่นๆ ทำให้สิ่งนี้เป็นแรงผลักดันสำหรับอุตสาหกรรมทั้งหมด"
 
+msgid "Script plugin skipped."
+msgstr ""
+
+msgid "Script plugin finished."
+msgstr ""
+
+msgid "Printer"
+msgstr "เครื่องพิมพ์"
+
+msgid "Recent Projects"
+msgstr ""
+
+msgid "Go to Plate"
+msgstr ""
+
 msgid "AMS Materials Setting"
 msgstr "การตั้งค่าวัสดุ AMS"
 
@@ -5330,10 +5345,11 @@ msgid "Value %s is out of range. The valid range is from %d to %d."
 msgstr "ค่า %s อยู่นอกช่วง ช่วงที่ถูกต้องคือตั้งแต่ %d ถึง %d"
 
 #, c-format, boost-format
-msgid ""
-"Is it %s%% or %s %s?"
-msgstr ""
-"มันคือ %s%% หรือ %s %s?"
+msgid "Is it %s%% or %s %s?"
+msgstr "มันคือ %s%% หรือ %s %s?"
+
+msgid "%"
+msgstr "%"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -5692,9 +5708,6 @@ msgstr "เปลี่ยนสี"
 msgctxt "Noun"
 msgid "Print"
 msgstr "พิมพ์"
-
-msgid "Printer"
-msgstr "เครื่องพิมพ์"
 
 msgid "Time Estimation"
 msgstr "การประมาณเวลา"
@@ -7416,6 +7429,233 @@ msgstr "อย่าแสดงกล่องโต้ตอบนี้อี
 msgid "Please refer to Wiki before use->"
 msgstr "โปรดดู Wiki ก่อนใช้งาน ->"
 
+msgid "Plates are a filament (FFF) feature."
+msgstr ""
+
+msgid "Open the 3D view first."
+msgstr ""
+
+msgid "Select an object first."
+msgstr ""
+
+msgid "Slice and Preview"
+msgstr ""
+
+msgid "Slice & Export"
+msgstr ""
+
+msgid "Go to layer (percent)"
+msgstr ""
+
+msgid "Commands"
+msgstr ""
+
+msgid "Go to tab..."
+msgstr ""
+
+msgid "Load Project"
+msgstr ""
+
+msgid "Save Project As"
+msgstr ""
+
+msgid "Mode: Simple"
+msgstr ""
+
+msgid "Mode: Advanced"
+msgstr ""
+
+msgid "Mode: Expert"
+msgstr ""
+
+msgid "Toggle Developer Mode"
+msgstr ""
+
+msgid "Developer mode enabled."
+msgstr ""
+
+msgid "Developer mode disabled."
+msgstr ""
+
+msgid "Export STL"
+msgstr "ส่งออก STL"
+
+msgid "Export 3MF"
+msgstr "ส่งออก 3MF"
+
+msgid "Export Sliced File"
+msgstr ""
+
+msgid "Export All Sliced Files"
+msgstr ""
+
+msgid "Max Volumetric Speed Calibration"
+msgstr "ปรับเทียบความเร็วปริมาตรสูงสุด"
+
+msgid "Pressure Advance Calibration"
+msgstr ""
+
+msgid "Flow Ratio Calibration"
+msgstr "การปรับเทียบอัตราส่วนการไหล"
+
+msgid "Retraction Calibration"
+msgstr ""
+
+msgid "Cornering Calibration"
+msgstr ""
+
+msgid "Input Shaping Frequency Calibration"
+msgstr ""
+
+msgid "Input Shaping Damping Calibration"
+msgstr ""
+
+msgid "VFA Calibration"
+msgstr ""
+
+msgid "View: Top"
+msgstr ""
+
+msgid "View: Bottom"
+msgstr ""
+
+msgid "View: Front"
+msgstr ""
+
+msgid "View: Rear"
+msgstr ""
+
+msgid "View: Left"
+msgstr ""
+
+msgid "View: Right"
+msgstr ""
+
+msgid "View: Isometric"
+msgstr ""
+
+msgid "View: Default"
+msgstr ""
+
+msgid "Fit Bed to View"
+msgstr ""
+
+msgid "Toggle Perspective"
+msgstr ""
+
+# AI Translated
+msgid "Delete All Objects"
+msgstr "ลบวัตถุทั้งหมด"
+
+msgid "Mirror X"
+msgstr ""
+
+msgid "Mirror Y"
+msgstr ""
+
+msgid "Mirror Z"
+msgstr ""
+
+# AI Translated
+msgid "Split to Objects"
+msgstr "แยกเป็นวัตถุ"
+
+msgid "Split to Parts"
+msgstr ""
+
+msgid "Center Selected on Plate"
+msgstr ""
+
+msgid "Drop to Bed"
+msgstr ""
+
+msgid "Scale to Fit Print Volume"
+msgstr ""
+
+msgid "Increase Instances"
+msgstr ""
+
+msgid "Decrease Instances"
+msgstr ""
+
+msgid "Auto-Arrange"
+msgstr ""
+
+msgid "Auto-Orient"
+msgstr ""
+
+msgid "Add Plate"
+msgstr ""
+
+msgid "Cannot add another plate (maximum reached)."
+msgstr ""
+
+msgid "Duplicate Plate"
+msgstr ""
+
+msgid "Cannot duplicate a plate (maximum reached)."
+msgstr ""
+
+msgid "Cannot delete the only plate."
+msgstr ""
+
+msgid "Rename Plate"
+msgstr ""
+
+msgid "Toggle Plate Lock"
+msgstr ""
+
+msgid "No plates available."
+msgstr ""
+
+msgid "Synchronize Filament List from AMS"
+msgstr ""
+
+msgid "Connect a printer to synchronize the AMS filament list."
+msgstr ""
+
+msgid "Open Preset Bundle"
+msgstr ""
+
+msgid "Sign in to sync presets."
+msgstr ""
+
+msgid "Export All Objects as STLs"
+msgstr ""
+
+msgid "Export All Objects as DRC (one file)"
+msgstr ""
+
+msgid "Export All Objects as DRCs"
+msgstr ""
+
+msgid "Export Toolpaths as OBJ"
+msgstr ""
+
+msgid "About OrcaSlicer"
+msgstr ""
+
+msgid "Open Wiki"
+msgstr ""
+
+msgid "Open YouTube Channel"
+msgstr ""
+
+msgid "Open Plugins"
+msgstr ""
+
+msgid "Refresh Plugins"
+msgstr ""
+
+msgid "Install Plugin"
+msgstr ""
+
+msgid "Install Local Plugin"
+msgstr ""
+
+msgid "Unknown command."
+msgstr ""
+
 msgid "3D Mouse disconnected."
 msgstr "เมาส์ 3D ถูกตัดการเชื่อมต่อ"
 
@@ -8259,19 +8499,11 @@ msgid "Delete Object"
 msgstr "ลบวัตถุ"
 
 # AI Translated
-msgid "Delete All Objects"
-msgstr "ลบวัตถุทั้งหมด"
-
-# AI Translated
 msgid "Reset Project"
 msgstr "รีเซ็ตโปรเจกต์"
 
 msgid "The selected object couldn't be split."
 msgstr "ไม่สามารถแยกวัตถุที่เลือกได้"
-
-# AI Translated
-msgid "Split to Objects"
-msgstr "แยกเป็นวัตถุ"
 
 msgid "Disable Auto-Drop to preserve Z positioning?\n"
 msgstr "ปิดการใช้งานการวางอัตโนมัติเพื่อรักษาตำแหน่ง z หรือไม่\n"
@@ -9329,9 +9561,6 @@ msgstr "เมื่อเลื่อนแถบเลเยอร์ในต
 msgid "Dimmed layer brightness"
 msgstr "ความสว่างของเลเยอร์ที่หรี่"
 
-msgid "%"
-msgstr "%"
-
 # AI Translated
 msgid ""
 "How brightly the dimmed layers are rendered when \"Dim lower layers\" is enabled.\n"
@@ -9867,6 +10096,126 @@ msgstr "สำหรับ \"%1%\" ให้เพิ่ม \"%2%\" เป็น
 #, boost-format
 msgid "Simply switch to \"%1%\""
 msgstr "เพียงเปลี่ยนเป็น \"%1%\""
+
+msgid "Expert"
+msgstr ""
+
+msgid "Simple"
+msgstr ""
+
+msgid "Search actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Search %s actions"
+msgstr ""
+
+msgid "Recent"
+msgstr ""
+
+msgid "Other"
+msgstr "อื่นๆ"
+
+#, c-format, boost-format
+msgid "No actions match (Total: %s)"
+msgstr ""
+
+msgid "No actions yet"
+msgstr ""
+
+msgid "No tabs match"
+msgstr ""
+
+msgid "No tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Showing %s of %s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s actions"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s tabs"
+msgstr ""
+
+#, c-format, boost-format
+msgid "%s matches"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourites are full (%s max)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to %s%% of the layer range"
+msgstr ""
+
+msgid "Enter a layer percentage (0-100)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Go to layer %% (0-100)"
+msgstr ""
+
+msgid "Go to tab"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Favourite %s (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Pin to favourites (%s)"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Unpin from favourites (%s)"
+msgstr ""
+
+msgid "Remove from favourites"
+msgstr ""
+
+msgid "Move left"
+msgstr ""
+
+msgid "Move right"
+msgstr ""
+
+msgid "Unpin"
+msgstr ""
+
+msgid "Wiki (F1)"
+msgstr ""
+
+msgid "No wiki page for this action"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a Developer setting. Enable Developer mode to edit it?"
+msgstr ""
+
+msgid "Developer setting"
+msgstr ""
+
+#, c-format, boost-format
+msgid "\"%s\" is a %s setting. Switch from %s mode to %s mode to edit it?"
+msgstr ""
+
+msgid "Switch settings mode"
+msgstr ""
+
+#, c-format, boost-format
+msgid "Run \"%s\"?"
+msgstr ""
+
+msgid "Run plugin"
+msgstr ""
+
+msgid "Don't ask again for this action"
+msgstr ""
 
 msgid "Task canceled"
 msgstr "ยกเลิกงานแล้ว"
@@ -10883,9 +11232,6 @@ msgstr "โปรไฟล์กระบวนการที่เข้าก
 
 msgid "Printable space"
 msgstr "พื้นที่ที่สามารถพิมพ์ได้"
-
-msgid "Printer Agent"
-msgstr "ตัวแทนเครื่องพิมพ์"
 
 msgid "Select the network agent implementation for printer communication. Available agents are registered at startup."
 msgstr "เลือกการใช้งานตัวแทนเครือข่ายสำหรับการสื่อสารของเครื่องพิมพ์ ตัวแทนที่มีอยู่จะได้รับการลงทะเบียนเมื่อเริ่มต้น"
@@ -12669,6 +13015,9 @@ msgstr "ใช้ 3MF แทน G-code"
 
 msgid "Enable this if the printer accepts a 3MF file as the print job. When enabled, Orca Slicer sends the sliced file as a .gcode.3mf, instead of a plain .gcode file."
 msgstr "เปิดใช้งานหากเครื่องพิมพ์รับไฟล์ 3MF เป็นงานพิมพ์ เมื่อเปิดใช้งาน OrcaSlicer จะส่งไฟล์ที่สไลซ์แล้วเป็น .gcode.3mf แทนไฟล์ .gcode ธรรมดา"
+
+msgid "Printer Agent"
+msgstr "ตัวแทนเครื่องพิมพ์"
 
 msgid "Select the network agent implementation for printer communication."
 msgstr "เลือกการใช้งานตัวแทนเครือข่ายสำหรับการสื่อสารของเครื่องพิมพ์"
@@ -16827,9 +17176,6 @@ msgstr "รอยแตกร้าวที่มีขนาดเล็กก
 msgid "Slicing Mode"
 msgstr "โหมดการแบ่งส่วน"
 
-msgid "Other"
-msgstr "อื่นๆ"
-
 msgid "Use \"Even-odd\" for 3DLabPrint airplane models. Use \"Close holes\" to close all holes in the model."
 msgstr "ใช้ \"เลขคู่\" สำหรับโมเดลเครื่องบิน 3DLabPrint ใช้ \"ปิดรู\" เพื่อปิดรูทั้งหมดในโมเดล"
 
@@ -17759,9 +18105,6 @@ msgstr "ความกว้างของเส้นใหญ่เกิน
 msgid " not in range "
 msgstr "ไม่อยู่ในช่วง"
 
-msgid "Export 3MF"
-msgstr "ส่งออก 3MF"
-
 msgid "This exports the project as a 3MF file."
 msgstr "ส่งออกโครงการเป็น 3MF"
 
@@ -17776,9 +18119,6 @@ msgstr "โหลดข้อมูลการแบ่งส่วน"
 
 msgid "Load cached slicing data from directory."
 msgstr "โหลดข้อมูลการแบ่งส่วนแคชจากไดเรกทอรี"
-
-msgid "Export STL"
-msgstr "ส่งออก STL"
 
 msgid "Export the objects as single STL."
 msgstr "ส่งออกวัตถุเป็น STL เดี่ยว"
@@ -18435,9 +18775,6 @@ msgstr "ไฟล์นี้มีดัชนีจุดยอดที่ไ
 
 msgid "This OBJ file couldn't be read because it's empty."
 msgstr "ไฟล์ OBJ นี้ไม่สามารถอ่านได้เนื่องจากไฟล์ว่างเปล่า"
-
-msgid "Max Volumetric Speed Calibration"
-msgstr "ปรับเทียบความเร็วปริมาตรสูงสุด"
 
 msgid "Manage Result"
 msgstr "จัดการผลลัพธ์"
@@ -19285,9 +19622,6 @@ msgstr ""
 #, c-format, boost-format
 msgid "NOTE: High values may cause Layer shift (>%s)"
 msgstr "หมายเหตุ: ค่าที่สูงอาจทำให้เกิดการเลื่อนเลเยอร์ (>%s)"
-
-msgid "Flow Ratio Calibration"
-msgstr "การปรับเทียบอัตราส่วนการไหล"
 
 msgid "Calibration Test Type"
 msgstr "ประเภทการทดสอบการสอบเทียบ"

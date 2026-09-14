@@ -159,6 +159,12 @@ public:
     // updates together.
     void init();
 
+    // Rebuilds the built-in command actions in the current UI locale. The command catalog copies
+    // translated titles/groups at construction, so after a live language switch the stored titles
+    // are stale until this runs. Ids are key-based and upsert re-seeds persisted state, so
+    // favourites/run history survive. UI thread only. No-op before init().
+    void relocalize_builtins();
+
     // Takes ownership, seeds persisted state, then inserts the action or replaces
     // the action with the same id. A null action is ignored.
     void upsert(std::unique_ptr<AppAction> action);
