@@ -21,6 +21,7 @@ body {
     flex-direction: column;
     background: var(--panel, var(--orca-bg, #fff));
     border: 1px solid var(--border, var(--orca-border, #ddd));
+    border-radius: 7px;
     overflow: hidden;
     /* why: no height cap here - the launcher reports its true natural height to C++, which
      sizes the popup to match (HTML is source of truth). The list's own max-height is what

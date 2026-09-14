@@ -11,7 +11,9 @@
 
 #include <algorithm>
 
+#include <wx/dcmemory.h>
 #include <wx/display.h>
+#include <wx/region.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/utils.h>
@@ -142,6 +144,7 @@ SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
         SetSizer(sizer);
         SetClientSize(FromDIP(wxSize(kPopupWidth, kPopupMinHeight)));
     }
+    apply_rounded_shape();
 }
 
 SpeedDialWebDialog::~SpeedDialWebDialog() { m_alive->store(false, std::memory_order_release); }
@@ -168,6 +171,7 @@ void SpeedDialWebDialog::request_show()
 
     Show();
     Raise();
+    apply_rounded_shape();
     if (m_page_ready)
         send_actions();
     // Grab focus now and again on wxEVT_ACTIVATE; grabbing directly on the WebKit widget is
@@ -245,6 +249,39 @@ void SpeedDialWebDialog::resize_to_content(int height)
     const int height_dip = std::max(kPopupMinHeight, std::min(height, max_dip));
     SetClientSize(FromDIP(wxSize(kPopupWidth, height_dip)));
     Layout();
+    apply_rounded_shape();
+}
+
+// Rounded corners: the webview paints an opaque rectangle, so round the whole top-level window
+// with a shape region (same mask trick as FilamentPickerDialog). Binary edges, no anti-aliasing.
+void SpeedDialWebDialog::apply_rounded_shape()
+{
+    const wxSize size = GetSize();
+    if (size.GetWidth() <= 0 || size.GetHeight() <= 0)
+        return;
+
+    m_shape_bmp.Create(size.GetWidth(), size.GetHeight(), 32);
+    if (!m_shape_bmp.IsOk())
+        return;
+
+    wxMemoryDC dc;
+    dc.SelectObject(m_shape_bmp);
+    dc.SetBackground(wxBrush(wxColour(0, 0, 0)));
+    dc.Clear();
+    dc.SetBrush(wxBrush(wxColour(255, 255, 255, 255)));
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.DrawRoundedRectangle(0, 0, size.GetWidth(), size.GetHeight(), FromDIP(m_corner_radius));
+    dc.SelectObject(wxNullBitmap);
+
+    wxRegion region(m_shape_bmp, wxColour(0, 0, 0));
+    if (region.IsOk())
+        SetShape(region);
+}
+
+void SpeedDialWebDialog::on_dpi_changed(const wxRect&)
+{
+    apply_rounded_shape();
+    Refresh();
 }
 
 void SpeedDialWebDialog::run_action(const std::string& id, const std::string& title, const std::string& param)
