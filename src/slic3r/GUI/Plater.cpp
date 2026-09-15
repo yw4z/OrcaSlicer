@@ -3232,7 +3232,6 @@ Sidebar::Sidebar(Plater *parent)
     search_sizer->Fit(p->m_search_bar);
 
     p->m_object_list = new ObjectList(p->scrolled);
-    p->m_object_list->SetBackgroundColour(wxColour("#FFFFFF"));
     p->m_object_list->Bind(wxCUSTOMEVT_EXIT_SEARCH, [this](wxCommandEvent&) {
 #ifdef __WXGTK__
         this->p->m_search_item->Enable(true);
