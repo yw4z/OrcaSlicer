@@ -583,6 +583,8 @@ DiffViewCtrl::DiffViewCtrl(wxWindow* parent, wxSize size)
     ),
     m_em_unit(em_unit(parent))
 {
+    SetBackgroundColour(*wxWHITE);
+
     wxGetApp().UpdateDVCDarkUI(this);
 
     model = new DiffModel(parent);
