@@ -20,6 +20,11 @@
 
 namespace Slic3r {
 
+// Optional step-by-step capture of a bake; see TextureBake/TextureBakeDebug.hpp. Forward declared and
+// taken by pointer so this header, which most of the texture feature includes, does not grow a
+// dependency for something only the debug view and the benchmarks use.
+class BakeStageRecorder;
+
 class ModelVolume;
 
 // Bits of subdivide_mesh_adaptive()'s per-triangle `refine_region` mask. See that function.
@@ -259,14 +264,14 @@ struct TextureDisplacementLayer
     // chart ids, so this is meaningful only against the unwrap it was made on.
     std::vector<int> island_groups;
 
-    // Only used by TextureProjectionMethod::LSCM: manual per-vertex UV edits made in the UV editor's
-    // Vertex/Edge select modes. Each pair is (mesh vertex index, its overriding raw-unwrap coordinate in
-    // mm) - the *raw* unwrap position, i.e. before the island transform, so the edited vertex still
-    // moves and rotates with its island. In compute_lscm_uvs() this replaces the automatic unwrap
-    // coordinate for that vertex; in the editor it edits the displayed geometry directly. Keyed in mesh-
-    // vertex space like lscm_seam_edges (dropped on a topology change). The raw coordinate is only
-    // meaningful against the current unwrap, so a re-unwrap clears these. A mesh vertex shared by several
-    // charts (a seam vertex) settles on one, matching compute_lscm_uvs()'s single-UV-per-vertex rule.
+    // Only used by TextureProjectionMethod::LSCM: manual UV edits made in the UV editor's Vertex/Edge
+    // select modes. Each pair is (key, its overriding raw-unwrap coordinate in mm) - the *raw* unwrap
+    // position, i.e. before the island transform, so the edited vertex still moves and rotates with its
+    // island. The key names what is edited (see apply_lscm_uv_overrides()):
+    //  - negative: one unwrapped vertex of the current unwrap, as lscm_uv_override_key(index). This is what
+    //    the editor stores, so a seam vertex dragged in one island leaves its copies in the neighbouring
+    //    islands where they are. Like `islands`, meaningful only against the unwrap it was made on.
+    //  - zero or positive: a mesh vertex, every unwrapped copy of it (how edits were stored before).
     std::vector<std::pair<int, Vec2f>> lscm_uv_overrides;
 
     // How this layer folds into the displacement accumulated by the layers below it. Ignored for
@@ -365,21 +370,27 @@ struct TextureDisplacementOptions
     // deliberately (which is a blunter version of the per-layer edge-smoothing falloff).
     bool  smooth_skip_border = true;
 
-    // Alternative bake pipeline, for side-by-side comparison. The path above is topology-preserving
-    // and needs the mesh prepared first; this one refines, removes slivers, displaces and optionally
-    // simplifies in one run. Off by default, and it produces no colour - it rebuilds the topology, so
-    // the per-facet assignment has nothing stable to attach to.
-    bool  pipeline_v2        = false;
-    float v2_refine_mm       = 0.3f;
+    // Which bake pipeline. On (the default): refine, remove slivers, displace and simplify in one run,
+    // nothing to prepare first. Off, the classic path: the mesh is prepared first (remesh, adaptive
+    // subdivision, step cut) and then displaced vertex by vertex, keeping the topology - which is what
+    // colour needs, since the per-facet assignment has nothing stable to attach to once the topology is
+    // rebuilt. Projects saved with the classic path keep it: the flag is stored per volume.
+    bool  pipeline_v2        = true;
+    // Refinement edge length, mm. 0 (the default) means automatic: chosen from the texture's texel
+    // size and sharpness and the model's size, see recommend_v2_resolution(). A saved project with an
+    // explicit value keeps it.
+    float v2_refine_mm       = 0.f;
     bool  v2_regularize      = false;
-    int   v2_max_triangles_k = 750; // 0 skips simplification, which is worth comparing on its own
-    // Stop displacement pushing geometry through the build plate. Only what would end up below the
-    // model's own bottom is moved; downward relief above that is untouched.
-    bool  v2_clamp_below_plate = false;
+    // Simplification target in thousands of triangles. -1 (the default) means automatic, from the
+    // same recommendation; 0 skips simplification, which is worth comparing on its own.
+    int   v2_max_triangles_k = -1;
     // Slide vertices onto the texture's own edges before displacing. Displacement moves vertices along
     // the normal only, so without this a step in the image is reproduced wherever the triangle grid
     // happens to fall, as a staircase rather than a straight wall.
     bool  v2_relocate          = false;
+    // Data-dependent edge flips before displacement (see TextureBakeFlip.hpp). On by default and not a
+    // user setting; deliberately left out of serialize() so project files are unaffected.
+    bool  v2_flip_edges        = true;
 
     // Colour, all of which belongs to the stack rather than to any one layer: it is about how the
     // printer will realise the colours, not about which image they came from.
@@ -397,11 +408,43 @@ struct TextureDisplacementOptions
     {
         int mix_mode = int(color_mix_mode);
         ar(displace_border, smooth_enabled, smooth_strength, smooth_iterations, smooth_skip_border,
-           pipeline_v2, v2_refine_mm, v2_regularize, v2_max_triangles_k, v2_clamp_below_plate,
+           pipeline_v2, v2_refine_mm, v2_regularize, v2_max_triangles_k,
            v2_relocate, color_mix_enabled, mix_mode, color_despeckle);
         color_mix_mode = ColorMixMode(mix_mode);
     }
 };
+
+// How much detail a height texture carries, as BumpMesh's smart resolution measures it: central
+// differences of the grey image, the mean gradient and the share of texels steeper than 30 grey
+// levels, mapped to how many texels one mesh edge may span (1 for a hard-edged image, 4 for a smooth
+// one). Cached per image, like the decode.
+struct TextureDetail
+{
+    float mean_gradient   = 0.f;
+    float sharp_fraction  = 0.f;
+    float pixels_per_edge = 4.f;
+};
+TextureDetail analyze_texture_detail(const TextureDisplacementLayer &layer);
+
+// The default pipeline's automatic resolution: the refinement edge and the simplification budget the
+// texture and the model call for, when the options leave them at "auto".
+//  - edge = texel size (tile / image width, in world mm, over the finest layer) x pixels per edge,
+//    but no finer than keeps the refinement under a 12 M triangle cap for this surface area, clamped
+//    to [0.05 mm, min(5 mm, diagonal / 50)] and rounded up to 0.01 mm;
+//  - budget = the triangle count an edge of that texel size needs over the surface, scaled by the
+//    relief depth (a gentle relief needs fewer), stepped to 10 k and clamped to [10 k, 2000 k].
+// `edge_mm` is 0 when no layer has a usable texture.
+struct V2Resolution
+{
+    float edge_mm         = 0.f;
+    int   budget_k        = 0;
+    float texel_mm        = 0.f;
+    float pixels_per_edge = 0.f;
+    bool  budget_bound    = false; // the edge came from the triangle cap, not from the texture
+};
+V2Resolution recommend_v2_resolution(const indexed_triangle_set                  &mesh,
+                                     const std::vector<TextureDisplacementLayer> &layers,
+                                     const Transform3d                           &volume_to_world = Transform3d::Identity());
 
 // Decoded height (and, for a colour source image, colour) samples, independent of any GUI/OpenGL
 // texture object so they can be evaluated from a background bake Job as well as from GUI-side
@@ -601,11 +644,12 @@ Vec2f apply_island_transform(const Vec2f &uv, int chart, const PatchUnwrap &unwr
 // its vertex buffer at all.
 Eigen::Matrix<float, 2, 3> island_transform_matrix(int chart, const PatchUnwrap &unwrap, const std::vector<TextureIsland> &islands);
 
-// Lays the unwrap's charts out as a connected net: charts that share a mesh edge are unfolded so
+// Lays the unwrap's charts out as connected nets: charts that share a mesh edge are unfolded so
 // their shared edge coincides (a cube -> its six faces joined along a spanning tree of edges, the rest
 // left as free borders). Charts stay separate islands, so their borders still show and any of them can
-// still be moved by hand afterwards. A chart whose unfold would overlap one already placed is left
-// where the packing put it. Returns one placement per chart. See the gizmo's auto-connect option.
+// still be moved by hand afterwards. Each net grows from the largest chart not yet placed; a chart whose
+// triangles would overlap the net stays out of it and starts a net of its own. The nets are then packed
+// side by side. Returns one placement per chart. See the gizmo's auto-connect option.
 std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap);
 
 // The placement that unfolds `child` onto `parent` along their shared mesh edge, honouring `parent`'s
@@ -641,6 +685,13 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
 // Returns an empty vector if the patch has no triangles. Takes the whole layer because it applies
 // both the layer's seam angle and its hand-placed islands.
 std::vector<Vec2f> compute_lscm_uvs(const indexed_triangle_set &patch, const TextureDisplacementLayer &layer);
+
+// The TextureDisplacementLayer::lscm_uv_overrides key for one unwrapped vertex (an index into PatchUnwrap::uvs).
+inline int lscm_uv_override_key(int unwrapped_vertex) { return -(unwrapped_vertex + 1); }
+
+// Writes the overrides into `unwrap.uvs`: mesh-vertex keys onto every copy of their vertex, then unwrapped-vertex
+// keys onto their one copy. Returns, per unwrapped vertex, whether an override set it.
+std::vector<bool> apply_lscm_uv_overrides(PatchUnwrap &unwrap, const std::vector<std::pair<int, Vec2f>> &overrides);
 
 // One paint mask (as stored by ModelVolume::texture_displacement_facets) per possible layer slot.
 using TextureDisplacementFacetsData = std::array<TriangleSelector::TriangleSplittingData, TEXTURE_DISPLACEMENT_MAX_LAYERS>;
@@ -716,12 +767,34 @@ struct TextureColorRequest
     // straight to a TriangleSelector without a second mapping table.
     std::vector<uint8_t> *out_triangle = nullptr;
 };
+// Where the volume sits on the plate: its instance transform times its own volume transform, i.e.
+// mesh coordinates -> world millimetres.
+//
+// Every number the user sets is in real millimetres on the printed part - "Depth (mm)", "Tile size
+// (mm)" - and the build plate is a world plane, so the bake runs in world space and transforms the
+// result back. Doing it in the volume's own coordinates instead made a scaled instance stretch both
+// the relief depth and the tiling by the scale factor, and under a non-uniform scale it also
+// displaced along the wrong direction: a mesh normal maps to the world normal through the inverse
+// transpose, not through the transform itself, so the relief leaned. Identity - the default - is
+// exactly the old behaviour and is what an untransformed volume gives.
 indexed_triangle_set build_texture_displacement(const indexed_triangle_set                  &base_mesh,
                                                  const std::vector<TextureDisplacementLayer> &layers,
                                                  const TextureDisplacementFacetsData         &facets_data,
                                                  const TextureDisplacementOptions            &options = {},
                                                  const DisplacementProgressFn                &progress = {},
-                                                 const TextureColorRequest                   *color = nullptr);
+                                                 const TextureColorRequest                   *color = nullptr,
+                                                 const Transform3d                           &volume_to_world = Transform3d::Identity(),
+                                                 // When given and enabled, receives the mesh after each
+                                                 // stage, already brought back into `base_mesh`'s frame.
+                                                 BakeStageRecorder                           *debug = nullptr);
+
+// `volume`'s mesh coordinates -> world millimetres: its first instance's transform times its own.
+// The mesh is shared by every instance, so a multi-instance object can only be baked for one of
+// them; the first is what the gizmo edits against. Identity when the volume has no object yet.
+Transform3d texture_displacement_volume_to_world(const ModelVolume &volume);
+// The frame the bake and the previews project the texture in: `volume_to_world` with its translation
+// removed, i.e. world orientation and scale about the volume's own origin. See build_texture_displacement().
+Transform3d texture_displacement_bake_frame(const Transform3d &volume_to_world);
 
 // Convenience overload for main-thread callers: extracts the mesh/layers/paint data/options from
 // `volume` and forwards to the overload above.
@@ -881,7 +954,69 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                              float border_edge_length_mm = 0.f,
                                              const DisplacementProgressFn &progress = nullptr,
                                              const ColorFieldSampler &color = nullptr,
-                                             float color_edge_length_mm = 0.f);
+                                             float color_edge_length_mm = 0.f,
+                                             // Step mode, for a mesh that cut_mesh_at_steps() will cut
+                                             // next: a triangle one of whose edges crosses a *sharp*
+                                             // step of the height field (a jump of 40 % of the relief
+                                             // between two samples at the sample spacing, across the
+                                             // mid-level) gets a chord error of zero, since the step is
+                                             // the cutter's to reproduce and refining it only carpets
+                                             // the edge of the pattern. Features that no edge crosses
+                                             // yet still refine until one does. No effect outside
+                                             // feature mode.
+                                             bool split_multi_crossings = false);
+
+// Cuts `mesh` along the height field's mid-level contour wherever the field steps sharply across it,
+// and doubles the seam, so that displacing the result produces a vertical wall at the step instead of
+// a ramp across whichever triangle the step happened to fall in.
+//
+// This is what a binary height map - a grid, stripes, a knurl, wood grain as black-and-white bands -
+// needs, and what refinement alone cannot give it. Refining a triangle that straddles a step never
+// brings the chord error under any tolerance: the surface has a discontinuity, and a finer triangle only
+// makes the ramp narrower. Every refinement level then leaves a band of its own size along every step,
+// and the triangle budget ends up spent on carpeting the edges of the pattern, one to two orders of
+// magnitude more triangles than the pattern needs, while the ramps are still visible.
+//
+// What it does, in order:
+//  - Samples the field at the vertices along the bake's normals and takes the mid-level as the contour.
+//    A vertex that sits inside a step's blend is nudged along the surface, down its own side's slope,
+//    until it samples a pure value, so no vertex bakes to a half height.
+//  - Marches every painted edge for crossings of the mid-level (sampled at half `step_width_mm`, then
+//    bisected). Both triangles at an edge see the same crossings, which keeps the result conformal. A
+//    crossing is *sharp* when the field changes by half its range within `step_width_mm`.
+//  - Traces the contour inside each triangle on a local lattice (marching triangles) and keeps the
+//    polylines that join one crossing to another; a closed loop inside a triangle is left to
+//    refinement. Each polyline is simplified and kept clear of its neighbours.
+//  - Doubles the seam: every polyline vertex and every crossing gets a copy on each side, moved
+//    `seam_gap_mm` apart across the contour to where each samples a pure value of its own side. The
+//    regions between the seams are ear-clipped; the strip between the two copies is triangulated flat
+//    and becomes the wall once the high side is displaced. A triangle whose contour could not be traced
+//    is split at its crossings without a seam, so the neighbours still meet it without a T-junction.
+//
+// Nothing is cut unless the texture is a step texture: most vertex heights sit at one of two levels,
+// most crossings are sharp, and the features are wider than a couple of step widths (a noisy or a
+// smooth relief is passed through unchanged, as is a mesh with nothing painted). If the cut would leave
+// more than a trace of inverted triangles the input is returned unchanged as well.
+//
+// `region` flags the triangles that may be cut (the painted ones, same encoding as
+// subdivide_mesh_adaptive(), any non-zero value). An edge may carry any number of crossings; two closer
+// than `max(min_feature_mm, seam_gap_mm)` are a feature too thin to carry a seam and are dropped as a
+// pair, leaving the surface flat there. `out_source` receives the input triangle each output triangle
+// descends from, so paint carries over; `out_cut_count` the number of input triangles that were cut
+// (0 means the mesh came back unchanged).
+indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t> &region,
+                                       const HeightFieldSampler &sampler, float step_width_mm,
+                                       float seam_gap_mm, float min_feature_mm = 0.f,
+                                       std::vector<int> *out_source = nullptr, size_t *out_cut_count = nullptr);
+
+// The cutter's verdict alone: whether cut_mesh_at_steps() with the same arguments would cut anything,
+// judged the same way (two levels, sharp crossings, features wider than the step) but without the
+// vertex nudge or any tracing, so it is cheap enough to ask on the coarse mesh. The prepare path asks
+// it *before* refining: a subdivision run in step mode leaves the steps alone for the cutter, which is
+// only right if the cutter is then going to cut them.
+bool texture_has_steps_to_cut(const indexed_triangle_set &mesh, const std::vector<uint8_t> &region,
+                              const HeightFieldSampler &sampler, float step_width_mm, float seam_gap_mm,
+                              float min_feature_mm = 0.f);
 
 // The recipe for getting a mesh ready to receive displacement: even out the triangle density, then
 // refine it where the texture bends. Either stage is skipped when its target is <= 0. Pure data, and
@@ -906,6 +1041,9 @@ struct TextureDisplacementPrepareParams
     // Separate from the height criteria because colour lands per facet: a flat surface carrying a
     // sharp colour edge needs triangles along that edge even though its height is perfectly smooth.
     float subdiv_color_edge_mm   = 0.f;
+    // Cut the mesh along sharp steps in the texture after refining, so they bake as walls rather than
+    // ramps. See cut_mesh_at_steps(). Off leaves the old ramp behaviour.
+    bool  cut_steps              = false;
 };
 
 // What a preparation run produced. An empty `mesh` means there was nothing to do and the caller must
