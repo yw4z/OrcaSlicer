@@ -1387,6 +1387,25 @@ int CLI::run(int argc, char **argv)
     if (downward_check_option)
         downward_check = downward_check_option->value;
 
+    // --export-settings - writes its JSON to stdout, so reject every action or transform that may write there
+    // too (--info, --help, --orient, slicing and exporting). The allowed ones do nothing when nothing is
+    // sliced or exported.
+    if (std::find(m_actions.begin(), m_actions.end(), "export_settings") != m_actions.end() && m_config.opt_string("export_settings") == "-") {
+        static const std::set<std::string> stdout_compatible = { "export_settings", "uptodate", "load_defaultfila", "min_save",
+                                                                 "mtcpp", "mstpp", "no_check", "normative_check", "pipe" };
+        for (const std::vector<std::string> *opt_keys : { &m_actions, &m_transforms }) {
+            for (const std::string &opt_key : *opt_keys) {
+                if (stdout_compatible.count(opt_key) == 0) {
+                    std::string flag = opt_key;
+                    std::replace(flag.begin(), flag.end(), '_', '-');
+                    boost::nowide::cerr << "--export-settings - cannot be combined with --" << flag << std::endl;
+                    record_exit_reson(outfile_dir, CLI_INVALID_PARAMS, 0, cli_errors[CLI_INVALID_PARAMS], sliced_info);
+                    flush_and_exit(CLI_INVALID_PARAMS);
+                }
+            }
+        }
+    }
+
     bool start_gui = m_actions.empty() && !downward_check;
     if (start_gui) {
         BOOST_LOG_TRIVIAL(info) << "no action, start gui directly" << std::endl;
@@ -2010,19 +2029,21 @@ int CLI::run(int argc, char **argv)
         }
     };
 
-    auto resolve_preset = [&ensure_cli_preset_bundle](const std::string &file, DynamicPrintConfig &config,
+    // One resolver for the whole run, so presets from the same vendor tree share its load.
+    std::unique_ptr<PresetBundle> system_preset_resolver;
+    auto resolve_preset = [&ensure_cli_preset_bundle, &system_preset_resolver](const std::string &file, DynamicPrintConfig &config,
                                                                                std::string &config_type, const std::string &config_from,
                                                                                bool probe_type, std::string &error) {
         const auto *inherits = config.option<ConfigOptionString>(BBL_JSON_KEY_INHERITS);
         if (!probe_type && (inherits == nullptr || inherits->value.empty()))
             return true;
 
-        std::unique_ptr<PresetBundle> source_bundle;
         PresetBundle                 *bundle = nullptr;
         bool                          allow_source_manifest = false;
         if (config_from == "system") {
-            source_bundle         = std::make_unique<PresetBundle>();
-            bundle                = source_bundle.get();
+            if (!system_preset_resolver)
+                system_preset_resolver = std::make_unique<PresetBundle>();
+            bundle                = system_preset_resolver.get();
             allow_source_manifest = true;
         } else {
             bundle = ensure_cli_preset_bundle(error);
@@ -5348,7 +5369,7 @@ int CLI::run(int argc, char **argv)
                                 //skip this object due to be locked in plate
                                 ap.itemid = locked_aps.size();
                                 locked_aps.emplace_back(ap);
-                                boost::nowide::cout <<__FUNCTION__ << boost::format(": skip locked instance, obj_id %1%, instance_id %2%") % oidx % inst_idx;
+                                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": skip locked instance, obj_id %1%, instance_id %2%") % oidx % inst_idx;
                             }
                         }
                     }
@@ -5937,7 +5958,11 @@ int CLI::run(int argc, char **argv)
             //FIXME check for mixing the FFF / SLA parameters.
             // or better save fff_print_config vs. sla_print_config
             //m_print_config.save(m_config.opt_string("save"));
-            m_print_config.save_to_json(m_config.opt_string(opt_key), std::string("project_settings"), std::string("project"), std::string(SoftFever_VERSION));
+            const std::string &settings_file = m_config.opt_string(opt_key);
+            if (settings_file == "-")
+                m_print_config.save_to_json(boost::nowide::cout, "project_settings", "project", SoftFever_VERSION, /*replace_invalid_utf8=*/true);
+            else
+                m_print_config.save_to_json(settings_file, std::string("project_settings"), std::string("project"), std::string(SoftFever_VERSION));
         } else if (opt_key == "info") {
             // --info works on unrepaired model
             for (Model &model : m_models) {
@@ -7715,6 +7740,13 @@ bool CLI::setup(int argc, char **argv)
         this->print_help();
         return false;
     }
+
+    // Orca: resolve here, while the process is still in the directory the user invoked it from.
+    // GUI_App's constructor moves the working directory to <data_dir>/log, long before the GUI
+    // opens these files in post_init(), and a relative path would then resolve against that.
+    for (std::string &input_file : m_input_files)
+        input_file = resolve_cli_input_path(input_file);
+
     // Parse actions and transform options.
     for (auto const &opt_key : opt_order) {
         if (cli_actions_config_def.has(opt_key))
