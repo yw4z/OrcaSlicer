@@ -5,9 +5,12 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <set>
 #include <boost/filesystem.hpp>
 
 #include "libslic3r/TextureDisplacement.hpp"
+#include "libslic3r/TextureBake/TextureBakeFlip.hpp"
+#include "libslic3r/TextureBake/TextureBakeMesh.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/PNGReadWrite.hpp"
@@ -61,6 +64,29 @@ static std::shared_ptr<std::vector<unsigned char>> make_checkerboard_png(size_t 
     return std::make_shared<std::vector<unsigned char>>(std::move(bytes));
 }
 
+// The bake never drives relief below the model's own resting plane (see build_texture_displacement()),
+// so on a fully painted closed solid the vertices already sitting on that plane - a cube's four bottom
+// corners, whose normals point downwards - are clamped in Z and do not move by the full depth. The
+// tests below are about the displacement maths, so they check the vertices the clamp cannot touch;
+// the clamp itself has its own test.
+
+// The tests below check the classic, topology-preserving bake vertex by vertex, so they select it
+// explicitly: the default pipeline rebuilds the topology and has no vertex correspondence to check.
+static TextureDisplacementOptions classic_options()
+{
+    TextureDisplacementOptions o;
+    o.pipeline_v2 = false;
+    return o;
+}
+
+static bool above_resting_plane(const indexed_triangle_set &mesh, size_t vi)
+{
+    float bottom = std::numeric_limits<float>::max();
+    for (const Vec3f &v : mesh.vertices)
+        bottom = std::min(bottom, v.z());
+    return mesh.vertices[vi].z() > bottom + 1e-4f;
+}
+
 TEST_CASE("TextureDisplacement: decode_height_texture round-trips an 8-bit grayscale PNG", "[TextureDisplacement]")
 {
     TextureDisplacementLayer layer;
@@ -79,7 +105,7 @@ TEST_CASE("TextureDisplacement: an empty layer list leaves the mesh unchanged", 
     const std::vector<TextureDisplacementLayer> layers; // none
     TextureDisplacementFacetsData facets{};              // all empty
 
-    const indexed_triangle_set result = build_texture_displacement(cube, layers, facets);
+    const indexed_triangle_set result = build_texture_displacement(cube, layers, facets, classic_options());
 
     REQUIRE(result.vertices.size() == cube.vertices.size());
     REQUIRE(result.indices.size() == cube.indices.size());
@@ -106,10 +132,12 @@ TEST_CASE("TextureDisplacement: fully painting a mesh displaces every vertex alo
     layer.tiling_scale = 5.0f;
     layer.image_data  = make_flat_gray_png(255); // sample() == 1.0 everywhere -> full depth_mm displacement
 
-    const indexed_triangle_set result = build_texture_displacement(cube, {layer}, facets);
+    const indexed_triangle_set result = build_texture_displacement(cube, {layer}, facets, classic_options());
 
     REQUIRE(result.vertices.size() == cube.vertices.size());
     for (size_t i = 0; i < cube.vertices.size(); ++i) {
+        if (!above_resting_plane(cube, i))
+            continue;
         const float moved = (result.vertices[i] - cube.vertices[i]).norm();
         CHECK_THAT(moved, WithinAbs(layer.depth_mm, 1e-3f));
     }
@@ -148,13 +176,14 @@ TEST_CASE("TextureDisplacement: a second layer over the same area is applied too
     second.depth_mm   = 0.5f;
     second.blend_mode = TextureBlendMode::Add;
 
-    const indexed_triangle_set result = build_texture_displacement(cube, {base, second}, facets);
+    const indexed_triangle_set result = build_texture_displacement(cube, {base, second}, facets, classic_options());
 
     // Topology is preserved exactly, so vertices can be compared 1:1 with the input.
     REQUIRE(result.vertices.size() == cube.vertices.size());
     REQUIRE(result.indices.size() == cube.indices.size());
     for (size_t i = 0; i < cube.vertices.size(); ++i)
-        CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(1.5f, 1e-3f)); // 1.0 + 0.5, not just 1.0
+        if (above_resting_plane(cube, i))
+            CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(1.5f, 1e-3f)); // 1.0 + 0.5, not just 1.0
 }
 
 TEST_CASE("TextureDisplacement: blend modes combine a layer with the ones below it", "[TextureDisplacement]")
@@ -185,11 +214,12 @@ TEST_CASE("TextureDisplacement: blend modes combine a layer with the ones below 
     }));
     second.blend_mode = std::get<0>(expected);
 
-    const indexed_triangle_set result = build_texture_displacement(cube, {base, second}, facets);
+    const indexed_triangle_set result = build_texture_displacement(cube, {base, second}, facets, classic_options());
 
     REQUIRE(result.vertices.size() == cube.vertices.size());
     for (size_t i = 0; i < cube.vertices.size(); ++i)
-        CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(std::get<1>(expected), 1e-3f));
+        if (above_resting_plane(cube, i))
+            CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(std::get<1>(expected), 1e-3f));
 }
 
 TEST_CASE("TextureDisplacement: the lowest layer ignores its blend mode", "[TextureDisplacement]")
@@ -208,10 +238,107 @@ TEST_CASE("TextureDisplacement: the lowest layer ignores its blend mode", "[Text
     layer.blend_mode   = TextureBlendMode::Multiply;
     layer.image_data   = make_flat_gray_png(255);
 
-    const indexed_triangle_set result = build_texture_displacement(cube, {layer}, facets);
+    const indexed_triangle_set result = build_texture_displacement(cube, {layer}, facets, classic_options());
 
     for (size_t i = 0; i < cube.vertices.size(); ++i)
-        CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(2.0f, 1e-3f));
+        if (above_resting_plane(cube, i))
+            CHECK_THAT((result.vertices[i] - cube.vertices[i]).norm(), WithinAbs(2.0f, 1e-3f));
+}
+
+TEST_CASE("TextureDisplacement: relief is never driven below the model's resting plane", "[TextureDisplacement]")
+{
+    // A fully painted cube displaces outward everywhere, which on the bottom face means straight
+    // down - through the build plate. That geometry cannot be printed, so it is clamped back up.
+    const indexed_triangle_set cube = its_make_cube(10., 10., 10.);
+
+    TextureDisplacementFacetsData facets{};
+    facets[0] = paint_whole_mesh(cube);
+
+    TextureDisplacementLayer layer;
+    layer.slot         = 0;
+    layer.depth_mm     = 2.0f;
+    layer.tiling_scale = 5.0f;
+    layer.image_data   = make_flat_gray_png(255); // full depth everywhere
+
+    float bottom = std::numeric_limits<float>::max();
+    for (const Vec3f &v : cube.vertices)
+        bottom = std::min(bottom, v.z());
+
+    const indexed_triangle_set result = build_texture_displacement(cube, {layer}, facets, classic_options());
+
+    REQUIRE(result.vertices.size() == cube.vertices.size());
+    for (const Vec3f &v : result.vertices)
+        CHECK(v.z() >= bottom - 1e-4f);
+
+    // ...and the clamp is confined to Z: a bottom corner still moves outwards in X and Y by the same
+    // amount it would have, rather than being pinned wholesale.
+    bool any_bottom_moved_sideways = false;
+    for (size_t i = 0; i < cube.vertices.size(); ++i)
+        if (!above_resting_plane(cube, i) &&
+            (result.vertices[i].head<2>() - cube.vertices[i].head<2>()).norm() > 1e-3f)
+            any_bottom_moved_sideways = true;
+    CHECK(any_bottom_moved_sideways);
+}
+
+TEST_CASE("TextureDisplacement: depth is measured in world millimetres, not the volume's own", "[TextureDisplacement]")
+{
+    // The same painted patch, baked once untransformed and once through a 3x scale. "Depth (mm)" is
+    // a millimetre on the printed part, so the *world* relief must come out the same height either
+    // way - which means the vertices of the scaled volume move by a third as much in its own
+    // coordinates. Baking both in volume space instead gave a 3x deeper relief on the scaled one.
+    indexed_triangle_set fan;
+    fan.vertices = { {0.f, 0.f, 1.f}, {1.f, 0.f, 1.f}, {0.f, 1.f, 1.f}, {-1.f, 0.f, 1.f}, {0.f, -1.f, 1.f} };
+    fan.indices  = { {0, 1, 2}, {0, 2, 3}, {0, 3, 4}, {0, 4, 1} };
+
+    TextureDisplacementFacetsData facets{};
+    facets[0] = paint_whole_mesh(fan);
+
+    TextureDisplacementLayer layer;
+    layer.slot         = 0;
+    layer.depth_mm     = 1.0f;
+    layer.tiling_scale = 5.0f;
+    layer.image_data   = make_flat_gray_png(255);
+
+    const indexed_triangle_set plain  = build_texture_displacement(fan, {layer}, facets, classic_options());
+    Transform3d scale3 = Transform3d::Identity();
+    scale3.scale(Vec3d(3.0, 3.0, 3.0));
+    const indexed_triangle_set scaled = build_texture_displacement(fan, {layer}, facets, classic_options(), {}, nullptr, scale3);
+
+    REQUIRE(plain.vertices.size() == fan.vertices.size());
+    REQUIRE(scaled.vertices.size() == fan.vertices.size());
+    for (size_t i = 0; i < fan.vertices.size(); ++i) {
+        CHECK_THAT(plain.vertices[i].z() - fan.vertices[i].z(), WithinAbs(1.0f, 1e-3f));
+        // A third of the movement locally is the same movement once the 3x scale is applied.
+        CHECK_THAT(scaled.vertices[i].z() - fan.vertices[i].z(), WithinAbs(1.0f / 3.0f, 1e-3f));
+    }
+}
+
+TEST_CASE("TextureDisplacement: a mirrored placement still raises the relief outwards", "[TextureDisplacement]")
+{
+    // Mirroring reverses the winding, and every normal in the bake is derived from the winding - so
+    // without correcting for it the whole relief is carved into the surface instead of raised off it.
+    indexed_triangle_set fan;
+    fan.vertices = { {0.f, 0.f, 1.f}, {1.f, 0.f, 1.f}, {0.f, 1.f, 1.f}, {-1.f, 0.f, 1.f}, {0.f, -1.f, 1.f} };
+    fan.indices  = { {0, 1, 2}, {0, 2, 3}, {0, 3, 4}, {0, 4, 1} };
+
+    TextureDisplacementFacetsData facets{};
+    facets[0] = paint_whole_mesh(fan);
+
+    TextureDisplacementLayer layer;
+    layer.slot         = 0;
+    layer.depth_mm     = 1.0f;
+    layer.tiling_scale = 5.0f;
+    layer.image_data   = make_flat_gray_png(255);
+
+    // Mirrored in X: the patch's outward direction in world space is still +Z, so in the volume's own
+    // coordinates the vertices must still move +Z.
+    Transform3d mirror_x = Transform3d::Identity();
+    mirror_x.scale(Vec3d(-1.0, 1.0, 1.0));
+    const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets, classic_options(), {}, nullptr, mirror_x);
+
+    REQUIRE(result.vertices.size() == fan.vertices.size());
+    for (size_t i = 0; i < fan.vertices.size(); ++i)
+        CHECK_THAT(result.vertices[i].z() - fan.vertices[i].z(), WithinAbs(1.0f, 1e-3f));
 }
 
 TEST_CASE("TextureDisplacement: the patch border is displaced by default and pinned on request", "[TextureDisplacement]")
@@ -250,7 +377,7 @@ TEST_CASE("TextureDisplacement: the patch border is displaced by default and pin
 
     SECTION("by default the whole painted patch moves, border included")
     {
-        const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets);
+        const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets, classic_options());
         REQUIRE(result.vertices.size() == fan.vertices.size());
         for (size_t i = 0; i < fan.vertices.size(); ++i)
             CHECK(moved(result, i));
@@ -263,7 +390,7 @@ TEST_CASE("TextureDisplacement: the patch border is displaced by default and pin
 
     SECTION("pinning the border holds exactly the vertices an unpainted triangle also uses")
     {
-        TextureDisplacementOptions options;
+        TextureDisplacementOptions options = classic_options();
         options.displace_border = false;
         const indexed_triangle_set result = build_texture_displacement(fan, {layer}, facets, options);
         CHECK_FALSE(moved(result, 0)); // O: border
@@ -322,7 +449,7 @@ TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved",
     }
     REQUIRE(rim_count > 8);
 
-    TextureDisplacementOptions options;
+    TextureDisplacementOptions options = classic_options();
     options.smooth_enabled    = true;
     options.smooth_strength   = 0.5f;
     options.smooth_iterations = 4;
@@ -345,7 +472,7 @@ TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved",
             return e;
         };
 
-        const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets);
+        const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets, classic_options());
         REQUIRE(roughness(raw) > 0.0); // the checkerboard really did produce relief to smooth
 
         const indexed_triangle_set smoothed = build_texture_displacement(grid, { layer }, facets, options);
@@ -364,7 +491,7 @@ TEST_CASE("TextureDisplacement: post-process smoothing relaxes only what moved",
         // its own height and cannot move, while every rim vertex has at least one neighbour outside the
         // paint pinned at zero and so must come down the moment it is allowed to.
         layer.image_data = make_flat_gray_png(255);
-        const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets);
+        const indexed_triangle_set raw = build_texture_displacement(grid, { layer }, facets, classic_options());
 
         options.smooth_skip_border      = true;
         const indexed_triangle_set kept = build_texture_displacement(grid, { layer }, facets, options);
@@ -742,7 +869,7 @@ TEST_CASE("TextureDisplacement: colour is reported per triangle and only where p
         return best;
     };
 
-    const indexed_triangle_set out = build_texture_displacement(quad, { layer }, facets, {}, {}, &request);
+    const indexed_triangle_set out = build_texture_displacement(quad, { layer }, facets, classic_options(), {}, &request);
 
     REQUIRE_FALSE(out.indices.empty());
     REQUIRE(triangle_color.size() == quad.indices.size());
@@ -776,7 +903,7 @@ TEST_CASE("TextureDisplacement: a layer that is not colouring reports no colours
     request.out_triangle = &triangle_color;
     request.quantize     = [](const Vec3f &) { return 0; };
 
-    build_texture_displacement(quad, { layer }, facets, {}, {}, &request);
+    build_texture_displacement(quad, { layer }, facets, classic_options(), {}, &request);
 
     REQUIRE(triangle_color.size() == quad.indices.size());
     CHECK(triangle_color[0] == 0);
@@ -846,4 +973,625 @@ TEST_CASE("TextureDisplacement: subdivision refines a colour boundary a flat hei
 
         CHECK(out.indices.size() == cube.indices.size());
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Step cutter
+// ---------------------------------------------------------------------------------------------
+
+// A flat square sheet in the (x, y) plane split into right triangles of the given edge, with the
+// diagonal alternated so the mesh has no preferred direction. Normals +z.
+static indexed_triangle_set make_flat_sheet(float size, float edge)
+{
+    indexed_triangle_set its;
+    const int            n = std::max(1, int(std::lround(size / edge)));
+    for (int j = 0; j <= n; ++j)
+        for (int i = 0; i <= n; ++i)
+            its.vertices.emplace_back(size * float(i) / float(n), size * float(j) / float(n), 0.f);
+    const auto id = [n](int i, int j) { return j * (n + 1) + i; };
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i) {
+            if ((i + j) % 2 == 0) {
+                its.indices.emplace_back(id(i, j), id(i + 1, j), id(i + 1, j + 1));
+                its.indices.emplace_back(id(i, j), id(i + 1, j + 1), id(i, j + 1));
+            } else {
+                its.indices.emplace_back(id(i, j), id(i + 1, j), id(i, j + 1));
+                its.indices.emplace_back(id(i + 1, j), id(i + 1, j + 1), id(i, j + 1));
+            }
+        }
+    return its;
+}
+
+// Every interior edge of a sheet is shared by exactly two triangles; only the sheet's own border may
+// be used once.
+static bool sheet_is_manifold(const indexed_triangle_set &its, float size)
+{
+    std::map<std::pair<int, int>, int> uses;
+    for (const auto &t : its.indices)
+        for (int e = 0; e < 3; ++e) {
+            int a = t[e], b = t[(e + 1) % 3];
+            if (a > b)
+                std::swap(a, b);
+            ++uses[{ a, b }];
+        }
+    for (const auto &[edge, n] : uses) {
+        const Vec3f &pa = its.vertices[size_t(edge.first)], &pb = its.vertices[size_t(edge.second)];
+        const bool   border = (pa.x() == pb.x() && (pa.x() == 0.f || pa.x() == size)) ||
+                            (pa.y() == pb.y() && (pa.y() == 0.f || pa.y() == size));
+        if (n > 2 || (n == 1 && !border))
+            return false;
+    }
+    return true;
+}
+
+TEST_CASE("TextureDisplacement: the step cutter turns a stepped field into walls", "[TextureDisplacement]")
+{
+    // Square posts 1.2 mm wide on a 2 mm pitch, as a binary field: a step everywhere along the post
+    // edges, flat everywhere else. 1 mm triangles, so every post edge crosses several of them.
+    constexpr float RELIEF = 0.4f, SIZE = 6.f, STEP_W = 0.05f, GAP = 0.075f;
+    const auto      posts = [](float x, float y) {
+        const float fx = std::fmod(std::fmod(x, 2.f) + 2.f, 2.f), fy = std::fmod(std::fmod(y, 2.f) + 2.f, 2.f);
+        return (fx > 0.4f && fx < 1.6f && fy > 0.4f && fy < 1.6f) ? RELIEF : 0.f;
+    };
+    const HeightFieldSampler   sampler = [&](const Vec3f &p, const Vec3f &) { return posts(p.x(), p.y()); };
+    const indexed_triangle_set sheet   = make_flat_sheet(SIZE, 1.f);
+    const std::vector<uint8_t> region(sheet.indices.size(), 1);
+
+    std::vector<int>           source;
+    size_t                     cuts = 0;
+    const indexed_triangle_set cut  = cut_mesh_at_steps(sheet, region, sampler, STEP_W, GAP, 0.f, &source, &cuts);
+
+    CHECK(cuts > 0);
+    CHECK(cut.indices.size() > sheet.indices.size());
+    REQUIRE(source.size() == cut.indices.size());
+    CHECK(sheet_is_manifold(cut, SIZE));
+
+    // Displace along the cut mesh's own area-weighted vertex normals, as the bake does.
+    std::vector<Vec3f> normal(cut.vertices.size(), Vec3f::Zero());
+    for (const auto &t : cut.indices) {
+        const Vec3f &a = cut.vertices[size_t(t[0])], &b = cut.vertices[size_t(t[1])], &c = cut.vertices[size_t(t[2])];
+        const Vec3f  n = (b - a).cross(c - a);
+        CHECK(n.z() > 0.f); // nothing inverted, nothing degenerate
+        for (int k = 0; k < 3; ++k)
+            normal[size_t(t[k])] += n;
+    }
+    indexed_triangle_set displaced = cut;
+    for (size_t v = 0; v < displaced.vertices.size(); ++v) {
+        const Vec3f n = normal[v].normalized();
+        displaced.vertices[v] += n * sampler(cut.vertices[v], n);
+    }
+
+    // The defining property of the cut: a triangle that spans both heights is a wall, and a wall stands
+    // within the seam gap of a step. Anywhere else a mixed triangle would be a ramp - exactly what
+    // refinement leaves and the cutter is there to remove.
+    const auto near_step = [&](const Vec3f &p) {
+        const float h = posts(p.x(), p.y());
+        for (int k = 0; k < 8; ++k) {
+            const float ang = float(k) * float(M_PI) / 4.f;
+            if (posts(p.x() + GAP * std::cos(ang), p.y() + GAP * std::sin(ang)) != h)
+                return true;
+        }
+        return false;
+    };
+    size_t walls = 0, ramps = 0;
+    for (const auto &t : displaced.indices) {
+        const float z0 = displaced.vertices[size_t(t[0])].z(), z1 = displaced.vertices[size_t(t[1])].z(),
+                    z2 = displaced.vertices[size_t(t[2])].z();
+        if (std::abs(z0 - z1) < 1e-4f && std::abs(z1 - z2) < 1e-4f)
+            continue; // flat: on one level
+        bool wall = true;
+        for (int k = 0; k < 3; ++k)
+            wall = wall && near_step(cut.vertices[size_t(t[k])]);
+        (wall ? walls : ramps)++;
+    }
+    CHECK(walls > 0);
+    CHECK(ramps == 0);
+}
+
+TEST_CASE("TextureDisplacement: the step cutter passes a smooth field through untouched", "[TextureDisplacement]")
+{
+    // A wide bump: its mid-level contour runs through the sheet, but nowhere is it a step, so there is
+    // nothing to cut - refinement is the right tool for it.
+    const HeightFieldSampler   bump = [](const Vec3f &p, const Vec3f &) {
+        const float r2 = (p.x() - 3.f) * (p.x() - 3.f) + (p.y() - 3.f) * (p.y() - 3.f);
+        return 0.4f * std::exp(-r2 / 3.f);
+    };
+    const indexed_triangle_set sheet = make_flat_sheet(6.f, 1.f);
+    const std::vector<uint8_t> region(sheet.indices.size(), 1);
+
+    std::vector<int>           source;
+    size_t                     cuts = 0;
+    const indexed_triangle_set out  = cut_mesh_at_steps(sheet, region, bump, 0.05f, 0.075f, 0.f, &source, &cuts);
+
+    CHECK(cuts == 0);
+    CHECK(out.indices.size() == sheet.indices.size());
+    CHECK(out.vertices.size() == sheet.vertices.size());
+    REQUIRE(source.size() == sheet.indices.size());
+    for (size_t i = 0; i < source.size(); ++i)
+        CHECK(source[i] == int(i));
+}
+
+TEST_CASE("TextureDisplacement: the step cutter leaves features at the step's own scale to refinement",
+          "[TextureDisplacement]")
+{
+    // Square posts filling the middle half of each cell, binary and sharp at every crossing - the only
+    // difference between the two is the pitch (offset so no post edge lies along a mesh edge). Posts a
+    // step width or so across have no pure interior for a seam copy to land in, and cutting them would
+    // double the triangles for walls no bigger than the blur.
+    constexpr float STEP_W = 0.05f;
+    const float     pitch  = GENERATE(0.12f, 0.6f);
+    const auto      posts  = [pitch](const Vec3f &p, const Vec3f &) {
+        const float fx = std::fmod(p.x() + 0.17f, pitch) / pitch, fy = std::fmod(p.y() + 0.31f, pitch) / pitch;
+        return (fx > 0.25f && fx < 0.75f && fy > 0.25f && fy < 0.75f) ? 0.4f : 0.f;
+    };
+    const indexed_triangle_set sheet = make_flat_sheet(6.f, 1.f);
+    const std::vector<uint8_t> region(sheet.indices.size(), 1);
+
+    size_t                     cuts = 0;
+    const indexed_triangle_set out  = cut_mesh_at_steps(sheet, region, posts, STEP_W, STEP_W, 0.f, nullptr, &cuts);
+
+    if (0.5f * pitch < 2.25f * STEP_W) {
+        CHECK(cuts == 0);
+        CHECK(out.indices.size() == sheet.indices.size());
+    } else {
+        CHECK(cuts > 0);
+        CHECK(sheet_is_manifold(out, 6.f));
+    }
+}
+
+TEST_CASE("TextureDisplacement: the step cutter only cuts inside the region", "[TextureDisplacement]")
+{
+    // A single step at x = 3 across the whole sheet, but only the left half is painted.
+    const HeightFieldSampler   stripe = [](const Vec3f &p, const Vec3f &) { return p.x() > 3.f ? 0.4f : 0.f; };
+    const indexed_triangle_set sheet  = make_flat_sheet(6.f, 1.f);
+
+    SECTION("an empty region is a no-op")
+    {
+        const std::vector<uint8_t> none(sheet.indices.size(), 0);
+        size_t                     cuts = 0;
+        const indexed_triangle_set out  = cut_mesh_at_steps(sheet, none, stripe, 0.05f, 0.075f, 0.f, nullptr, &cuts);
+        CHECK(cuts == 0);
+        CHECK(out.indices.size() == sheet.indices.size());
+    }
+
+    SECTION("unpainted triangles away from the paint are untouched")
+    {
+        std::vector<uint8_t> region(sheet.indices.size(), 0);
+        for (size_t t = 0; t < sheet.indices.size(); ++t) {
+            const auto &f = sheet.indices[t];
+            const float cy = (sheet.vertices[size_t(f[0])].y() + sheet.vertices[size_t(f[1])].y() +
+                              sheet.vertices[size_t(f[2])].y()) / 3.f;
+            region[t] = cy < 3.f ? 1 : 0; // paint the lower half
+        }
+        std::vector<int>           source;
+        size_t                     cuts = 0;
+        const indexed_triangle_set out  = cut_mesh_at_steps(sheet, region, stripe, 0.05f, 0.075f, 0.f, &source, &cuts);
+        CHECK(cuts > 0);
+        CHECK(sheet_is_manifold(out, 6.f));
+        // An unpainted triangle that shares no edge with a painted one comes out exactly as it went in.
+        std::vector<int> descendants(sheet.indices.size(), 0);
+        for (int s : source)
+            ++descendants[size_t(s)];
+        for (size_t t = 0; t < sheet.indices.size(); ++t) {
+            const auto &f = sheet.indices[t];
+            float       ymin = 6.f;
+            for (int k = 0; k < 3; ++k)
+                ymin = std::min(ymin, sheet.vertices[size_t(f[k])].y());
+            if (ymin > 3.f) // strictly above the painted half, so no shared edge with it
+                CHECK(descendants[t] == 1);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Texture smoothing
+// ---------------------------------------------------------------------------------------------
+
+TEST_CASE("TextureDisplacement: texture smoothing is a wrapped box blur whatever the radius", "[TextureDisplacement]")
+{
+    // A small pseudo-random grey image, encoded through the PNG writer so decode_height_texture() takes
+    // its normal path. The expected result is the plain definition of the blur - two passes of a
+    // (2r+1) box, horizontal then vertical, wrapping at the edges - which the sliding-window
+    // implementation must reproduce byte for byte.
+    const size_t w = 37, h = 23;
+    std::vector<uint8_t> src(w * h);
+    uint32_t seed = 12345;
+    for (uint8_t &p : src) { seed = seed * 1664525u + 1013904223u; p = uint8_t(seed >> 24); }
+    const boost::filesystem::path tmp_path = boost::filesystem::temp_directory_path()
+        / boost::filesystem::unique_path("texdisp_test_%%%%%%%%.png");
+    REQUIRE(Slic3r::png::write_gray_to_file(tmp_path.string(), w, h, src));
+    std::vector<unsigned char> bytes;
+    {
+        std::ifstream ifs(tmp_path.string(), std::ios::binary);
+        bytes.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+    }
+    boost::system::error_code ec;
+    boost::filesystem::remove(tmp_path, ec);
+    REQUIRE_FALSE(bytes.empty());
+
+    TextureDisplacementLayer layer;
+    layer.image_data = std::make_shared<std::vector<unsigned char>>(std::move(bytes));
+    // radius = smoothing * 0.05 * min(w, h) = 0.05 * 23 * smoothing; 1.0 gives 1.15 -> whole radius 2,
+    // cross-faded 57.5 % toward the blurred image (see smooth_height_pixels()).
+    layer.smoothing = 1.f;
+    const DecodedHeightTexture tex = decode_height_texture(layer);
+    REQUIRE(tex.width == int(w));
+    REQUIRE(tex.height == int(h));
+
+    const int   radius = 2;
+    const float mixf   = std::clamp((0.05f * 23.f) / 2.f, 0.f, 1.f);
+    auto box = [&](std::vector<uint8_t> px) {
+        const int   window = 2 * radius + 1;
+        const float inv    = 1.f / float(window);
+        std::vector<uint8_t> t2(px.size());
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int y = 0; y < int(h); ++y)
+                for (int x = 0; x < int(w); ++x) {
+                    float s = 0.f;
+                    for (int k = -radius; k <= radius; ++k) s += float(px[size_t(y) * w + size_t(((x + k) % int(w) + int(w)) % int(w))]);
+                    t2[size_t(y) * w + size_t(x)] = uint8_t(std::lround(s * inv));
+                }
+            for (int x = 0; x < int(w); ++x)
+                for (int y = 0; y < int(h); ++y) {
+                    float s = 0.f;
+                    for (int k = -radius; k <= radius; ++k) s += float(t2[size_t(((y + k) % int(h) + int(h)) % int(h)) * w + size_t(x)]);
+                    px[size_t(y) * w + size_t(x)] = uint8_t(std::lround(s * inv));
+                }
+        }
+        return px;
+    };
+    const std::vector<uint8_t> blurred = box(src);
+    size_t mismatches = 0;
+    for (size_t i = 0; i < w * h; ++i) {
+        const uint8_t expected = uint8_t(std::lround(float(src[i]) + (float(blurred[i]) - float(src[i])) * mixf));
+        mismatches += tex.pixels[i] != expected;
+    }
+    CHECK(mismatches == 0);
+
+    // Asking again with the same smoothing is served from the cache and must be identical.
+    const DecodedHeightTexture again = decode_height_texture(layer);
+    CHECK(again.pixels == tex.pixels);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Edge flips along the height field (v2 pipeline)
+// ---------------------------------------------------------------------------------------------
+
+TEST_CASE("TextureDisplacement: edge flips lay a stepped field's wall along the grid's diagonals", "[TextureDisplacement]")
+{
+    // A regular grid crossed by a step at 30 degrees. Before flipping, the step's wall zigzags: many
+    // triangles have corners on both sides of it. Flipping each quad's diagonal to follow the step must
+    // cut that count down, without changing the triangle count, the winding, or the manifoldness.
+    const indexed_triangle_set sheet = make_flat_sheet(6.f, 0.2f);
+    const float                c = std::cos(0.5236f), s = std::sin(0.5236f);
+    const auto                 side_of = [&](const Vec3f &p) { return c * p.x() + s * p.y() > 3.5f; };
+    const TextureBake::HeightSampleFn field = [&](const Vec3f &p, const Vec3f &, const Vec3f &) {
+        return side_of(p) ? 0.4f : 0.f;
+    };
+    const auto mixed = [&](const TextureBake::TriSoup &g) {
+        size_t n = 0;
+        for (size_t t = 0; t < g.triangle_count(); ++t) {
+            const bool a = side_of(g.pos[t * 3]), b = side_of(g.pos[t * 3 + 1]), d = side_of(g.pos[t * 3 + 2]);
+            n += (a != b || b != d);
+        }
+        return n;
+    };
+
+    const TextureBake::TriSoup    before = TextureBake::to_soup(sheet);
+    const TextureBake::FlipResult after  = TextureBake::flip_edges_to_height(before, {}, field, TextureBake::FlipSettings{}, {});
+
+    CHECK(after.flipped > 0);
+    REQUIRE(after.geometry.triangle_count() == before.triangle_count());
+    const size_t mixed_before = mixed(before), mixed_after = mixed(after.geometry);
+    CHECK(mixed_after < mixed_before);
+    // Every triangle still faces up, and none collapsed.
+    for (size_t t = 0; t < after.geometry.triangle_count(); ++t) {
+        const Vec3f n = (after.geometry.pos[t * 3 + 1] - after.geometry.pos[t * 3]).cross(after.geometry.pos[t * 3 + 2] - after.geometry.pos[t * 3]);
+        CHECK(n.z() > 1e-6f);
+    }
+    // Manifold: rebuild an indexed mesh from the soup and count edge uses.
+    indexed_triangle_set rebuilt;
+    std::map<std::tuple<int, int, int>, int> ids;
+    for (const Vec3f &p : after.geometry.pos) {
+        const auto key = std::make_tuple(int(std::lround(p.x() * 1e4)), int(std::lround(p.y() * 1e4)), int(std::lround(p.z() * 1e4)));
+        auto it = ids.find(key);
+        if (it == ids.end()) { it = ids.emplace(key, int(rebuilt.vertices.size())).first; rebuilt.vertices.push_back(p); }
+        (void) it;
+    }
+    for (size_t t = 0; t < after.geometry.triangle_count(); ++t) {
+        int idx[3];
+        for (int k = 0; k < 3; ++k) {
+            const Vec3f &p = after.geometry.pos[t * 3 + size_t(k)];
+            idx[k] = ids.at(std::make_tuple(int(std::lround(p.x() * 1e4)), int(std::lround(p.y() * 1e4)), int(std::lround(p.z() * 1e4))));
+        }
+        rebuilt.indices.emplace_back(idx[0], idx[1], idx[2]);
+    }
+    CHECK(sheet_is_manifold(rebuilt, 6.f));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Automatic resolution (v2 pipeline)
+// ---------------------------------------------------------------------------------------------
+
+TEST_CASE("TextureDisplacement: automatic resolution follows the texture's texel size and sharpness", "[TextureDisplacement]")
+{
+    // A 20 mm cube (diagonal 34.6 mm, so the edge may go up to 0.69 mm) with an 8 mm tile.
+    const indexed_triangle_set cube = its_make_cube(20.f, 20.f, 20.f);
+
+    SECTION("a hard-edged texture gets one texel per edge")
+    {
+        TextureDisplacementLayer layer;
+        layer.image_data   = make_checkerboard_png(16, 16); // 2x2 texel checks: every other texel is a step
+        layer.tiling_scale = 8.f;                            // texel = 0.5 mm
+        const TextureDetail detail = analyze_texture_detail(layer);
+        CHECK(detail.sharp_fraction > 0.15f);
+        CHECK_THAT(detail.pixels_per_edge, WithinAbs(1.f, 1e-6f));
+        const V2Resolution rec = recommend_v2_resolution(cube, { layer });
+        CHECK_THAT(rec.texel_mm, WithinAbs(0.5f, 1e-4f));
+        CHECK_THAT(rec.edge_mm, WithinAbs(0.5f, 1e-4f));
+        CHECK(rec.budget_k >= 10);
+        CHECK(rec.budget_k <= 2000);
+    }
+
+    SECTION("a flat texture gets four texels per edge, within the model's clamp")
+    {
+        TextureDisplacementLayer layer;
+        layer.image_data   = make_flat_gray_png(128, 16, 16);
+        layer.tiling_scale = 8.f; // texel 0.5 mm x 4 = 2 mm, clamped to diagonal / 50
+        const TextureDetail detail = analyze_texture_detail(layer);
+        CHECK_THAT(detail.pixels_per_edge, WithinAbs(4.f, 1e-6f));
+        const V2Resolution rec = recommend_v2_resolution(cube, { layer });
+        CHECK_THAT(rec.edge_mm, WithinAbs(0.70f, 0.011f)); // ceil(34.64 / 50 = 0.693) at 0.01
+    }
+
+    SECTION("the world transform scales the tile against the model")
+    {
+        TextureDisplacementLayer layer;
+        layer.image_data   = make_checkerboard_png(16, 16);
+        layer.tiling_scale = 8.f;
+        // Scaled up 3x the cube is 60 mm; the texel is still 0.5 mm in world terms, so the edge holds.
+        const V2Resolution rec = recommend_v2_resolution(cube, { layer }, Transform3d(Eigen::Scaling(3.0)));
+        CHECK_THAT(rec.edge_mm, WithinAbs(0.5f, 1e-4f));
+        const V2Resolution plain = recommend_v2_resolution(cube, { layer });
+        CHECK(rec.budget_k > plain.budget_k); // nine times the area wants more triangles
+    }
+
+    SECTION("no usable texture gives no recommendation")
+    {
+        TextureDisplacementLayer empty;
+        const V2Resolution rec = recommend_v2_resolution(cube, { empty });
+        CHECK(rec.edge_mm == 0.f);
+    }
+}
+
+TEST_CASE("TextureDisplacement: the default pipeline colours its rebuilt triangles where painted", "[TextureDisplacement]")
+{
+    // The same quad and 2x2 colour texture as the classic-path colour test, but baked through the
+    // one-run pipeline, which rebuilds the topology: every output triangle has to be coloured from the
+    // texture at its own position, and only those over the painted half of the quad.
+    const indexed_triangle_set quad = color_test_quad();
+    TextureDisplacementLayer   layer;
+    layer.slot              = 0;
+    layer.image_data        = make_rgb_png_2x2();
+    layer.color_enabled     = true;
+    layer.depth_mm          = 0.f;
+    layer.tiling_scale      = 10.f; // one tile over the whole quad, so all four texels show
+    layer.projection_method = TextureProjectionMethod::Triplanar;
+
+    TriangleMesh     mesh(quad);
+    TriangleSelector selector(mesh);
+    selector.set_facet(0, EnforcerBlockerType::ENFORCER); // the lower-right half only
+    TextureDisplacementFacetsData facets;
+    facets[0] = selector.serialize();
+
+    const std::array<Vec3f, 3> palette = { Vec3f(1, 0, 0), Vec3f(0, 1, 0), Vec3f(0, 0, 1) };
+    TextureColorRequest        request;
+    std::vector<uint8_t>       triangle_color;
+    request.out_triangle = &triangle_color;
+    request.quantize     = [&palette](const Vec3f &rgb) {
+        int   best = 0;
+        float bd   = std::numeric_limits<float>::max();
+        for (int i = 0; i < 3; ++i)
+            if (const float d = (palette[size_t(i)] - rgb).squaredNorm(); d < bd) { bd = d; best = i; }
+        return best;
+    };
+
+    TextureDisplacementOptions options;
+    options.pipeline_v2        = true;
+    options.v2_refine_mm       = 1.f;
+    options.v2_max_triangles_k = 0; // no simplification: a plain refined quad
+    const indexed_triangle_set out = build_texture_displacement(quad, { layer }, facets, options, {}, &request);
+
+    REQUIRE(out.indices.size() > 2);
+    REQUIRE(triangle_color.size() == out.indices.size());
+    size_t coloured = 0, plain = 0;
+    std::set<uint8_t> distinct;
+    for (size_t i = 0; i < out.indices.size(); ++i) {
+        const stl_triangle_vertex_indices &t = out.indices[i];
+        const Vec3f c = (out.vertices[size_t(t[0])] + out.vertices[size_t(t[1])] + out.vertices[size_t(t[2])]) / 3.f;
+        const bool  painted_side = c.y() < c.x(); // below the diagonal: triangle 0 of the quad
+        if (triangle_color[i] > 0) { ++coloured; distinct.insert(triangle_color[i]); CHECK(painted_side); }
+        else                       { ++plain; CHECK_FALSE(painted_side); }
+    }
+    CHECK(coloured > 0);
+    CHECK(plain > 0);
+    CHECK(distinct.size() >= 2); // the texture has four colours across the quad, so one side sees several
+}
+
+// Per chart of an unwrap: whether it is a topological disk (V - E + F = 1, one boundary loop), the only shape a
+// single island can be laid flat from.
+static std::vector<bool> unwrap_charts_are_disks(const PatchUnwrap &u)
+{
+    std::vector<std::set<int>>                 verts(size_t(u.chart_count));
+    std::vector<std::set<std::pair<int, int>>> edges(size_t(u.chart_count));
+    std::vector<int>                           faces(size_t(u.chart_count), 0);
+    for (const stl_triangle_vertex_indices &tri : u.indices) {
+        const int c = u.vertex_chart[size_t(tri[0])];
+        ++faces[size_t(c)];
+        for (int i = 0; i < 3; ++i) {
+            verts[size_t(c)].insert(tri[i]);
+            edges[size_t(c)].insert({ std::min(tri[i], tri[(i + 1) % 3]), std::max(tri[i], tri[(i + 1) % 3]) });
+        }
+    }
+    // Boundary loops per chart: flood the boundary edges' vertices.
+    std::vector<std::vector<int>> boundary_adj(u.uvs.size());
+    for (const auto &[a, b] : u.boundary_edges) {
+        boundary_adj[size_t(a)].push_back(b);
+        boundary_adj[size_t(b)].push_back(a);
+    }
+    std::vector<int>  loops(size_t(u.chart_count), 0);
+    std::vector<bool> seen(u.uvs.size(), false);
+    for (size_t v = 0; v < u.uvs.size(); ++v) {
+        if (seen[v] || boundary_adj[v].empty())
+            continue;
+        ++loops[size_t(u.vertex_chart[v])];
+        std::vector<int> stack{ int(v) };
+        seen[v] = true;
+        while (!stack.empty()) {
+            const int x = stack.back();
+            stack.pop_back();
+            for (const int y : boundary_adj[size_t(x)])
+                if (!seen[size_t(y)]) {
+                    seen[size_t(y)] = true;
+                    stack.push_back(y);
+                }
+        }
+    }
+    std::vector<bool> disks(size_t(u.chart_count));
+    for (int c = 0; c < u.chart_count; ++c)
+        disks[size_t(c)] = int(verts[size_t(c)].size()) - int(edges[size_t(c)].size()) + faces[size_t(c)] == 1 &&
+                           loops[size_t(c)] == 1;
+    return disks;
+}
+
+TEST_CASE("A cube unwraps into one island per face, laid out as a connected net", "[TextureDisplacement]")
+{
+    const indexed_triangle_set cube   = its_make_cube(10., 10., 10.);
+    const PatchUnwrap          unwrap = compute_patch_unwrap(cube, 30.f, 0.f);
+    // Two triangles per face, and every face edge but the diagonals is a 90 degree crease.
+    REQUIRE(unwrap.chart_count == 6);
+
+    const std::vector<TextureIsland> islands = compute_connected_net(unwrap);
+    REQUIRE(islands.size() == 6);
+
+    std::vector<std::array<Vec2f, 3>> placed;
+    std::vector<int>                  placed_chart;
+    for (const stl_triangle_vertex_indices &tri : unwrap.indices) {
+        const int            c = unwrap.vertex_chart[size_t(tri[0])];
+        std::array<Vec2f, 3> t;
+        for (int k = 0; k < 3; ++k)
+            t[size_t(k)] = apply_island_transform(unwrap.uvs[size_t(tri[k])], c, unwrap, islands);
+        placed.push_back(t);
+        placed_chart.push_back(c);
+    }
+
+    SECTION("no two faces overlap")
+    {
+        // A 10 mm cube: the six 100 mm2 faces laid flat without overlap cover 600 mm2, which triangles overlapping
+        // anywhere could not add up to within their joint bounding box... so test it directly, by sampling.
+        float lo_x = 1e9f, lo_y = 1e9f, hi_x = -1e9f, hi_y = -1e9f;
+        for (const auto &t : placed)
+            for (const Vec2f &p : t) {
+                lo_x = std::min(lo_x, p.x());
+                lo_y = std::min(lo_y, p.y());
+                hi_x = std::max(hi_x, p.x());
+                hi_y = std::max(hi_y, p.y());
+            }
+        const auto inside = [](const std::array<Vec2f, 3> &t, const Vec2f &p) {
+            const auto cross = [](const Vec2f &a, const Vec2f &b) { return a.x() * b.y() - a.y() * b.x(); };
+            const float d0 = cross(t[1] - t[0], p - t[0]), d1 = cross(t[2] - t[1], p - t[1]), d2 = cross(t[0] - t[2], p - t[2]);
+            return (d0 > 1e-3f && d1 > 1e-3f && d2 > 1e-3f) || (d0 < -1e-3f && d1 < -1e-3f && d2 < -1e-3f);
+        };
+        int overlapping = 0;
+        for (float x = lo_x + 0.13f; x < hi_x; x += 0.5f)
+            for (float y = lo_y + 0.17f; y < hi_y; y += 0.5f) {
+                int covering = 0;
+                for (const auto &t : placed)
+                    covering += inside(t, Vec2f(x, y)) ? 1 : 0;
+                overlapping += covering > 1 ? 1 : 0;
+            }
+        CHECK(overlapping == 0);
+    }
+
+    SECTION("every face shares an edge with another face of the net")
+    {
+        std::vector<bool> joined(6, false);
+        for (size_t i = 0; i < placed.size(); ++i)
+            for (size_t j = 0; j < placed.size(); ++j) {
+                if (placed_chart[i] == placed_chart[j])
+                    continue;
+                int shared_corners = 0;
+                for (const Vec2f &p : placed[i])
+                    for (const Vec2f &q : placed[j])
+                        shared_corners += (p - q).norm() < 1e-3f ? 1 : 0;
+                if (shared_corners >= 2)
+                    joined[size_t(placed_chart[i])] = true;
+            }
+        for (int c = 0; c < 6; ++c)
+            CHECK(joined[size_t(c)]);
+    }
+}
+
+TEST_CASE("Unwrapping a closed cylinder cuts its side until every island is a disk", "[TextureDisplacement]")
+{
+    // The side is smooth, so the seam angle alone leaves it as one ring-shaped chart, which cannot be laid flat.
+    const indexed_triangle_set cylinder = its_make_cylinder(5., 20., 2. * PI / 36.);
+    const PatchUnwrap          unwrap   = compute_patch_unwrap(cylinder, 30.f, 0.f);
+    REQUIRE(unwrap.chart_count >= 4); // two caps and at least two side pieces
+
+    const std::vector<bool> disks = unwrap_charts_are_disks(unwrap);
+    for (int c = 0; c < unwrap.chart_count; ++c)
+        CHECK(disks[size_t(c)]);
+}
+
+TEST_CASE("A UV edit on one copy of a seam vertex leaves its other copies alone", "[TextureDisplacement]")
+{
+    const indexed_triangle_set cube   = its_make_cube(10., 10., 10.);
+    PatchUnwrap                unwrap = compute_patch_unwrap(cube, 30.f, 0.f);
+
+    // A cube corner has a copy in each of the three faces around it.
+    const int                 edited_copy = 0;
+    const int                 mesh_vertex = unwrap.source_vertex[size_t(edited_copy)];
+    std::vector<int>          other_copies;
+    for (size_t i = 0; i < unwrap.uvs.size(); ++i)
+        if (int(i) != edited_copy && unwrap.source_vertex[i] == mesh_vertex)
+            other_copies.push_back(int(i));
+    REQUIRE_FALSE(other_copies.empty());
+
+    const std::vector<Vec2f> before = unwrap.uvs;
+    const Vec2f              target = before[size_t(edited_copy)] + Vec2f(3.f, -2.f);
+    const std::vector<bool>  edited = apply_lscm_uv_overrides(unwrap, { { lscm_uv_override_key(edited_copy), target } });
+
+    CHECK_THAT(unwrap.uvs[size_t(edited_copy)].x(), WithinAbs(target.x(), 1e-6));
+    CHECK_THAT(unwrap.uvs[size_t(edited_copy)].y(), WithinAbs(target.y(), 1e-6));
+    CHECK(edited[size_t(edited_copy)]);
+    for (const int i : other_copies) {
+        CHECK_THAT(unwrap.uvs[size_t(i)].x(), WithinAbs(before[size_t(i)].x(), 1e-6));
+        CHECK_THAT(unwrap.uvs[size_t(i)].y(), WithinAbs(before[size_t(i)].y(), 1e-6));
+        CHECK_FALSE(edited[size_t(i)]);
+    }
+}
+
+TEST_CASE("TextureDisplacement: moving the model about the plate does not move the texture on it", "[TextureDisplacement]")
+{
+    // The bake projects in world millimetres but anchored at the volume's origin, so an instance
+    // translated across the plate bakes exactly the relief the same instance bakes at the origin. The
+    // classic path keeps the topology, so the comparison is vertex by vertex.
+    const indexed_triangle_set cube = subdivide_mesh_uniform(its_make_cube(10.f, 10.f, 10.f), 1.f, 6);
+    TextureDisplacementLayer   layer;
+    layer.slot         = 0;
+    layer.image_data   = make_checkerboard_png(16, 16);
+    layer.tiling_scale = 4.f;
+    layer.depth_mm     = 0.5f;
+    TextureDisplacementFacetsData facets;
+    facets[0] = paint_whole_mesh(cube);
+
+    const indexed_triangle_set at_origin = build_texture_displacement(cube, { layer }, facets, classic_options());
+    const indexed_triangle_set moved     = build_texture_displacement(cube, { layer }, facets, classic_options(), {}, nullptr,
+                                                                      Transform3d(Eigen::Translation3d(123.4, -56.7, 0.0)));
+    REQUIRE(moved.vertices.size() == at_origin.vertices.size());
+    float max_diff = 0.f;
+    for (size_t i = 0; i < moved.vertices.size(); ++i)
+        max_diff = std::max(max_diff, (moved.vertices[i] - at_origin.vertices[i]).norm());
+    CHECK(max_diff < 1e-3f);
 }
