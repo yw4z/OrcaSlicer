@@ -42,6 +42,7 @@
 #include "slic3r/GUI/format.hpp"
 #include "slic3r/GUI/NotificationManager.hpp"
 #include "slic3r/Utils/Http.hpp"
+#include "slic3r/Utils/bambu_networking.hpp"
 #include "slic3r/Config/Version.hpp"
 #include "slic3r/Config/Snapshot.hpp"
 #include "slic3r/GUI/MarkdownTip.hpp"
@@ -1106,8 +1107,8 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
 
         const auto is_vendor_enabled = (vendor_name == PresetBundle::ORCA_DEFAULT_BUNDLE) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
                                        || (enabled_vendors.find(vendor_name) != enabled_vendors.end());
-        if (enabled_config_update) {
-            if (is_vendor_installed(vendor_name)) {
+        if (is_vendor_installed(vendor_name)) {
+            if (enabled_config_update) {
                 if (is_vendor_enabled) {
                     // Orca: whichever form of the vendor resources ships at the newer
                     // version is the one installing lays down, and the one to judge
@@ -1122,17 +1123,12 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
                                                 << resource_ver.to_string() << " from resource, old version " << vendor_ver.to_string();
                         bundles.insert(vendor_name);
                     }
-                }
-                else {
-                    //need to be removed because not installed
+                } else {
+                    // need to be removed because not installed
                     remove_installed_vendor(vendor_name);
                 }
             }
-            else if (is_vendor_enabled) {
-                bundles.insert(vendor_name);
-            }
-        }
-        else if (is_vendor_enabled) {
+        } else if (is_vendor_enabled) {
             bundles.insert(vendor_name);
         }
     }
@@ -1625,7 +1621,7 @@ void PresetUpdater::priv::check_new_vendors(const std::set<std::string>& system_
                         Http::get(download_url_str)
                             .timeout_connect(5)
                             .on_progress(check_cancel)
-                            .on_error([&vendor_id, &retry_count, max_retries](std::string body, std::string error, unsigned http_status) {
+                            .on_error([&vendor_id, &retry_count](std::string body, std::string error, unsigned http_status) {
                                 BOOST_LOG_TRIVIAL(warning) << "[Orca Updater] download failed for new vendor " << vendor_id
                                                            << " (attempt " << retry_count << "/" << max_retries << "): " << error;
                             })

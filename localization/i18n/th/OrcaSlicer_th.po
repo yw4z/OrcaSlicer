@@ -2456,8 +2456,6 @@ msgstr "มีอัปเดตพร้อมใช้งาน เปิด�
 msgid "%s has been removed."
 msgstr "ลบ %s แล้ว"
 
-msgid "Switching application language"
-msgstr "การเปลี่ยนภาษาของแอปพลิเคชัน"
 
 msgid "Select the language"
 msgstr "เลือกภาษา"
@@ -5321,13 +5319,9 @@ msgstr "ค่า %s อยู่นอกช่วง ช่วงที่ถ�
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"มันคือ %s%% หรือ %s %s?\n"
-"ใช่สำหรับ %s%% \n"
-"ไม่ สำหรับ %s %s"
+"มันคือ %s%% หรือ %s %s?"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -8758,8 +8752,6 @@ msgstr "ต้องการดำเนินการต่อหรือไ
 msgid "Language selection"
 msgstr "การเลือกภาษา"
 
-msgid "Switching application language while some presets are modified."
-msgstr "การสลับภาษาของแอปพลิเคชันในขณะที่มีการแก้ไขค่าที่ตั้งไว้บางส่วน"
 
 msgid "Asia-Pacific"
 msgstr "เอเชียแปซิฟิก"

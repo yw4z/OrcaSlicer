@@ -2460,8 +2460,6 @@ msgstr "Frissítés érhető el. Nyisd meg a beállításcsomag párbeszédablak
 msgid "%s has been removed."
 msgstr "%s eltávolítva."
 
-msgid "Switching application language"
-msgstr "Alkalmazás nyelvének váltása"
 
 msgid "Select the language"
 msgstr "Válaszd ki a nyelvet"
@@ -5340,13 +5338,9 @@ msgstr "%s érték tartományon kívül van. Az érvényes tartomány: %d - %d."
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"%s%% vagy %s %s?\n"
-"IGEN %s%%, \n"
-"NEM %s %s."
+"%s%% vagy %s %s?"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -8806,8 +8800,6 @@ msgstr "Szeretnéd folytatni?"
 msgid "Language selection"
 msgstr "Nyelv kiválasztása"
 
-msgid "Switching application language while some presets are modified."
-msgstr "Alkalmazás nyelvének átváltása, miközben egyes beállítások módosultak."
 
 msgid "Asia-Pacific"
 msgstr "Ázsia-Csendes-óceáni térség"

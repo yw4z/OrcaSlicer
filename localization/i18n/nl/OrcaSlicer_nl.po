@@ -2679,8 +2679,6 @@ msgstr "Er is een update beschikbaar. Open het dialoogvenster voor de voorinstel
 msgid "%s has been removed."
 msgstr "%s is verwijderd."
 
-msgid "Switching application language"
-msgstr "De taal van de applicatie wordt aangepast"
 
 msgid "Select the language"
 msgstr "Kies de taal"
@@ -5833,13 +5831,9 @@ msgstr "Waarde %s valt buiten het bereik. Het geldige bereik loopt van %d tot %d
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"Is het %s%% or %s %s?\n"
-"JA voor %s%%, \n"
-"NEE voor %s %s."
+"Is het %s%% or %s %s?"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -9602,8 +9596,6 @@ msgstr "Wilt u doorgaan?"
 msgid "Language selection"
 msgstr "Taal selectie"
 
-msgid "Switching application language while some presets are modified."
-msgstr "De taal van de toepassing aanpaasen terwijl sommige voorinstellingen zijn aangepast."
 
 msgid "Asia-Pacific"
 msgstr "Azië-Pacific"

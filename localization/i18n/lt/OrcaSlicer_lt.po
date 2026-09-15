@@ -2449,8 +2449,6 @@ msgstr "Yra prieinamas atnaujinimas. Atidarykite profilių paketo dialogo langą
 msgid "%s has been removed."
 msgstr "%s buvo pašalintas."
 
-msgid "Switching application language"
-msgstr "Perjungiama programos kalba"
 
 msgid "Select the language"
 msgstr "Pasirinkite kalbą"
@@ -5327,13 +5325,9 @@ msgstr "Reikšmė %s yra už ribų. Galimas diapazonas yra nuo %d iki %d."
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"Ar tai %s%% ar %s %s?\n"
-"TAIP %s%%, \n"
-"NE %s %s."
+"Ar tai %s%% ar %s %s?"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -8797,8 +8791,6 @@ msgstr "Ar norite tęsti?"
 msgid "Language selection"
 msgstr "Kalbos pasirinkimas"
 
-msgid "Switching application language while some presets are modified."
-msgstr "Keičiama programos kalba, kai yra pakeistų profilių."
 
 msgid "Asia-Pacific"
 msgstr "Azija-Ramusis vandenynas"

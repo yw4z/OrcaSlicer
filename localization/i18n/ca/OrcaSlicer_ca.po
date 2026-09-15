@@ -2522,8 +2522,6 @@ msgstr "Hi ha una actualització disponible. Obriu el quadre de diàleg del paqu
 msgid "%s has been removed."
 msgstr "%s s'ha eliminat."
 
-msgid "Switching application language"
-msgstr "Canvi d'idioma de l'aplicació"
 
 msgid "Select the language"
 msgstr "Seleccioneu l'idioma"
@@ -5431,13 +5429,9 @@ msgstr "El valor %s està fora de rang. El rang vàlid és de %d a %d."
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"És %s%% or %s %s?\n"
-"SÍ per %s%%.\n"
-"NO per %s %s."
+"És %s%% or %s %s?"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -8924,8 +8918,6 @@ msgstr "Voleu continuar?"
 msgid "Language selection"
 msgstr "Selecció d'idiomes"
 
-msgid "Switching application language while some presets are modified."
-msgstr "Canviant l'idioma de l'aplicació mentre es modifiquen alguns perfils."
 
 msgid "Asia-Pacific"
 msgstr "Àsia-Pacífic"

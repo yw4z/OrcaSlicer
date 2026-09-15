@@ -2293,8 +2293,6 @@ msgstr ""
 msgid "%s has been removed."
 msgstr ""
 
-msgid "Switching application language"
-msgstr ""
 
 msgid "Select the language"
 msgstr ""
@@ -4997,9 +4995,7 @@ msgstr ""
 
 #, possible-c-format, possible-boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
 
 #, possible-boost-format
@@ -8294,8 +8290,6 @@ msgstr ""
 msgid "Language selection"
 msgstr ""
 
-msgid "Switching application language while some presets are modified."
-msgstr ""
 
 msgid "Asia-Pacific"
 msgstr ""

@@ -2473,8 +2473,6 @@ msgstr "アップデートが利用可能です。プリセットバンドルの
 msgid "%s has been removed."
 msgstr "%sを削除しました。"
 
-msgid "Switching application language"
-msgstr "アプリケーション言語の切り替え"
 
 msgid "Select the language"
 msgstr "言語を選択"
@@ -5355,12 +5353,9 @@ msgstr "値%sは範囲外です。有効な範囲は%dから%dです。"
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"%s%% か、それとも %s %sですか？\n"
-"%s%% の場合ははい、 %s %s はいいえ。"
+"%s%% か、それとも %s %sですか？"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -8825,8 +8820,6 @@ msgstr "続行しますか？"
 msgid "Language selection"
 msgstr "言語選択"
 
-msgid "Switching application language while some presets are modified."
-msgstr "アプリケーション言語を切り替える時に、プリセットの変更があります"
 
 msgid "Asia-Pacific"
 msgstr "アジア太平洋地域"

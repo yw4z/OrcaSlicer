@@ -2767,8 +2767,6 @@ msgstr "Det finns en uppdatering tillgänglig. Öppna dialogrutan för förinst�
 msgid "%s has been removed."
 msgstr "%s har tagits bort."
 
-msgid "Switching application language"
-msgstr "Byt applikationsspråk"
 
 msgid "Select the language"
 msgstr "Välj språk"
@@ -5907,13 +5905,9 @@ msgstr "Värdet %s ligger utanför intervallet. Giltigt intervall är från %d t
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"Det är %s%% eller %s %s?\n"
-"JA för %s%%, \n"
-"NEJ för %s %s."
+"Det är %s%% eller %s %s?"
 
 # AI Translated
 #, boost-format
@@ -9694,8 +9688,6 @@ msgstr "Fortsätta?"
 msgid "Language selection"
 msgstr "Språkval"
 
-msgid "Switching application language while some presets are modified."
-msgstr "Byter språk medans inställningarna ändras."
 
 msgid "Asia-Pacific"
 msgstr "Asien-Stillahavsområdet"

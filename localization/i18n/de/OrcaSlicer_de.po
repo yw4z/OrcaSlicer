@@ -2430,8 +2430,6 @@ msgstr "Es ist ein Update verfügbar. Öffnen Sie den Profilbündel-Dialog, um e
 msgid "%s has been removed."
 msgstr "%s wurde entfernt."
 
-msgid "Switching application language"
-msgstr "Wechsel der Sprache"
 
 msgid "Select the language"
 msgstr "Sprache wählen"
@@ -5293,13 +5291,9 @@ msgstr "Wert %s ist außerhalb des Bereichs. Der gültige Bereich liegt zwischen
 
 #, c-format, boost-format
 msgid ""
-"Is it %s%% or %s %s?\n"
-"YES for %s%%, \n"
-"NO for %s %s."
+"Is it %s%% or %s %s?"
 msgstr ""
-"Heißt es %s%% oder %s %s?\n"
-"Ja für %s%%, \n"
-"Nein für %s %s."
+"Heißt es %s%% oder %s %s?"
 
 #, boost-format
 msgid "Invalid input format. Expected vector of dimensions in the following format: \"%1%\""
@@ -8754,8 +8748,6 @@ msgstr "Möchten Sie fortfahren?"
 msgid "Language selection"
 msgstr "Sprachauswahl"
 
-msgid "Switching application language while some presets are modified."
-msgstr "Umschalten der Anwendungssprache, während einige Profile geändert werden."
 
 msgid "Asia-Pacific"
 msgstr "Asien-Pazifik"
