@@ -2029,19 +2029,21 @@ int CLI::run(int argc, char **argv)
         }
     };
 
-    auto resolve_preset = [&ensure_cli_preset_bundle](const std::string &file, DynamicPrintConfig &config,
+    // One resolver for the whole run, so presets from the same vendor tree share its load.
+    std::unique_ptr<PresetBundle> system_preset_resolver;
+    auto resolve_preset = [&ensure_cli_preset_bundle, &system_preset_resolver](const std::string &file, DynamicPrintConfig &config,
                                                                                std::string &config_type, const std::string &config_from,
                                                                                bool probe_type, std::string &error) {
         const auto *inherits = config.option<ConfigOptionString>(BBL_JSON_KEY_INHERITS);
         if (!probe_type && (inherits == nullptr || inherits->value.empty()))
             return true;
 
-        std::unique_ptr<PresetBundle> source_bundle;
         PresetBundle                 *bundle = nullptr;
         bool                          allow_source_manifest = false;
         if (config_from == "system") {
-            source_bundle         = std::make_unique<PresetBundle>();
-            bundle                = source_bundle.get();
+            if (!system_preset_resolver)
+                system_preset_resolver = std::make_unique<PresetBundle>();
+            bundle                = system_preset_resolver.get();
             allow_source_manifest = true;
         } else {
             bundle = ensure_cli_preset_bundle(error);
