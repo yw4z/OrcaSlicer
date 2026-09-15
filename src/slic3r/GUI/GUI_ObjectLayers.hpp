@@ -64,6 +64,7 @@ class ObjectLayers : public OG_Settings
 {
     ScalableBitmap  m_bmp_delete;
     ScalableBitmap  m_bmp_add;
+    ScalableBitmap  m_bmp_layer;
     ModelObject*    m_object {nullptr};
 
     wxFlexGridSizer*       m_grid_sizer;
