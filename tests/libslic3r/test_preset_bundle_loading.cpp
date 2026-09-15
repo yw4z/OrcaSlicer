@@ -1118,6 +1118,62 @@ TEST_CASE("Manifest-backed resolution reuses the library base for type-probed fi
     CHECK_THAT(density(second), Catch::Matchers::WithinAbs(1.27, 1e-6));
 }
 
+TEST_CASE("Manifest-backed resolution shares the library between vendors under one root", "[Preset][Bundle][Regression]")
+{
+    ScopedTemporaryDir dir;
+    const fs::path      library_dir = dir.path() / PresetBundle::ORCA_FILAMENT_LIBRARY / "filament";
+
+    std::ofstream((dir.path() / (std::string(PresetBundle::ORCA_FILAMENT_LIBRARY) + ".json")).string())
+        << R"({"version":"1.0.0","name":"OrcaFilamentLibrary","filament_list":[)"
+        << R"({"name":"fdm_filament_pet","sub_path":"filament/pet.json","filament_id":"GFL99"},)"
+        << R"({"name":"Generic PETG","sub_path":"filament/generic_petg.json","filament_id":"GFL98"}]})";
+    fs::create_directories(library_dir);
+    auto write_library_pet = [&](double density) {
+        std::ofstream((library_dir / "pet.json").string())
+            << R"({"type":"filament","name":"fdm_filament_pet","from":"system",)"
+            << R"("filament_id":"GFL99","instantiation":"false",)"
+            << R"("filament_type":["PETG"],"filament_density":[")" << density << R"("]})";
+    };
+    write_library_pet(1.27);
+    std::ofstream((library_dir / "generic_petg.json").string())
+        << R"({"type":"filament","name":"Generic PETG","from":"system",)"
+        << R"("filament_id":"GFL98","instantiation":"true","inherits":"fdm_filament_pet"})";
+
+    auto write_vendor = [&](const std::string &vendor, const std::string &filament_id) {
+        const fs::path filament_dir = dir.path() / vendor / "filament";
+        fs::create_directories(filament_dir);
+        std::ofstream((dir.path() / (vendor + ".json")).string())
+            << R"({"version":"1.0.0","name":")" << vendor << R"(","filament_list":[)"
+            << R"({"name":")" << vendor << R"( PETG","sub_path":"filament/petg.json","filament_id":")" << filament_id << R"("}]})";
+        std::ofstream((filament_dir / "petg.json").string())
+            << R"({"type":"filament","name":")" << vendor << R"( PETG","from":"system",)"
+            << R"("filament_id":")" << filament_id << R"(","instantiation":"true","inherits":"fdm_filament_pet"})";
+        return filament_dir / "petg.json";
+    };
+    const fs::path acme_petg = write_vendor("Acme", "GFA00");
+    const fs::path beta_petg = write_vendor("Beta", "GFB00");
+
+    auto density = [&](PresetBundle &bundle, const fs::path &file) {
+        DynamicPrintConfig raw;
+        raw.option<ConfigOptionString>(BBL_JSON_KEY_INHERITS, true)->value = "fdm_filament_pet";
+        std::string error;
+        REQUIRE(bundle.resolve_preset_config(raw, Preset::TYPE_FILAMENT, file.string(),
+                                             ForwardCompatibilitySubstitutionRule::EnableSilent, error));
+        return raw.option<ConfigOptionFloats>("filament_density")->values.front();
+    };
+
+    PresetBundle bundle;
+    CHECK_THAT(density(bundle, acme_petg), Catch::Matchers::WithinAbs(1.27, 1e-6));
+
+    // Only a reload would see this change.
+    write_library_pet(1.5);
+    CHECK_THAT(density(bundle, beta_petg), Catch::Matchers::WithinAbs(1.27, 1e-6));
+    CHECK_THAT(density(bundle, library_dir / "generic_petg.json"), Catch::Matchers::WithinAbs(1.27, 1e-6));
+
+    PresetBundle fresh;
+    CHECK_THAT(density(fresh, beta_petg), Catch::Matchers::WithinAbs(1.5, 1e-6));
+}
+
 // Orca: a filament in the Orca Filament Library that names its compatible printers has to hide the generic
 // library filament sharing its alias, the same way a vendor owned filament does. Otherwise both are compatible
 // with that printer and the plater combo box lists the shared alias twice.

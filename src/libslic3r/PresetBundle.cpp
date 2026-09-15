@@ -484,7 +484,7 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
     else if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSilentDisableSystem)
         compatibility_rule = ForwardCompatibilitySubstitutionRule::Disable;
 
-    auto collection_for_type = [](PresetBundle &bundle, Preset::Type preset_type) -> PresetCollection * {
+    auto collection_for_type = [](const PresetBundle &bundle, Preset::Type preset_type) -> const PresetCollection * {
         switch (preset_type) {
         case Preset::TYPE_PRINT:    return &bundle.prints;
         case Preset::TYPE_FILAMENT: return &bundle.filaments;
@@ -493,15 +493,15 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
         }
     };
 
-    PresetCollection *collection = collection_for_type(*this, type);
+    const PresetCollection *collection = collection_for_type(*this, type);
     if (collection == nullptr) {
         error = "Unsupported preset type";
         return false;
     }
 
     const boost::filesystem::path source_path = boost::filesystem::absolute(source_file).lexically_normal();
-    auto find_loaded = [&](PresetBundle &bundle) -> const Preset * {
-        PresetCollection *loaded_collection = collection_for_type(bundle, type);
+    auto find_loaded = [&](const PresetBundle &bundle) -> const Preset * {
+        const PresetCollection *loaded_collection = collection_for_type(bundle, type);
         const Preset *resolved = nullptr;
         for (const Preset &preset : loaded_collection->get_presets()) {
             if (preset.file.empty())
@@ -549,11 +549,11 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
             continue;
 
         try {
-            const SourceManifestBundles *loaded = load_source_manifest(root_dir, vendor_id, compatibility_rule, error);
+            const PresetBundle *loaded = load_source_vendor(root_dir, vendor_id, compatibility_rule, error);
             if (loaded == nullptr)
                 return false;
 
-            const Preset *resolved = find_loaded(*loaded->vendor);
+            const Preset *resolved = find_loaded(*loaded);
             if (resolved == nullptr) {
                 if (error.empty())
                     error = "Source file is not an instantiated preset in its vendor manifest";
@@ -572,37 +572,35 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
     return false;
 }
 
-const PresetBundle::SourceManifestBundles *PresetBundle::load_source_manifest(const boost::filesystem::path &root_dir,
-                                                                            const std::string &vendor_id,
-                                                                            ForwardCompatibilitySubstitutionRule compatibility_rule,
-                                                                            std::string &error)
+const PresetBundle *PresetBundle::load_source_vendor(const boost::filesystem::path &root_dir,
+                                                    const std::string &vendor_id,
+                                                    ForwardCompatibilitySubstitutionRule compatibility_rule,
+                                                    std::string &error)
 {
-    auto key = std::make_tuple(root_dir.string(), vendor_id, static_cast<int>(compatibility_rule));
-    if (auto it = m_source_manifest_bundles.find(key); it != m_source_manifest_bundles.end())
-        return &it->second;
+    auto key = std::make_tuple(root_dir.string(), vendor_id, compatibility_rule);
+    if (auto it = m_source_vendor_bundles.find(key); it != m_source_vendor_bundles.end())
+        return it->second.get();
 
-    SourceManifestBundles loaded;
+    // The library loads with no base of its own, so the tree a vendor inherits from
+    // is the same one that resolves the library's own presets.
+    const PresetBundle *library = nullptr;
     if (vendor_id != ORCA_FILAMENT_LIBRARY &&
         boost::filesystem::is_regular_file(root_dir / (std::string(ORCA_FILAMENT_LIBRARY) + ".json"))) {
-        loaded.library = std::make_unique<PresetBundle>();
-        loaded.library->m_preserve_vendor_source_paths = true;
-        loaded.library->load_vendor_configs_from_json(root_dir.string(), ORCA_FILAMENT_LIBRARY, LoadSystem,
-                                                      compatibility_rule, nullptr, false);
-        if (loaded.library->error_count() != 0) {
+        library = load_source_vendor(root_dir, ORCA_FILAMENT_LIBRARY, compatibility_rule, error);
+        if (library == nullptr) {
             error = "OrcaFilamentLibrary contains invalid presets";
             return nullptr;
         }
     }
 
-    loaded.vendor = std::make_unique<PresetBundle>();
-    loaded.vendor->m_preserve_vendor_source_paths = true;
-    loaded.vendor->load_vendor_configs_from_json(root_dir.string(), vendor_id, LoadSystem,
-                                                 compatibility_rule, loaded.library.get(), false);
-    if (loaded.vendor->error_count() != 0) {
+    auto bundle = std::make_unique<PresetBundle>();
+    bundle->m_preserve_vendor_source_paths = true;
+    bundle->load_vendor_configs_from_json(root_dir.string(), vendor_id, LoadSystem, compatibility_rule, library, false);
+    if (bundle->error_count() != 0) {
         error = "Vendor bundle contains invalid presets";
         return nullptr;
     }
-    return &m_source_manifest_bundles.emplace(std::move(key), std::move(loaded)).first->second;
+    return m_source_vendor_bundles.emplace(std::move(key), std::move(bundle)).first->second.get();
 }
 
 bool PresetBundle::resolve_preset_config_type(DynamicPrintConfig &config, Preset::Type &type,
