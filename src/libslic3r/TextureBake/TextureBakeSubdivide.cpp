@@ -75,8 +75,11 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
     const size_t tri_count  = indices.size() / 3;
     const bool   have_canon = !verts.canon.empty();
 
-    QuantizedPointMap mid_cache(1.0, 1 << 16);
-    QuantizedPointMap split_edges(1.0, 1 << 16);
+    // Sized from the pass rather than grown from 64 k: a fine pass marks on the order of one edge per
+    // triangle, and growing to that by doubling rehashes the whole table a dozen times.
+    const size_t      expect = std::max<size_t>(size_t(1) << 16, tri_count);
+    QuantizedPointMap mid_cache(1.0, expect);
+    QuantizedPointMap split_edges(1.0, expect);
 
     // With canonical ids the key is the canonical *position* id, so split copies either side of a
     // sharp edge see one another's decision; without them the vertex index serves.
@@ -108,13 +111,19 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         return out; // changed stays false: nothing left to refine
     }
 
-    // Step 1.5. Read-only against the finished mark set, so it reduces in parallel.
-    const size_t predicted = tbb::parallel_reduce(
+    // Step 1.5. Read-only against the finished mark set, so it runs in parallel - and it keeps each
+    // triangle's three marks (bit 0 = ab, 1 = bc, 2 = ca), so the serial rebuild below reads a byte
+    // instead of probing the hash map three more times per triangle.
+    std::vector<uint8_t> tri_marks(tri_count);
+    const size_t         predicted = tbb::parallel_reduce(
         tbb::blocked_range<size_t>(0, tri_count), size_t(0),
         [&](const tbb::blocked_range<size_t> &range, size_t acc) {
             for (size_t t = range.begin(); t < range.end(); ++t) {
-                const int a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
-                const int n = int(is_marked(a, b)) + int(is_marked(b, c)) + int(is_marked(c, a));
+                const int     a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
+                const uint8_t m = uint8_t(is_marked(a, b)) | uint8_t(is_marked(b, c) << 1) |
+                                  uint8_t(is_marked(c, a) << 2);
+                tri_marks[t]    = m;
+                const int n     = (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1);
                 acc += (n == 0) ? 1 : size_t(n + 1);
             }
             return acc;
@@ -150,7 +159,7 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         const int     a    = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
         const uint8_t excl = face_excluded.empty() ? uint8_t(0) : face_excluded[t];
         const int     pid  = face_parent_id.empty() ? 0 : face_parent_id[t];
-        const bool    s_ab = is_marked(a, b), s_bc = is_marked(b, c), s_ca = is_marked(c, a);
+        const bool    s_ab = (tri_marks[t] & 1) != 0, s_bc = (tri_marks[t] & 2) != 0, s_ca = (tri_marks[t] & 4) != 0;
         const int     n    = int(s_ab) + int(s_bc) + int(s_ca);
 
         if (n == 0) {
@@ -345,20 +354,23 @@ TriSoup to_non_indexed(const VertStore &verts, const std::vector<int> &indices,
     if (want_weights)
         out.exclude_weight.resize(tri_count * 3);
 
-    for (size_t t = 0; t < tri_count; ++t) {
-        // The per-face flag, not the interpolated weight: merging by maximum can push an *included*
-        // face's corners to 1 when it borders two excluded neighbours, wrongly excluding it.
-        const bool  have_face_flag = !face_excluded.empty();
-        const float face_w         = have_face_flag ? (face_excluded[t] ? 1.f : 0.f) : 0.f;
-        for (int v = 0; v < 3; ++v) {
-            const size_t vidx = size_t(indices[t * 3 + size_t(v)]);
-            out.pos[t * 3 + size_t(v)] = verts.pos[vidx].cast<float>();
-            out.nrm[t * 3 + size_t(v)] = verts.nrm[vidx].cast<float>();
-            if (want_weights)
-                out.exclude_weight[t * 3 + size_t(v)] =
-                    have_face_flag ? face_w : float(verts.wgt[vidx]);
+    // Each triangle writes only its own three slots, so this is a plain parallel gather.
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, tri_count), [&](const tbb::blocked_range<size_t> &r) {
+        for (size_t t = r.begin(); t < r.end(); ++t) {
+            // The per-face flag, not the interpolated weight: merging by maximum can push an *included*
+            // face's corners to 1 when it borders two excluded neighbours, wrongly excluding it.
+            const bool  have_face_flag = !face_excluded.empty();
+            const float face_w         = have_face_flag ? (face_excluded[t] ? 1.f : 0.f) : 0.f;
+            for (int v = 0; v < 3; ++v) {
+                const size_t vidx = size_t(indices[t * 3 + size_t(v)]);
+                out.pos[t * 3 + size_t(v)] = verts.pos[vidx].cast<float>();
+                out.nrm[t * 3 + size_t(v)] = verts.nrm[vidx].cast<float>();
+                if (want_weights)
+                    out.exclude_weight[t * 3 + size_t(v)] =
+                        have_face_flag ? face_w : float(verts.wgt[vidx]);
+            }
         }
-    }
+    });
     return out;
 }
 
@@ -375,9 +387,9 @@ SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
     IndexedMesh        indexed   = fast ? to_indexed_fast(geometry) : to_indexed(geometry);
     QuantizedPointMap *canon_map = indexed.has_canon ? &indexed.pos_canon_map : nullptr;
 
-    std::vector<int>     current_indices  = indexed.indices;
-    std::vector<uint8_t> current_excluded = face_excluded;
     const size_t         initial_tris     = indexed.indices.size() / 3;
+    std::vector<int>     current_indices  = std::move(indexed.indices); // nothing reads it again
+    std::vector<uint8_t> current_excluded = face_excluded;
     std::vector<int>     current_parent(initial_tris);
     for (size_t i = 0; i < initial_tris; ++i)
         current_parent[i] = int(i);
@@ -400,13 +412,19 @@ SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
 
         if (on_progress) {
             // Reported after the pass, so the value falls each iteration instead of lagging a step.
-            double max_edge_sq = 0.0;
-            for (size_t t = 0; t + 2 < current_indices.size(); t += 3) {
-                const int a = current_indices[t], b = current_indices[t + 1], c = current_indices[t + 2];
-                max_edge_sq = std::max({ max_edge_sq, edge_len_sq(indexed.verts, a, b),
-                                         edge_len_sq(indexed.verts, b, c),
+            // A max is order-independent, so the scan reduces in parallel to the same value.
+            const double max_edge_sq = tbb::parallel_reduce(
+                tbb::blocked_range<size_t>(0, current_indices.size() / 3), 0.0,
+                [&](const tbb::blocked_range<size_t> &r, double acc) {
+                    for (size_t f = r.begin(); f < r.end(); ++f) {
+                        const int a = current_indices[f * 3], b = current_indices[f * 3 + 1],
+                                  c = current_indices[f * 3 + 2];
+                        acc = std::max({ acc, edge_len_sq(indexed.verts, a, b), edge_len_sq(indexed.verts, b, c),
                                          edge_len_sq(indexed.verts, c, a) });
-            }
+                    }
+                    return acc;
+                },
+                [](double x, double y) { return std::max(x, y); });
             if (!on_progress(std::min(0.95, double(iter + 1) / SUBDIVIDE_MAX_ITERATIONS),
                              current_indices.size() / 3, std::sqrt(max_edge_sq)))
                 break; // whole passes only, so what we have is still crack-free

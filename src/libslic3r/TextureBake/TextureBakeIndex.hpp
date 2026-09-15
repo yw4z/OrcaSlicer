@@ -9,6 +9,7 @@
 // vertices distinct (they merge at 100 um, giving needle artifacts after displacement) while still
 // absorbing float noise; 1 um is what collapse positioning needs.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -26,8 +27,12 @@ static constexpr double WELD_GRID_DECIMATION = 1e6; // 1 um
 // tie rule matters.
 inline int64_t grid_round(double v) { return int64_t(std::floor(v + 0.5)); }
 
-// Open-addressing table over flat arrays: no allocation per lookup, exact integer key comparison.
+// Open-addressing table, linear probing: no allocation per lookup, exact integer key comparison.
 // Values must be non-negative; -1 is the empty sentinel and what get() returns on a miss.
+//
+// Key and value live together in one 32-byte cell. They used to be four parallel arrays, which made a
+// single probe touch four cache lines - and probing this table was 13% of a whole bake, because every
+// stage welds the full soup through it.
 class QuantizedPointMap
 {
 public:
@@ -46,8 +51,8 @@ public:
 
     int get(float x, float y, float z)
     {
-        return m_val[slot(grid_round(double(x) * m_quant), grid_round(double(y) * m_quant),
-                          grid_round(double(z) * m_quant))];
+        return m_cells[slot(grid_round(double(x) * m_quant), grid_round(double(y) * m_quant),
+                            grid_round(double(z) * m_quant))].val;
     }
     int get(const Vec3f &p) { return get(p.x(), p.y(), p.z()); }
 
@@ -55,35 +60,24 @@ public:
     // return it. inserted() then says which of the two happened.
     int get_or_set(float x, float y, float z, int value)
     {
-        const int64_t qx = grid_round(double(x) * m_quant);
-        const int64_t qy = grid_round(double(y) * m_quant);
-        const int64_t qz = grid_round(double(z) * m_quant);
-        const size_t  i  = slot(qx, qy, qz);
-        if (m_val[i] != -1) {
-            m_inserted = false;
-            return m_val[i];
-        }
-        m_qx[i] = qx; m_qy[i] = qy; m_qz[i] = qz;
-        m_val[i]   = value;
-        m_inserted = true;
-        if (++m_size > size_t(double(m_cap) * 0.7))
-            grow();
-        return value;
+        return get_or_set_key(grid_round(double(x) * m_quant), grid_round(double(y) * m_quant),
+                              grid_round(double(z) * m_quant), value);
     }
     int get_or_set(const Vec3f &p, int value) { return get_or_set(p.x(), p.y(), p.z(), value); }
 
     // The same table as a set of integer tuples (edge marking, midpoint cache). Quantisation is
     // bypassed: routing ids through the float overloads loses precision above 2^24.
-    int get_key(int64_t a, int64_t b, int64_t c) { return m_val[slot(a, b, c)]; }
+    int get_key(int64_t a, int64_t b, int64_t c) { return m_cells[slot(a, b, c)].val; }
     int get_or_set_key(int64_t a, int64_t b, int64_t c, int value)
     {
         const size_t i = slot(a, b, c);
-        if (m_val[i] != -1) {
+        Cell        &cell = m_cells[i];
+        if (cell.val != -1) {
             m_inserted = false;
-            return m_val[i];
+            return cell.val;
         }
-        m_qx[i] = a; m_qy[i] = b; m_qz[i] = c;
-        m_val[i]   = value;
+        cell.qx = a; cell.qy = b; cell.qz = c;
+        cell.val   = value;
         m_inserted = true;
         if (++m_size > size_t(double(m_cap) * 0.7))
             grow();
@@ -91,27 +85,34 @@ public:
     }
 
 private:
+    struct Cell
+    {
+        int64_t qx = 0, qy = 0, qz = 0;
+        int32_t val = -1;
+    };
+
     void alloc(size_t cap)
     {
         m_cap  = cap;
         m_mask = cap - 1;
-        m_qx.assign(cap, 0);
-        m_qy.assign(cap, 0);
-        m_qz.assign(cap, 0);
-        m_val.assign(cap, -1);
+        m_cells.assign(cap, Cell{});
     }
 
     size_t slot(int64_t qx, int64_t qy, int64_t qz) const
     {
-        uint32_t h = uint32_t(int32_t(qx) * int32_t(0x9E3779B1)) ^
-                     uint32_t(int32_t(qy) * int32_t(0x85EBCA77)) ^
-                     uint32_t(int32_t(qz) * int32_t(0xC2B2AE3D));
+        // Unsigned multiplies: the signed versions overflowed on nearly every key, which is undefined
+        // behaviour. The resulting bits are identical on every target OrcaSlicer builds for.
+        //
+        // A stronger 64-bit finalizer was tried and measured no faster - the probing that shows up in a
+        // profile is subdivide's parallel mark count, spread over every core, not long probe chains.
+        uint32_t h = (uint32_t(qx) * 0x9E3779B1u) ^ (uint32_t(qy) * 0x85EBCA77u) ^ (uint32_t(qz) * 0xC2B2AE3Du);
         h ^= h >> 15;
         size_t i = size_t(h) & m_mask;
         // Equality is checked against the stored 64-bit keys, so truncating to 32 bits for the hash
         // costs collisions at worst, never a wrong answer.
-        while (m_val[i] != -1) {
-            if (m_qx[i] == qx && m_qy[i] == qy && m_qz[i] == qz)
+        while (m_cells[i].val != -1) {
+            const Cell &c = m_cells[i];
+            if (c.qx == qx && c.qy == qy && c.qz == qz)
                 return i;
             i = (i + 1) & m_mask;
         }
@@ -120,24 +121,17 @@ private:
 
     void grow()
     {
-        std::vector<int64_t> oqx = std::move(m_qx), oqy = std::move(m_qy), oqz = std::move(m_qz);
-        std::vector<int>     oval = std::move(m_val);
-        const size_t         ocap = m_cap;
-        alloc(ocap * 2);
-        for (size_t i = 0; i < ocap; ++i) {
-            if (oval[i] == -1)
-                continue;
-            const size_t s = slot(oqx[i], oqy[i], oqz[i]);
-            m_qx[s] = oqx[i]; m_qy[s] = oqy[i]; m_qz[s] = oqz[i];
-            m_val[s] = oval[i];
-        }
+        std::vector<Cell> old = std::move(m_cells);
+        alloc(m_cap * 2);
+        for (const Cell &c : old)
+            if (c.val != -1)
+                m_cells[slot(c.qx, c.qy, c.qz)] = c;
     }
 
-    double               m_quant;
-    size_t               m_cap = 0, m_mask = 0, m_size = 0;
-    bool                 m_inserted = false;
-    std::vector<int64_t> m_qx, m_qy, m_qz;
-    std::vector<int>     m_val;
+    double            m_quant;
+    size_t            m_cap = 0, m_mask = 0, m_size = 0;
+    bool              m_inserted = false;
+    std::vector<Cell> m_cells;
 };
 
 // Three consecutive entries per triangle. The indexers turn this into shared vertices where a stage

@@ -120,20 +120,23 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
 
         std::vector<Vec3d> cur = smooth_nrm, nxt(unique_count, Vec3d::Zero());
         for (int iter = 0; iter < settings.blend_normal_smoothing; ++iter) {
-            for (size_t id = 0; id < unique_count; ++id) {
-                const uint32_t s = csr_start[id], e = csr_start[id + 1];
-                if (e == s) {
-                    nxt[id] = cur[id];
-                    continue;
+            // Jacobi, so every vertex reads the previous iteration and the rows are independent.
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, unique_count, 4096), [&](const tbb::blocked_range<size_t> &r) {
+                for (size_t id = r.begin(); id < r.end(); ++id) {
+                    const uint32_t s = csr_start[id], e = csr_start[id + 1];
+                    if (e == s) {
+                        nxt[id] = cur[id];
+                        continue;
+                    }
+                    Vec3d sum = Vec3d::Zero();
+                    for (uint32_t k = s; k < e; ++k)
+                        sum += cur[neighbors[k]];
+                    sum /= double(e - s);
+                    const double len = sum.norm();
+                    // Cancelling neighbours mean a knife edge; keep what we had.
+                    nxt[id] = (len > 1e-12) ? Vec3d(sum / len) : cur[id];
                 }
-                Vec3d sum = Vec3d::Zero();
-                for (uint32_t k = s; k < e; ++k)
-                    sum += cur[neighbors[k]];
-                sum /= double(e - s);
-                const double len = sum.norm();
-                // Cancelling neighbours mean a knife edge; keep what we had.
-                nxt[id] = (len > 1e-12) ? Vec3d(sum / len) : cur[id];
-            }
+            });
             cur.swap(nxt);
         }
         blend_nrm = std::move(cur);

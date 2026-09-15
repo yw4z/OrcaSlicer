@@ -470,6 +470,12 @@ set(lisbslic3r_sources
     TextureBake/TextureBakeSubdivide.hpp
     TextureBake/TextureBakeRegularize.cpp
     TextureBake/TextureBakeRegularize.hpp
+    TextureBake/TextureBakeRelocate.cpp
+    TextureBake/TextureBakeRelocate.hpp
+    TextureBake/TextureBakeFlip.cpp
+    TextureBake/TextureBakeFlip.hpp
+    TextureBake/TextureBakeDebug.cpp
+    TextureBake/TextureBakeDebug.hpp
     TextureBake/TextureBakeDisplace.cpp
     TextureBake/TextureBakeDisplace.hpp
     TextureBake/TextureBakeDecimate.cpp

@@ -80,18 +80,17 @@ Vec3d face_normal_unit(const std::vector<Vec3d> &pos, int a, int b, int c)
 
 // Versions are captured at push time; a mismatch on pop means a later collapse invalidated the entry.
 // Lazy deletion, far cheaper than removing entries eagerly - but it means the heap accumulates stale
-// duplicates, so it grows to several times the edge count and its size has to be reserved up front.
-// Left to grow on its own it reallocates and copies the whole array repeatedly, which on a
-// multi-million-entry heap costs more than every collapse put together.
+// duplicates, so its size has to be reserved up front and it is compacted once the dead entries
+// dominate (see maybe_compact below).
 //
-// The collapse target is stored as float rather than double: it is a position on a mesh already held
-// in float, and halving the entry cuts the memory the sift operations drag through cache.
+// The collapse target is not stored. A matching version stamp means neither endpoint's quadric nor its
+// position has changed since the push, so the target recomputes to exactly the same value on pop - and
+// the entry drops from 40 bytes to 24. Sifting is most of this stage's time, and it is memory traffic.
 struct HeapEntry
 {
     double   cost;
     int      v1, v2;
     uint32_t ver1, ver2;
-    Vec3f    p;
     bool     operator>(const HeapEntry &o) const { return cost > o.cost; }
 };
 
@@ -289,9 +288,31 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         heap.pop_back();
         return e;
     };
-    size_t pops = 0, stale_pops = 0;
+    size_t pops = 0, stale_pops = 0, compactions = 0;
 
-    const auto push_edge = [&](int v1, int v2) {
+    // An entry is stale once either endpoint has been removed or moved by a later collapse.
+    const auto is_stale = [&](const HeapEntry &e) {
+        return !active[size_t(e.v1)] || !active[size_t(e.v2)] || version[size_t(e.v1)] != e.ver1 ||
+               version[size_t(e.v2)] != e.ver2;
+    };
+    // Measured on a 2.4 M -> 750 k run, 82% of pops were stale: every collapse re-pushes the survivor's
+    // edges and orphans the old ones, so the heap grows to several times the live edge set and every
+    // sift walks that much further through memory. Dropping the dead entries and re-heapifying once
+    // they dominate costs one linear pass, amortised against the growth that triggered it.
+    //
+    // Keyed to the live face count rather than to the heap's own size: lazy popping keeps the heap from
+    // ever doubling, but the live edge set (about 1.5 per face) shrinks as decimation proceeds, so by the
+    // end the heap is several times what is still collapsible. Compact once it passes twice that.
+    const auto maybe_compact = [&]() {
+        if (heap.size() < std::max<size_t>(size_t(1) << 16, active_faces * 3))
+            return;
+        heap.erase(std::remove_if(heap.begin(), heap.end(), is_stale), heap.end());
+        std::make_heap(heap.begin(), heap.end(), std::greater<HeapEntry>());
+        ++compactions;
+    };
+
+    // Where an edge collapses to. Also re-run on pop instead of stored - see HeapEntry.
+    const auto collapse_target = [&](int v1, int v2) -> Vec3d {
         Vec3d p;
         if (!solve_q(quadrics, v1, v2, p)) {
             const Vec3d  mid = (pos[size_t(v1)] + pos[size_t(v2)]) * 0.5;
@@ -306,10 +327,16 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             else if (e1 <= e2)          p = pos[size_t(v1)];
             else                        p = pos[size_t(v2)];
         }
+        return p;
+    };
+    const auto push_edge = [&](int v1, int v2) {
+        const Vec3d p = collapse_target(v1, v2);
+        // The cost is evaluated at the exact target and the collapse moves to its float rounding -
+        // the same split as when the rounded target was stored in the entry, so no ordering changes.
         // Where quadric costs are all near zero, shorter edges first keeps triangle quality up.
         const double len2 = (pos[size_t(v2)] - pos[size_t(v1)]).squaredNorm();
         heap_push({ eval_sum(quadrics, v1, v2, p) + len2 * 1e-8, v1, v2, version[size_t(v1)],
-                    version[size_t(v2)], p.cast<float>() });
+                    version[size_t(v2)] });
     };
 
     {
@@ -430,11 +457,7 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             break;
 
         const int v1 = top.v1, v2 = top.v2;
-        if (!active[size_t(v1)] || !active[size_t(v2)]) {
-            ++stale_pops;
-            continue;
-        }
-        if (version[size_t(v1)] != top.ver1 || version[size_t(v2)] != top.ver2) {
+        if (is_stale(top)) {
             ++stale_pops;
             continue;
         }
@@ -443,7 +466,7 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         lk_epoch += 2; // +2 so ep and ep+1 cannot collide with the next call
         if (has_link_violation(v1, v2, lk_epoch))
             continue;
-        const Vec3d target = top.p.cast<double>();
+        const Vec3d target = collapse_target(v1, v2).cast<float>().cast<double>();
         if (check_flipped(v1, v2, target) || check_flipped(v2, v1, target))
             continue;
 
@@ -492,6 +515,7 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                     push_edge(v1, nb);
             }
         }
+        maybe_compact();
 
         if (on_progress) {
             const double p = std::min(1.0, double(init_faces - active_faces) / double(to_remove));
@@ -504,7 +528,8 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     }
 
     BOOST_LOG_TRIVIAL(info) << "TextureBake decimate: pops=" << pops << " stale=" << stale_pops
-                            << " heap_peak=" << heap.capacity() << " faces=" << active_faces;
+                            << " compactions=" << compactions << " heap_peak=" << heap.capacity()
+                            << " faces=" << active_faces;
 
     // Rebuild from the surviving faces, with per-face normals.
     TriSoup &out = result.geometry;

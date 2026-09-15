@@ -21,11 +21,17 @@
 #include "TextureBakeDisplace.hpp"
 #include "TextureBakeIndex.hpp"
 #include "TextureBakeRegularize.hpp"
+#include "TextureBakeFlip.hpp"
 #include "TextureBakeRelocate.hpp"
 #include "TextureBakeRepair.hpp"
 #include "TextureBakeSubdivide.hpp"
 
 namespace Slic3r {
+
+// Optional step-by-step capture; see TextureBakeDebug.hpp. A pointer, and forward declared, so the
+// pipeline header stays free of the mesh types the recorder converts into.
+class BakeStageRecorder;
+
 namespace TextureBake {
 
 enum class PipelineMode
@@ -53,10 +59,17 @@ struct PipelineSettings
     bool             relocate = false;
     RelocateSettings relocate_opts;
 
+    // Choose each quad's diagonal to follow the height field before displacing, so a step that crosses
+    // the grid at an angle comes out as a straight wall instead of a sawtooth. See TextureBakeFlip.hpp.
+    bool         flip_edges = true;
+    FlipSettings flip_opts;
+
     DisplaceSettings displace;
 
     // Export mode only.
     size_t max_triangles = 750'000;
+    // Keep removing zero-cost flat faces past the target. Only applies when decimation runs, i.e. when
+    // the displaced mesh is over max_triangles - an under-budget mesh is never decimated.
     bool   harvest_flat  = true;
     double harvest_tol   = DECIMATE_DEFAULT_HARVEST_TOL;
     // Lock the untextured region against both regularization and decimation.
@@ -86,10 +99,13 @@ struct PipelineResult
     bool             canceled           = false;
 };
 
+// `debug`, when given and enabled, receives the mesh after every stage that ran - which is the only
+// way to tell which stage a bad result came from, since each one rewrites the whole mesh.
 PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                             const PipelineSettings &settings, const DisplaceBounds &bounds,
                             PipelineMode mode, const std::vector<uint8_t> &face_excluded = {},
-                            const PipelineProgressFn &on_progress = {});
+                            const PipelineProgressFn &on_progress = {},
+                            BakeStageRecorder *debug = nullptr);
 
 // Snap anything that ended below the model's original bottom back up to it.
 void clamp_below_bottom(TriSoup &geometry, float bottom_z);

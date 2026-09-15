@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <numeric>
+
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
 
 namespace Slic3r {
 namespace TextureBake {
@@ -286,31 +288,38 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
         return true;
     };
 
+    // Per-triangle thinness for a round's candidate scan; -1 marks "not a candidate". Scored in
+    // parallel, since the scan only reads the mesh, then gathered serially in index order.
+    std::vector<double> round_aspect(tri_count);
     for (int round = 0; round < opts.maxrounds; ++round) {
         // Rebuilt each round so earlier collapses inform the priorities.
-        std::vector<int>    cand;
-        std::vector<double> cand_aspect;
-        for (size_t t = 0; t < tri_count; ++t) {
-            if (tri_deleted[t])
-                continue;
-            const int a = corners[t * 3], b = corners[t * 3 + 1], c = corners[t * 3 + 2];
-            if (std::min({ sq_dist(a, b), sq_dist(b, c), sq_dist(c, a) }) <= 0.0)
-                continue;
-            const double aspect2 = tri_aspect_sq(t);
-            if (aspect2 < aspect_thr2)
-                continue;
-            cand.push_back(int(t));
-            cand_aspect.push_back(aspect2);
-        }
-        // Worst first; ties keep ascending order so the pass is deterministic.
-        std::vector<int> order(cand.size());
-        std::iota(order.begin(), order.end(), 0);
-        std::stable_sort(order.begin(), order.end(),
-                         [&](int x, int y) { return cand_aspect[size_t(x)] > cand_aspect[size_t(y)]; });
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, tri_count), [&](const tbb::blocked_range<size_t> &r) {
+            for (size_t t = r.begin(); t < r.end(); ++t) {
+                round_aspect[t] = -1.0;
+                if (tri_deleted[t])
+                    continue;
+                const int a = corners[t * 3], b = corners[t * 3 + 1], c = corners[t * 3 + 2];
+                if (std::min({ sq_dist(a, b), sq_dist(b, c), sq_dist(c, a) }) <= 0.0)
+                    continue;
+                const double aspect2 = tri_aspect_sq(t);
+                if (aspect2 >= aspect_thr2)
+                    round_aspect[t] = aspect2;
+            }
+        });
+        // Worst first; ties keep ascending triangle order so the pass is deterministic. Sorting the
+        // (thinness, triangle) pairs themselves gives exactly the order the index sort with its
+        // indirect comparator did, without that comparator's extra lookup on every comparison.
+        std::vector<std::pair<double, int>> cand;
+        for (size_t t = 0; t < tri_count; ++t)
+            if (round_aspect[t] >= 0.0)
+                cand.emplace_back(round_aspect[t], int(t));
+        std::sort(cand.begin(), cand.end(), [](const std::pair<double, int> &x, const std::pair<double, int> &y) {
+            return x.first != y.first ? x.first > y.first : x.second < y.second;
+        });
 
         size_t round_collapses = 0;
-        for (const int oi : order) {
-            const size_t t = size_t(cand[size_t(oi)]);
+        for (const std::pair<double, int> &entry : cand) {
+            const size_t t = size_t(entry.second);
             if (tri_deleted[t])
                 continue;
             const int a = corners[t * 3], b = corners[t * 3 + 1], c = corners[t * 3 + 2];
@@ -332,8 +341,13 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
 
     // Drop deleted triangles and rebuild the soup.
     const bool have_weights = !geometry.exclude_weight.empty();
+    const size_t survivors = tri_count - size_t(std::count(tri_deleted.begin(), tri_deleted.end(), uint8_t(1)));
     std::vector<int> out_parent;
     TriSoup         &out = result.geometry;
+    out_parent.reserve(survivors);
+    out.pos.reserve(survivors * 3);
+    if (have_weights)
+        out.exclude_weight.reserve(survivors * 3);
     for (size_t t = 0; t < tri_count; ++t) {
         if (tri_deleted[t])
             continue;
@@ -351,7 +365,6 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
     // Rebuilt from the compacted geometry - the collapses moved vertices.
     out.nrm.assign(out.pos.size(), Vec3f::Zero());
     {
-        std::vector<Vec3d> accum(out.pos.size(), Vec3d::Zero());
         QuantizedPointMap  weld(WELD_GRID_GEOMETRY, out.pos.size());
         std::vector<int>   vid(out.pos.size());
         int                next = 0;
