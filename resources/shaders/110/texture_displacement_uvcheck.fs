@@ -16,6 +16,7 @@ uniform bool volume_mirrored;
 uniform int   mode;
 uniform float checker_freq;
 uniform float tiling_scale;
+uniform vec3  tex_anchor; // the volume's origin in world space
 uniform float rotation_rad;
 uniform vec2  uv_offset;
 uniform bool  use_vertex_uv;
@@ -49,7 +50,9 @@ void main()
     if (any(lessThan(clipping_planes_dots, ZERO)))
         discard;
 
-    vec3 triangle_normal = normalize(cross(dFdx(model_pos.xyz), dFdy(model_pos.xyz)));
+    // World space anchored at the volume's origin, like the bake and the bump preview.
+    vec3 triangle_normal = normalize(cross(dFdx(world_pos.xyz), dFdy(world_pos.xyz)));
+    vec3 tex_pos = world_pos.xyz - tex_anchor;
     if (volume_mirrored)
         triangle_normal = -triangle_normal;
 
@@ -57,7 +60,7 @@ void main()
     if (mode == 1) {
         base = heatmap(distortion);
     } else {
-        vec2 uv = use_vertex_uv ? vertex_uv : project_uv(model_pos.xyz, triangle_normal);
+        vec2 uv = use_vertex_uv ? vertex_uv : project_uv(tex_pos, triangle_normal);
         vec2 c  = floor(uv * checker_freq);
         float check = mod(c.x + c.y, 2.0);
         base = (check < 0.5) ? vec3(0.22, 0.23, 0.26) : vec3(0.82, 0.83, 0.86);

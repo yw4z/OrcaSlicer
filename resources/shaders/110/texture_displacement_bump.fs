@@ -46,7 +46,8 @@ uniform float      rotation_rad;
 uniform vec2       uv_offset;
 uniform bool       invert;
 uniform float      midlevel;      // the height that means "don't move"; needed by the parallax step
-uniform vec3       eye_model_pos; // camera position in this volume's local space, for the view ray
+uniform vec3       eye_model_pos; // camera position in the texture frame (world minus tex_anchor)
+uniform vec3       tex_anchor;    // the volume's origin in world space: the texture frame's origin
 uniform bool       use_vertex_uv;
 // 2x3 affine (lin = (m00, m01, m10, m11), tr = (m02, m12)) applied to the dragged island's uv; see the
 // 140 variant. Identity when nothing is dragged.
@@ -134,7 +135,9 @@ void main()
     if (any(lessThan(clipping_planes_dots, ZERO)))
         discard;
 
-    vec3 triangle_normal = normalize(cross(dFdx(model_pos.xyz), dFdy(model_pos.xyz)));
+    // World millimetres throughout, like the bake - see the 140 variant.
+    vec3 triangle_normal = normalize(cross(dFdx(world_pos.xyz), dFdy(world_pos.xyz)));
+    vec3 tex_pos = world_pos.xyz - tex_anchor; // the frame the texture is projected in, as the bake does
     if (volume_mirrored)
         triangle_normal = -triangle_normal;
 
@@ -155,8 +158,8 @@ void main()
         have_uv  = true;
         float h = texture2D(height_tex, uv).r;
         float k = (invert ? -1.0 : 1.0) * depth_mm * clamp(weight, 0.0, 1.0);
-        vec3  sigmaS = dFdx(model_pos.xyz);
-        vec3  sigmaT = dFdy(model_pos.xyz);
+        vec3  sigmaS = dFdx(world_pos.xyz);
+        vec3  sigmaT = dFdy(world_pos.xyz);
         vec3  R1 = cross(sigmaT, triangle_normal);
         vec3  R2 = cross(triangle_normal, sigmaS);
         float det = dot(sigmaS, R1);
@@ -171,9 +174,9 @@ void main()
         // Parallax occlusion mapping: march the view ray through the height shell and shade at the
         // first point where it drops below the displaced surface (see header).
         float amp      = (invert ? -1.0 : 1.0) * depth_mm * clamp(weight, 0.0, 1.0);
-        vec3  view_dir = normalize(eye_model_pos - model_pos.xyz);
+        vec3  view_dir = normalize(eye_model_pos - tex_pos);
         float v_dot_n  = dot(view_dir, triangle_normal);
-        vec2  uv       = project_uv(model_pos.xyz, triangle_normal);
+        vec2  uv       = project_uv(tex_pos, triangle_normal);
 
         // The shell the displaced surface lives inside, as signed heights along the normal. Taken from
         // both ends of h in [0, 1] so it stays correct for an inverted layer or a raised midlevel,
@@ -192,11 +195,11 @@ void main()
             // by construction, and step inward; the crossing is what this pixel actually sees.
             float s        = h_hi / v_dot_n;
             float ds       = (h_hi - h_lo) / (v_dot_n * float(PARALLAX_STEPS));
-            vec2  prev_uv  = project_uv(model_pos.xyz + view_dir * s, triangle_normal);
+            vec2  prev_uv  = project_uv(tex_pos + view_dir * s, triangle_normal);
             float prev_gap = h_hi - amp * (H_AT(prev_uv) - midlevel); // >= 0 by construction
             for (int i = 0; i < PARALLAX_STEPS; ++i) {
                 s -= ds;
-                vec2  cur_uv = project_uv(model_pos.xyz + view_dir * s, triangle_normal);
+                vec2  cur_uv = project_uv(tex_pos + view_dir * s, triangle_normal);
                 float gap    = s * v_dot_n - amp * (H_AT(cur_uv) - midlevel);
                 if (gap <= 0.0) {
                     // Crossed between the last two samples - interpolating the hit is what stops it
