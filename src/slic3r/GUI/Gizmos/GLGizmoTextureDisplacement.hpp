@@ -2,6 +2,7 @@
 #define slic3r_GLGizmoTextureDisplacement_hpp_
 
 #include "GLGizmoPainterBase.hpp"
+#include "libslic3r/TextureBake/TextureBakeDebug.hpp"
 #include "libslic3r/TextureDisplacement.hpp"
 #include "slic3r/GUI/GLModel.hpp"
 #include "slic3r/GUI/GLTexture.hpp"
@@ -46,7 +47,11 @@ public:
                                                          const std::vector<TextureDisplacementLayer> &layers,
                                                          const TextureDisplacementPrepareParams      &params,
                                                          const std::vector<PrintableColor>           &palette,
-                                                         const DisplacementProgressFn                &progress);
+                                                         const DisplacementProgressFn                &progress,
+                                                         // Optional step capture: receives the mesh
+                                                         // after the remesh and after the refinement,
+                                                         // so a debug run can show the whole recipe.
+                                                         BakeStageRecorder                           *debug = nullptr);
     // The volume's eight texture-displacement masks, gathered into the array every pure function here
     // (and every job input) takes.
     static TextureDisplacementFacetsData facets_data_of(const ModelVolume &mv);
@@ -135,8 +140,10 @@ protected:
     std::string get_gizmo_leaving_text() const override { return _u8L("Leaving Texture displacement painting"); }
     std::string get_action_snapshot_name() const override { return _u8L("Texture displacement editing"); }
 
-    EnforcerBlockerType get_left_button_state_type() const override { return EnforcerBlockerType::ENFORCER; }
-    EnforcerBlockerType get_right_button_state_type() const override { return EnforcerBlockerType::NONE; }
+    // The panel's Paint / Erase toggle swaps what the two buttons do, so the right button always does the
+    // opposite of the left. Shift still erases in both modes (GLGizmoPainterBase::gizmo_event()).
+    EnforcerBlockerType get_left_button_state_type() const override { return m_erase_mode ? EnforcerBlockerType::NONE : EnforcerBlockerType::ENFORCER; }
+    EnforcerBlockerType get_right_button_state_type() const override { return m_erase_mode ? EnforcerBlockerType::ENFORCER : EnforcerBlockerType::NONE; }
 
 private:
     bool on_init() override;
@@ -154,6 +161,13 @@ private:
 
     void add_texture_layer();
     void remove_texture_layer(int slot);
+    // Moves the layer in `slot` to position `to_index` of the slot-ordered stack (an insertion index,
+    // 0..layer count), which is the order blend modes apply in. Layers keep their data; what moves is
+    // the slot each one occupies, so their paint masks move with them on every model part.
+    void move_texture_layer(int slot, int to_index);
+    // Exchanges everything two slots hold - layer definition, paint masks, panel caches. No snapshot and
+    // no selector reload; move_texture_layer() does both once around a run of these.
+    void swap_layer_slots(int slot_a, int slot_b);
     void set_active_layer(int slot); // flushes the previous layer's edits, then reloads selectors
     // `own_snapshot` false when the caller has already taken an undo step that is meant to cover the
     // displacement too - see bake_standard().
@@ -299,18 +313,21 @@ private:
     };
     const LibraryTexture *get_library_texture(const std::string &path);
 
-    // The layer's texture chooser: a drop-down whose closed state and every one of whose entries
-    // shows a large preview image on the left and the texture's name on the right, plus an adjacent
-    // button that imports an image file from disk into the user texture folder. Shipped and
-    // user-imported textures are listed under separate headings.
-    void render_texture_picker(TextureDisplacementLayer &layer);
+    // The texture library: a popup grid of thumbnails beside the panel, shipped textures and the user's
+    // own under separate headings, with a tile that imports an image from disk. Opened for
+    // m_picker_slot by a click on a layer's thumbnail or name. `panel_min`/`panel_max` are the panel
+    // window's screen rectangle, which the popup is placed against.
+    void render_texture_library_popup(const ImVec2 &panel_min, const ImVec2 &panel_max);
+    int  m_picker_slot         = -1;
+    bool m_picker_open_request = false;
     void set_layer_texture(TextureDisplacementLayer &layer, const TextureLibraryEntry &entry);
     void import_custom_texture(TextureDisplacementLayer &layer);
-    // Draws a picker row (image left, name right) on top of a full-width Selectable, and leaves the
-    // cursor below it. Shared by the drop-down's closed state and its individual entries so the two
-    // cannot drift apart. Returns true when the row is clicked.
-    bool  texture_row(const char *id, const std::string &name, GLTexture *thumbnail, bool selected, float width);
-    float texture_row_height() const;
+
+    // Paint / Erase, from the panel. See get_left_button_state_type().
+    bool m_erase_mode = false;
+    // Per slot: whether the layer's card shows every setting or only Depth, Tile size and Rotation.
+    // Panel state only, not saved with the project.
+    std::array<bool, TEXTURE_DISPLACEMENT_MAX_LAYERS> m_layer_expanded{};
 
     // "Adjust Texture" mode: instead of painting, dragging an on-canvas handle changes the active
     // layer's offset. The handle is a flat panel lying in the paint patch's own tangent plane
@@ -400,7 +417,21 @@ private:
     // Handles a toolbar command forwarded from the UV pane that needs the layer data the canvas
     // doesn't hold (average island scale, cut island). Takes the command as an int (a cast of
     // UVEditorCanvas::Command) so this header needn't pull in glad/wxGLCanvas via the canvas header.
-    void on_uv_command(int cmd);
+    void on_uv_command(int cmd, float value);
+    // Pane commands, queued by on_uv_command() and run from the panel render: pane clicks arrive in wx event
+    // handlers, outside the 3D canvas's GL frame, and several of these rebuild GPU meshes.
+    std::vector<std::pair<int, float>> m_uv_command_queue;
+    void process_uv_commands();
+    void run_uv_command(int cmd, float value);
+    // Sends the UV editor pane what its controls show (see UVEditorCanvas::PaneState).
+    void push_uv_pane_state();
+    // The panel's view modes: 0 Normal, 1 Fast, 2 Checker, 3 Distortion. Shared by the View row and the pane's
+    // background buttons, so both switch views the same way.
+    void apply_view_mode(int mode);
+    // The pane header's thumbnail of the active layer's texture, rebuilt only when its image changes.
+    static constexpr int       UV_THUMB_PX       = 64;
+    const void                *m_uv_thumb_source = nullptr;
+    std::vector<unsigned char> m_uv_thumb_rgb;
     // Splits one unwrap chart in two by marking the mesh edges that straddle the plane through its
     // 3D centroid, perpendicular to its longest axis, as seams (#17). The re-unwrap then separates it.
     void cut_island(TextureDisplacementLayer &layer, int chart);
@@ -543,6 +574,41 @@ private:
     bool  m_remesh_keep_sharp_edges  = true;
     void  remesh_model();
 
+    // ---- Bake stage debug view ----
+    //
+    // A bake is a chain of stages that each rewrite the whole mesh, so when the result looks wrong the
+    // only useful question is which stage made it wrong. "Capture stages" runs the same recipe Bake
+    // runs, keeps every intermediate mesh, and draws the selected one through the ordinary
+    // true-displacement preview - so this needs no rendering code of its own.
+    //
+    // The run commits nothing: TextureDisplacementDebugJob never touches the Model.
+    std::vector<BakeStageSnapshot> m_debug_stages;
+    // Which stage is on screen. -1 means the debug view is off and the live preview owns
+    // m_preview_glmodel again; rebuild_preview() checks this before replacing it.
+    int  m_debug_stage          = -1;
+    bool m_debug_in_progress    = false;
+    // The open / non-manifold counts come from a sort over every half-edge, which on a multi-million
+    // triangle stage costs more than the stage did. On by default because a stage that tore the mesh
+    // is exactly what this exists to find.
+    bool m_debug_check_topology = true;
+
+    // The default pipeline's automatic resolution/budget for the volume, cached on what it depends on.
+    const V2Resolution &v2_recommendation(const ModelVolume &mv);
+    V2Resolution        m_v2_rec;
+    std::string         m_v2_rec_key;
+
+    // Queues the capture run. Uses Standard mode's recipe (remesh, refine, displace) unless Pro mode
+    // has already prepared the mesh or the experimental pipeline is on, either of which has nothing
+    // to prepare.
+    void run_stage_debug();
+    // Puts stage `index` on screen. A stage over the memory cap has counts but no geometry and is
+    // skipped.
+    void show_debug_stage(int index);
+    // Drops the captured stages and hands m_preview_glmodel back to the live preview.
+    void exit_debug_view();
+    // The panel: capture button, stage list, and what each stage produced.
+    void render_debug_stage_panel(ModelVolume *mv);
+
     // Live, pre-bake preview of the true displaced geometry (built by the same algorithm Bake
     // uses). Empty/uninitialized whenever nothing is painted yet, in which case the gizmo falls
     // back to the standard paint-mask overlay like every other painting gizmo.
@@ -621,6 +687,10 @@ private:
     // the shader projects on its own. Shared by the bump preview and the UV-check overlay.
     std::vector<Vec2f> compute_layer_vertex_uvs(const indexed_triangle_set &patch,
                                                 const TextureDisplacementLayer &layer) const;
+    // `patch` with its vertices moved into world millimetres - the space the bake maps the texture in
+    // (see build_texture_displacement()). Returned by value because the caller usually still needs the
+    // original: the patch doubles as render geometry, which is drawn through the volume's own matrix.
+    indexed_triangle_set patch_in_world(const indexed_triangle_set &patch) const;
 
     // UV-check overlay drawn over the painted patch to sanity-check the unwrap (#13/#14). Built by
     // rebuild_uvcheck_mesh(), drawn by render_uvcheck_mesh() with the "texture_displacement_uvcheck"
@@ -655,6 +725,7 @@ private:
     enum class UVBackground { None, Height, Checker };
     UVBackground m_uv_editor_bg = UVBackground::None;
     float        m_uv_editor_bg_smoothing = -1.f; // smoothing the height backdrop was uploaded at
+    const void  *m_uv_editor_bg_image     = nullptr; // the layer image it was uploaded from
     // Per-chart distortion heatmap colour for the UV pane (#7/#14), computed once when the unwrap is
     // re-solved (relative stretch doesn't change when islands are merely moved), fed to the canvas only
     // while the Distortion check mode is on. Empty otherwise.
@@ -751,6 +822,18 @@ private:
     // open/close within a session, so the choice sticks while working.
     bool m_undocked = false;
 
+    // Smooth scrolling for the panel body (everything between the header and the pinned Bake footer).
+    // ImGui jumps a fixed number of lines per wheel notch, which on tall layer cards reads as a hard
+    // jolt rather than a scroll. The wheel is intercepted (ImGuiWindowFlags_NoScrollWithMouse) and
+    // moves a *target* offset instead; the real scroll is eased toward it over the following frames.
+    float m_panel_scroll_target  = 0.f;
+    float m_panel_scroll_applied = -1.f; // what the easing wrote last frame; <0 until the first one
+    // Last frame's body content height and footer height. The body is a child window that has to be
+    // given its height before its content is laid out, so it is sized from the previous frame: as tall
+    // as its content, capped so the footer still fits above the bottom of the canvas.
+    float m_panel_body_h   = 0.f;
+    float m_panel_footer_h = 0.f;
+
     // See the "Adjust Texture" block of private methods above.
     bool  m_adjust_texture_mode      = false;
     bool  m_adjust_anchor_valid      = false;
@@ -774,14 +857,7 @@ private:
 
     std::map<std::string, wxString> m_desc;
 
-    // The tool's SVG (toolbar_texture_displacement.svg) uploaded once as a GL texture, so it can be
-    // used as an ImGui image button in the panel (currently the "add layer" affordance next to the
-    // Texture layers heading). Lazily loaded on first use, when a GL context is guaranteed current.
-    GLTexture    m_tool_icon;
-    bool         m_tool_icon_tried = false;
-    unsigned int tool_icon_id(); // 0 if the icon could not be loaded
-
-    // Icons for the panel's selection-mode and view-mode button rows. Loaded through IconManager with
+    // Icons for the panel's icon buttons (tools, views, mapping, tiling, layer actions). Loaded through IconManager with
     // the same colour/monochrome variants the main toolbar uses, so an inactive button shows the icon in
     // the theme's normal (grey) foreground colour and an active one shows it in its original colours -
     // matching the toolbar's selected/unselected look. Uploaded once on first panel render.

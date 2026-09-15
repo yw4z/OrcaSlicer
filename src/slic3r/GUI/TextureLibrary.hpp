@@ -16,8 +16,9 @@ struct TextureLibraryEntry
     bool        is_user; // imported by the user, as opposed to shipped with OrcaSlicer
 };
 
-// Every available height-map texture: the ones shipped in resources/textures/displacement first,
-// then the user's own from <data_dir>/textures/displacement, each group sorted by name.
+// Every available height-map texture: the ones shipped in resources/textures/displacement first, sorted
+// by name, then the user's own from <data_dir>/textures/displacement - most recently used first (see
+// touch_user_texture()), then any never used, by name.
 //
 // The two live in separate directories deliberately: an app update replaces the resources tree
 // wholesale, so anything the user imported has to sit somewhere that update can never overwrite or
@@ -26,6 +27,17 @@ struct TextureLibraryEntry
 // Scanned once and cached. Pass force_rescan after an import, or to pick up a file the user dropped
 // into either folder by hand while the app was running.
 const std::vector<TextureLibraryEntry> &texture_library(bool force_rescan = false);
+
+// Moves one of the user's own textures to the front of the recently-used order texture_library() lists
+// them in, and stores that order in the app config so it survives a restart. No-op for anything that is
+// not in user_texture_dir().
+void touch_user_texture(const std::string &path);
+
+// Deletes one of the user's own imported textures from user_texture_dir() and forgets it. Anything outside
+// that folder is refused, so a shipped texture can never be removed this way. Layers already using the
+// texture are unaffected: they hold the image bytes themselves, and a project stores those. Returns false
+// with `error` set on failure.
+bool remove_user_texture(const std::string &path, std::string &error);
 
 // <data_dir>/textures/displacement, created if it does not exist yet. Empty string on failure.
 std::string user_texture_dir();

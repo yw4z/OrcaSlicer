@@ -7484,6 +7484,12 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
                                             .Right()
                                             .Hide()
                                             .BestSize(wxSize(40 * wxGetApp().em_unit(), 40 * wxGetApp().em_unit())));
+    // Closing the pane with its own X has to reach the gizmo, or its next update would simply show the pane again.
+    q->Bind(wxEVT_AUI_PANE_CLOSE, [this](wxAuiManagerEvent &evt) {
+        evt.Skip();
+        if (evt.GetPane() != nullptr && evt.GetPane()->window == uv_editor_panel && uv_editor_canvas != nullptr)
+            uv_editor_canvas->run_command(UVEditorCanvas::Command::PaneClosed);
+    });
 
     auto* panel_sizer = new wxBoxSizer(wxHORIZONTAL);
     panel_sizer->Add(view3D, 1, wxEXPAND | wxALL, 0);

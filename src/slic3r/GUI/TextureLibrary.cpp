@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <fstream>
+#include <limits>
+#include <unordered_map>
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/filesystem.hpp>
@@ -15,7 +17,10 @@
 #include "libslic3r/PNGReadWrite.hpp"
 #include "libslic3r/Utils.hpp"
 
+#include "libslic3r/AppConfig.hpp"
+
 #include "slic3r/GUI/GUI.hpp"
+#include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/I18N.hpp"
 
 namespace Slic3r::GUI {
@@ -168,6 +173,70 @@ bool is_supported_height_map(const std::vector<unsigned char> &bytes)
 std::vector<TextureLibraryEntry> g_library;
 bool                             g_library_scanned = false;
 
+// The user's own textures, most recently used first, kept in the app config. File names are stored rather
+// than paths so the order survives a moved data directory; '/' separates them because no platform allows
+// it inside a file name. Bounded so a long-lived config does not grow a line without end.
+const char *const RECENT_SECTION = "texture_displacement";
+const char *const RECENT_KEY     = "recent_textures";
+const size_t      RECENT_MAX     = 200;
+
+std::vector<std::string> recent_texture_names()
+{
+    std::vector<std::string> names;
+    if (wxGetApp().app_config == nullptr)
+        return names;
+    const std::string value = wxGetApp().app_config->get(RECENT_SECTION, RECENT_KEY);
+    for (size_t begin = 0; begin <= value.size();) {
+        const size_t end = std::min(value.find('/', begin), value.size());
+        if (end > begin)
+            names.push_back(value.substr(begin, end - begin));
+        begin = end + 1;
+    }
+    return names;
+}
+
+void store_recent_texture_names(std::vector<std::string> names)
+{
+    if (wxGetApp().app_config == nullptr)
+        return;
+    if (names.size() > RECENT_MAX)
+        names.resize(RECENT_MAX);
+    std::string value;
+    for (const std::string &name : names)
+        value += (value.empty() ? "" : "/") + name;
+    wxGetApp().app_config->set(RECENT_SECTION, RECENT_KEY, value);
+}
+
+// Reorders the user's entries (the tail of `library`) by recent use. Stable, so textures never used keep
+// the name order scan_dir() gave them, after every used one.
+void sort_user_textures(std::vector<TextureLibraryEntry> &library)
+{
+    const std::vector<std::string>       names = recent_texture_names();
+    std::unordered_map<std::string, int> rank;
+    for (size_t i = 0; i < names.size(); ++i)
+        rank.emplace(names[i], int(i));
+    const auto rank_of = [&rank](const TextureLibraryEntry &e) {
+        const auto it = rank.find(boost::filesystem::path(e.path).filename().string());
+        return it == rank.end() ? std::numeric_limits<int>::max() : it->second;
+    };
+    const auto first_user = std::find_if(library.begin(), library.end(), [](const TextureLibraryEntry &e) { return e.is_user; });
+    std::stable_sort(first_user, library.end(),
+                     [&rank_of](const TextureLibraryEntry &a, const TextureLibraryEntry &b) { return rank_of(a) < rank_of(b); });
+}
+
+// True if `path` is a file directly inside user_texture_dir() - the only place textures may be removed
+// from, or have their use recorded.
+bool in_user_texture_dir(const std::string &path)
+{
+    const std::string dir = user_texture_dir();
+    if (dir.empty())
+        return false;
+    boost::system::error_code ec;
+    const bool                same = boost::filesystem::equivalent(boost::filesystem::path(path).parent_path(),
+                                                                   boost::filesystem::path(dir), ec);
+    return !ec && same;
+}
+
 } // namespace
 
 std::string user_texture_dir()
@@ -192,9 +261,45 @@ const std::vector<TextureLibraryEntry> &texture_library(bool force_rescan)
     const std::string user_dir = user_texture_dir();
     if (!user_dir.empty())
         scan_dir(boost::filesystem::path(user_dir), true, g_library);
+    sort_user_textures(g_library);
 
     g_library_scanned = true;
     return g_library;
+}
+
+void touch_user_texture(const std::string &path)
+{
+    if (!in_user_texture_dir(path))
+        return;
+    const std::string        name  = boost::filesystem::path(path).filename().string();
+    std::vector<std::string> names = recent_texture_names();
+    names.erase(std::remove(names.begin(), names.end(), name), names.end());
+    names.insert(names.begin(), name);
+    store_recent_texture_names(std::move(names));
+    if (g_library_scanned)
+        sort_user_textures(g_library);
+}
+
+bool remove_user_texture(const std::string &path, std::string &error)
+{
+    if (!in_user_texture_dir(path)) {
+        error = _u8L("Only your own imported textures can be removed.");
+        return false;
+    }
+    boost::system::error_code ec;
+    boost::filesystem::remove(boost::filesystem::path(path), ec);
+    if (ec) {
+        BOOST_LOG_TRIVIAL(error) << "Could not delete texture " << path << ": " << ec.message();
+        error = _u8L("Could not delete the texture file.");
+        return false;
+    }
+
+    const std::string        name  = boost::filesystem::path(path).filename().string();
+    std::vector<std::string> names = recent_texture_names();
+    names.erase(std::remove(names.begin(), names.end(), name), names.end());
+    store_recent_texture_names(std::move(names));
+    texture_library(true); // drop it from the list
+    return true;
 }
 
 std::optional<TextureLibraryEntry> import_texture_to_library(const std::string &source_path, std::string &error)

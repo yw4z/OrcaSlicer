@@ -15,11 +15,16 @@
 #include <wx/button.h>
 #include <wx/tglbtn.h>
 #include <wx/stattext.h>
+#include <wx/statbmp.h>
 #include <wx/sizer.h>
 
 #include "libslic3r/Point.hpp"
 #include "GLModel.hpp"
 #include "GLTexture.hpp"
+
+// Orca's own widgets (slic3r/GUI/Widgets), declared at global scope.
+class SpinInput;
+class CheckBox;
 
 namespace Slic3r::GUI {
 
@@ -92,13 +97,49 @@ public:
     void set_snap_enabled(bool enabled) { m_snap_enabled = enabled; }
     bool snap_enabled() const { return m_snap_enabled; }
 
-    // High-level actions the pane toolbar triggers. The canvas handles the view-only ones (framing,
+    // High-level actions the pane's controls trigger. The canvas handles the view-only ones (framing,
     // the snap toggle) itself and forwards the rest to whoever owns the island data (the gizmo), via
     // the command callback - the canvas has the selection and the view, the gizmo has the layer.
-    enum class Command { FrameAll, ToggleSnap, AverageScale, CutSelectedIsland, ProjectFromView, JoinSelected, UnjoinSelected };
-    void run_command(Command cmd);
-    using CommandFn = std::function<void(Command)>;
+    // `value` carries the new setting for the Set* commands (an angle, a flag as 0/1, or an index into
+    // SelectMode / Background) and is 0 otherwise.
+    enum class Command {
+        FrameAll, ToggleSnap, AverageScale, CutSelectedIsland, ProjectFromView, JoinSelected, UnjoinSelected,
+        Unwrap, SetSeamAngle, SetConnectIslands, SetSelectMode, SetMarkSeams, SetSeamPath, ClearSeams, ClearUVEdits,
+        SetBackground, PickTexture, PaneClosed
+    };
+    void run_command(Command cmd, float value = 0.f);
+    using CommandFn = std::function<void(Command, float)>;
     void set_command_callback(CommandFn fn) { m_on_command = std::move(fn); }
+
+    // What the canvas shows under the islands; mirrors the gizmo's Normal/Checker/Distortion views.
+    enum class Background { Height, Checker, Distortion };
+
+    // Everything the pane's own controls show that the gizmo owns: the active layer and its unwrap settings.
+    // The gizmo pushes it whenever any of it may have changed, and the pane redraws its header, settings row
+    // and tool strip from it - so the controls never hold state of their own that could drift from the layer.
+    struct PaneState
+    {
+        bool                       has_layer       = false; // an active layer mapped with Unwrap
+        wxString                   layer_name;
+        float                      tile_mm         = 0.f;
+        std::vector<unsigned char> thumbnail_rgb;           // thumbnail_px square, 3 bytes per pixel; empty for none
+        int                        thumbnail_px    = 0;
+        float                      seam_angle_deg  = 40.f;
+        bool                       connect_islands = true;
+        bool                       unwrapped       = false; // an unwrap exists for this layer
+        bool                       unwrap_stale    = false; // paint, seams or the seam angle changed since it was made
+        bool                       mark_seams      = false;
+        bool                       seam_path       = false;
+        bool                       has_seams       = false;
+        bool                       has_uv_edits    = false;
+        Background                 background      = Background::Height;
+        int                        island_count    = 0;
+        size_t                     face_count      = 0;
+    };
+    void             set_pane_state(PaneState state);
+    const PaneState &pane_state() const { return m_pane_state; }
+    using PaneStateFn = std::function<void(const PaneState &)>;
+    void set_pane_state_callback(PaneStateFn fn) { m_on_pane_state = std::move(fn); }
 
     // Called whenever the one-line status/hint text changes (current gesture + the shortcuts that
     // apply right now), so the pane can show it Blender-style along the bottom.
@@ -133,11 +174,21 @@ public:
     // The primary (last-clicked) island, still the pivot for rotate/scale and the target of the
     // single-island toolbar commands (Cut/Join/Unjoin). -1 if nothing is selected.
     int  selected_island() const { return m_selected_island; }
+    // Whether there is an unwrap on screen at all.
+    bool has_islands() const { return m_islands.island_count > 0 && !m_islands.indices.empty(); }
     // The full multi-selection (Shift adds, Ctrl toggles). Always contains m_selected_island when it is
     // >= 0. The gizmo reads this to decide which islands a drag moves together, unioned with each
     // selected island's join group.
     const std::vector<int> &selected_islands() const { return m_selection; }
     void reset_view();
+    // Rebuilds every GPU object at the next paint, from the data the canvas keeps on the CPU. Called when the
+    // pane is shown again, so a hidden-and-reshown canvas never depends on GL objects surviving its native
+    // window being torn down.
+    void invalidate_gl()
+    {
+        m_gl_reset_pending = true;
+        Refresh();
+    }
 
 private:
     void on_paint(wxPaintEvent &evt);
@@ -155,7 +206,11 @@ private:
     // The UV region worth looking at: every island, plus always at least the texture's first tile, so
     // there is something sensibly framed even before anything is painted.
     void content_bounds(Vec2f &min_uv, Vec2f &max_uv) const;
-    // Frames content_bounds(). Bound to Home, and run once each time an unwrap first appears.
+    // What is actually *drawn*, which is content_bounds() snapped out to whole tiles whenever the
+    // backdrop tiles (see rebuild_background_quad()). Both the framing and the backdrop go through
+    // this so they cannot disagree.
+    void framed_bounds(Vec2f &min_uv, Vec2f &max_uv) const;
+    // Frames framed_bounds(). Bound to Home, and run once each time an unwrap first appears.
     void fit_view_to_content();
 
     // Half-extents of the visible UV region. Split out because both rendering and every mouse
@@ -185,6 +240,8 @@ private:
     void  end_gesture();
     // Rebuilds the status line from the current gesture/selection and pushes it to m_on_status.
     void  update_status();
+    // Re-picks what a click at `pos` would grab in the current select mode, and repaints when that changed.
+    void  update_hover(const wxPoint &pos);
 
     wxGLContext *m_context = nullptr; // owned by OpenGLManager/GUI_App, not by this canvas
 
@@ -195,13 +252,22 @@ private:
     // Boundary vertices per island, for snapping - a patch's boundary is a tiny fraction of it, and
     // rescanning the whole uv array on every snap test would not be.
     std::vector<std::vector<int>> m_island_boundary_verts;
+    // Per island: its outline edges, its triangles (indices into m_islands.indices) and the bounding box of its
+    // raw coordinates - so picking tests one island's triangles only when the cursor is inside its box.
+    std::vector<std::vector<std::pair<int, int>>> m_island_boundary_edges;
+    std::vector<std::vector<int>>                 m_island_tris;
+    std::vector<std::pair<Vec2f, Vec2f>>          m_island_raw_bounds;
 
     bool m_mesh_dirty = true;
+    bool m_gl_reset_pending = false;
     // One set of models per island, so an island can be drawn through its own transform. Built once
-    // per unwrap, never on a drag.
+    // per unwrap, never on a drag. Outlines are not among them: they are drawn as screen-width quads,
+    // rebuilt every paint (see render()), because GL wide lines are not reliably wider than 1 px.
     std::vector<GLModel> m_island_wireframe; // interior edges
-    std::vector<GLModel> m_island_boundary;  // outline
-    std::vector<GLModel> m_island_fill;      // filled, for the selected island's wash
+    std::vector<GLModel> m_island_fill;      // filled; also the stencil mask that keeps islands undimmed
+    GLModel              m_stroke_glmodel;   // scratch model for the quads of one stroke pass
+    GLModel              m_dim_quad_glmodel; // full-viewport quad that dims the texture outside the islands
+    int                  m_stencil_bits = -1; // of the default framebuffer; -1 = not queried yet
 
     GLModel m_tile_outline_glmodel; // the texture's first tile, [0,1]^2 - the "you are here"
     GLModel m_grid_glmodel;
@@ -274,8 +340,10 @@ private:
     bool                m_vertex_edit_moved = false;
     // Lazily-built small filled square, drawn at an edited/hovered vertex as a handle.
     GLModel m_vertex_marker_glmodel;
-    // Rebuilt each frame at the cursor while a +/- add-remove hint is shown (Vertex/Edge mode).
-    GLModel m_cursor_sign_glmodel;
+    // What a click would grab right now, highlighted so the user sees the target before clicking.
+    int                 m_hover_island = -1;
+    int                 m_hover_vertex = -1;
+    std::pair<int, int> m_hover_edge{ -1, -1 };
     int     m_selected_island = -1;
     // The full multi-selection; m_selected_island is its primary (last-clicked) member. Kept as a small
     // vector rather than a set because it is tiny and iteration order (primary last) is convenient.
@@ -315,12 +383,20 @@ private:
     UVVertexEditFn m_on_vertex_edit;
     CommandFn      m_on_command;
     StatusFn       m_on_status;
+    PaneState      m_pane_state;
+    PaneStateFn    m_on_pane_state;
 };
 
-// Hosts a UVEditorCanvas together with a small icon toolbar (frame, snap, average scale, cut,
-// project-from-view) and a Blender-style status line along the bottom that names the current gesture
-// and the shortcuts in play (#18). This is what actually goes into Plater's "uv_editor" AUI pane;
-// the gizmo still talks to the inner canvas, reached via canvas().
+class UVToolButton; // a drawn icon button, defined in UVEditorCanvas.cpp
+
+// The UV editor pane that goes into Plater's "uv_editor" AUI pane: a header with the active layer, the
+// canvas background and Unwrap; a settings row with the unwrap's seam angle and island connection; a
+// narrow tool strip down the left (selection mode, seams, island actions, snap and framing); the canvas;
+// and a status line naming the current gesture, with the unwrap summary on its right.
+//
+// It holds no editing state of its own. Every control sends a Command through the canvas to the gizmo,
+// and the gizmo pushes PaneState back, from which the controls are redrawn (see apply_state()). The gizmo
+// still talks to the inner canvas, reached via canvas().
 class UVEditorPanel : public wxPanel
 {
 public:
@@ -329,10 +405,35 @@ public:
 
 private:
     void on_tool(wxCommandEvent &evt);
+    void apply_state(const UVEditorCanvas::PaneState &state);
+    // Selection-mode toggles, and the tools that need a selected island, follow the canvas.
+    void refresh_selection_tools();
 
-    UVEditorCanvas  *m_canvas = nullptr;
-    wxToggleButton  *m_snap_button = nullptr;
-    wxStaticText    *m_status = nullptr;
+    UVEditorCanvas *m_canvas = nullptr;
+
+    UVToolButton   *m_thumb      = nullptr; // the layer's texture; a click opens the texture library
+    wxStaticText   *m_layer_name = nullptr;
+    wxStaticText   *m_tile       = nullptr;
+    UVToolButton   *m_background[3]{};
+    UVToolButton   *m_unwrap     = nullptr;
+
+    ::SpinInput    *m_seam_angle = nullptr;
+    ::CheckBox     *m_connect    = nullptr;
+
+    UVToolButton   *m_select[3]{};
+    UVToolButton   *m_mark_seams  = nullptr;
+    UVToolButton   *m_seam_path   = nullptr;
+    UVToolButton   *m_clear_seams = nullptr;
+    UVToolButton   *m_avg_scale   = nullptr;
+    UVToolButton   *m_cut         = nullptr;
+    UVToolButton   *m_join        = nullptr;
+    UVToolButton   *m_unjoin      = nullptr;
+    UVToolButton   *m_clear_edits = nullptr;
+    UVToolButton   *m_snap        = nullptr;
+    UVToolButton   *m_frame       = nullptr;
+
+    wxStaticText   *m_status = nullptr;
+    wxStaticText   *m_stats  = nullptr;
 };
 
 } // namespace Slic3r::GUI

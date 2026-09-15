@@ -7,14 +7,21 @@
 
 #include <glad/gl.h>
 
+#include <wx/dcbuffer.h>
+#include <wx/statbmp.h>
+
 #include "3DScene.hpp"
+#include "BitmapCache.hpp"
 #include "GLShader.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
 #include "OpenGLManager.hpp"
 #include "Plater.hpp"
 #include "wxExtensions.hpp"
+#include "Widgets/CheckBox.hpp"
+#include "Widgets/SpinInput.hpp"
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/Utils.hpp"
 
 namespace Slic3r::GUI {
 
@@ -23,21 +30,46 @@ namespace {
 // prefix is not decoration: COLOR_BACKGROUND (and several other COLOR_*) are Win32 system-colour
 // macros from WinUser.h, and an unprefixed name here expands to an integer literal mid-declaration.
 const ColorRGBA UV_COLOR_BG            = { 0.16f, 0.16f, 0.16f, 1.f };
-const ColorRGBA UV_COLOR_GRID          = { 1.f, 1.f, 1.f, 0.10f };
-const ColorRGBA UV_COLOR_TILE_OUTLINE  = { 1.f, 1.f, 1.f, 0.45f };
-const ColorRGBA UV_COLOR_WIRE          = { 0.85f, 0.85f, 0.85f, 0.35f }; // interior edges, unselected
-const ColorRGBA UV_COLOR_BOUNDARY      = { 1.f, 0.35f, 0.15f, 0.85f };   // island outline == a seam, so Blender's seam red
-// Island fills (#4): unselected a light green kept translucent so the texture/checker/wireframe under
-// it still reads (the user asked for both these fills *and* to see the check overlay through them, so
-// the alphas stay low); the selected one switches to the app accent teal #009688 and is marked mainly
-// by its bold boundary and brighter wire rather than a heavy fill.
-const ColorRGBA UV_COLOR_FILL          = { 0.55f, 0.85f, 0.45f, 0.40f }; // unselected: light green
-const ColorRGBA UV_COLOR_SEL_FILL      = { 0.0f, 0.588f, 0.533f, 0.20f }; // selected: #009688 teal
-const ColorRGBA UV_COLOR_SEL_WIRE      = { 0.75f, 1.f, 0.7f, 0.55f };
-const ColorRGBA UV_COLOR_SEL_BOUNDARY  = { 0.2f, 1.f, 0.55f, 1.f };      // bold light-green edge (#7)
-const ColorRGBA UV_COLOR_DIAL          = { 1.f, 0.85f, 0.2f, 0.9f };     // rotation protractor (#11)
+// The texture outside every island is washed towards the background, so the islands read as the lit areas
+// whatever the texture looks like - a white brick texture no longer swallows a light outline.
+const ColorRGBA UV_COLOR_OUTSIDE       = { 0.16f, 0.16f, 0.16f, 0.72f };
+const ColorRGBA UV_COLOR_GRID          = { 1.f, 1.f, 1.f, 0.08f };
+// Every stroke that must stay legible is drawn twice: a wider near-black halo, then the colour on top, so it
+// holds up on light and dark texels alike.
+const ColorRGBA UV_COLOR_HALO          = { 0.06f, 0.06f, 0.07f, 1.f };
+const ColorRGBA UV_COLOR_TILE_OUTLINE  = { 0.70f, 0.70f, 0.72f, 1.f };
+const ColorRGBA UV_COLOR_WIRE          = { 1.f, 1.f, 1.f, 0.30f };  // interior edges, unselected
+const ColorRGBA UV_COLOR_WIRE_SHADOW   = { 0.f, 0.f, 0.f, 0.35f };  // 1 px offset under the wire
+const ColorRGBA UV_COLOR_BOUNDARY      = { 0.93f, 0.93f, 0.94f, 1.f };
+const ColorRGBA UV_COLOR_HOVER         = { 0.72f, 0.98f, 0.93f, 1.f }; // what a click would grab
+const ColorRGBA UV_COLOR_HOVER_FILL    = { 1.f, 1.f, 1.f, 0.12f };
+// No wash on unselected islands: the texture inside them is exactly what gets baked, so it shows unaltered.
+const ColorRGBA UV_COLOR_FILL          = { 1.f, 1.f, 1.f, 0.f };
+const ColorRGBA UV_COLOR_SEL_FILL      = { 0.15f, 0.85f, 0.75f, 0.24f };
+const ColorRGBA UV_COLOR_SEL_WIRE      = { 0.55f, 1.f, 0.92f, 0.55f };
+const ColorRGBA UV_COLOR_SEL_BOUNDARY  = { 0.16f, 0.90f, 0.78f, 1.f }; // the app teal, brightened to read on texture
+const ColorRGBA UV_COLOR_DIAL          = { 1.f, 0.85f, 0.2f, 0.9f };   // rotation protractor (#11)
 
 constexpr float SNAP_PIXELS = 28.f; // how close a boundary vertex has to come before it sticks (#2)
+
+// wxWidgets reports this canvas' size in *logical* points, while the GL drawable behind it is sized
+// in device pixels. On the backends where those differ under HiDPI (the same pair GLCanvas3D guards
+// its RetinaHelper with) a viewport built straight from GetSize() covers only the bottom-left
+// 1/scale of the drawable, which is exactly where the whole editor ended up drawn, shrunken.
+// Mouse coordinates arrive in logical points, so only the viewport needs converting - every other
+// GetSize() use here is compared against event coordinates and must stay logical.
+wxSize gl_drawable_size(const wxWindow *win, const wxSize &logical_size)
+{
+#if defined(__APPLE__) || defined(__WXGTK3__)
+    const double scale = (win != nullptr) ? win->GetContentScaleFactor() : 1.0;
+    if (scale > 0.0)
+        return wxSize(std::max(1, int(std::lround(logical_size.GetWidth() * scale))),
+                      std::max(1, int(std::lround(logical_size.GetHeight() * scale))));
+#else
+    (void) win;
+#endif
+    return wxSize(std::max(1, logical_size.GetWidth()), std::max(1, logical_size.GetHeight()));
+}
 
 // The pixel format this canvas is created with has to match the one the app's single shared
 // wxGLContext was created against (that of View3D's canvas, from OpenGLManager::create_wxglcanvas()),
@@ -180,20 +212,47 @@ void UVEditorCanvas::set_islands(Islands islands)
         m_active_edge   = { -1, -1 };
         m_sel_vertices.clear();
         m_sel_edges.clear();
+        m_hover_island = m_hover_vertex = -1;
+        m_hover_edge   = { -1, -1 };
     }
 
-    // Boundary vertices, bucketed per island, for snapping.
-    m_island_boundary_verts.assign(size_t(std::max(m_islands.island_count, 0)), {});
+    // Boundary vertices and edges, bucketed per island: the vertices for snapping, the edges for the outline.
+    const size_t n_islands = size_t(std::max(m_islands.island_count, 0));
+    m_island_boundary_verts.assign(n_islands, {});
+    m_island_boundary_edges.assign(n_islands, {});
     std::vector<bool> seen(m_islands.uvs.size(), false);
-    for (const auto &[a, b] : m_islands.boundary_edges)
-        for (const int v : { a, b }) {
-            if (v < 0 || size_t(v) >= m_islands.uvs.size() || seen[size_t(v)])
-                continue;
-            seen[size_t(v)] = true;
-            const int island = m_islands.vertex_island[size_t(v)];
-            if (island >= 0 && size_t(island) < m_island_boundary_verts.size())
+    for (const auto &[a, b] : m_islands.boundary_edges) {
+        if (a < 0 || b < 0 || size_t(a) >= m_islands.uvs.size() || size_t(b) >= m_islands.uvs.size())
+            continue;
+        const int island = m_islands.vertex_island[size_t(a)];
+        if (island < 0 || size_t(island) >= n_islands)
+            continue;
+        m_island_boundary_edges[size_t(island)].emplace_back(a, b);
+        for (const int v : { a, b })
+            if (!seen[size_t(v)]) {
+                seen[size_t(v)] = true;
                 m_island_boundary_verts[size_t(island)].push_back(v);
+            }
+    }
+
+    // Triangles and raw bounds per island, for picking.
+    m_island_tris.assign(n_islands, {});
+    m_island_raw_bounds.assign(n_islands, { Vec2f::Constant(std::numeric_limits<float>::max()),
+                                            Vec2f::Constant(std::numeric_limits<float>::lowest()) });
+    for (size_t t = 0; t < m_islands.indices.size(); ++t) {
+        const Vec3i32 &tri = m_islands.indices[t];
+        if (tri.minCoeff() < 0 || size_t(tri.maxCoeff()) >= m_islands.uvs.size())
+            continue;
+        const int island = m_islands.vertex_island[size_t(tri[0])];
+        if (island < 0 || size_t(island) >= n_islands)
+            continue;
+        m_island_tris[size_t(island)].push_back(int(t));
+        auto &[lo, hi] = m_island_raw_bounds[size_t(island)];
+        for (int k = 0; k < 3; ++k) {
+            lo = lo.cwiseMin(m_islands.uvs[size_t(tri[k])]);
+            hi = hi.cwiseMax(m_islands.uvs[size_t(tri[k])]);
         }
+    }
 
     m_mesh_dirty            = true;
     m_background_quad_dirty = true; // the backdrop is sized to the unwrap, so it moved too
@@ -249,21 +308,29 @@ void UVEditorCanvas::reset_view()
     Refresh();
 }
 
-void UVEditorCanvas::run_command(Command cmd)
+void UVEditorCanvas::run_command(Command cmd, float value)
 {
     switch (cmd) {
     case Command::FrameAll:   reset_view(); return;
     case Command::ToggleSnap: m_snap_enabled = !m_snap_enabled; update_status(); return;
-    // The rest need the layer data the canvas doesn't hold; hand them to the gizmo.
-    case Command::AverageScale:
-    case Command::CutSelectedIsland:
-    case Command::ProjectFromView:
-    case Command::JoinSelected:
-    case Command::UnjoinSelected:
-        if (m_on_command)
-            m_on_command(cmd);
-        return;
+    case Command::SetSelectMode:
+        // Switched here straight away so the strip and the canvas agree at once; the gizmo is still told,
+        // because it is what keeps the mode when the canvas is next refreshed from the layer.
+        set_select_mode(static_cast<SelectMode>(std::clamp(int(value), 0, 2)));
+        break;
+    default: break;
     }
+    // Everything else needs the layer data the canvas doesn't hold; hand it to the gizmo.
+    if (m_on_command)
+        m_on_command(cmd, value);
+}
+
+void UVEditorCanvas::set_pane_state(PaneState state)
+{
+    m_pane_state = std::move(state);
+    update_status();
+    if (m_on_pane_state)
+        m_on_pane_state(m_pane_state);
 }
 
 void UVEditorCanvas::update_status()
@@ -285,7 +352,10 @@ void UVEditorCanvas::update_status()
     case Gesture::Pan:               msg = _L("Panning"); break;
     case Gesture::None:
     default:
-        if (m_select_mode == SelectMode::Vertex)
+        if (!has_islands())
+            msg = m_pane_state.has_layer ? _L("Paint the area on the model, then press Unwrap") :
+                                           _L("Pick Unwrap as a texture layer's mapping to edit its UVs here");
+        else if (m_select_mode == SelectMode::Vertex)
             msg = m_sel_vertices.size() > 1 ?
                       wxString::Format(_L("%d vertices selected  |  drag = move together, Shift/Ctrl click = add/remove"),
                                        int(m_sel_vertices.size())) :
@@ -333,13 +403,37 @@ void UVEditorCanvas::content_bounds(Vec2f &min_uv, Vec2f &max_uv) const
     }
 }
 
+void UVEditorCanvas::framed_bounds(Vec2f &min_uv, Vec2f &max_uv) const
+{
+    content_bounds(min_uv, max_uv);
+    // With tiling on, the backdrop is snapped out to whole tiles, so it is bigger than the raw
+    // bounds - and by a different amount on each side. Framing the raw bounds therefore left that
+    // backdrop visibly off-centre: hanging past one edge of the pane with dead space against the
+    // other. Frame what is drawn instead. (Tiling off draws only the first tile, which the bounds
+    // already contain, so there is nothing to snap.)
+    if (m_tile_enabled) {
+        min_uv = Vec2f(std::floor(min_uv.x()), std::floor(min_uv.y()));
+        max_uv = Vec2f(std::ceil(max_uv.x()), std::ceil(max_uv.y()));
+    }
+}
+
 void UVEditorCanvas::fit_view_to_content()
 {
     Vec2f min_uv, max_uv;
-    content_bounds(min_uv, max_uv);
+    framed_bounds(min_uv, max_uv);
 
-    m_pan       = 0.5f * (min_uv + max_uv);
-    m_zoom      = std::max(0.5f * (max_uv - min_uv).maxCoeff() * 1.1f, 0.05f);
+    const wxSize size   = GetSize();
+    const float  aspect = float(std::max(1, size.GetWidth())) / float(std::max(1, size.GetHeight()));
+    const Vec2f  half   = 0.5f * (max_uv - min_uv);
+
+    m_pan = 0.5f * (min_uv + max_uv);
+    // m_zoom is the half-extent shown across the *shorter* pane edge (see view_half_extents()), so
+    // each axis' required half-extent has to be converted back into that unit before the larger of
+    // the two is taken. Sizing off the bigger axis alone, as this did, ignores the pane's shape and
+    // zooms out further than either axis needs on anything but a square pane. The 1.1 leaves a
+    // margin so the outermost island edge is not flush against the frame.
+    m_zoom = std::max(1.1f * std::max(half.x() / std::max(aspect, 1.f), half.y() * std::min(aspect, 1.f)),
+                      0.05f);
     m_needs_fit = false;
 }
 
@@ -376,21 +470,56 @@ Vec2f UVEditorCanvas::screen_to_uv(const wxPoint &px) const
 int UVEditorCanvas::island_at(const Vec2f &uv) const
 {
     int found = -1;
-    for (const Vec3i32 &tri : m_islands.indices) {
-        if (tri.minCoeff() < 0 || size_t(tri.maxCoeff()) >= m_islands.uvs.size())
+    for (int island = 0; island < int(m_island_tris.size()); ++island) {
+        // The raw bounds through the island's affine: the box of the four transformed corners contains the island.
+        const auto &[lo, hi] = m_island_raw_bounds[size_t(island)];
+        if (lo.x() > hi.x())
             continue;
-        if (!point_in_triangle(uv, island_uv(size_t(tri[0])), island_uv(size_t(tri[1])), island_uv(size_t(tri[2]))))
+        const IslandTransform m = size_t(island) < m_transforms.size() ? m_transforms[size_t(island)] :
+                                                                         IslandTransform(IslandTransform::Identity());
+        Vec2f bmin = Vec2f::Constant(std::numeric_limits<float>::max()), bmax = -bmin;
+        for (const Vec2f &corner : { lo, hi, Vec2f(lo.x(), hi.y()), Vec2f(hi.x(), lo.y()) }) {
+            const Vec2f p = m.block<2, 2>(0, 0) * corner + m.col(2);
+            bmin          = bmin.cwiseMin(p);
+            bmax          = bmax.cwiseMax(p);
+        }
+        if (uv.x() < bmin.x() || uv.y() < bmin.y() || uv.x() > bmax.x() || uv.y() > bmax.y())
             continue;
 
-        const int island = m_islands.vertex_island[size_t(tri[0])];
-        // Islands are allowed to overlap, so a point can be inside several. Keep whichever is already
-        // selected - otherwise a drag of a partly-covered island would be stolen mid-gesture by the
-        // one on top of it.
-        if (is_selected(island))
-            return island;
-        found = island;
+        for (const int t : m_island_tris[size_t(island)]) {
+            const Vec3i32 &tri = m_islands.indices[size_t(t)];
+            if (!point_in_triangle(uv, island_uv(size_t(tri[0])), island_uv(size_t(tri[1])), island_uv(size_t(tri[2]))))
+                continue;
+            // Islands are allowed to overlap, so a point can be inside several. Keep whichever is already
+            // selected - otherwise a drag of a partly-covered island would be stolen mid-gesture by the
+            // one on top of it.
+            if (is_selected(island))
+                return island;
+            found = island;
+            break;
+        }
     }
     return found;
+}
+
+void UVEditorCanvas::update_hover(const wxPoint &pos)
+{
+    int                 island = -1, vertex = -1;
+    std::pair<int, int> edge{ -1, -1 };
+    if (has_islands()) {
+        const Vec2f uv = screen_to_uv(pos);
+        switch (m_select_mode) {
+        case SelectMode::Island: island = island_at(uv); break;
+        case SelectMode::Vertex: vertex = vertex_at(uv); break;
+        case SelectMode::Edge:   edge = edge_at(uv); break;
+        }
+    }
+    if (island != m_hover_island || vertex != m_hover_vertex || edge != m_hover_edge) {
+        m_hover_island = island;
+        m_hover_vertex = vertex;
+        m_hover_edge   = edge;
+        Refresh();
+    }
 }
 
 void UVEditorCanvas::set_select_mode(SelectMode mode)
@@ -400,6 +529,8 @@ void UVEditorCanvas::set_select_mode(SelectMode mode)
     m_select_mode   = mode;
     m_active_vertex = -1;
     m_active_edge   = { -1, -1 };
+    m_hover_island  = m_hover_vertex = -1;
+    m_hover_edge    = { -1, -1 };
     m_sel_vertices.clear();
     m_sel_edges.clear();
     m_gesture       = Gesture::None;
@@ -467,6 +598,11 @@ void UVEditorCanvas::move_vertex_raw(int v, const Vec2f &delta_uv)
     const float det = lin.determinant();
     const Vec2f raw_delta = (std::abs(det) > 1e-12f) ? Vec2f(lin.inverse() * delta_uv) : delta_uv;
     m_islands.uvs[size_t(v)] += raw_delta;
+    if (island >= 0 && size_t(island) < m_island_raw_bounds.size()) { // keep the pick box around the moved vertex
+        auto &[lo, hi] = m_island_raw_bounds[size_t(island)];
+        lo = lo.cwiseMin(m_islands.uvs[size_t(v)]);
+        hi = hi.cwiseMax(m_islands.uvs[size_t(v)]);
+    }
     m_mesh_dirty = true; // the edited raw uv is redrawn from rebuild_island_models() next frame
 }
 
@@ -673,8 +809,11 @@ void UVEditorCanvas::on_mouse(wxMouseEvent &evt)
     // Track the pointer so the +/- add-remove hint can be drawn next to it in Vertex/Edge mode.
     m_cursor_px     = pos;
     m_cursor_inside = true;
-    if (type == wxEVT_MOTION && m_select_mode != SelectMode::Island && m_gesture == Gesture::None)
-        Refresh(); // animate the hint (and its +/- flip) as the pointer/modifiers move
+    if (type == wxEVT_MOTION && m_gesture == Gesture::None) {
+        update_hover(pos);
+        if (m_select_mode != SelectMode::Island)
+            Refresh(); // animate the hint (and its +/- flip) as the pointer/modifiers move
+    }
 
     // Key events (R/S/Home) only arrive if this canvas has focus, and clicking it is the natural way
     // to ask for it - the pane is not in the tab order.
@@ -885,6 +1024,8 @@ void UVEditorCanvas::on_mouse(wxMouseEvent &evt)
         m_zoom             = std::clamp(m_zoom * factor, 0.001f, 5000.f);
         const Vec2f after  = screen_to_uv(pos);
         m_pan += before - after;
+        if (m_gesture == Gesture::None)
+            update_hover(pos);
         Refresh();
     }
 }
@@ -893,7 +1034,6 @@ void UVEditorCanvas::rebuild_island_models()
 {
     m_mesh_dirty = false;
     m_island_wireframe.clear();
-    m_island_boundary.clear();
     m_island_fill.clear();
 
     const int islands = std::max(m_islands.island_count, 0);
@@ -901,7 +1041,6 @@ void UVEditorCanvas::rebuild_island_models()
         return;
 
     m_island_wireframe.resize(size_t(islands));
-    m_island_boundary.resize(size_t(islands));
     m_island_fill.resize(size_t(islands));
 
     const int vertex_count = int(m_islands.uvs.size());
@@ -929,12 +1068,11 @@ void UVEditorCanvas::rebuild_island_models()
         island_verts[size_t(island)].push_back(m_islands.uvs[i]);
     }
 
-    std::vector<GLModel::Geometry> wire(n_islands), outline(n_islands), fill(n_islands);
+    std::vector<GLModel::Geometry> wire(n_islands), fill(n_islands);
     for (int c = 0; c < islands; ++c) {
-        for (GLModel::Geometry *g : { &wire[size_t(c)], &outline[size_t(c)] })
-            g->format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P3 };
+        wire[size_t(c)].format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P3 };
         fill[size_t(c)].format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
-        for (GLModel::Geometry *g : { &wire[size_t(c)], &outline[size_t(c)], &fill[size_t(c)] }) {
+        for (GLModel::Geometry *g : { &wire[size_t(c)], &fill[size_t(c)] }) {
             g->reserve_vertices(island_verts[size_t(c)].size());
             for (const Vec2f &uv : island_verts[size_t(c)])
                 g->add_vertex(Vec3f(uv.x(), uv.y(), 0.f));
@@ -959,20 +1097,9 @@ void UVEditorCanvas::rebuild_island_models()
         }
     }
 
-    for (const auto &[a, b] : m_islands.boundary_edges) {
-        if (a < 0 || b < 0 || a >= vertex_count || b >= vertex_count)
-            continue;
-        const int island = m_islands.vertex_island[size_t(a)];
-        if (island < 0 || island >= islands)
-            continue;
-        outline[size_t(island)].add_line(unsigned(local[size_t(a)]), unsigned(local[size_t(b)]));
-    }
-
     for (int c = 0; c < islands; ++c) {
         if (!wire[size_t(c)].is_empty())
             m_island_wireframe[size_t(c)].init_from(std::move(wire[size_t(c)]));
-        if (!outline[size_t(c)].is_empty())
-            m_island_boundary[size_t(c)].init_from(std::move(outline[size_t(c)]));
         if (!fill[size_t(c)].is_empty())
             m_island_fill[size_t(c)].init_from(std::move(fill[size_t(c)]));
     }
@@ -1073,12 +1200,11 @@ void UVEditorCanvas::rebuild_background_quad()
         return;
 
     Vec2f lo, hi;
-    content_bounds(lo, hi);
     if (m_tile_enabled) {
-        // Snap out to whole tiles. Only cosmetic, but it keeps the backdrop's edge on a tile
-        // boundary instead of slicing a brick in half at an arbitrary place.
-        lo = Vec2f(std::floor(lo.x()), std::floor(lo.y()));
-        hi = Vec2f(std::ceil(hi.x()), std::ceil(hi.y()));
+        // Whole tiles, so the backdrop's edge lands on a tile boundary instead of slicing a brick in
+        // half. framed_bounds() applies exactly this, and the view is framed on its result - the two
+        // must not drift apart or the backdrop stops being centred in the pane.
+        framed_bounds(lo, hi);
     } else {
         // Tiling off: the sampler reads 0 outside the first tile and nothing else exists, so the
         // backdrop is exactly that one tile (GL_CLAMP_TO_BORDER in render() gives it the same
@@ -1137,8 +1263,12 @@ void UVEditorCanvas::on_leave(wxMouseEvent &evt)
     evt.Skip();
     if (m_cursor_inside) {
         m_cursor_inside = false;
-        if (m_select_mode != SelectMode::Island)
-            Refresh(); // the +/- hint was following the cursor; drop it now the pointer is gone
+        // The +/- hint and the hover highlight were following the cursor; drop them now the pointer is gone.
+        if (m_gesture == Gesture::None) {
+            m_hover_island = m_hover_vertex = -1;
+            m_hover_edge   = { -1, -1 };
+        }
+        Refresh();
     }
 }
 
@@ -1154,6 +1284,30 @@ void UVEditorCanvas::render()
     if (!SetCurrent(*m_context))
         return;
 
+    // The context is shared with the 3D view, which leaves its own state behind: GLCanvas3D turns face culling on at
+    // init and many of its passes turn it back on, and the pane's projection flips Y, so every triangle drawn here
+    // faces away from it. With culling left on, the texture and the islands simply vanish - which is why they showed
+    // the first time and were gone, fully or partly, after the 3D view had drawn. A scissor rectangle left on would
+    // clip the clear and everything else the same way. Set what this pass relies on; put the 3D view's back after.
+    const GLboolean prev_cull    = ::glIsEnabled(GL_CULL_FACE);
+    const GLboolean prev_scissor = ::glIsEnabled(GL_SCISSOR_TEST);
+    const GLboolean prev_stencil = ::glIsEnabled(GL_STENCIL_TEST);
+    glsafe(::glDisable(GL_CULL_FACE));
+    glsafe(::glDisable(GL_SCISSOR_TEST));
+    glsafe(::glDisable(GL_STENCIL_TEST));
+    glsafe(::glPolygonMode(GL_FRONT_AND_BACK, GL_FILL));
+    glsafe(::glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+
+    if (m_gl_reset_pending) {
+        m_gl_reset_pending = false;
+        m_mesh_dirty       = true;
+        m_background_dirty = true; // re-uploads m_background_pixels, or drops the texture if there are none
+        m_tile_outline_glmodel.reset();
+        m_vertex_marker_glmodel.reset();
+        m_dim_quad_glmodel.reset();
+        m_stroke_glmodel.reset();
+        m_stencil_bits = -1;
+    }
     if (m_mesh_dirty)
         rebuild_island_models();
     if (m_background_dirty)
@@ -1165,10 +1319,17 @@ void UVEditorCanvas::render()
     rebuild_grid();
     rebuild_rotation_dial();
 
-    const wxSize size = GetSize();
-    glsafe(::glViewport(0, 0, size.GetWidth(), size.GetHeight()));
+    const wxSize size     = GetSize(); // logical points; the on-screen handle sizes below use it
+    const wxSize viewport = gl_drawable_size(this, size);
+    glsafe(::glViewport(0, 0, viewport.GetWidth(), viewport.GetHeight()));
+    // Line widths below are authored in logical points (they are chosen against the same scale the
+    // hit-test thresholds use), so they take the same logical -> device conversion as the viewport.
+    const float px_scale   = float(viewport.GetWidth()) / float(std::max(1, size.GetWidth()));
+    const auto  line_width = [px_scale](float w) { set_line_width(w * px_scale); };
     glsafe(::glClearColor(UV_COLOR_BG.r(), UV_COLOR_BG.g(), UV_COLOR_BG.b(), 1.f));
-    glsafe(::glClear(GL_COLOR_BUFFER_BIT));
+    glsafe(::glClearStencil(0));
+    glsafe(::glStencilMask(0xFF));
+    glsafe(::glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
     glsafe(::glDisable(GL_DEPTH_TEST));
     glsafe(::glEnable(GL_BLEND));
     glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
@@ -1185,18 +1346,21 @@ void UVEditorCanvas::render()
     Transform3d view_matrix       = Transform3d::Identity();
     view_matrix.translate(Vec3d(-double(m_pan.x()), -double(m_pan.y()), 0.0));
 
-    const auto draw = [&](GLModel &model, const ColorRGBA &color, const Transform3d &model_matrix) {
+    const auto draw_raw = [&](GLModel &model, const ColorRGBA &color, const Transform3d &view_model, const Transform3d &projection) {
         if (!model.is_initialized())
             return;
         GLShaderProgram *shader = wxGetApp().get_shader("flat");
         if (shader == nullptr)
             return;
         shader->start_using();
-        shader->set_uniform("view_model_matrix", view_matrix * model_matrix);
-        shader->set_uniform("projection_matrix", projection_matrix);
+        shader->set_uniform("view_model_matrix", view_model);
+        shader->set_uniform("projection_matrix", projection);
         model.set_color(color);
         model.render();
         shader->stop_using();
+    };
+    const auto draw = [&](GLModel &model, const ColorRGBA &color, const Transform3d &model_matrix) {
+        draw_raw(model, color, view_matrix * model_matrix, projection_matrix);
     };
     const Transform3d identity = Transform3d::Identity();
 
@@ -1224,148 +1388,221 @@ void UVEditorCanvas::render()
         }
     }
 
-    set_line_width(1.f);
+    const auto island_matrix = [this, &identity](int c) {
+        return (size_t(c) < m_transforms.size()) ? to_transform3d(m_transforms[size_t(c)]) : identity;
+    };
+    const float uv_per_px = 2.f * m_zoom / float(std::max(1, std::min(size.GetWidth(), size.GetHeight())));
+
+    // Strokes are built as quads `width_px` wide on screen, rebuilt every paint at the current zoom. Square caps
+    // cover the joints of an outline; the colours passed here are opaque, so the overlapping caps don't show.
+    using Segments           = std::vector<std::pair<Vec2f, Vec2f>>;
+    const auto draw_segments = [&](const Segments &segments, float width_px, const ColorRGBA &color) {
+        if (segments.empty())
+            return;
+        const float       half = 0.5f * width_px * uv_per_px;
+        GLModel::Geometry quads;
+        quads.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+        quads.reserve_vertices(segments.size() * 4);
+        quads.reserve_indices(segments.size() * 6);
+        unsigned base = 0;
+        for (const auto &[a, b] : segments) {
+            const Vec2f d   = b - a;
+            const float len = d.norm();
+            if (len <= 1e-12f)
+                continue;
+            const Vec2f t = d * (half / len);
+            const Vec2f n(-t.y(), t.x());
+            for (const Vec2f &p : { Vec2f(a - t + n), Vec2f(a - t - n), Vec2f(b + t - n), Vec2f(b + t + n) })
+                quads.add_vertex(Vec3f(p.x(), p.y(), 0.f));
+            quads.add_triangle(base, base + 1, base + 2);
+            quads.add_triangle(base, base + 2, base + 3);
+            base += 4;
+        }
+        m_stroke_glmodel.reset();
+        if (quads.is_empty())
+            return;
+        m_stroke_glmodel.init_from(std::move(quads));
+        draw(m_stroke_glmodel, color, identity);
+    };
+    const auto draw_stroke = [&](const Segments &segments, float width_px, const ColorRGBA &color, float halo_px) {
+        draw_segments(segments, width_px + 2.f * halo_px, UV_COLOR_HALO);
+        draw_segments(segments, width_px, color);
+    };
+    const auto edge_segments = [this](const std::vector<std::pair<int, int>> &edges) {
+        Segments out;
+        out.reserve(edges.size());
+        for (const auto &[a, b] : edges)
+            if (a >= 0 && b >= 0 && size_t(a) < m_islands.uvs.size() && size_t(b) < m_islands.uvs.size())
+                out.emplace_back(island_uv(size_t(a)), island_uv(size_t(b)));
+        return out;
+    };
+
+    // Dim the texture everywhere but inside the islands: the fills go into the stencil only, then one
+    // full-viewport quad washes the rest towards the background. Skipped without a stencil buffer, where the
+    // quad would cover the islands too.
+    if (m_stencil_bits < 0) {
+        GLint bits = 0;
+        ::glGetError(); // drop anything pending, so the check below sees only this query
+        ::glGetIntegerv(GL_STENCIL_BITS, &bits); // compatibility profiles
+        if (::glGetError() != GL_NO_ERROR) {
+            bits = 0;
+            ::glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_STENCIL, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &bits);
+            ::glGetError();
+        }
+        m_stencil_bits = std::max(0, int(bits));
+    }
+    if (has_islands() && !m_island_fill.empty() && m_stencil_bits > 0) {
+        if (!m_dim_quad_glmodel.is_initialized()) {
+            GLModel::Geometry q;
+            q.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+            q.add_vertex(Vec3f(-1.f, -1.f, 0.f));
+            q.add_vertex(Vec3f(1.f, -1.f, 0.f));
+            q.add_vertex(Vec3f(1.f, 1.f, 0.f));
+            q.add_vertex(Vec3f(-1.f, 1.f, 0.f));
+            q.add_triangle(0, 1, 2);
+            q.add_triangle(0, 2, 3);
+            m_dim_quad_glmodel.init_from(std::move(q));
+        }
+        glsafe(::glEnable(GL_STENCIL_TEST));
+        glsafe(::glStencilFunc(GL_ALWAYS, 1, 0xFF));
+        glsafe(::glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE));
+        glsafe(::glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE));
+        for (int c = 0; c < int(m_island_fill.size()); ++c)
+            draw(m_island_fill[size_t(c)], ColorRGBA::WHITE(), island_matrix(c));
+        glsafe(::glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE));
+        glsafe(::glStencilFunc(GL_EQUAL, 0, 0xFF));
+        glsafe(::glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP));
+        draw_raw(m_dim_quad_glmodel, UV_COLOR_OUTSIDE, identity, identity);
+        glsafe(::glDisable(GL_STENCIL_TEST));
+    }
+
+    line_width(1.f);
     draw(m_grid_glmodel, UV_COLOR_GRID, identity);
 
     // The texture's first tile. Always drawn, even with nothing painted, so the pane always has a
     // fixed landmark: the unwrap is packed in mm and divided by the tile size, so it is routinely
     // many tiles away from here, and without this there is no way to tell "the islands are somewhere
     // else" apart from "there are no islands".
-    if (!m_tile_outline_glmodel.is_initialized()) {
-        GLModel::Geometry tile;
-        tile.format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P3 };
-        tile.reserve_vertices(4);
-        tile.reserve_indices(8);
-        tile.add_vertex(Vec3f(0.f, 0.f, 0.f));
-        tile.add_vertex(Vec3f(1.f, 0.f, 0.f));
-        tile.add_vertex(Vec3f(1.f, 1.f, 0.f));
-        tile.add_vertex(Vec3f(0.f, 1.f, 0.f));
-        for (unsigned i = 0; i < 4; ++i)
-            tile.add_line(i, (i + 1) % 4);
-        m_tile_outline_glmodel.init_from(std::move(tile));
-    }
-    set_line_width(2.f);
-    draw(m_tile_outline_glmodel, UV_COLOR_TILE_OUTLINE, identity);
+    draw_stroke({ { Vec2f(0.f, 0.f), Vec2f(1.f, 0.f) }, { Vec2f(1.f, 0.f), Vec2f(1.f, 1.f) },
+                  { Vec2f(1.f, 1.f), Vec2f(0.f, 1.f) }, { Vec2f(0.f, 1.f), Vec2f(0.f, 0.f) } },
+                1.5f, UV_COLOR_TILE_OUTLINE, 1.f);
 
-    const auto island_matrix = [this, &identity](int c) {
-        return (size_t(c) < m_transforms.size()) ? to_transform3d(m_transforms[size_t(c)]) : identity;
-    };
-
-    // Island fills first, as a translucent wash under the wires: every island gets a faint one so it
-    // reads as a solid patch rather than a wire cage, and the selected one gets the accent teal (#7).
-    // When a distortion heatmap has been supplied (set_island_fill_colors), unselected islands take
-    // their heatmap colour instead of the default wash; the selected one still wins its highlight.
+    // Island fills. Unselected islands get none, so the texture that will be baked shows unaltered; the one a
+    // click would grab gets a light wash, the selection a teal one. A distortion heatmap (set_island_fill_colors)
+    // replaces the default for unselected islands and is left alone by the hover wash.
     for (int c = 0; c < int(m_island_fill.size()); ++c) {
-        ColorRGBA fill = UV_COLOR_FILL;
-        if (size_t(c) < m_island_fill_colors.size())
-            fill = m_island_fill_colors[size_t(c)];
-        draw(m_island_fill[size_t(c)], is_selected(c) ? UV_COLOR_SEL_FILL : fill, island_matrix(c));
+        ColorRGBA fill = size_t(c) < m_island_fill_colors.size() ? m_island_fill_colors[size_t(c)] : UV_COLOR_FILL;
+        if (is_selected(c))
+            fill = UV_COLOR_SEL_FILL;
+        else if (c == m_hover_island && m_island_fill_colors.empty())
+            fill = UV_COLOR_HOVER_FILL;
+        if (fill.a() > 0.f)
+            draw(m_island_fill[size_t(c)], fill, island_matrix(c));
     }
 
-    set_line_width(1.f);
-    for (int c = 0; c < int(m_island_wireframe.size()); ++c)
+    // Interior edges stay GL lines (a patch can have a million of them), each with a dark copy one pixel down
+    // and right, so the light wire still reads on a light texture.
+    Transform3d shadow_projection = projection_matrix;
+    shadow_projection.pretranslate(Vec3d(2.0 / std::max(1, size.GetWidth()), -2.0 / std::max(1, size.GetHeight()), 0.0));
+    line_width(1.f);
+    for (int c = 0; c < int(m_island_wireframe.size()); ++c) {
+        draw_raw(m_island_wireframe[size_t(c)], UV_COLOR_WIRE_SHADOW, view_matrix * island_matrix(c), shadow_projection);
         draw(m_island_wireframe[size_t(c)], is_selected(c) ? UV_COLOR_SEL_WIRE : UV_COLOR_WIRE, island_matrix(c));
-
-    // The island outlines - i.e. exactly the edges the seam angle cut the patch along. Drawn last
-    // and brightest, because "where does one island end and the next begin" is the single thing this
-    // pane exists to answer. The selected one gets a bold edge (#7).
-    for (int c = 0; c < int(m_island_boundary.size()); ++c) {
-        const bool selected = is_selected(c);
-        set_line_width(selected ? 3.f : 1.5f);
-        draw(m_island_boundary[size_t(c)], selected ? UV_COLOR_SEL_BOUNDARY : UV_COLOR_BOUNDARY, island_matrix(c));
     }
-    set_line_width(1.f);
+
+    // The island outlines - i.e. exactly the edges the seam angle cut the patch along - because "where does one
+    // island end and the next begin" is the single thing this pane exists to answer. Plain first, then the hovered
+    // one, then the selection, so a highlighted outline is never overdrawn by its neighbour's.
+    {
+        std::vector<std::pair<int, int>> plain, hovered, selected;
+        for (int c = 0; c < int(m_island_boundary_edges.size()); ++c) {
+            auto &dst = is_selected(c) ? selected : (c == m_hover_island ? hovered : plain);
+            dst.insert(dst.end(), m_island_boundary_edges[size_t(c)].begin(), m_island_boundary_edges[size_t(c)].end());
+        }
+        draw_stroke(edge_segments(plain), 1.5f, UV_COLOR_BOUNDARY, 1.25f);
+        draw_stroke(edge_segments(hovered), 2.5f, UV_COLOR_HOVER, 1.5f);
+        draw_stroke(edge_segments(selected), 3.f, UV_COLOR_SEL_BOUNDARY, 1.75f);
+    }
 
     // The rotation protractor, on top of everything while a rotation gesture is live (#11).
     if (m_dial_glmodel.is_initialized()) {
-        set_line_width(2.f);
+        line_width(2.f);
         draw(m_dial_glmodel, UV_COLOR_DIAL, identity);
-        set_line_width(1.f);
+        line_width(1.f);
     }
 
-    // Vertex/Edge mode handles: a small square drawn over the picked vertex (or each endpoint of the
-    // picked edge), so it is obvious which sub-element a drag will move. The already-drawn boundary
-    // sits between an edge's two markers, so the pair reads as "this edge".
-    if (m_select_mode != SelectMode::Island &&
-        (!m_sel_vertices.empty() || !m_sel_edges.empty() || m_active_vertex >= 0 || m_active_edge.first >= 0)) {
-        if (!m_vertex_marker_glmodel.is_initialized()) {
-            GLModel::Geometry q;
-            q.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
-            q.reserve_vertices(4);
-            q.reserve_indices(6);
-            q.add_vertex(Vec3f(-0.5f, -0.5f, 0.f));
-            q.add_vertex(Vec3f(0.5f, -0.5f, 0.f));
-            q.add_vertex(Vec3f(0.5f, 0.5f, 0.f));
-            q.add_vertex(Vec3f(-0.5f, 0.5f, 0.f));
-            q.add_triangle(0, 1, 2);
-            q.add_triangle(0, 2, 3);
-            m_vertex_marker_glmodel.init_from(std::move(q));
-        }
-        const float uv_per_px = 2.f * m_zoom / float(std::max(1, std::min(size.GetWidth(), size.GetHeight())));
-        const float marker    = uv_per_px * 10.f; // ~10 px square, constant on screen at any zoom
-        const auto  draw_marker = [&](int v) {
-            if (v < 0 || size_t(v) >= m_islands.uvs.size())
-                return;
-            const Vec2f  p = island_uv(size_t(v));
-            Transform3d  m = Transform3d::Identity();
-            m.translate(Vec3d(double(p.x()), double(p.y()), 0.0));
-            m.scale(double(marker));
-            draw(m_vertex_marker_glmodel, UV_COLOR_SEL_BOUNDARY, m);
-        };
-        // Mark every element of the multi-selection (falling back to the primary when nothing is in the
-        // set yet), so a Shift/Ctrl group is all visibly highlighted.
-        if (m_select_mode == SelectMode::Vertex) {
-            if (m_sel_vertices.empty())
-                draw_marker(m_active_vertex);
-            else
-                for (const int v : m_sel_vertices)
-                    draw_marker(v);
-        } else {
-            if (m_sel_edges.empty()) {
-                draw_marker(m_active_edge.first);
-                draw_marker(m_active_edge.second);
-            } else
-                for (const auto &[a, b] : m_sel_edges) {
-                    draw_marker(a);
-                    draw_marker(b);
-                }
+    // Vertex/Edge mode: the element under the cursor in the hover colour, and the selection as teal - a selected
+    // edge drawn over its whole length, a vertex as a square handle, both on a dark halo.
+    if (!m_vertex_marker_glmodel.is_initialized()) {
+        GLModel::Geometry q;
+        q.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+        q.reserve_vertices(4);
+        q.reserve_indices(6);
+        q.add_vertex(Vec3f(-0.5f, -0.5f, 0.f));
+        q.add_vertex(Vec3f(0.5f, -0.5f, 0.f));
+        q.add_vertex(Vec3f(0.5f, 0.5f, 0.f));
+        q.add_vertex(Vec3f(-0.5f, 0.5f, 0.f));
+        q.add_triangle(0, 1, 2);
+        q.add_triangle(0, 2, 3);
+        m_vertex_marker_glmodel.init_from(std::move(q));
+    }
+    const auto draw_marker = [&](int v, float px, const ColorRGBA &color) {
+        if (v < 0 || size_t(v) >= m_islands.uvs.size())
+            return;
+        const Vec2f p = island_uv(size_t(v));
+        Transform3d m = Transform3d::Identity();
+        m.translate(Vec3d(double(p.x()), double(p.y()), 0.0));
+        m.scale(double(px * uv_per_px));
+        draw(m_vertex_marker_glmodel, color, m);
+    };
+    const auto draw_handle = [&](int v, const ColorRGBA &color, float px) {
+        draw_marker(v, px + 4.f, UV_COLOR_HALO);
+        draw_marker(v, px, color);
+    };
+    if (m_select_mode == SelectMode::Vertex) {
+        if (m_hover_vertex >= 0 && !is_vertex_selected(m_hover_vertex))
+            draw_handle(m_hover_vertex, UV_COLOR_HOVER, 7.f);
+        // Every element of the multi-selection, falling back to the primary while the set is still empty.
+        if (m_sel_vertices.empty())
+            draw_handle(m_active_vertex, UV_COLOR_SEL_BOUNDARY, 8.f);
+        else
+            for (const int v : m_sel_vertices)
+                draw_handle(v, UV_COLOR_SEL_BOUNDARY, 8.f);
+    } else if (m_select_mode == SelectMode::Edge) {
+        if (m_hover_edge.first >= 0 && !is_edge_selected(m_hover_edge))
+            draw_stroke(edge_segments({ m_hover_edge }), 3.f, UV_COLOR_HOVER, 2.f);
+        std::vector<std::pair<int, int>> edges = m_sel_edges;
+        if (edges.empty() && m_active_edge.first >= 0)
+            edges.push_back(m_active_edge);
+        draw_stroke(edge_segments(edges), 4.f, UV_COLOR_SEL_BOUNDARY, 2.f);
+        for (const auto &[a, b] : edges) {
+            draw_handle(a, UV_COLOR_SEL_BOUNDARY, 6.f);
+            draw_handle(b, UV_COLOR_SEL_BOUNDARY, 6.f);
         }
     }
 
     // Add/remove hint next to the cursor in Vertex/Edge mode: a green '+' when a click will add to the
     // selection (plain or Shift), a red '-' when Ctrl is held and a click will remove one - the UV-side
-    // twin of the 3D paint cursor's own sign. Rebuilt each frame at the pointer, sized in pixels.
+    // twin of the 3D paint cursor's own sign.
     if (m_select_mode != SelectMode::Island && m_cursor_inside) {
-        const float uv_per_px = 2.f * m_zoom / float(std::max(1, std::min(size.GetWidth(), size.GetHeight())));
-        const Vec2f centre    = screen_to_uv(m_cursor_px) + Vec2f(14.f, -14.f) * uv_per_px; // up-right of the pointer
-        const float r         = 6.f * uv_per_px;
-        const bool  removing  = wxGetKeyState(WXK_CONTROL);
-
-        GLModel::Geometry sign;
-        sign.format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P3 };
-        unsigned   idx = 0;
-        const auto seg = [&](const Vec2f &a, const Vec2f &b) {
-            sign.add_vertex(Vec3f(a.x(), a.y(), 0.f));
-            sign.add_vertex(Vec3f(b.x(), b.y(), 0.f));
-            sign.add_line(idx, idx + 1);
-            idx += 2;
-        };
-        seg(centre - Vec2f(r, 0.f), centre + Vec2f(r, 0.f)); // the '-' bar, shared by both signs
+        const Vec2f centre   = screen_to_uv(m_cursor_px) + Vec2f(14.f, -14.f) * uv_per_px; // up-right of the pointer
+        const float r        = 6.f * uv_per_px;
+        const bool  removing = wxGetKeyState(WXK_CONTROL);
+        Segments    sign{ { centre - Vec2f(r, 0.f), centre + Vec2f(r, 0.f) } }; // the '-' bar, shared by both signs
         if (!removing)
-            seg(centre - Vec2f(0.f, r), centre + Vec2f(0.f, r)); // the extra stroke that makes it a '+'
-
-        m_cursor_sign_glmodel.reset();
-        if (!sign.is_empty())
-            m_cursor_sign_glmodel.init_from(std::move(sign));
-        set_line_width(3.f);
-        draw(m_cursor_sign_glmodel, removing ? ColorRGBA(1.f, 0.30f, 0.25f, 0.95f) : ColorRGBA(0.35f, 0.90f, 0.45f, 0.95f),
-             identity);
-        set_line_width(1.f);
+            sign.emplace_back(centre - Vec2f(0.f, r), centre + Vec2f(0.f, r)); // the extra stroke that makes it a '+'
+        draw_stroke(sign, 2.5f, removing ? ColorRGBA(1.f, 0.36f, 0.30f, 1.f) : ColorRGBA(0.40f, 0.92f, 0.50f, 1.f), 1.f);
     }
 
     // The GL context is shared with the 3D view; leave the bits we touched as we found them.
     glsafe(::glDisable(GL_BLEND));
     glsafe(::glEnable(GL_DEPTH_TEST));
+    if (prev_cull)
+        glsafe(::glEnable(GL_CULL_FACE));
+    if (prev_scissor)
+        glsafe(::glEnable(GL_SCISSOR_TEST));
+    if (prev_stencil)
+        glsafe(::glEnable(GL_STENCIL_TEST));
 
     SwapBuffers();
 
@@ -1385,74 +1622,529 @@ enum : int {
     ID_UV_SNAP,
     ID_UV_AVG_SCALE,
     ID_UV_CUT,
-    ID_UV_PROJECT,
     ID_UV_JOIN,
     ID_UV_UNJOIN,
+    ID_UV_UNWRAP,
+    ID_UV_MARK_SEAMS,
+    ID_UV_SEAM_PATH,
+    ID_UV_CLEAR_SEAMS,
+    ID_UV_CLEAR_EDITS,
+    ID_UV_SELECT_ISLAND, // + SelectMode
+    ID_UV_SELECT_VERTEX,
+    ID_UV_SELECT_EDGE,
+    ID_UV_BG_HEIGHT,     // + Background
+    ID_UV_BG_CHECKER,
+    ID_UV_BG_DISTORTION,
+    ID_UV_PICK_TEXTURE,
 };
+
+// An icon from resources/images, rasterised at the window's real pixel density. On GTK3 create_scaled_bitmap()
+// renders at the DIP size and lets GTK upscale that on a HiDPI screen, which is what made these small icons blurry;
+// here the SVG is rendered at device pixels instead and tagged with the scale, so it is drawn 1:1. (Windows renders
+// at device pixels already, and macOS through BitmapCache's own backing scale.)
+wxBitmap pane_icon(wxWindow *win, const std::string &name, int size_dip)
+{
+#ifdef __WXGTK3__
+    if (const double scale = win->GetContentScaleFactor(); scale > 1.0) {
+        static BitmapCache cache;
+        const unsigned px = unsigned(std::lround(size_dip * scale));
+        if (wxBitmap *bmp = cache.load_svg(name, 0, px, false, wxGetApp().dark_mode()); bmp != nullptr && bmp->IsOk())
+            return wxBitmap(bmp->ConvertToImage(), -1, scale);
+    }
+#endif
+    return create_scaled_bitmap(name, win, size_dip);
+}
+
+// The size a bitmap takes on screen, in the units a wxDC draws in on this platform.
+wxSize drawn_size(const wxBitmap &bmp)
+{
+#ifdef __WXGTK3__
+    return bmp.GetLogicalSize();
+#else
+    return ScalableBitmap::GetBmpSize(bmp);
+#endif
+}
+
+// `bmp` with its alpha scaled down, for a disabled control. Keeps the bitmap's scale factor, so it stays sharp.
+wxBitmap faded(const wxBitmap &bmp, double alpha)
+{
+    wxImage image = bmp.ConvertToImage();
+    if (!image.HasAlpha())
+        image.InitAlpha();
+    unsigned char *a = image.GetAlpha();
+    for (int i = 0, n = image.GetWidth() * image.GetHeight(); i < n; ++i)
+        a[i] = (unsigned char) std::lround(a[i] * alpha);
+    return wxBitmap(image, -1, bmp.GetScaleFactor());
+}
+
+// The pane's colours, matching the texture displacement panel's ImGui style in both themes.
+struct PaneColors
+{
+    wxColour bg, ink, dim, rule, frame, hover;
+    static PaneColors current()
+    {
+        if (wxGetApp().dark_mode())
+            return { wxColour(0x2d, 0x2d, 0x31), wxColour(0xef, 0xef, 0xf0), wxColour(0x90, 0x90, 0x96),
+                     wxColour(0x3d, 0x3d, 0x45), wxColour(0x36, 0x36, 0x3c), wxColour(0x49, 0x49, 0x50) };
+        return { wxColour(0xff, 0xff, 0xff), wxColour(0x32, 0x3a, 0x3d), wxColour(0x7c, 0x82, 0x82),
+                 wxColour(0xed, 0xed, 0xed), wxColour(0xce, 0xce, 0xce), wxColour(0xee, 0xee, 0xee) };
+    }
+};
+
+wxColour mix(const wxColour &a, const wxColour &b, double t)
+{
+    const auto ch = [t](unsigned char x, unsigned char y) { return (unsigned char) std::lround(x + (y - x) * t); };
+    return wxColour(ch(a.Red(), b.Red()), ch(a.Green(), b.Green()), ch(a.Blue(), b.Blue()));
+}
 } // namespace
+
+// An icon button - square, or with a label beside the icon - drawn the way the texture displacement panel draws
+// its own: a 1 px frame, a teal frame over a teal tint while a toggle is on, a solid teal fill for the one
+// accent action, and an optional amber dot for "needs attention". Drawn by hand rather than with wxButton /
+// wxToggleButton so the pane looks the same on every platform and in both themes.
+//
+// A click emits wxEVT_BUTTON with the button's id; for a toggle the event's int is the new state. The owner
+// may overwrite that state again with SetValue() - which is how radio groups and gizmo-owned flags work.
+class UVToolButton : public wxWindow
+{
+public:
+    UVToolButton(wxWindow *parent, wxWindowID id, const std::string &icon, const wxString &label, const wxString &tip,
+                 bool toggle, bool accent = false, int size_dip = 26)
+        : wxWindow(parent, id, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxFULL_REPAINT_ON_RESIZE)
+        , m_icon_name(icon), m_icon_dip(size_dip >= 26 ? 16 : 14), m_label(label), m_toggle(toggle), m_accent(accent)
+        , m_size_dip(size_dip)
+    {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetToolTip(tip);
+        if (accent) {
+            wxFont font = GetFont();
+            font.MakeBold();
+            SetFont(font);
+        }
+        Bind(wxEVT_PAINT, &UVToolButton::on_paint, this);
+        Bind(wxEVT_ENTER_WINDOW, [this](wxMouseEvent &) { m_hover = true; Refresh(); });
+        Bind(wxEVT_LEAVE_WINDOW, [this](wxMouseEvent &) { m_hover = false; m_pressed = false; Refresh(); });
+        Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &) {
+            if (IsEnabled()) {
+                m_pressed = true;
+                Refresh();
+            }
+        });
+        Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &e) {
+            const bool was_pressed = m_pressed;
+            m_pressed              = false;
+            Refresh();
+            if (!was_pressed || !IsEnabled() || !GetClientRect().Contains(e.GetPosition()))
+                return;
+            if (m_toggle)
+                m_on = !m_on;
+            wxCommandEvent evt(wxEVT_BUTTON, GetId());
+            evt.SetEventObject(this);
+            evt.SetInt(m_on ? 1 : 0);
+            ProcessWindowEvent(evt);
+        });
+        SetMinSize(DoGetBestSize());
+    }
+
+    void SetValue(bool on)
+    {
+        if (on != m_on) {
+            m_on = on;
+            Refresh();
+        }
+    }
+    bool GetValue() const { return m_on; }
+    // Shows a ready-made bitmap instead of the SVG icon (the layer thumbnail). Its scale factor sets its size.
+    void SetBitmap(const wxBitmap &bmp)
+    {
+        m_bitmap = bmp;
+        Refresh();
+    }
+    void SetBadge(bool badge)
+    {
+        if (badge != m_badge) {
+            m_badge = badge;
+            Refresh();
+        }
+    }
+    bool Enable(bool enable = true) override
+    {
+        const bool changed = wxWindow::Enable(enable);
+        if (changed)
+            Refresh();
+        return changed;
+    }
+
+protected:
+    wxSize DoGetBestSize() const override
+    {
+        const int h = FromDIP(m_size_dip);
+        if (m_label.empty())
+            return wxSize(h, h);
+        const int icon_w = m_icon_name.empty() ? 0 : FromDIP(m_icon_dip) + FromDIP(6);
+        return wxSize(FromDIP(9) + icon_w + GetTextExtent(m_label).x + FromDIP(10), h);
+    }
+
+private:
+    void on_paint(wxPaintEvent &)
+    {
+        wxAutoBufferedPaintDC dc(this);
+        const PaneColors c    = PaneColors::current();
+        const wxRect     r    = GetClientRect();
+        const wxColour   teal(0x00, 0x96, 0x88);
+        const bool       enabled = IsEnabled();
+
+        wxColour fill = c.bg, border = c.frame, text = c.ink;
+        if (m_accent) {
+            fill   = (m_hover && enabled) ? wxColour(0x26, 0xa6, 0x9a) : teal;
+            border = fill;
+            text   = *wxWHITE;
+        } else if (m_on) {
+            fill   = mix(c.bg, teal, 0.22);
+            border = teal;
+        } else if (m_hover && enabled) {
+            fill = c.hover;
+        }
+        if (m_pressed)
+            fill = mix(fill, teal, 0.18);
+
+        dc.SetBackground(wxBrush(c.bg));
+        dc.Clear();
+        dc.SetBrush(wxBrush(fill));
+        dc.SetPen(wxPen(border, 1));
+        dc.DrawRoundedRectangle(r, FromDIP(2));
+
+        // Rasterised on first paint rather than in the constructor: the content scale is only reliable once the
+        // window is on screen, and it changes when the window moves to a screen with a different one.
+        if (!m_icon_name.empty() && (!m_icon.IsOk() || m_icon_scale != GetContentScaleFactor())) {
+            m_icon_scale = GetContentScaleFactor();
+            m_icon       = pane_icon(this, m_icon_name, m_icon_dip);
+        }
+        const wxBitmap &bmp = m_bitmap.IsOk() ? m_bitmap : m_icon;
+        int             x   = 0;
+        if (bmp.IsOk()) {
+            const wxSize bs = drawn_size(bmp);
+            x               = m_label.empty() ? (r.width - bs.x) / 2 : FromDIP(9);
+            dc.DrawBitmap(enabled ? bmp : faded(bmp, 0.35), x, (r.height - bs.y) / 2, true);
+            x += bs.x + FromDIP(6);
+        } else {
+            x = FromDIP(9);
+        }
+        if (!m_label.empty()) {
+            dc.SetFont(GetFont());
+            dc.SetTextForeground(enabled ? text : mix(text, c.bg, 0.55));
+            dc.DrawText(m_label, x, (r.height - dc.GetTextExtent(m_label).y) / 2);
+        }
+        if (m_badge) {
+            const int d = FromDIP(9);
+            dc.SetPen(wxPen(c.bg, FromDIP(2)));
+            dc.SetBrush(wxBrush(wxColour(0xe0, 0xa4, 0x4a)));
+            dc.DrawCircle(r.width - d / 2 - 1, d / 2 + 1, d / 2);
+        }
+    }
+
+    std::string    m_icon_name;
+    int            m_icon_dip   = 16;
+    wxBitmap       m_icon;           // m_icon_name rasterised for m_icon_scale
+    double         m_icon_scale = 0.;
+    wxBitmap       m_bitmap;
+    wxString       m_label;
+    bool           m_toggle   = false;
+    bool           m_accent   = false;
+    int            m_size_dip = 26;
+    bool           m_on       = false;
+    bool           m_badge    = false;
+    bool           m_hover    = false;
+    bool           m_pressed  = false;
+};
 
 UVEditorPanel::UVEditorPanel(wxWindow *parent) : wxPanel(parent, wxID_ANY)
 {
-    // Icon + label buttons: each has its own dedicated SVG (see the map below), with the label kept
-    // alongside it. A missing SVG simply leaves the button showing only its label - never bitmap-less
-    // garbage - so the bar stays usable before the art lands.
-    auto *bar = new wxBoxSizer(wxHORIZONTAL);
-    const auto set_icon = [this](wxAnyButton *b, const std::string &iconname) {
-        const wxBitmap bmp = create_scaled_bitmap(iconname, this, 16);
-        if (bmp.IsOk())
-            b->SetBitmap(bmp);
+    const PaneColors c   = PaneColors::current();
+    const int        gap = FromDIP(6);
+    const int        pad = FromDIP(8);
+    SetBackgroundColour(c.bg);
+
+    const auto rule = [&](const wxSize &size) {
+        auto *w = new wxWindow(this, wxID_ANY, wxDefaultPosition, size);
+        w->SetBackgroundColour(c.rule);
+        w->SetMinSize(size);
+        return w;
     };
-    const auto add_button = [&](int id, const std::string &iconname, const wxString &label, const wxString &tip) {
-        auto *b = new wxButton(this, id, label, wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-        set_icon(b, iconname);
-        b->SetToolTip(tip);
-        bar->Add(b, 0, wxALL, 2);
-        b->Bind(wxEVT_BUTTON, &UVEditorPanel::on_tool, this);
+    const auto text = [&](const wxString &label, const wxColour &colour, long style = 0) {
+        auto *t = new wxStaticText(this, wxID_ANY, label, wxDefaultPosition, wxDefaultSize, style);
+        t->SetForegroundColour(colour);
+        t->SetBackgroundColour(c.bg);
+        return t;
+    };
+
+    // ---- header: the layer being edited, the background under the islands, and Unwrap ----
+    auto *header = new wxBoxSizer(wxHORIZONTAL);
+    m_thumb      = new UVToolButton(this, ID_UV_PICK_TEXTURE, std::string(), wxEmptyString,
+                                    _L("Change texture - choose another one from the texture library"), false, false, 26);
+    m_layer_name = text(wxEmptyString, c.ink, wxST_ELLIPSIZE_END);
+    {
+        wxFont font = m_layer_name->GetFont();
+        font.MakeBold();
+        m_layer_name->SetFont(font);
+    }
+    // The name opens the library too, like the texture's name in the layer card.
+    m_layer_name->SetCursor(wxCursor(wxCURSOR_HAND));
+    m_layer_name->SetToolTip(m_thumb->GetToolTipText());
+    m_layer_name->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &) {
+        if (m_canvas->pane_state().has_layer)
+            m_canvas->run_command(UVEditorCanvas::Command::PickTexture);
+    });
+    m_layer_name->SetMinSize(wxSize(FromDIP(30), -1));
+    m_tile = text(wxEmptyString, c.dim);
+    header->Add(m_thumb, 0, wxALIGN_CENTER_VERTICAL);
+    header->Add(m_layer_name, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
+    header->Add(m_tile, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
+
+    const char *const bg_icons[3] = { "texture_displacement_uv_bg_height", "texture_displacement_checker",
+                                      "texture_displacement_distortion" };
+    const wxString    bg_tips[3]  = { _L("Height map - show the layer's texture under the islands"),
+                                      _L("Checker - a test grid; squares stay square where the unwrap does not stretch"),
+                                      _L("Distortion - colour each island by how much the unwrap stretches it") };
+    for (int i = 0; i < 3; ++i) {
+        m_background[i] = new UVToolButton(this, ID_UV_BG_HEIGHT + i, bg_icons[i], wxEmptyString, bg_tips[i], true, false, 22);
+        header->Add(m_background[i], 0, wxALIGN_CENTER_VERTICAL | wxLEFT, i == 0 ? gap : FromDIP(3));
+    }
+    header->Add(rule(wxSize(1, FromDIP(18))), 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, gap);
+    m_unwrap = new UVToolButton(this, ID_UV_UNWRAP, "texture_displacement_map_unwrap", _L("Unwrap"), wxEmptyString, false, true, 24);
+    header->Add(m_unwrap, 0, wxALIGN_CENTER_VERTICAL);
+
+    // ---- settings: what the next Unwrap will do ----
+    auto *settings = new wxBoxSizer(wxHORIZONTAL);
+    auto *seam_label = text(_L("Seam angle"), c.dim);
+    m_seam_angle = new ::SpinInput(this, wxEmptyString, wxString::FromUTF8("°"), wxDefaultPosition, wxSize(FromDIP(76), FromDIP(24)), 0,
+                                   5, 90, 40);
+    const wxString seam_tip = _L("Edges sharper than this are cut, and the pieces either side of them are flattened separately. "
+                                 "Lower it to cut more: each piece then lies flat with less stretching, at the cost of the "
+                                 "texture not running continuously across the cut. Takes effect at the next Unwrap.");
+    seam_label->SetToolTip(seam_tip);
+    m_seam_angle->SetToolTip(seam_tip);
+    m_connect            = new ::CheckBox(this);
+    auto *connect_label  = text(_L("Connect islands"), c.ink);
+    const wxString connect_tip = _L("Lay the unwrap out as a connected net: pieces that share an edge are unfolded next to each "
+                                    "other (a cube becomes a joined net rather than six loose squares). They stay separate "
+                                    "islands, so you can still move any of them by hand afterwards.");
+    m_connect->SetToolTip(connect_tip);
+    connect_label->SetToolTip(connect_tip);
+    settings->Add(seam_label, 0, wxALIGN_CENTER_VERTICAL);
+    settings->Add(m_seam_angle, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
+    settings->AddStretchSpacer();
+    settings->Add(m_connect, 0, wxALIGN_CENTER_VERTICAL);
+    settings->Add(connect_label, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(4));
+
+    // ---- tool strip ----
+    auto      *strip = new wxBoxSizer(wxVERTICAL);
+    const auto tool  = [&](int id, const char *icon, const wxString &tip, bool toggle) {
+        auto *b = new UVToolButton(this, id, icon, wxEmptyString, tip, toggle);
+        strip->Add(b, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, FromDIP(4));
         return b;
     };
-    add_button(ID_UV_FRAME, "texture_displacement_frame", _L("Frame"), _L("Frame all islands (Home)"));
-    m_snap_button = new wxToggleButton(this, ID_UV_SNAP, _L("Snap"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-    set_icon(m_snap_button, "texture_displacement_snap");
-    m_snap_button->SetToolTip(_L("Snap islands together when dragging"));
-    bar->Add(m_snap_button, 0, wxALL, 2);
-    m_snap_button->Bind(wxEVT_TOGGLEBUTTON, &UVEditorPanel::on_tool, this);
-    add_button(ID_UV_AVG_SCALE, "texture_displacement_avg_scale", _L("Avg scale"), _L("Give every island the same texel density"));
-    add_button(ID_UV_CUT, "texture_displacement_cut", _L("Cut"), _L("Split the selected island across its long axis"));
-    add_button(ID_UV_JOIN, "texture_displacement_join", _L("Join"), _L("Unfold the selected island onto its nearest neighbour along their shared edge"));
-    add_button(ID_UV_UNJOIN, "texture_displacement_join", _L("Unjoin"), _L("Send the selected island back to its own packed position"));
+    // 11 px either side of a group rule (7 below plus the next button's own 4), against 4 px between buttons.
+    const auto strip_rule = [&]() {
+        auto *r = rule(wxSize(FromDIP(20), 1));
+        strip->Add(r, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, FromDIP(11));
+        strip->AddSpacer(FromDIP(7));
+    };
+    m_select[0] = tool(ID_UV_SELECT_ISLAND, "texture_displacement_uv_select_island", _L("Island - move, rotate and scale whole islands"), true);
+    m_select[1] = tool(ID_UV_SELECT_VERTEX, "texture_displacement_uv_select_vertex", _L("Vertex - drag vertices to reshape; Shift/Ctrl to multi-select"), true);
+    m_select[2] = tool(ID_UV_SELECT_EDGE, "texture_displacement_uv_select_edge", _L("Edge - drag edges to reshape; Shift/Ctrl to multi-select"), true);
+    strip_rule();
+    m_mark_seams = tool(ID_UV_MARK_SEAMS, "texture_displacement_uv_seam",
+                        _L("Mark seams - click edges on the model to cut the unwrap along them. The edge under the cursor is "
+                           "highlighted yellow; click to mark it red, click a red edge again to unmark it. Painting is paused "
+                           "while this is on."),
+                        true);
+    m_seam_path = tool(ID_UV_SEAM_PATH, "texture_displacement_uv_path",
+                       _L("Path - instead of clicking every edge, click a start point and then an end point: the whole "
+                          "shortest path between them is seamed at once. Available while marking seams."),
+                       true);
+    m_clear_seams = tool(ID_UV_CLEAR_SEAMS, "texture_displacement_cross", _L("Clear seams - remove every seam marked on this layer"), false);
+    strip_rule();
+    m_avg_scale = tool(ID_UV_AVG_SCALE, "texture_displacement_uv_avg_scale", _L("Average scale - give every island the same texel density"), false);
+    m_cut       = tool(ID_UV_CUT, "texture_displacement_uv_cut", _L("Cut - split the selected island across its long axis"), false);
+    m_join      = tool(ID_UV_JOIN, "texture_displacement_uv_join", _L("Join - unfold the selected island onto its nearest neighbour along their shared edge"), false);
+    m_unjoin    = tool(ID_UV_UNJOIN, "texture_displacement_uv_unjoin", _L("Unjoin - send the selected island back to its own packed position"), false);
+    strip->AddStretchSpacer();
+    m_clear_edits = tool(ID_UV_CLEAR_EDITS, "texture_displacement_uv_clear_edits",
+                         _L("Clear UV edits - discard all manual vertex/edge moves and return the unwrap to its automatic shape"), false);
+    m_snap  = tool(ID_UV_SNAP, "texture_displacement_uv_snap", _L("Snap - stick islands together when dragging one against another"), true);
+    m_frame = tool(ID_UV_FRAME, "texture_displacement_uv_frame", _L("Frame all islands (Home)"), false);
+    strip->AddSpacer(FromDIP(4));
 
-    m_canvas = new UVEditorCanvas(this);
-    m_canvas->set_status_callback([this](const wxString &text) {
-        if (m_status != nullptr && m_status->GetLabel() != text) {
-            m_status->SetLabel(text);
-            m_status->Refresh();
-        }
-    });
+    m_canvas   = new UVEditorCanvas(this);
+    auto *body = new wxBoxSizer(wxHORIZONTAL);
+    body->Add(strip, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(4));
+    body->Add(rule(wxSize(1, -1)), 0, wxEXPAND);
+    body->Add(m_canvas, 1, wxEXPAND);
 
-    m_status = new wxStaticText(this, wxID_ANY, wxEmptyString);
-    m_status->SetForegroundColour(wxColour(180, 180, 180));
+    // ---- status line: the current gesture on the left, the unwrap summary on the right ----
+    m_status = text(wxEmptyString, c.dim, wxST_ELLIPSIZE_END);
+    m_status->SetMinSize(wxSize(FromDIP(40), -1));
+    m_stats      = text(wxEmptyString, c.dim);
+    auto *status = new wxBoxSizer(wxHORIZONTAL);
+    status->Add(m_status, 1, wxALIGN_CENTER_VERTICAL);
+    status->Add(m_stats, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
 
     auto *sizer = new wxBoxSizer(wxVERTICAL);
-    sizer->Add(bar, 0, wxEXPAND);
-    sizer->Add(m_canvas, 1, wxEXPAND);
-    sizer->Add(m_status, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, 3);
+    sizer->Add(header, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, pad);
+    sizer->Add(settings, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, gap);
+    sizer->Add(rule(wxSize(-1, 1)), 0, wxEXPAND | wxTOP, gap);
+    sizer->Add(body, 1, wxEXPAND);
+    sizer->Add(rule(wxSize(-1, 1)), 0, wxEXPAND);
+    sizer->Add(status, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, FromDIP(5));
     SetSizer(sizer);
+
+    Bind(wxEVT_BUTTON, &UVEditorPanel::on_tool, this);
+    // Both settings compare against the last state the gizmo pushed before sending anything: apply_state()
+    // writes them back, and without the check that write would bounce straight back to the gizmo as an edit.
+    m_seam_angle->Bind(wxEVT_SPINCTRL, [this](wxCommandEvent &) {
+        const int value = m_seam_angle->GetValue();
+        if (value != int(std::lround(m_canvas->pane_state().seam_angle_deg)))
+            m_canvas->run_command(UVEditorCanvas::Command::SetSeamAngle, float(value));
+    });
+    const auto send_connect = [this]() {
+        if (m_connect->GetValue() != m_canvas->pane_state().connect_islands)
+            m_canvas->run_command(UVEditorCanvas::Command::SetConnectIslands, m_connect->GetValue() ? 1.f : 0.f);
+    };
+    m_connect->Bind(wxEVT_TOGGLEBUTTON, [send_connect](wxCommandEvent &e) {
+        send_connect();
+        e.Skip();
+    });
+    connect_label->Bind(wxEVT_LEFT_DOWN, [this, send_connect](wxMouseEvent &) {
+        if (!m_connect->IsEnabled())
+            return;
+        m_connect->SetValue(!m_connect->GetValue());
+        send_connect();
+    });
+
+    m_canvas->set_status_callback([this](const wxString &label) {
+        if (m_status != nullptr && m_status->GetLabel() != label) {
+            m_status->SetLabel(label);
+            m_status->Refresh();
+            refresh_selection_tools(); // a selection or mode change is what changes the status line
+        }
+    });
+    m_canvas->set_pane_state_callback([this](const UVEditorCanvas::PaneState &state) { apply_state(state); });
+    apply_state(m_canvas->pane_state());
+
+    // AUI shows and hides the pane through this panel. Rebuild the canvas's GPU objects when it comes back, so
+    // the texture and islands never depend on surviving the canvas's native window being hidden.
+    Bind(wxEVT_SHOW, [this](wxShowEvent &e) {
+        e.Skip();
+        if (e.IsShown())
+            m_canvas->invalidate_gl();
+    });
+}
+
+void UVEditorPanel::apply_state(const UVEditorCanvas::PaneState &s)
+{
+    const wxString name = s.has_layer ? s.layer_name : _L("No layer mapped with Unwrap");
+    const wxString tile = s.has_layer ? wxString::Format(_L("%.1f mm tile"), s.tile_mm) : wxString();
+    const bool     relayout = m_layer_name->GetLabel() != name || m_tile->GetLabel() != tile;
+    m_layer_name->SetLabel(name);
+    m_tile->SetLabel(tile);
+
+    if (s.thumbnail_px > 0 && s.thumbnail_rgb.size() == size_t(s.thumbnail_px) * size_t(s.thumbnail_px) * 3) {
+        // Scaled to device pixels and tagged with the content scale, so HiDPI screens get every pixel of it.
+        const double scale = GetContentScaleFactor();
+        const int    px    = std::max(1, int(std::lround(FromDIP(20) * scale)));
+        wxImage      image(s.thumbnail_px, s.thumbnail_px, false);
+        std::copy(s.thumbnail_rgb.begin(), s.thumbnail_rgb.end(), image.GetData());
+        m_thumb->SetBitmap(wxBitmap(image.Scale(px, px, wxIMAGE_QUALITY_HIGH), -1, scale));
+    } else {
+        m_thumb->SetBitmap(wxNullBitmap);
+    }
+    m_thumb->Enable(s.has_layer);
+
+    for (int i = 0; i < 3; ++i) {
+        m_background[i]->SetValue(int(s.background) == i);
+        m_background[i]->Enable(s.has_layer);
+    }
+    m_unwrap->Enable(s.has_layer);
+    m_unwrap->SetBadge(s.unwrap_stale);
+    m_unwrap->SetToolTip(s.unwrap_stale ?
+                             _L("Out of date - the paint, the seams or the seam angle changed since this unwrap was made. "
+                                "Press to unwrap again.") :
+                             _L("Flatten the painted area into UV islands. It is computed only when you press this, not on "
+                                "every edit - so paint, change the seam angle or mark seams first, then press Unwrap."));
+
+    if (m_seam_angle->GetValue() != int(std::lround(s.seam_angle_deg)))
+        m_seam_angle->SetValue(int(std::lround(s.seam_angle_deg)));
+    m_seam_angle->Enable(s.has_layer);
+    m_connect->SetValue(s.connect_islands);
+    m_connect->Enable(s.has_layer);
+
+    m_mark_seams->SetValue(s.mark_seams);
+    m_mark_seams->Enable(s.has_layer);
+    m_seam_path->SetValue(s.seam_path);
+    m_seam_path->Enable(s.has_layer && s.mark_seams);
+    m_clear_seams->Enable(s.has_layer && s.has_seams);
+    m_clear_edits->Enable(s.has_layer && s.has_uv_edits);
+
+    m_stats->SetLabel(s.unwrapped ? wxString::Format(_L("%d islands · %s faces"), s.island_count,
+                                                     wxString(std::to_string(s.face_count))) :
+                                    wxString());
+    refresh_selection_tools();
+    if (relayout)
+        Layout();
+}
+
+void UVEditorPanel::refresh_selection_tools()
+{
+    const bool has_islands = m_canvas->has_islands();
+    const int  mode        = int(m_canvas->select_mode());
+    for (int i = 0; i < 3; ++i) {
+        m_select[i]->SetValue(i == mode);
+        m_select[i]->Enable(has_islands);
+    }
+    const bool island_picked = has_islands && m_canvas->select_mode() == UVEditorCanvas::SelectMode::Island &&
+                               m_canvas->selected_island() >= 0;
+    m_avg_scale->Enable(has_islands);
+    m_cut->Enable(island_picked);
+    m_join->Enable(island_picked);
+    m_unjoin->Enable(island_picked);
+    m_snap->Enable(has_islands);
+    m_snap->SetValue(m_canvas->snap_enabled());
+    m_frame->Enable(has_islands);
 }
 
 void UVEditorPanel::on_tool(wxCommandEvent &evt)
 {
-    switch (evt.GetId()) {
-    case ID_UV_FRAME:     m_canvas->run_command(UVEditorCanvas::Command::FrameAll); break;
-    case ID_UV_SNAP:      m_canvas->run_command(UVEditorCanvas::Command::ToggleSnap); break;
-    case ID_UV_AVG_SCALE: m_canvas->run_command(UVEditorCanvas::Command::AverageScale); break;
-    case ID_UV_CUT:       m_canvas->run_command(UVEditorCanvas::Command::CutSelectedIsland); break;
-    case ID_UV_JOIN:      m_canvas->run_command(UVEditorCanvas::Command::JoinSelected); break;
-    case ID_UV_UNJOIN:    m_canvas->run_command(UVEditorCanvas::Command::UnjoinSelected); break;
-    default:              evt.Skip(); return;
+    using Command = UVEditorCanvas::Command;
+    const int  id = evt.GetId();
+    const bool on = evt.GetInt() != 0;
+    switch (id) {
+    case ID_UV_FRAME:       m_canvas->run_command(Command::FrameAll); break;
+    case ID_UV_SNAP:        m_canvas->run_command(Command::ToggleSnap); break;
+    case ID_UV_AVG_SCALE:   m_canvas->run_command(Command::AverageScale); break;
+    case ID_UV_CUT:         m_canvas->run_command(Command::CutSelectedIsland); break;
+    case ID_UV_JOIN:        m_canvas->run_command(Command::JoinSelected); break;
+    case ID_UV_UNJOIN:      m_canvas->run_command(Command::UnjoinSelected); break;
+    case ID_UV_UNWRAP:      m_canvas->run_command(Command::Unwrap); break;
+    case ID_UV_MARK_SEAMS:  m_canvas->run_command(Command::SetMarkSeams, on ? 1.f : 0.f); break;
+    case ID_UV_SEAM_PATH:   m_canvas->run_command(Command::SetSeamPath, on ? 1.f : 0.f); break;
+    case ID_UV_CLEAR_SEAMS: m_canvas->run_command(Command::ClearSeams); break;
+    case ID_UV_CLEAR_EDITS: m_canvas->run_command(Command::ClearUVEdits); break;
+    case ID_UV_PICK_TEXTURE: m_canvas->run_command(Command::PickTexture); break;
+    case ID_UV_SELECT_ISLAND:
+    case ID_UV_SELECT_VERTEX:
+    case ID_UV_SELECT_EDGE: m_canvas->run_command(Command::SetSelectMode, float(id - ID_UV_SELECT_ISLAND)); break;
+    case ID_UV_BG_HEIGHT:
+    case ID_UV_BG_CHECKER:
+    case ID_UV_BG_DISTORTION:
+        // Shown straight away; the gizmo confirms it with its next state push.
+        for (int i = 0; i < 3; ++i)
+            m_background[i]->SetValue(i == id - ID_UV_BG_HEIGHT);
+        m_canvas->run_command(Command::SetBackground, float(id - ID_UV_BG_HEIGHT));
+        break;
+    default: evt.Skip(); return;
     }
-    // Keep the toggle button's visual state in step with the canvas, which owns the flag.
-    if (m_snap_button != nullptr)
-        m_snap_button->SetValue(m_canvas->snap_enabled());
+    refresh_selection_tools();
 }
 
 } // namespace Slic3r::GUI
