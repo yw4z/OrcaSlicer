@@ -54,7 +54,7 @@
 #include "Jobs/Worker.hpp"
 
 #define  PRINT_OPT_BG_GRAY       0xF8F8F8
-#define  PRINT_OPT_ITEM_BG_GRAY  0xD9D9D9
+#define  PRINT_OPT_ITEM_BG_GRAY  0xEEEEEE
 
 
 // Previous definitions
@@ -151,7 +151,7 @@ struct POItem
     bool operator==(const POItem &other) const { return key == other.key && value == other.value; }
 };
 
-#define PRINT_OPT_WIDTH  FromDIP(72) // ORCA wider buttons for translation support
+#define PRINT_OPT_WIDTH  FromDIP(44)
 class PrintOptionItem : public wxPanel
 {
 public:
