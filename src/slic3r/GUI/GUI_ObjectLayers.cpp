@@ -261,6 +261,7 @@ void ObjectLayers::msw_rescale()
 {
     m_bmp_delete.msw_rescale();
     m_bmp_add.msw_rescale();
+    m_bmp_layer.msw_rescale();
 
     m_grid_sizer->SetHGap(wxGetApp().em_unit());
 
