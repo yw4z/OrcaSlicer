@@ -561,10 +561,24 @@ void ActionRegistry::materialize_setting_actions()
 
     std::unordered_set<std::string> seen;
     for (const Search::Option& opt : options) {
+        // The row's live state drives both the hidden filter and the title (labels can change at
+        // runtime, e.g. brim_width -> "Brim ear radius"). Hidden rows are skipped, not marked seen.
+        Tab* tab = wxGetApp().get_tab(opt.type);
+        Tab::SettingRowState row;
+        if (tab)
+            row = tab->setting_row_state(opt.opt_key());
+        if (!row.visible)
+            continue;
+
         const std::string id = SettingAction::id_for(opt.opt_key(), opt.type);
         seen.insert(id);
 
-        const std::wstring label_w = opt.label_local.empty() ? opt.label : opt.label_local;
+        // The page draws Line::label; the descriptive ConfigOptionDef name stays a search-only alias
+        // ("overhang reversal" still finds "Reverse on even").
+        const std::string search_label = boost::nowide::narrow(opt.label_local.empty() ? opt.label : opt.label_local);
+        std::string       title        = into_u8(Search::resolve_setting_title(from_u8(opt.display_label), row.label, row.multi));
+        if (title.empty())
+            title = search_label;
 
         // Eyebrow/source = the full settings path "Process : Quality : Layers" (localized). The JS
         // renders group || source and searches source + " " + group, so putting the whole path in
@@ -575,22 +589,22 @@ void ActionRegistry::materialize_setting_actions()
         if (!opt.group_local.empty())
             path += L" : " + opt.group_local;
 
-        // title = the option leaf name (last label segment); group stays empty so the source path
-        // (above) is the single display/search breadcrumb rather than being duplicated.
-        auto action = std::make_unique<SettingAction>(opt.opt_key(), opt.type, boost::nowide::narrow(label_w), std::string(),
-                                                      opt.category, boost::nowide::narrow(path), opt.mode);
+        // title = the label the settings row draws; group stays empty so the source path (above) is
+        // the single display/search breadcrumb rather than being duplicated.
+        auto action = std::make_unique<SettingAction>(opt.opt_key(), opt.type, title, std::string(), opt.category,
+                                                      boost::nowide::narrow(path), opt.mode);
+        if (title != search_label)
+            action->full_label = search_label;
 
         // Tile pictogram = the icon of the setting's own group header (e.g. Advanced -> param_advanced),
         // the one shown next to it in the page. Fall back to the page/category icon for groups
         // without one. Keys are the English titles the GUI registers.
         action->icon = opt.group_icon;
-        if (action->icon.empty() && !opt.category.empty()) {
-            if (Tab* tab = wxGetApp().get_tab(opt.type); tab) {
-                const auto& icons = tab->get_category_icon_map();
-                auto        it    = icons.find(wxString(opt.category));
-                if (it != icons.end())
-                    action->icon = it->second;
-            }
+        if (action->icon.empty() && !opt.category.empty() && tab) {
+            const auto& icons = tab->get_category_icon_map();
+            auto        it    = icons.find(wxString(opt.category));
+            if (it != icons.end())
+                action->icon = it->second;
         }
 
         // Footer description + wiki affordance; only settings whose row declared a wiki path have one.
@@ -745,6 +759,7 @@ nlohmann::json ActionRegistry::snapshot()
     auto action_to_json = [](const AppAction* a) {
         return nlohmann::json({{"id", a->id()},
                                {"title", a->title()},
+                               {"full_label", a->full_label},
                                {"source", a->source_name()},
                                {"group", a->group},
                                {"kind", a->kind == AppActionKind::Plugin ? "plugin" : "command"},

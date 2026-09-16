@@ -26,9 +26,30 @@ struct GroupAndCategory
 {
     wxString group;
     wxString category;
-    wxString icon;    // icon of the group's own header, or empty
-    std::string path; // wiki path (Line::label_path) of the option's line, or empty
+    wxString icon;       // icon of the group's own header, or empty
+    wxString line_label; // label the settings row actually draws (Line::label), or empty
+    std::string path;    // wiki path (Line::label_path) of the option's line, or empty
 };
+
+// Title for a setting: the row label, qualified with the field leaf when the row packs several
+// options (e.g. "Cool Plate \u2013 First layer"). Pure; inputs are already localized.
+inline wxString compose_display_label(const wxString& line_label, const wxString& leaf_label, bool multi)
+{
+    if (line_label.empty())
+        return leaf_label;
+    if (!multi || leaf_label.empty() || leaf_label == line_label)
+        return line_label;
+    return line_label + L" \u2013 " + leaf_label; // en dash separator
+}
+
+// Title to show. A single-option row uses its live label, which can be renamed at runtime
+// (brim_width -> "Brim ear radius"); otherwise fall back to the precomposed label.
+inline wxString resolve_setting_title(const wxString& precomposed, const wxString& live_label, bool live_multi)
+{
+    if (!live_multi && !live_label.empty())
+        return live_label;
+    return precomposed;
+}
 
 struct Option
 {
@@ -50,6 +71,7 @@ struct Option
     ConfigOptionMode mode{comSimple}; // option's visibility threshold; drives the Speed Dial's mode prompt
     std::string  tooltip;             // localized ConfigOptionDef::tooltip, or empty
     std::string  wiki_path;           // Line::label_path for the option's row, or empty
+    std::string  display_label;       // label the settings row draws (localized); empty falls back to label
 
     std::string opt_key() const;
 };
@@ -75,6 +97,9 @@ public:
     void add_key(const std::string &opt_key, Preset::Type type, const wxString &group, const wxString &category,
                  const wxString &icon = wxEmptyString);
     void set_path(const std::string &opt_key, Preset::Type type, const std::string &path);
+    // Record the label the option's row draws, so the Speed Dial names a setting like the page
+    // (ConfigOptionDef::label/full_label is a search name, not the row text).
+    void set_line_label(const std::string &opt_key, Preset::Type type, const wxString &label);
 
     const std::vector<Option> &options() const { return m_options; }
     const std::vector<Option> &all_options() const { return m_all_modes; }

@@ -55,9 +55,13 @@ static Option make_option(const std::string &key, Preset::Type type, const wxStr
         category            = wxString::Format("%s %d", "Extruder", atoi(opt_idx.c_str()) + 1);
     }
 
-    return Option{boost::nowide::widen(key), type, (label + suffix).ToStdWstring(), (_(label) + suffix_local).ToStdWstring(),
+    Option option{boost::nowide::widen(key), type, (label + suffix).ToStdWstring(), (_(label) + suffix_local).ToStdWstring(),
                   gc.group.ToStdWstring(), _(gc.group).ToStdWstring(), into_u8(gc.icon), gc.category.ToStdWstring(),
-                  GUI::Tab::translate_category(category, type).ToStdWstring(), false, mode, tooltip, gc.path};
+                  GUI::Tab::translate_category(category, type).ToStdWstring(), false, mode, tooltip, gc.path,
+                  // The settings page draws Line::label; carrying it lets the Speed Dial name a setting
+                  // the way the page does. `label`/`label_local` stay the search-oriented name.
+                  into_u8(gc.line_label)};
+    return option;
 }
 
 void SettingsIndex::append_options(DynamicPrintConfig *config, Preset::Type type, ConfigOptionMode mode)
@@ -223,6 +227,13 @@ void SettingsIndex::set_path(const std::string &opt_key, Preset::Type type, cons
     if (path.empty())
         return;
     m_groups_and_categories[get_key(opt_key, type)].path = path;
+}
+
+void SettingsIndex::set_line_label(const std::string &opt_key, Preset::Type type, const wxString &label)
+{
+    if (label.IsEmpty())
+        return;
+    m_groups_and_categories[get_key(opt_key, type)].line_label = label;
 }
 
 } // namespace Search

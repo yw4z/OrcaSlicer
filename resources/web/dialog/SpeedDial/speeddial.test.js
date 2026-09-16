@@ -117,6 +117,18 @@ const negativePool = [
 assert.equal(ctx.searchActions(negativePool, "ornt").length, 1,
     "a low-score fuzzy match is not mistaken for no match");
 
+// A setting whose displayed title is the page row label keeps the descriptive ConfigOptionDef name as
+// a search-only alias, so the old wording still finds it without being shown.
+const aliasPool = [
+    { id: "rev", title: "Reverse on even", full_label: "Overhang reversal", source: "Process : Quality : Overhangs", group: "", input: "" }
+];
+assert.deepEqual(ctx.searchActions(aliasPool, "overhang reversal").map(function (a) { return a.id; }), ["rev"],
+    "the descriptive full_label is searchable even though the title shows the row label");
+assert.equal(ctx.matchIndex.rev.title, null,
+    "an alias-only match does not highlight the displayed title");
+assert.deepEqual(ctx.searchActions(aliasPool, "reversal").map(function (a) { return a.id; }), ["rev"],
+    "a token that exists only in the full_label still matches");
+
 // Multi-token cross-field search: each whitespace-separated word must match SOME searchable field,
 // but different words may match different fields. "inner" is the title while "speed" and
 // "acceleration" live in the source breadcrumb, so the query as a whole is never contiguous in one

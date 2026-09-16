@@ -85,6 +85,9 @@ struct AppAction
     ConfigOptionMode required_mode = comSimple;
     // Description shown in the Speed Dial's footer strip (SettingActions: the localized tooltip).
     std::string tooltip;
+    // Search-only alias when the title differs from the descriptive ConfigOptionDef name (e.g. title
+    // "Reverse on even", full_label "Overhang reversal"). Empty when the two agree.
+    std::string full_label;
     // Full wiki URL, when the action has one (SettingActions whose row declared a label_path).
     std::string help_url;
 

@@ -114,6 +114,13 @@ function sourceNorm(a) {
         a._sn = NormText(a.source || "", false);
     return a._sn;
 }
+// Search-only alias for the descriptive name when the title differs (e.g. "Reverse on even" vs
+// "Overhang reversal"). Never rendered, so no highlight ranges.
+function fullNorm(a) {
+    if (a._fn === undefined)
+        a._fn = NormText(a.full_label || "", false);
+    return a._fn;
+}
 
 // Match one pre-normalized field vs one pre-normalized needle. Returns {score, ranges, contiguous}
 // when the needle is present, else null. wwRe is a compiled whole-word (\b-bounded) regex for the
@@ -152,19 +159,19 @@ function tokenWordRe(token) {
     return new RegExp("\\b" + EscapeRegExp(token) + "\\b");
 }
 
-// One token's best match across an action's three fields, keeping the per-field ranges so the caller
-// can highlight each matched word. Returns {score, title, group, source} (ranges or null per field), or
-// null when no field contains the token. Score mirrors scoreFields' tiers: contiguous > fuzzy, then
-// title > group > source.
+// One token's best match across an action's searchable fields, keeping per-field ranges for
+// highlighting. Returns {score, title, group, source}, or null if no field matches.
 function tokenMatch(a, token, wwRe) {
     var t = fieldMatchScore(titleNorm(a), token, wwRe);
     var g = fieldMatchScore(groupNorm(a), token, wwRe);
     var s = fieldMatchScore(sourceNorm(a), token, wwRe);
-    if (!t && !g && !s) return null;
+    var f = fieldMatchScore(fullNorm(a), token, wwRe);
+    if (!t && !g && !s && !f) return null;
     var score = Math.max(
         t ? (t.contiguous ? SCORE_CONTIGUOUS : 0) + SCORE_TITLE + t.score : -Infinity,
         g ? (g.contiguous ? SCORE_CONTIGUOUS : 0) + SCORE_GROUP + g.score : -Infinity,
-        s ? (s.contiguous ? SCORE_CONTIGUOUS : 0) + s.score : -Infinity
+        s ? (s.contiguous ? SCORE_CONTIGUOUS : 0) + s.score : -Infinity,
+        f ? (f.contiguous ? SCORE_CONTIGUOUS : 0) + f.score : -Infinity
     );
     return { score: score, title: t ? t.ranges : null, group: g ? g.ranges : null, source: s ? s.ranges : null };
 }
@@ -189,11 +196,9 @@ function mergeRanges(ranges) {
     return out;
 }
 
-// Combine the per-field match scores into one comparable value, or null when no field matched.
-// Ranking tiers, strongest first:
-//   tier (contiguous/perfect vs fuzzy) > field (title > group > source) > start/gaps.
-// The additive weights keep every contiguous match above every fuzzy one regardless of field.
-function scoreFields(t, g, s) {
+// Combine per-field scores into one value, or null when nothing matched.
+// Ranking: contiguous > fuzzy, then title > group > source/full alias, then start/gaps.
+function scoreFields(t, g, s, f) {
     var best = null;
     function consider(m, weight) {
         if (!m) return;
@@ -203,6 +208,7 @@ function scoreFields(t, g, s) {
     consider(t, SCORE_TITLE);
     consider(g, SCORE_GROUP);
     consider(s, 0);
+    consider(f, 0);
     return best;
 }
 
@@ -216,6 +222,7 @@ function scoreFields(t, g, s) {
 //   - tokens: every whitespace-separated word must match SOME field, but different words may match
 //     different fields. This is what lets "speed acceleration inner" find "Inner wall" whose path is
 //     "Process : Speed : Acceleration" (title + source breadcrumb together).
+// full_label is searchable too but never highlighted, since it is not rendered.
 // A phrase match always outranks a distributed token match.
 function searchActions(actions, query) {
     var q = (query || "").trim();
@@ -239,7 +246,8 @@ function searchActions(actions, query) {
         var t = fieldMatchScore(titleNorm(a), searchNeedle, wwRe);
         var g = fieldMatchScore(groupNorm(a), searchNeedle, wwRe);
         var s = fieldMatchScore(sourceNorm(a), searchNeedle, wwRe);
-        var phrase = scoreFields(t, g, s);
+        var f = fieldMatchScore(fullNorm(a), searchNeedle, wwRe);
+        var phrase = scoreFields(t, g, s, f);
         var score, ranges;
         if (phrase !== null) {
             score = phrase + SCORE_PHRASE;
@@ -312,7 +320,7 @@ function completionFor(query, list) {
     var top = (list || []).slice(0, 10);
     for (var i = 0; i < top.length; i++) {
         var a = top[i];
-        var fields = [a.title, a.group, a.source];
+        var fields = [a.title, a.group, a.source, a.full_label];
         for (var f = 0; f < fields.length; f++) {
             var words = completionWords(fields[f]);
             for (var w = 0; w < words.length; w++) {

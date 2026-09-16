@@ -2,6 +2,7 @@
 
 #include "slic3r/GUI/ActionRegistry.hpp"
 #include "slic3r/GUI/NativeCommands.hpp"
+#include "slic3r/GUI/SettingsIndex.hpp"
 
 #include <boost/filesystem.hpp>
 
@@ -282,6 +283,35 @@ TEST_CASE("Native command catalog covers the Add menus", "[ActionSource][SpeedDi
         REQUIRE(group != nullptr);
         CHECK(*group == *handy_group);
     }
+}
+
+// A setting action is named like its settings row, not the ConfigOptionDef label: the row's
+// Line::label, plus the field leaf when the row packs several options.
+TEST_CASE("Setting display labels mirror the settings row", "[ActionSource][SpeedDial]")
+{
+    using Slic3r::Search::compose_display_label;
+
+    // Single-option row: the row label is the whole title.
+    CHECK(compose_display_label(L"Reverse on even", L"Reverse on even", false) == L"Reverse on even");
+    // No recorded row label falls back to the field leaf.
+    CHECK(compose_display_label(L"", L"Outer wall", false) == L"Outer wall");
+    // Multi-option row: qualify with the leaf so the plate-temperature fields are distinct.
+    CHECK(compose_display_label(L"Cool Plate", L"First layer", true) == wxString(L"Cool Plate \u2013 First layer"));
+    CHECK(compose_display_label(L"Cool Plate", L"Other layers", true) == wxString(L"Cool Plate \u2013 Other layers"));
+    // A leaf equal to the row label is not repeated.
+    CHECK(compose_display_label(L"Skirt loops", L"Skirt loops", true) == L"Skirt loops");
+
+    using Slic3r::Search::resolve_setting_title;
+
+    // A single-option row's live label wins, so a runtime rename is reflected.
+    CHECK(resolve_setting_title(L"Brim width", L"Brim ear radius", false) == L"Brim ear radius");
+    // Multi-option rows keep their precomposed "row – field" label (the leaf disambiguates them).
+    CHECK(resolve_setting_title(L"Cool Plate \u2013 First layer", L"Cool Plate", true) ==
+          wxString(L"Cool Plate \u2013 First layer"));
+    // No live row label (option not on a built page) keeps the precomposed label.
+    CHECK(resolve_setting_title(L"Reverse on even", L"", false) == L"Reverse on even");
+    // Neither present: empty, so the caller falls back to the descriptive label.
+    CHECK(resolve_setting_title(L"", L"", false).IsEmpty());
 }
 
 // A setting whose mode is above the user's current mode must be prompted before it can be edited.
