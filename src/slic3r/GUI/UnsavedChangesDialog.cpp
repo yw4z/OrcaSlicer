@@ -858,7 +858,7 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection *dependent_
 
     m_action_line = new wxStaticText(this, wxID_ANY, wxEmptyString, wxDefaultPosition, UNSAVE_CHANGE_DIALOG_ACTION_LINE_SIZE, 0);
     m_action_line->SetFont(::Label::Body_13);
-    m_action_line->SetForegroundColour(GREY900);
+    m_action_line->SetForegroundColour(wxColour("#363636"));
     m_action_line->Wrap(-1);
     m_sizer_main->Add(m_action_line, 0, wxLEFT | wxRIGHT, 20);
 
@@ -875,7 +875,7 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection *dependent_
     wxBoxSizer *m_sizer_tab = new wxBoxSizer(wxVERTICAL);
 
     m_table_top = new wxPanel(m_panel_tab, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
-    m_table_top->SetBackgroundColour(wxColour(107, 107, 107));
+    m_table_top->SetBackgroundColour(wxColour("#D9D9D9"));
 
     wxBoxSizer *m_sizer_top = new wxBoxSizer(wxHORIZONTAL);
 
@@ -887,7 +887,7 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection *dependent_
     static_temp_title            = new wxStaticText(m_panel_temp, wxID_ANY, _L("Settings"), wxDefaultPosition, wxDefaultSize, 0);
     static_temp_title->SetFont(::Label::Body_13);
     static_temp_title->Wrap(-1);
-    static_temp_title->SetForegroundColour(*wxWHITE);
+    static_temp_title->SetForegroundColour(wxColour("#363636"));
     top_title_temp_h->Add(static_temp_title, 0, wxALIGN_CENTER | wxBOTTOM | wxTOP, 5);
     top_title_temp_v->Add(top_title_temp_h, 1, wxALIGN_CENTER, 0);
     m_panel_temp->SetSizer(top_title_temp_v);
@@ -906,7 +906,7 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection *dependent_
     static_oldv_title = new wxStaticText(m_panel_oldv, wxID_ANY, params ? _L(DevPrinterConfigUtil::get_toolhead_display_name(ucd_pt, DEPUTY_EXTRUDER_ID, ToolHeadComponent::Nozzle, ToolHeadNameCase::SentenceCase)) + ": " + get_nozzle_volume_type_name(params->nozzle) : _L("Old Value"), wxDefaultPosition, wxDefaultSize, 0);
     static_oldv_title->SetFont(::Label::Body_13);
     static_oldv_title->Wrap(-1);
-    static_oldv_title->SetForegroundColour(params && params->left_to_right ? wxGetApp().get_label_clr_modified() : *wxWHITE);
+    static_oldv_title->SetForegroundColour(params && params->left_to_right ? wxGetApp().get_label_clr_modified() : wxColour("#363636"));
     top_title_oldv_h->Add(static_oldv_title, 0, wxALIGN_CENTER | wxBOTTOM | wxTOP, 5);
     top_title_oldv->Add(top_title_oldv_h, 1, wxALIGN_CENTER, 0);
     m_panel_oldv->SetSizer(top_title_oldv);
@@ -926,7 +926,7 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection *dependent_
                                          wxDefaultPosition, wxDefaultSize, 0);
     static_newv_title->SetFont(::Label::Body_13);
     static_newv_title->Wrap(-1);
-    static_newv_title->SetForegroundColour(params && !params->left_to_right ? wxGetApp().get_label_clr_modified() : *wxWHITE);
+    static_newv_title->SetForegroundColour(params && !params->left_to_right ? wxGetApp().get_label_clr_modified() : wxColour("#363636"));
 
     top_title_newv_h->Add(static_newv_title, 0, wxALIGN_CENTER | wxBOTTOM | wxTOP, 5);
 
