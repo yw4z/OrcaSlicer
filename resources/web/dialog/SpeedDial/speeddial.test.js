@@ -117,6 +117,55 @@ const negativePool = [
 assert.equal(ctx.searchActions(negativePool, "ornt").length, 1,
     "a low-score fuzzy match is not mistaken for no match");
 
+// Multi-token cross-field search: each whitespace-separated word must match SOME searchable field,
+// but different words may match different fields. "inner" is the title while "speed" and
+// "acceleration" live in the source breadcrumb, so the query as a whole is never contiguous in one
+// field - the old single-needle match found nothing for this.
+const crossPool = [
+    { id: "acc", title: "Inner wall", source: "Process : Speed : Acceleration", group: "", input: "" },
+    { id: "spd", title: "Inner wall", source: "Process : Speed : Other layers speed", group: "", input: "" },
+    { id: "other", title: "Outer wall", source: "Process : Quality : Walls", group: "", input: "" }
+];
+assert.deepEqual(
+    ctx.searchActions(crossPool, "speed acceleration inner").map(function (a) { return a.id; }),
+    ["acc"],
+    "words may match different fields and every word is required"
+);
+assert.deepEqual(
+    ctx.searchActions(crossPool, "speed inner").map(function (a) { return a.id; }).sort(),
+    ["acc", "spd"],
+    "a two-word title+source query matches every setting under Speed"
+);
+assert.deepEqual(
+    ctx.searchActions(crossPool, "quality inner").map(function (a) { return a.id; }),
+    [],
+    "an action is dropped when any one word matches no field"
+);
+// Highlighting merges the per-field ranges the tokens produced.
+ctx.searchActions(crossPool, "speed acceleration inner");
+assert.deepEqual(ctx.matchIndex.acc.title, [[0, 5]], "the title token highlights in the title");
+assert.deepEqual(ctx.matchIndex.acc.source, [[10, 15], [18, 30]], "each path token highlights in the breadcrumb");
+
+assert.deepEqual(ctx.queryTokens("  Speed   Acceleration  "), ["speed", "acceleration"],
+    "a query splits into normalized whitespace-separated tokens");
+assert.deepEqual(ctx.queryTokens(""), [], "an empty query has no tokens");
+
+// Inline completion: the LAST token is completed to a word in the top-ranked result, name first then
+// breadcrumb. Pure - the caller appends `suffix`.
+const compPool = [
+    { id: "acc", title: "Inner wall", source: "Process : Speed : Acceleration", group: "", input: "" },
+    { id: "smooth", title: "Smooth", source: "Process : Speed : Other layers speed", group: "", input: "" }
+];
+assert.equal(ctx.completionFor("speed acc", ctx.searchActions(compPool, "speed acc")).suffix, "eleration",
+    "the last token completes to the next word in the breadcrumb");
+assert.equal(ctx.completionFor("inner w", ctx.searchActions(compPool, "inner w")).suffix, "all",
+    "the title is preferred over the breadcrumb for completion");
+assert.equal(ctx.completionFor("inner wall", ctx.searchActions(compPool, "inner wall")), null,
+    "an already-complete word has nothing to add");
+assert.equal(ctx.completionFor("", compPool), null, "an empty query has no completion");
+assert.equal(ctx.completionFor("zzz", ctx.searchActions(compPool, "zzz")), null,
+    "a query with no match has no completion");
+
 // actionCategory: a command/dynamic action's group is its category; a setting uses the top-level
 // source segment; every plugin shares one header; a category-less action falls back to "Other".
 assert.equal(ctx.actionCategory({ id: "c", group: "Help", source: "OrcaSlicer", kind: "command" }), "Help",

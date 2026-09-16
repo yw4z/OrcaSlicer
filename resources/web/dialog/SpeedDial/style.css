@@ -225,11 +225,46 @@ body {
 .plugin-search-input {
     flex: 1;
     min-width: 0;
+    padding: 0;
     background: transparent;
     border: 0;
     outline: 0;
     color: var(--text, var(--orca-fg, #1b1c1e));
     font: inherit;
+}
+
+/* Wraps the input so the ghost completion can sit exactly at the caret. The ghost mirrors the typed
+   text in an invisible run (reserving its width) followed by the muted suggested suffix. */
+.plugin-search-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+.search-ghost {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    white-space: pre;
+    font: inherit;
+    pointer-events: none;
+}
+
+.search-ghost[hidden] {
+    display: none;
+}
+
+.search-ghost-typed {
+    visibility: hidden;
+}
+
+.search-ghost-suffix {
+    color: var(--muted, var(--orca-muted, #6b7280));
+    opacity: .7;
 }
 
 .plugin-search-clear {

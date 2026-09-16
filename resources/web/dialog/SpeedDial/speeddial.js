@@ -30,6 +30,9 @@ var MODE_RANK = { simple: 0, advanced: 1, expert: 2, develop: 3 };
 var SCORE_CONTIGUOUS = 100000;
 var SCORE_TITLE = 2000;
 var SCORE_GROUP = 1000;
+// A whole-query match in a single field must outrank any multi-token match distributed across fields.
+// Larger than the largest plausible sum of per-token scores (SCORE_CONTIGUOUS * token count).
+var SCORE_PHRASE = 10000000;
 
 // Localized lookup for strings this page builds at runtime. The host injects the translated table
 // as a document-start user script (SpeedDialWebDialog::add_user_scripts); the English literal is a
@@ -68,8 +71,11 @@ var sectionStarts = null;
 var sectionTotal = 0;
 var sectionRendered = 0;
 
-// search-cache: the normalized (folded+lowercased) needle for the current query pass.
+// search-cache: the normalized (folded+lowercased) needle for the current query pass, plus the
+// whitespace-separated tokens and their compiled whole-word regexes for the multi-token path.
 var searchNeedle = "";
+var searchTokens = [];
+var searchTokenRes = [];
 
 // Palette phase: 'commands' (one unified search over actions/commands/settings, recents on empty
 // query), 'percent' ("Go to layer" second phase: enter a 0-100 percentage), 'tab' ("Go to tab..."
@@ -82,6 +88,9 @@ var tabOptions = [];       // [{id,title}] - notebook pages, fetched on entering
 
 // element handles, assigned in OnInit (kept null so load-time touches no DOM)
 var qEl = null, listEl = null, favEl = null, clearEl = null, eyeEl = null, countEl = null, detailEl = null;
+var ghostEl = null, ghostTypedEl = null, ghostSuffixEl = null;
+// The completion currently offered as ghost text ({suffix, word, id}), or null. Tab accepts it.
+var activeCompletion = null;
 
 // ---- pure helpers (no DOM; unit-tested) -------------------------------------
 // Pre-normalized haystacks, cached on the action object. The fold is length-preserving (1:1 per
@@ -106,20 +115,20 @@ function sourceNorm(a) {
     return a._sn;
 }
 
-// Match one pre-normalized field vs the current needle. Returns {score, ranges, contiguous} when the
-// needle is present, else null. wwRe is a compiled whole-word (\b-bounded) regex for the current needle.
-// A whole-word hit is preferred - it highlights the full word (e.g. "orient" in "Auto-Orient", not the
-// stray "o" of "Auto") and marks a perfect match. Otherwise FuzzyRangesNorm (which now prefers the
+// Match one pre-normalized field vs one pre-normalized needle. Returns {score, ranges, contiguous}
+// when the needle is present, else null. wwRe is a compiled whole-word (\b-bounded) regex for the
+// needle. A whole-word hit is preferred - it highlights the full word (e.g. "orient" in "Auto-Orient",
+// not the stray "o" of "Auto") and marks a perfect match. Otherwise FuzzyRangesNorm (which prefers the
 // most-contiguous run) is used. score is higher for an earlier start and fewer gaps; contiguous marks
 // a perfect match - the whole needle landed as one unbroken run.
-function fieldMatchScore(norm, wwRe) {
-    if (!searchNeedle) return null;
+function fieldMatchScore(norm, needle, wwRe) {
+    if (!needle) return null;
     if (wwRe) {
         var m = wwRe.exec(norm || "");
         if (m)
             return { score: 1000 - m.index * 10, ranges: [[m.index, m.index + m[0].length]], contiguous: true };
     }
-    var r = FuzzyRangesNorm(norm || "", searchNeedle);
+    var r = FuzzyRangesNorm(norm || "", needle);
     if (!r) return null;
     var gaps = 0, len = 0;
     for (var i = 0; i < r.length; i++) {
@@ -127,7 +136,57 @@ function fieldMatchScore(norm, wwRe) {
             gaps += r[i][0] - r[i - 1][1];
         len += r[i][1] - r[i][0];
     }
-    return { score: 1000 - r[0][0] * 10 - gaps * 10, ranges: r, contiguous: r.length === 1 && len === searchNeedle.length };
+    return { score: 1000 - r[0][0] * 10 - gaps * 10, ranges: r, contiguous: r.length === 1 && len === needle.length };
+}
+
+// Split a query into normalized (folded+lowercased) whitespace-separated tokens. Empty for a blank
+// query. These drive the multi-token path: every token must match some field, but different tokens
+// may match different fields (the title, the group, or the source breadcrumb).
+function queryTokens(query) {
+    var norm = NormText(String(query || "").trim(), false);
+    return norm ? norm.split(/\s+/).filter(Boolean) : [];
+}
+
+// Whole-word regex for one normalized token, same shape fieldMatchScore expects.
+function tokenWordRe(token) {
+    return new RegExp("\\b" + EscapeRegExp(token) + "\\b");
+}
+
+// One token's best match across an action's three fields, keeping the per-field ranges so the caller
+// can highlight each matched word. Returns {score, title, group, source} (ranges or null per field), or
+// null when no field contains the token. Score mirrors scoreFields' tiers: contiguous > fuzzy, then
+// title > group > source.
+function tokenMatch(a, token, wwRe) {
+    var t = fieldMatchScore(titleNorm(a), token, wwRe);
+    var g = fieldMatchScore(groupNorm(a), token, wwRe);
+    var s = fieldMatchScore(sourceNorm(a), token, wwRe);
+    if (!t && !g && !s) return null;
+    var score = Math.max(
+        t ? (t.contiguous ? SCORE_CONTIGUOUS : 0) + SCORE_TITLE + t.score : -Infinity,
+        g ? (g.contiguous ? SCORE_CONTIGUOUS : 0) + SCORE_GROUP + g.score : -Infinity,
+        s ? (s.contiguous ? SCORE_CONTIGUOUS : 0) + s.score : -Infinity
+    );
+    return { score: score, title: t ? t.ranges : null, group: g ? g.ranges : null, source: s ? s.ranges : null };
+}
+
+// Merge per-field token ranges into sorted, coalesced ranges for highlighting. Overlapping or adjacent
+// runs (the same word matched by two tokens) collapse to one span. Null when nothing matched.
+function mergeRanges(ranges) {
+    var flat = [];
+    (ranges || []).forEach(function (rs) {
+        if (rs) rs.forEach(function (r) { flat.push([r[0], r[1]]); });
+    });
+    if (!flat.length) return null;
+    flat.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var out = [flat[0].slice()];
+    for (var i = 1; i < flat.length; i++) {
+        var last = out[out.length - 1];
+        if (flat[i][0] <= last[1])
+            last[1] = Math.max(last[1], flat[i][1]);
+        else
+            out.push(flat[i].slice());
+    }
+    return out;
 }
 
 // Combine the per-field match scores into one comparable value, or null when no field matched.
@@ -151,12 +210,21 @@ function scoreFields(t, g, s) {
 // by relevance (not by action type). Sets matchIndex so rows highlight their match ranges. The query
 // is normalized ONCE per pass - FuzzyRangesNorm then runs against each action's pre-normalized
 // haystack, so per-keystroke cost is a cheap scan (no per-char normalize/regex).
+//
+// Two match modes, phrase preferred:
+//   - phrase: the whole trimmed query as one ordered subsequence in a SINGLE field (as before).
+//   - tokens: every whitespace-separated word must match SOME field, but different words may match
+//     different fields. This is what lets "speed acceleration inner" find "Inner wall" whose path is
+//     "Process : Speed : Acceleration" (title + source breadcrumb together).
+// A phrase match always outranks a distributed token match.
 function searchActions(actions, query) {
     var q = (query || "").trim();
     var list = actions || [];
     matchIndex = {};
-    if (!q) { searchNeedle = ""; return list.slice(0); }
+    if (!q) { searchNeedle = ""; searchTokens = []; searchTokenRes = []; return list.slice(0); }
     searchNeedle = NormText(q, false);
+    searchTokens = queryTokens(q);
+    searchTokenRes = searchTokens.map(tokenWordRe);
     // Mode keywords ("advanced"/"expert"/"developer") are a union, not a filter: the normal text
     // search still runs on the full query, and every setting requiring a named mode is appended.
     var modes = modeFilterFromQuery(q);
@@ -168,17 +236,36 @@ function searchActions(actions, query) {
     var seen = {};
     for (var i = 0; i < list.length; i++) {
         var a = list[i];
-        var t = fieldMatchScore(titleNorm(a), wwRe);
-        var g = fieldMatchScore(groupNorm(a), wwRe);
-        var s = fieldMatchScore(sourceNorm(a), wwRe);
-        var score = scoreFields(t, g, s);
-        if (score === null) continue;
+        var t = fieldMatchScore(titleNorm(a), searchNeedle, wwRe);
+        var g = fieldMatchScore(groupNorm(a), searchNeedle, wwRe);
+        var s = fieldMatchScore(sourceNorm(a), searchNeedle, wwRe);
+        var phrase = scoreFields(t, g, s);
+        var score, ranges;
+        if (phrase !== null) {
+            score = phrase + SCORE_PHRASE;
+            ranges = { title: t ? t.ranges : null, group: g ? g.ranges : null, source: s ? s.ranges : null };
+        } else {
+            // Require every token; a token that matches nothing drops the action immediately. Ranges
+            // from all matching tokens are merged per field so each matched word highlights.
+            var sum = 0, titleR = null, groupR = null, sourceR = null, all = true;
+            for (var k = 0; k < searchTokens.length; k++) {
+                var m = tokenMatch(a, searchTokens[k], searchTokenRes[k]);
+                if (!m) { all = false; break; }
+                sum += m.score;
+                if (m.title) (titleR || (titleR = [])).push(m.title);
+                if (m.group) (groupR || (groupR = [])).push(m.group);
+                if (m.source) (sourceR || (sourceR = [])).push(m.source);
+            }
+            if (!all) continue;
+            score = sum;
+            ranges = { title: mergeRanges(titleR), group: mergeRanges(groupR), source: mergeRanges(sourceR) };
+        }
         // Ranges are per-field against the ACTUAL text drawn: title for the row-name, and group (or
         // source when group is empty) for the eyebrow - so highlight offsets stay aligned to the label.
         matchIndex[a.id] = {
-            title: t ? t.ranges : null,
-            group: g ? g.ranges : null,
-            source: s ? s.ranges : null,
+            title: ranges.title,
+            group: ranges.group,
+            source: ranges.source,
             useEyebrowGroup: !!(a.group)
         };
         scored.push({ a: a, s: score });
@@ -204,6 +291,38 @@ function searchActions(actions, query) {
         result = result.concat(extras);
     }
     return result;
+}
+
+// Candidate words for inline completion, in reading order. Whitespace and the breadcrumb separator
+// split them, so "Process : Speed : Acceleration" yields Process/Speed/Acceleration. Pure.
+function completionWords(text) {
+    return String(text || "").split(/[\s:]+/).filter(Boolean);
+}
+
+// The inline completion for the query's LAST token: scan the top-ranked results' name first, then
+// their path breadcrumb, and return the first word that extends the typed token as a prefix. Headlines
+// the most likely word without committing to a result. Returns {suffix, word, id} or null. Pure so the
+// node-vm test can exercise it; the caller appends `suffix` to the input.
+function completionFor(query, list) {
+    var raw = String(query || "");
+    var parts = raw.match(/(\S+)\s*$/);
+    if (!parts) return null;
+    var prefix = NormText(parts[1], false);
+    if (!prefix) return null;
+    var top = (list || []).slice(0, 10);
+    for (var i = 0; i < top.length; i++) {
+        var a = top[i];
+        var fields = [a.title, a.group, a.source];
+        for (var f = 0; f < fields.length; f++) {
+            var words = completionWords(fields[f]);
+            for (var w = 0; w < words.length; w++) {
+                var norm = NormText(words[w], false);
+                if (norm.length > prefix.length && norm.indexOf(prefix) === 0)
+                    return { suffix: words[w].slice(prefix.length), word: words[w], id: a.id };
+            }
+        }
+    }
+    return null;
 }
 
 // Pure: how many rows must be materialized to cover the given starting index plus `size` more.
@@ -361,12 +480,15 @@ function commandList(actions, recents, query) {
     var all = actions || [];
     if (shouldRenderActionList(query)) {
         if (searchCache && searchCache.actions === all && searchCache.query === query) {
-            matchIndex   = searchCache.matchIndex;
-            searchNeedle = searchCache.needle;
+            matchIndex    = searchCache.matchIndex;
+            searchNeedle  = searchCache.needle;
+            searchTokens  = searchCache.tokens;
+            searchTokenRes = searchCache.tokenRes;
             return searchCache.list;
         }
         var found = searchActions(all, query);
-        searchCache = { actions: all, query: query, list: found, matchIndex: matchIndex, needle: searchNeedle };
+        searchCache = { actions: all, query: query, list: found, matchIndex: matchIndex, needle: searchNeedle,
+                        tokens: searchTokens, tokenRes: searchTokenRes };
         return found;
     }
     var rec = recents || [];
@@ -1049,10 +1171,28 @@ function renderDetail() {
     }
 }
 
+// Refresh the muted inline completion shown at the end of the search field. Only offered in the
+// commands phase, with the caret at the end of a non-empty, non-trailing-space input that isn't
+// scrolled (so the overlay lines up with the real caret). The ghost is the typed text (hidden, to
+// reserve its width) followed by the suggested suffix, so it sits exactly after the caret.
+function updateGhost() {
+    activeCompletion = null;
+    if (!ghostEl || !qEl) return;
+    var eligible = phase === "commands" && qEl.value && qEl.selectionStart === qEl.value.length &&
+        !/\s$/.test(qEl.value) && qEl.scrollWidth <= qEl.clientWidth;
+    var comp = eligible ? completionFor(query, currentList()) : null;
+    if (!comp) { ghostEl.hidden = true; return; }
+    ghostTypedEl.textContent = qEl.value;
+    ghostSuffixEl.textContent = comp.suffix;
+    ghostEl.hidden = false;
+    activeCompletion = comp;
+}
+
 function render(opts) {
     renderFav();
     renderList();
     renderDetail();
+    updateGhost();
     // Pin toggles don't move the selection, so they pass keepScroll to avoid snapping the list
     // back to a row that is currently off-screen.
     if (!(opts && opts.keepScroll))
@@ -1203,6 +1343,7 @@ function focusInput() { setTimeout(function () { if (qEl) qEl.focus(); }, 0); }
 // ---- init --------------------------------------------------------------------
 function OnInit() {
     qEl = $("q"); listEl = $("list"); favEl = $("favBar"); clearEl = $("clear"); eyeEl = $("favEyebrow"); countEl = $("count"); detailEl = $("detail");
+    ghostEl = $("ghost"); ghostTypedEl = $("ghostTyped"); ghostSuffixEl = $("ghostSuffix");
     // text.js's TranslatePage() targets jQuery `.trans` nodes; this page has none and defines its own
     // `$`, so don't call it. Runtime strings go through T() instead.
     qEl.placeholder = T("sd_search", "Search actions");
@@ -1222,6 +1363,9 @@ function OnInit() {
         query = qEl.value; sel = { zone: "list", i: 0 }; syncClearButton();
         render({ resize: true, resetScroll: true });
     });
+    // Caret moves without a value change (click / arrow keys) can enable or invalidate the ghost.
+    qEl.addEventListener("keyup", updateGhost);
+    qEl.addEventListener("click", updateGhost);
     // Windowed reveal: as the list scrolls, materialize the next window (append-only, no rebuild) so the
     // DOM stays bounded to what's near the viewport. Guarded to the commands phase (tabs/percent are tiny).
     listEl.addEventListener("scroll", function () {
@@ -1248,6 +1392,19 @@ function OnInit() {
             var help = currentDetailAction();
             if (actionHasWiki(help)) SendMessage({ command: "open_wiki", id: help.id });
             else flashHint(T("sd_no_wiki", "No wiki page for this action"));
+            return;
+        }
+        // Accept the inline completion: append the suggested word's suffix. Text only - the list
+        // selection is left where it is; Enter still runs the highlighted result. Shift+Tab is left
+        // alone so keyboard focus traversal still works.
+        if (e.key === "Tab" && phase === "commands" && activeCompletion &&
+            !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            e.preventDefault();
+            qEl.value += activeCompletion.suffix;
+            query = qEl.value;
+            syncClearButton();
+            render({ resize: true, resetScroll: true });
+            qEl.focus();
             return;
         }
         // Pin/unpin the highlighted action: Ctrl/Cmd+B. Commands phase only (tabs/percent aren't pinnable).
