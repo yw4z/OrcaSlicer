@@ -144,6 +144,10 @@ SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
         SetSizer(sizer);
         SetClientSize(FromDIP(wxSize(kPopupWidth, kPopupMinHeight)));
     }
+    // WebView2's browser accelerator keys include Ctrl +/-/0 and Ctrl+wheel zoom, which would resize
+    // the page inside the fixed-size popup. No-op on the other backends (wxWidgets 3.3 base virtual).
+    if (wxWebView* wv = browser())
+        wv->EnableBrowserAcceleratorKeys(false);
     // Re-cut the shape region whenever layout changes the client size; SetShape itself
     // does not generate size events, so this cannot recurse.
     Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {

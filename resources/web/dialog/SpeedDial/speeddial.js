@@ -294,13 +294,21 @@ function actionIcon(a) {
     return (a && a.icon) ? a.icon : "";
 }
 
-// Put a pictogram into a tile (search row, favourites tile, or tab row). No icon leaves the tile
-// blank. `mono` marks the white tab-strip glyphs, which the CSS recolors to the shared gray.
+// Pictogram shown when an action carries none (plugins, icon-less commands/settings). A dedicated
+// theme-neutral glyph (resources/images/action_default.svg: frame + ">_" prompt), so no tile is
+// blank and no existing action's icon is borrowed.
+var DEFAULT_ICON = "action_default";
+
+// SVG base name a tile actually renders: the action's own icon, else the placeholder. Pure.
+function tileIcon(a) {
+    return actionIcon(a) || DEFAULT_ICON;
+}
+
+// Put a pictogram into a tile (search row, favourites tile, or tab row). `mono` marks the white
+// tab-strip glyphs, which the CSS recolors to the shared gray.
 function fillTile(tile, a, mono) {
     tile.textContent = "";
-    var icon = actionIcon(a);
-    if (!icon)
-        return;
+    var icon = tileIcon(a);
     var img = document.createElement("img");
     img.className = mono ? "tile-icon tab-mono" : "tile-icon";
     img.src = ICON_BASE + icon + ".svg";

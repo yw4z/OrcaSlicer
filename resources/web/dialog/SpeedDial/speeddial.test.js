@@ -281,6 +281,17 @@ assert.equal(ctx.actionIcon({ id: "x", title: "Plugin action" }), "",
 assert.equal(ctx.actionIcon(null), "",
     "a null action (tab row) renders a blank tile");
 
+// tileIcon: the base name a tile renders - the action's own icon when present, else the placeholder.
+assert.equal(ctx.tileIcon({ id: "x", title: "Slice", icon: "media_play" }), "media_play",
+    "an action with an icon keeps it");
+assert.equal(ctx.tileIcon({ id: "x", title: "Go to tab...", icon: "" }), "action_default",
+    "an empty icon falls back to the placeholder");
+assert.equal(ctx.tileIcon({ id: "x", title: "Plugin action" }), "action_default",
+    "a missing icon falls back to the placeholder");
+assert.equal(ctx.DEFAULT_ICON, "action_default", "the placeholder is the dedicated default glyph");
+assert.ok(fs.existsSync(__dirname + "/../../../images/action_default.svg"),
+    "the placeholder SVG ships alongside the page's other icons");
+
 // needsModeSwitch: a setting is gated only when its required mode outranks the user's current mode.
 assert.equal(ctx.needsModeSwitch({ mode: "advanced" }, "simple"), true, "Advanced is gated in Simple mode");
 assert.equal(ctx.needsModeSwitch({ mode: "expert" }, "simple"), true, "Expert is gated in Simple mode");

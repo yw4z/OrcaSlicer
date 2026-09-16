@@ -236,12 +236,12 @@ std::vector<NativeCommand> build_command_catalog()
     });
 
     // ---- Export pipeline ----
-    add_with_icon("export_gcode", _u8L("Export G-code"), _u8L("Slice & Export"), "menu_export_gcode", [](const std::string&) {
+    add_with_icon("export_gcode", _u8L("Export G-code"), _u8L("Slice & Export"), "custom-gcode_gcode", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_gcode(false);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_stl", _u8L("Export STL"), _u8L("Slice & Export"), "menu_export_stl", [](const std::string&) {
+    add_with_icon("export_stl", _u8L("Export STL"), _u8L("Slice & Export"), "save", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_stl();
         return AppActionRunResult{AppActionRunResult::Level::Success};
@@ -251,35 +251,37 @@ std::vector<NativeCommand> build_command_catalog()
             plater->export_core_3mf();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_sliced_file", _u8L("Export Sliced File"), _u8L("Slice & Export"), "menu_export_sliced_file", [](const std::string&) {
+    add_with_icon("export_sliced_file", _u8L("Export Sliced File"), _u8L("Slice & Export"), "save", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_gcode_3mf(false);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_all_sliced_file", _u8L("Export All Sliced Files"), _u8L("Slice & Export"), "menu_export_sliced_file", [](const std::string&) {
+    add_with_icon("export_all_sliced_file", _u8L("Export All Sliced Files"), _u8L("Slice & Export"), "save", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_gcode_3mf(true);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
 
     // ---- Calibration ----
-    add_with_icon("calib_temperature", _u8L("Temperature Calibration"), _u8L("Calibration"), "calib_sf",
+    // The tab-strip calib_sf glyph is drawn white for the dark tab bar and vanishes on the palette's
+    // light tile, so each wizard borrows the matching settings-group icon instead (gray + accent green).
+    add_with_icon("calib_temperature", _u8L("Temperature Calibration"), _u8L("Calibration"), "param_temperature",
         [](const std::string&) { return calib_command(CalibKind::Temperature); });
-    add_with_icon("calib_max_volumetric", _u8L("Max Volumetric Speed Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_max_volumetric", _u8L("Max Volumetric Speed Calibration"), _u8L("Calibration"), "param_volumetric_speed",
         [](const std::string&) { return calib_command(CalibKind::MaxVolumetric); });
-    add_with_icon("calib_pressure_advance", _u8L("Pressure Advance Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_pressure_advance", _u8L("Pressure Advance Calibration"), _u8L("Calibration"), "param_flow_ratio_and_pressure_advance",
         [](const std::string&) { return calib_command(CalibKind::PressureAdvance); });
-    add_with_icon("calib_flow_ratio", _u8L("Flow Ratio Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_flow_ratio", _u8L("Flow Ratio Calibration"), _u8L("Calibration"), "param_flow_ratio_and_pressure_advance",
         [](const std::string&) { return calib_command(CalibKind::FlowRatio); });
-    add_with_icon("calib_retraction", _u8L("Retraction Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_retraction", _u8L("Retraction Calibration"), _u8L("Calibration"), "param_retraction",
         [](const std::string&) { return calib_command(CalibKind::Retraction); });
-    add_with_icon("calib_cornering", _u8L("Cornering Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_cornering", _u8L("Cornering Calibration"), _u8L("Calibration"), "param_precision",
         [](const std::string&) { return calib_command(CalibKind::Cornering); });
-    add_with_icon("calib_input_shaping_freq", _u8L("Input Shaping Frequency Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_input_shaping_freq", _u8L("Input Shaping Frequency Calibration"), _u8L("Calibration"), "param_resonance_avoidance",
         [](const std::string&) { return calib_command(CalibKind::InputShapingFreq); });
-    add_with_icon("calib_input_shaping_damp", _u8L("Input Shaping Damping Calibration"), _u8L("Calibration"), "calib_sf",
+    add_with_icon("calib_input_shaping_damp", _u8L("Input Shaping Damping Calibration"), _u8L("Calibration"), "param_resonance_avoidance",
         [](const std::string&) { return calib_command(CalibKind::InputShapingDamp); });
-    add_with_icon("calib_vfa", _u8L("VFA Calibration"), _u8L("Calibration"), "calib_sf", [](const std::string&) { return calib_command(CalibKind::VFA); });
+    add_with_icon("calib_vfa", _u8L("VFA Calibration"), _u8L("Calibration"), "param_speed", [](const std::string&) { return calib_command(CalibKind::VFA); });
 
     // ---- View ----
     // Titles are built with _u8L here (not via a variable) so xgettext can extract them.
@@ -322,10 +324,10 @@ std::vector<NativeCommand> build_command_catalog()
     });
 
     // ---- Object ----
-    add_with_icon("obj_delete", _u8L("Delete Selected"), _u8L("Object"), "menu_delete", [](const std::string&) {
+    add_with_icon("obj_delete", _u8L("Delete Selected"), _u8L("Object"), "delete", [](const std::string&) {
         return object_op(wxGetApp().plater(), [](Plater* p) { return !p->is_selection_empty(); }, [](Plater* p) { p->remove_selected(); });
     });
-    add_with_icon("obj_delete_all", _u8L("Delete All Objects"), _u8L("Object"), "menu_remove", [](const std::string&) {
+    add_with_icon("obj_delete_all", _u8L("Delete All Objects"), _u8L("Object"), "delete", [](const std::string&) {
         return object_op(
             wxGetApp().plater(), [](Plater* p) { return p->can_delete_all(); }, [](Plater* p) { p->delete_all_objects_from_model(); });
     });
@@ -440,7 +442,7 @@ std::vector<NativeCommand> build_command_catalog()
         plater->duplicate_plate();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("plate_delete", _u8L("Delete Plate"), _u8L("Plate"), "menu_delete", [](const std::string&) {
+    add_with_icon("plate_delete", _u8L("Delete Plate"), _u8L("Plate"), "delete", [](const std::string&) {
         Plater* plater = wxGetApp().plater();
         if (!is_fff_plater(plater))
             return plate_unavailable();
@@ -511,7 +513,7 @@ std::vector<NativeCommand> build_command_catalog()
     });
 
     // ---- Import ----
-    add_with_icon("import_file", _u8L("Import 3MF/STL/STEP/SVG/OBJ/AMF"), _u8L("Import"), "menu_import", [](const std::string&) {
+    add_with_icon("import_file", _u8L("Import 3MF/STL/STEP/SVG/OBJ/AMF"), _u8L("Import"), "menu_open", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater()) {
 #ifdef __APPLE__
             plater->add_model();
@@ -521,39 +523,39 @@ std::vector<NativeCommand> build_command_catalog()
         }
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("import_zip_archive", _u8L("Import ZIP Archive"), _u8L("Import"), "menu_import", [](const std::string&) {
+    add_with_icon("import_zip_archive", _u8L("Import ZIP Archive"), _u8L("Import"), "menu_open", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->import_zip_archive();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("import_configs", _u8L("Import Configs"), _u8L("Import"), "menu_import", [](const std::string&) {
+    add_with_icon("import_configs", _u8L("Import Configs"), _u8L("Import"), "menu_open", [](const std::string&) {
         if (MainFrame* mf = wxGetApp().mainframe)
             mf->load_config_file();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
 
     // ---- Export extras ----
-    add_with_icon("export_stl_multi", _u8L("Export All Objects as STLs"), _u8L("Export"), "menu_export_stl", [](const std::string&) {
+    add_with_icon("export_stl_multi", _u8L("Export All Objects as STLs"), _u8L("Export"), "save", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_stl(false, false, true);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_drc_single", _u8L("Export All Objects as DRC (one file)"), _u8L("Export"), "menu_export_stl", [](const std::string&) {
+    add_with_icon("export_drc_single", _u8L("Export All Objects as DRC (one file)"), _u8L("Export"), "save", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_stl(false, false, false, FT_DRC);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_drc_multi", _u8L("Export All Objects as DRCs"), _u8L("Export"), "menu_export_stl", [](const std::string&) {
+    add_with_icon("export_drc_multi", _u8L("Export All Objects as DRCs"), _u8L("Export"), "save", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_stl(false, false, true, FT_DRC);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_toolpaths_obj", _u8L("Export Toolpaths as OBJ"), _u8L("Export"), "menu_export_toolpaths", [](const std::string&) {
+    add_with_icon("export_toolpaths_obj", _u8L("Export Toolpaths as OBJ"), _u8L("Export"), "custom-gcode_gcode", [](const std::string&) {
         if (Plater* plater = wxGetApp().plater())
             plater->export_toolpaths_to_obj();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("export_config", _u8L("Export Preset Bundle"), _u8L("Export"), "menu_export_config", [](const std::string&) {
+    add_with_icon("export_config", _u8L("Export Preset Bundle"), _u8L("Export"), "save", [](const std::string&) {
         if (MainFrame* mf = wxGetApp().mainframe)
             mf->export_config();
         return AppActionRunResult{AppActionRunResult::Level::Success};
@@ -568,7 +570,7 @@ std::vector<NativeCommand> build_command_catalog()
         wxGetApp().ShowUserGuide();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("help_open_config_folder", _u8L("Show Configuration Folder"), _u8L("Help"), "folder-closed", [](const std::string&) {
+    add_with_icon("help_open_config_folder", _u8L("Show Configuration Folder"), _u8L("Help"), "open_project", [](const std::string&) {
         Slic3r::GUI::desktop_open_datadir_folder();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
@@ -589,11 +591,11 @@ std::vector<NativeCommand> build_command_catalog()
         }
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("help_check_updates", _u8L("Check for Updates"), _u8L("Help"), "ams_refresh_normal", [](const std::string&) {
+    add_with_icon("help_check_updates", _u8L("Check for Updates"), _u8L("Help"), "refresh", [](const std::string&) {
         wxGetApp().check_new_version_sf(true, 1);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    add_with_icon("help_about", _u8L("About OrcaSlicer"), _u8L("Help"), "OrcaSlicer_about", [](const std::string&) {
+    add_with_icon("help_about", _u8L("About OrcaSlicer"), _u8L("Help"), "OrcaSlicer_gradient_circle", [](const std::string&) {
         Slic3r::GUI::about();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });

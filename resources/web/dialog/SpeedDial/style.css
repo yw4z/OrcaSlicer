@@ -331,12 +331,15 @@ body {
     border: 1px solid var(--speed-tile-border, #d8d8d8);
 }
 
-/* Native SVG pictogram in a tile; blank tiles (no icon) have no child. */
+/* Native SVG pictogram in a tile. The Orca icon grid draws 1px strokes from 0.5..14.5 of the 16
+   viewBox, so the visible glyph is 0..15 and, centered as-is, leaves one extra pixel on the right/
+   bottom (the "Save Project leans left" look). Shift by half a pixel to center the visible artwork. */
 .tile-icon {
     width: 16px;
     height: 16px;
     display: block;
     pointer-events: none;
+    transform: translate(.5px, .5px);
 }
 
 /* Tab-strip glyphs are drawn white for the dark tab bar; recolor to the shared #949494 gray so

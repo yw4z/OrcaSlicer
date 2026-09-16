@@ -171,9 +171,10 @@ TEST_CASE("Native command catalog has unique keys and present titles", "[ActionS
     }
 }
 
-// Every command's tile pictogram is the SVG the matching GUI control already uses; an absent icon
-// means a blank tile (like the tab picker). Guard representative names and that every non-empty
-// value resolves to a shipped file, so a rename/typo cannot leave broken images in the palette.
+// Every command's tile pictogram is a theme-neutral SVG (the matching GUI control's icon, or the
+// equivalent settings-group icon); an absent icon gets the page's generic placeholder. Guard
+// representative names and that every non-empty value resolves to a shipped file, so a rename/typo
+// cannot leave broken images in the palette.
 TEST_CASE("Native command icons resolve to shipped SVGs", "[ActionSource][SpeedDial]")
 {
     const std::vector<Slic3r::GUI::NativeCommand>& commands = Slic3r::GUI::NativeCommands::catalog();
@@ -193,9 +194,17 @@ TEST_CASE("Native command icons resolve to shipped SVGs", "[ActionSource][SpeedD
                               Expected{"save_project", "menu_save"},
                               Expected{"sync_ams", "ams_fila_sync"},
                               Expected{"mode_simple", "advanced"},
-                              Expected{"calib_temperature", "calib_sf"},
+                              Expected{"calib_temperature", "param_temperature"},
+                              Expected{"calib_cornering", "param_precision"},
                               Expected{"plate_add", "toolbar_add_plate"},
                               Expected{"add_primitive_cube", "menu_obj_cube"},
+                              // These previously pointed at blank placeholder SVGs or theme-broken ones.
+                              Expected{"obj_delete", "delete"},
+                              Expected{"export_gcode", "custom-gcode_gcode"},
+                              Expected{"import_file", "menu_open"},
+                              Expected{"help_open_config_folder", "open_project"},
+                              Expected{"help_check_updates", "refresh"},
+                              Expected{"help_about", "OrcaSlicer_gradient_circle"},
                               Expected{"go_to_tab", ""}}) {
         const std::string* icon = icon_of(e.key);
         INFO(e.key);
