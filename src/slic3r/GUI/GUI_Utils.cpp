@@ -15,7 +15,6 @@
 
 #ifdef __WXGTK__
 #include <gtk/gtk.h>
-#include "wx/gauge.h"
 #endif 
 
 #include <wx/toplevel.h>

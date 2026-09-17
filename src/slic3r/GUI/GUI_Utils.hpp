@@ -27,6 +27,10 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Color.hpp"
 
+#ifdef __WXGTK__
+#include "wx/gauge.h"
+#endif 
+
 
 class wxCheckBox;
 class wxTopLevelWindow;
