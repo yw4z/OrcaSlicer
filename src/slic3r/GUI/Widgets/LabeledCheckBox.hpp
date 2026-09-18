@@ -33,6 +33,10 @@ public:
 
     void SetTooltip(wxString label);
 
+    void SetLabelColor(wxColour color);
+
+    void SetLabel(const wxString& label) override;
+
     bool Enable(bool enable = true) override;
 
     virtual bool SetFont(const wxFont& font) override;
@@ -45,12 +49,20 @@ public:
 
     bool HasFocus() const override;
 
+    void SetMaxSize(const wxSize& size) override;
+
 private:
 
     void UpdateIcon();
 
-    void UpdateTextColor(bool enabled);
-    void UpdateTextBorder(bool focused);
+    void UpdateLabelColor(bool enabled);
+    void UpdateLabelBorder(bool focused);
+
+    void UpdateAlignment();
+    wxSizerItem* m_check_item = nullptr;
+    wxSizerItem* m_text_item  = nullptr;
+
+    void ApplyWrap(int width);
 
     void OnClick();
 
@@ -75,7 +87,10 @@ private:
     wxStaticText*   m_text  = nullptr;
     StaticBox*      m_text_box  = nullptr;
     wxFont          m_font;
+    wxColour        m_label_color;
     wxBoxSizer*     m_sizer;
+    int             m_wrap;
+    wxSize          m_max_size;
 };
 
 #endif // !slic3r_GUI_LabeledCheckBox_hpp_
