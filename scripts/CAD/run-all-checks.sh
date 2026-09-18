@@ -35,15 +35,15 @@ step() {
     if "$@"; then echo "--- $name OK"; else echo "--- $name FAILED"; fail=1; fi
 }
 
-# SC2329: every call goes through step(), which invokes it via "$@", so shellcheck
-# cannot see the callers below.
-# shellcheck disable=SC2329
 # This fork's rig runs Xvfb on :11, the other fork's on :10, and the check scripts default
 # to ":10" when DISPLAY is unset -- which docker exec leaves unset. The rungs that drive the
 # GUI therefore looked for a window on a display that does not exist here and reported
 # "FATAL no app window on :10", which reads like a dead app rather than a wrong display.
 RIG_DISPLAY="${RIG_DISPLAY:-:11}"
 
+# SC2329: every call goes through step(), which invokes it via "$@", so shellcheck
+# cannot see the callers below.
+# shellcheck disable=SC2329
 run_in_rig() {                      # copy the script in fresh, then run it there
     docker cp "$1" "$C:/tmp/$(basename "$1")" >/dev/null || return 1
     shift

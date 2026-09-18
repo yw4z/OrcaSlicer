@@ -20,6 +20,10 @@
 # runs a WM on :10, and is the machine the user actually runs the product on — so the loop asserts
 # against the shipping artefact rather than a stale twin. Reviving the rig means rebuilding its
 # deps image first; until then it cannot adjudicate anything about this code.
+#
+# SC2029: every ssh command below quotes locally-expanded config (HOST, SRC, DISP) on purpose
+# -- the remote tree is not this checkout and has no such config of its own.
+# shellcheck disable=SC2029
 set -uo pipefail
 
 HOST="${HOST:-tommaso@100.103.234.2}"
