@@ -394,10 +394,11 @@ void Button::messureSize()
     if (this->active_icon.bmp().IsOk()) {
         if (szContent.y > 0) {
             // BBS narrow size between text and icon
+            int spacing_after_icon = !GetLabel().IsEmpty() ? 0 : m_icon_spacing; // ORCA check empty string instead text size. fixes icon centering on linux
             if (vertical)
-                szContent.y += m_icon_spacing;
+                szContent.y += spacing_after_icon;
             else
-                szContent.x += m_icon_spacing;
+                szContent.x += spacing_after_icon;
         }
         wxSize szIcon = this->active_icon.GetBmpSize();
         if (vertical) {
