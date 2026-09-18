@@ -474,14 +474,9 @@ enum class ActionButtonType : int {
     abSendGCode
 };
 
-// Background for the extruder-group title chip and its edit buttons, matching the interior
-// macOS keeps a lighter #F7F7F7 tint in light mode; dark mode uses the mapped colour.
+// Background for the extruder-group title chip and its edit buttons
 static wxColour extruder_group_chip_bg()
 {
-#ifdef __WXOSX__
-    if (!wxGetApp().dark_mode())
-        return wxColour("#F7F7F7");
-#endif
     return StateColor::darkModeColorFor(*wxWHITE);
 }
 
@@ -1360,6 +1355,7 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
 
     // AMS
     auto ams_panel = new wxPanel(this, wxID_ANY);
+    ams_panel->SetBackgroundColour(*wxWHITE);
 
     ams_label  = new wxStaticText(ams_panel, wxID_ANY, _L("AMS"));
     ams_label->SetFont(Label::Body_14);
