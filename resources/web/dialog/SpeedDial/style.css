@@ -476,8 +476,8 @@ body {
     text-align: center;
 }
 
-/* Footer detail strip: the selected action's description plus its wiki link. Auto-sizes to the
-   content; the description is clamped below. */
+/* Footer detail strip: the selected action's description, its wiki link and the expand/collapse
+   arrow. Auto-sizes to the content; the description is clamped to 6 lines. */
 .dial-detail {
     flex: 0 0 auto;
     display: flex;
@@ -500,7 +500,7 @@ body {
     color: var(--muted, var(--orca-muted, #6b7280));
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 6;
     overflow: hidden;
     overflow-wrap: anywhere;
 }
@@ -519,4 +519,31 @@ body {
 
 .detail-wiki:hover {
     text-decoration: underline;
+}
+
+/* Expand/collapse arrow for the tooltip. Pinned right so it stays put whether or not the
+   description/wiki are visible; the chevron points up (collapse) when expanded. */
+.detail-toggle {
+    flex: 0 0 auto;
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    padding: 2px;
+    background: transparent;
+    color: var(--muted, var(--orca-muted, #6b7280));
+    cursor: pointer;
+}
+
+.detail-toggle:hover {
+    color: var(--text, var(--orca-fg, #1b1c1e));
+}
+
+.detail-toggle svg {
+    transition: transform .12s ease;
+}
+
+.detail-toggle[aria-expanded="true"] svg {
+    transform: rotate(180deg);
 }

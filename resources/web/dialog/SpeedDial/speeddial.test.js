@@ -422,4 +422,18 @@ assert.equal(ctx.actionHasDetail({ id: "a", desc: "", wiki: false }), false, "em
 assert.equal(ctx.actionHasDetail({ id: "a" }), false, "an action with neither hides the footer");
 assert.equal(ctx.actionHasDetail(null), false, "no selected action hides the footer");
 
+// detailToggleVisible: the expand/collapse arrow is offered only when there is a description to
+// toggle. Collapse is a global preference, so the control stays for short tooltips too.
+assert.equal(ctx.detailToggleVisible({ id: "a", desc: "Layer height" }), true, "a description offers the toggle");
+assert.equal(ctx.detailToggleVisible({ id: "a", desc: "" }), false, "an empty description offers no toggle");
+assert.equal(ctx.detailToggleVisible({ id: "a", wiki: true }), false, "a wiki-only action has nothing to collapse");
+assert.equal(ctx.detailToggleVisible({ id: "a" }), false, "an action with no description offers no toggle");
+assert.equal(ctx.detailToggleVisible(null), false, "no selected action offers no toggle");
+
+// stateFromPayload: the footer expansion is a persisted global and defaults to expanded when the
+// C++ payload omits it (first run / older config).
+assert.equal(ctx.stateFromPayload({}).tooltipExpanded, true, "expansion defaults to true when absent");
+assert.equal(ctx.stateFromPayload({ tooltip_expanded: false }).tooltipExpanded, false, "a collapsed payload is honored");
+assert.equal(ctx.stateFromPayload({ tooltip_expanded: true }).tooltipExpanded, true, "an expanded payload is honored");
+
 console.log("ok");

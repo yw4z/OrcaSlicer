@@ -726,6 +726,19 @@ void ActionRegistry::suppress_ask(const std::string& id)
     write_section("ask_suppressed", nlohmann::json(arr));
 }
 
+bool ActionRegistry::tooltip_expanded() const
+{
+    assert(wxThread::IsMain());
+    const nlohmann::json j = read_section("tooltip_expanded", nlohmann::json(true));
+    return j.is_boolean() ? j.get<bool>() : true;
+}
+
+void ActionRegistry::set_tooltip_expanded(bool expanded)
+{
+    assert(wxThread::IsMain());
+    write_section("tooltip_expanded", nlohmann::json(expanded));
+}
+
 // ---- snapshot ---------------------------------------------------------------
 
 nlohmann::json ActionRegistry::snapshot()
@@ -810,7 +823,8 @@ nlohmann::json ActionRegistry::snapshot()
     return {{"actions", std::move(actions)},
             {"favourites", std::move(favourites)},
             {"recent", std::move(recent_json)},
-            {"user_mode", mode_key(wxGetApp().get_mode())}};
+            {"user_mode", mode_key(wxGetApp().get_mode())},
+            {"tooltip_expanded", tooltip_expanded()}};
 }
 
 // ---- tab options (enumerate the MainFrame notebook's current pages) ----------

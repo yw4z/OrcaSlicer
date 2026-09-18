@@ -31,9 +31,11 @@ private:
     void on_dpi_changed(const wxRect& suggested_rect) override;
 
     bool m_page_ready{false};
-    // Rounded corners via a window shape region, since the webview itself is opaque.
+    // Rounded corners (shape region on GTK/MSW, native layer on macOS), since the webview is opaque.
     int m_corner_radius{7};
     wxBitmap m_shape_bmp;
+    // wxOSX SetShape resizes the window, which re-enters apply_rounded_shape() through wxEVT_SIZE.
+    bool m_applying_shape{false};
     // Guards the CallAfter in on_script_message across dialog destruction, same as
     // PluginsDialog::m_alive (PluginsDialog.hpp:249).
     std::shared_ptr<std::atomic<bool>> m_alive = std::make_shared<std::atomic<bool>>(true);

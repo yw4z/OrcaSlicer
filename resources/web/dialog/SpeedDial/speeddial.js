@@ -9,6 +9,7 @@
 //   - action.input "percent"/"tab" -> NativeCommands catalog (phases handled in activateEntry)
 //   - action.icon SVG base name   -> AppAction::icon / resources/images/<name>.svg
 //   - action.desc/wiki            -> AppAction::tooltip / help_url (footer detail strip)
+//   - payload.tooltip_expanded    -> ActionRegistry::tooltip_expanded (persisted footer state)
 //   - action list is frecency-sorted -> ActionRegistry::snapshot()
 
 // ---- state (populated by the C++ bridge via window.HandleStudio) ----
@@ -17,8 +18,11 @@ var FAVS = [];           // [id...]
 var RECENTS = [];        // [{id,title,source,group,kind,input,icon,mode}] - last-N launched
 var query = "";
 var sel = { zone: "list", i: 0 };   // zone: 'list' | 'fav'
-var lastResizeHeight = 0;
 var matchIndex = {};
+
+// Global tooltip expansion, seeded from C++ (persisted in the speed_dial config section). Collapsing
+// hides the footer description + wiki link for every action; the arrow remains to expand again.
+var TOOLTIP_EXPANDED = true;
 
 // The user's current settings mode (from the C++ payload) plus the rank order of the modes. Each
 // action carries the mode it requires, so "would this need a switch?" is a rank comparison.
@@ -548,6 +552,10 @@ function actionHasWiki(a) { return !!(a && a.wiki); }
 // Whether the action has anything for the footer strip to show (a description or a wiki link).
 function actionHasDetail(a) { return !!(a && ((a.desc && a.desc.length) || a.wiki)); }
 
+// The expand/collapse arrow is offered for actions that carry a description. Collapsing is a global
+// (persisted) preference, so even a short tooltip gets the control.
+function detailToggleVisible(a) { return !!(a && a.desc && a.desc.length); }
+
 function foldLabel(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
 
 // Title-case a source for display: "GCODE OPTIMIZER"/"iRoNiNg pRo" -> "Gcode Optimizer"/"Ironing Pro".
@@ -634,7 +642,8 @@ function stateFromPayload(payload) {
         actions: payload.actions || [],
         favourites: payload.favourites || [],
         recent: payload.recent || [],
-        userMode: payload.user_mode || "simple"
+        userMode: payload.user_mode || "simple",
+        tooltipExpanded: payload.tooltip_expanded !== false
     };
 }
 
@@ -690,12 +699,12 @@ window.HandleStudio = function (payload) {
         FAVS = next.favourites;
         RECENTS = next.recent;
         USER_MODE = next.userMode;
+        TOOLTIP_EXPANDED = next.tooltipExpanded;
         // A fresh payload re-opens the main phase; C++ never rehydrates the transient phase/query state.
         phase = "commands";
         tabOptions = [];
         query = "";
         sel = { zone: "list", i: 0 };
-        lastResizeHeight = 0;
         // why: builtKey caches phase|query so renderCommandsList can skip a rebuild on arrow-nav.
         // It survives a re-open (which never goes through exitPhase), so without a reset the cached
         // empty-query key would skip the rebuild and leave stale list content.
@@ -1153,29 +1162,51 @@ function currentDetailAction() {
     return id ? byId(id) : null;
 }
 
-// Footer detail strip: the selected action's description plus, when it has a wiki page, a link that
-// opens it (same path as F1). Shown only when the highlighted action has something to say, so
-// selecting a command with no description hides the strip.
+// Footer detail strip: the selected action's description, its wiki link and the expand/collapse
+// arrow. Shown whenever the highlighted action has a description or a wiki page; expanding is a
+// persisted global preference, so the arrow stays available to collapse/expand every tooltip.
 function renderDetail() {
     if (!detailEl) return;
     var a = currentDetailAction();
+    var hasDesc = detailToggleVisible(a);
     var show = phase === "commands" && actionHasDetail(a);
     detailEl.hidden = !show;
     detailEl.innerHTML = "";
     if (!show) return;
-    if (a && a.desc) {
+    if (hasDesc && TOOLTIP_EXPANDED) {
         var desc = document.createElement("div");
         desc.className = "detail-desc";
         desc.textContent = a.desc;
         detailEl.appendChild(desc);
     }
-    if (a && a.wiki) {
+    // The wiki link is part of the expanded detail, so collapsing hides it too. An action with only a
+    // wiki (no description) has nothing to collapse, so its link always shows.
+    if (a.wiki && (!hasDesc || TOOLTIP_EXPANDED)) {
         var link = document.createElement("button");
         link.type = "button";
         link.className = "detail-wiki";
         link.textContent = T("sd_wiki_f1", "Wiki (F1)");
         link.onclick = function (ev) { ev.stopPropagation(); SendMessage({ command: "open_wiki", id: a.id }); };
         detailEl.appendChild(link);
+    }
+    if (hasDesc) {
+        var toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "detail-toggle";
+        toggle.setAttribute("aria-expanded", TOOLTIP_EXPANDED ? "true" : "false");
+        var label = TOOLTIP_EXPANDED ? T("sd_hide_details", "Hide details") : T("sd_show_details", "Show details");
+        toggle.title = label;
+        toggle.setAttribute("aria-label", label);
+        toggle.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" ' +
+                           'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                           '<polyline points="4,6 8,10 12,6"/></svg>';
+        toggle.onclick = function (ev) {
+            ev.stopPropagation();
+            TOOLTIP_EXPANDED = !TOOLTIP_EXPANDED;
+            SendMessage({ command: "set_tooltip_expanded", expanded: TOOLTIP_EXPANDED });
+            render({ resize: true });
+        };
+        detailEl.appendChild(toggle);
     }
 }
 
@@ -1230,10 +1261,14 @@ function requestResize() {
         var launcher = document.querySelector(".launcher");
         if (!launcher)
             return;
-        var height = Math.ceil(launcher.getBoundingClientRect().height);
-        if (!height || height === lastResizeHeight)
+        // Include any overflow (WebKit can report a -webkit-box border box a fraction short of its
+        // content), so the window never clips the footer's last line.
+        var height = Math.ceil(Math.max(launcher.getBoundingClientRect().height, launcher.scrollHeight));
+        if (!height)
             return;
-        lastResizeHeight = height;
+        // Always (re)send rather than caching: a resize can be measured but dropped (e.g. while the
+        // window is being shown) and an unchanged-size cache would then suppress every retry. C++
+        // SetClientSize is a no-op on an unchanged size, so this is cheap.
         SendMessage({ command: "resize", height: height });
     }, 0);
 }
@@ -1448,7 +1483,7 @@ function OnInit() {
             e.preventDefault();
             sel = nextSel(sel, e.key, list.length, favs.length);
             // why: entering/leaving the fav zone toggles the eyebrow line, changing launcher height;
-            // resize so the popup grows/shrinks instead of clipping. requestResize no-ops when unchanged.
+            // resize so the popup grows/shrinks instead of clipping.
             render({ resize: true });
         } else if (e.key === "Enter") {
             e.preventDefault();
@@ -1461,6 +1496,16 @@ function OnInit() {
             else SendMessage({ command: "close_page" });
         }
     });
+
+    // Keep the dialog sized to the content: any reflow that lands after a render (tooltip
+    // expand/collapse or clamped-box settling, font metrics, list reveal) re-measures. Without this
+    // a later reflow left the window a few pixels short and clipped the footer's last line.
+    if (typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(function () { requestResize(); }).observe(document.querySelector(".launcher"));
+    }
+    // Font metrics can swap after first layout; re-measure once they settle.
+    if (document.fonts && document.fonts.ready && document.fonts.ready.then)
+        document.fonts.ready.then(function () { requestResize(); });
 
     SendMessage({ command: "request_actions" });
 }

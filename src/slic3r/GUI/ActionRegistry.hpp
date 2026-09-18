@@ -196,6 +196,11 @@ public:
     bool should_ask(const std::string& id) const;
     void suppress_ask(const std::string& id);
 
+    // Footer expand/collapse preference. Global (applies to every action) and persisted; absent
+    // means expanded, so a fresh config picks the richer default with no migration.
+    bool tooltip_expanded() const;
+    void set_tooltip_expanded(bool expanded);
+
     // Flat, frecency-sorted snapshot for the webview:
     // {actions:[...], favourites:[...], recent:[...]} (recent = last-N launched by recency).
     nlohmann::json snapshot();

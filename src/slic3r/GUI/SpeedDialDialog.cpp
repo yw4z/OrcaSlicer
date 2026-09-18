@@ -113,6 +113,8 @@ nlohmann::json speed_dial_ui_strings()
         {"sd_mode_develop",    _u8L("Developer")},
         {"sd_wiki_f1",         _u8L("Wiki (F1)")},
         {"sd_no_wiki",         _u8L("No wiki page for this action")},
+        {"sd_show_details",    _u8L("Show details")},
+        {"sd_hide_details",    _u8L("Hide details")},
     };
 }
 
@@ -148,8 +150,8 @@ SpeedDialWebDialog::SpeedDialWebDialog(wxWindow* parent)
     // the page inside the fixed-size popup. No-op on the other backends (wxWidgets 3.3 base virtual).
     if (wxWebView* wv = browser())
         wv->EnableBrowserAcceleratorKeys(false);
-    // Re-cut the shape region whenever layout changes the client size; SetShape itself
-    // does not generate size events, so this cannot recurse.
+    // Re-cut the shape whenever layout changes the client size. wxOSX SetShape resizes the
+    // NSWindow, which fires this synchronously; apply_rounded_shape() guards re-entry.
     Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
         event.Skip();
         apply_rounded_shape();
@@ -224,7 +226,9 @@ void SpeedDialWebDialog::handle_web_command(const nlohmann::json& payload)
                 if (id.is_string())
                     ids.push_back(id.get<std::string>());
         wxGetApp().action_registry().reorder_favourites(ids);
-    } else if (command == "run_action")
+    } else if (command == "set_tooltip_expanded")
+        wxGetApp().action_registry().set_tooltip_expanded(payload.value("expanded", true));
+    else if (command == "run_action")
         run_action(payload.value("id", ""), payload.value("title", ""), payload.value("param", ""));
     else if (command == "open_wiki")
         open_wiki(payload.value("id", ""));
@@ -259,34 +263,58 @@ void SpeedDialWebDialog::resize_to_content(int height)
     const int height_dip = std::max(kPopupMinHeight, std::min(height, max_dip));
     SetClientSize(FromDIP(wxSize(kPopupWidth, height_dip)));
     Layout();
+#ifdef __WXOSX__
+    // WKWebView can lag the dialog's new client size; force the viewport to match so the page is
+    // never painted (and clipped by the rounded layer) below the footer.
+    if (wxWebView* wv = browser()) {
+        const wxSize client = GetClientSize();
+        if (wv->GetSize() != client)
+            wv->SetSize(client);
+    }
+#endif
     apply_rounded_shape();
 }
 
-// Rounded corners: the webview paints an opaque rectangle, so round the whole top-level window
-// with a shape region (same mask trick as FilamentPickerDialog). Binary edges, no anti-aliasing.
+// Rounded corners: the webview paints an opaque rectangle, so round the whole top-level window.
+// GTK/MSW use a shape region (same mask trick as FilamentPickerDialog, binary edges, no
+// anti-aliasing); macOS clips the native view layer instead, since SetShape cannot shape there.
 void SpeedDialWebDialog::apply_rounded_shape()
 {
+    // wxOSX SetShape resizes the NSWindow (setContentSize 10x10 then back), which synchronously
+    // fires wxEVT_SIZE -> apply_rounded_shape() -> SetShape() and recurses until the stack
+    // overflows. GTK/MSW set a region without resizing, so they are unaffected.
+    if (m_applying_shape)
+        return;
+
     // BORDER_NONE means the window is all client area, so the client size is the shape size.
     const wxSize size = GetClientSize();
     if (size.GetWidth() <= 0 || size.GetHeight() <= 0)
         return;
 
+    m_applying_shape = true;
+
+#ifdef __WXOSX__
+    // wxOSX ignores the region (it only clears the window background), so round the native view.
+    set_window_corner_radius(this, FromDIP(m_corner_radius));
+#else
     m_shape_bmp.Create(size.GetWidth(), size.GetHeight(), 32);
-    if (!m_shape_bmp.IsOk())
-        return;
+    if (m_shape_bmp.IsOk()) {
+        wxMemoryDC dc;
+        dc.SelectObject(m_shape_bmp);
+        dc.SetBackground(wxBrush(wxColour(0, 0, 0)));
+        dc.Clear();
+        dc.SetBrush(wxBrush(wxColour(255, 255, 255, 255)));
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.DrawRoundedRectangle(0, 0, size.GetWidth(), size.GetHeight(), FromDIP(m_corner_radius));
+        dc.SelectObject(wxNullBitmap);
 
-    wxMemoryDC dc;
-    dc.SelectObject(m_shape_bmp);
-    dc.SetBackground(wxBrush(wxColour(0, 0, 0)));
-    dc.Clear();
-    dc.SetBrush(wxBrush(wxColour(255, 255, 255, 255)));
-    dc.SetPen(*wxTRANSPARENT_PEN);
-    dc.DrawRoundedRectangle(0, 0, size.GetWidth(), size.GetHeight(), FromDIP(m_corner_radius));
-    dc.SelectObject(wxNullBitmap);
+        wxRegion region(m_shape_bmp, wxColour(0, 0, 0));
+        if (region.IsOk())
+            SetShape(region);
+    }
+#endif
 
-    wxRegion region(m_shape_bmp, wxColour(0, 0, 0));
-    if (region.IsOk())
-        SetShape(region);
+    m_applying_shape = false;
 }
 
 void SpeedDialWebDialog::on_dpi_changed(const wxRect&)
@@ -379,7 +407,8 @@ void SpeedDialWebDialog::send_actions()
                       {"actions", std::move(snap["actions"])},
                       {"favourites", std::move(snap["favourites"])},
                       {"recent", std::move(snap["recent"])},
-                      {"user_mode", std::move(snap["user_mode"])}});
+                      {"user_mode", std::move(snap["user_mode"])},
+                      {"tooltip_expanded", std::move(snap["tooltip_expanded"])}});
 }
 
 }} // namespace Slic3r::GUI
