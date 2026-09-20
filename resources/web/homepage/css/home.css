@@ -588,7 +588,7 @@ body
 
 .MenuDesc
 {
-	color: var(--fg-color-label);
+	color: var(--fg-color-disabled);
 }
 
 
@@ -880,7 +880,7 @@ body
 .FileActionsReveal,
 .FileActionsRemove {
 	position: relative; /* Allows mouse events for child elements and blocks parent evemts*/
-	border: 4px solid var(--bg-color-alt); /* increases hitbox size */
+	border: 4px solid var(--bg-color-sidebar); /* increases hitbox size */
 	border-radius: 17px; /* 13 + 4 */
 }
 
