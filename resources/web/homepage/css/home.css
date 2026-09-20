@@ -111,7 +111,7 @@ body
 .AccountRow.Disabled
 {
 	cursor: default;
-	/*opacity: 0.5;*/
+	opacity: 0.5;
 }
 
 .AccountRow.Disabled:hover
