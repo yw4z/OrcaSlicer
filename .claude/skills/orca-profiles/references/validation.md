@@ -223,7 +223,7 @@ Keep stems tidy too, but a space immediately before `.json` is not a trailing pa
 | `references unknown compatible_printers "<p>"` | the printer was renamed or deleted; fix the reference |
 | `references renamed compatible_printers "<old>" (now "<new>")` | in-tree references must name the current preset; `renamed_from` does not excuse them |
 | `Filament preset "<f>" is missing compatible_printers setting` | non-library filaments need a non-empty list in their **own** file — the flattened-vs-own-key trap is in [filament-profiles.md](filament-profiles.md#compatible_printers) |
-| `Ambiguous AMS filament match: N presets share filament_id "X" … printer "Y"` | make the lists disjoint, or fix an `inherits` pointing at another material's `@base` |
+| `Ambiguous AMS filament match: N presets share filament_id "X" … printer "Y"` | make the lists disjoint by [specificity](filament-profiles.md#overlapping-coverage-one-variant-one-profile-per-product) — the specialized profile keeps the variant, the general ones drop it; prefer this over deleting a profile — or fix an `inherits` pointing at another material's `@base`. `orca_profile_tool.py check` does not catch this; only `validate_system` here does |
 | `Layer height cannot exceed nozzle diameter.` / `Line width too small` | `Print::validate()` flow rules |
 | `[ERROR] … no <V>.json list references it, so it never loads` | `update-index`, or delete the file |
 | `[ERROR] … references it and it declares no profile type` | set the correct `type` explicitly, then `normalize` and `update-index` |
