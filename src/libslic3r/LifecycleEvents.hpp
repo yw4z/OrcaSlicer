@@ -49,11 +49,10 @@ namespace Slic3r
 
         // Printer/device
         PrintStateChanged,
-        DeviceOnlineChanged,
+        DeviceOnline,
+        DeviceOffline,
         DeviceDiscovered,
         DeviceSelected,
-        DeviceConnected,
-        DeviceDisconnected,
         UploadStarted,
         UploadFinished,
 
@@ -141,11 +140,10 @@ namespace Slic3r
         case LifecycleEvent::PresetSaved: return "PresetSaved";
         case LifecycleEvent::PrintStateChanged: return "PrintStateChanged";
 
-        case LifecycleEvent::DeviceOnlineChanged: return "DeviceOnlineChanged";
+        case LifecycleEvent::DeviceOnline: return "DeviceOnline";
+        case LifecycleEvent::DeviceOffline: return "DeviceOffline";
         case LifecycleEvent::DeviceDiscovered: return "DeviceDiscovered";
         case LifecycleEvent::DeviceSelected: return "DeviceSelected";
-        case LifecycleEvent::DeviceConnected: return "DeviceConnected";
-        case LifecycleEvent::DeviceDisconnected: return "DeviceDisconnected";
 
         case LifecycleEvent::UploadStarted: return "UploadStarted";
         case LifecycleEvent::UploadFinished: return "UploadFinished";

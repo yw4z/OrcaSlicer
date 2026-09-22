@@ -2183,10 +2183,7 @@ void GUI_App::init_networking_callbacks()
                     if (m_agent)
                         m_agent->install_device_cert(obj->get_dev_id(), obj->is_lan_mode_printer());
 
-                    LifecycleEventContext ctx;
-                    ctx.name = obj->get_dev_id();
-                    ctx.code = LifecycleEvtCode::Ok;
-                    fire_lifecycle_event(LifecycleEvent::DeviceConnected, ctx);
+                    obj->set_online_state(true);
                 }
                 });
             });
@@ -2226,10 +2223,7 @@ void GUI_App::init_networking_callbacks()
                                 event.SetInt(0);
                                 event.SetString(obj->get_dev_id());
 
-                                LifecycleEventContext ctx;
-                                ctx.name = obj->get_dev_id();
-                                ctx.code = LifecycleEvtCode::Ok;
-                                fire_lifecycle_event(LifecycleEvent::DeviceConnected, ctx);
+                                obj->set_online_state(true);
                             } else if (state == ConnectStatus::ConnectStatusFailed) {
                                 // Orca: only update status if same device id
                                 if (m_device_manager->selected_machine != dev_id) return;
@@ -2246,21 +2240,13 @@ void GUI_App::init_networking_callbacks()
                                 }
                                 event.SetInt(-1);
 
-                                {
-                                    LifecycleEventContext ctx;
-                                    ctx.name = dev_id;
-                                    ctx.code = LifecycleEvtCode::Ok;
-                                    fire_lifecycle_event(LifecycleEvent::DeviceDisconnected, ctx);
-                                }
+                                obj->set_online_state(false);
                             } else if (state == ConnectStatus::ConnectStatusLost) {
                                 m_device_manager->set_selected_machine("");
                                 event.SetInt(-1);
                                 BOOST_LOG_TRIVIAL(info) << "set_on_local_connect_fn: state = lost";
 
-                                LifecycleEventContext ctx;
-                                ctx.name = dev_id;
-                                ctx.code = LifecycleEvtCode::Ok;
-                                fire_lifecycle_event(LifecycleEvent::DeviceDisconnected, ctx);
+                                obj->set_online_state(false);
                             } else {
                                 event.SetInt(-1);
                                 BOOST_LOG_TRIVIAL(info) << "set_on_local_connect_fn: state = " << state;

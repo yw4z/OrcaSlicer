@@ -357,7 +357,7 @@ namespace Slic3r
 
                 obj->last_alive = Slic3r::Utils::get_current_time_utc();
                 // Route through set_online_state() (rather than writing m_is_online directly) so the
-                // DeviceOnlineChanged lifecycle event fires consistently; same effective value/behavior
+                // DeviceOnline lifecycle event fires consistently; same effective value/behavior
                 // here since the object was already online in the common case.
                 obj->set_online_state(true);
                 obj->set_dev_name(dev_name);
@@ -380,7 +380,7 @@ namespace Slic3r
                 // Discovery establishes the initial reachability state. Do not report it as an
                 // online transition; DeviceDiscovered below is the lifecycle event for a new
                 // device. Subsequent updates route through set_online_state(), so a known device
-                // still emits DeviceOnlineChanged when its reachability actually changes.
+                // still emits DeviceOnline/DeviceOffline when its reachability actually changes.
                 obj->m_is_online = true;
 
                 //load access code

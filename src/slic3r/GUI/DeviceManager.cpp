@@ -2657,11 +2657,10 @@ int MachineObject::connect(bool use_openssl)
 int MachineObject::disconnect()
 {
     if (m_agent) {
-        LifecycleEventContext ctx;
-        ctx.name = dev_id;
-        ctx.code = LifecycleEvtCode::Ok;
-        fire_lifecycle_event(LifecycleEvent::DeviceDisconnected, ctx);
-        return m_agent->disconnect_printer();
+        const int result = m_agent->disconnect_printer();
+        if (result == 0)
+            set_online_state(false);
+        return result;
     }
     return -1;
 }
@@ -2699,7 +2698,7 @@ void MachineObject::set_online_state(bool on_off)
         ctx.name  = dev_id;
         ctx.code  = LifecycleEvtCode::Ok;
         ctx.msg   = on_off ? "online" : "offline";
-        fire_lifecycle_event(LifecycleEvent::DeviceOnlineChanged, ctx);
+        fire_lifecycle_event(on_off ? LifecycleEvent::DeviceOnline : LifecycleEvent::DeviceOffline, ctx);
     }
 }
 
@@ -2827,13 +2826,6 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
 
     parse_msg_count++;
     std::chrono::system_clock::time_point clock_start = std::chrono::system_clock::now();
-    this->set_online_state(true);
-
-    std::chrono::system_clock::time_point curr_time = std::chrono::system_clock::now();
-    auto diff1 = std::chrono::duration_cast<std::chrono::microseconds>(curr_time - last_update_time);
-
-    /* update last received time */
-    last_update_time = std::chrono::system_clock::now();
 
     json j_pre;
     bool parse_ok = false;
@@ -2846,7 +2838,28 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
         /* post process payload */
         sanitizeToUtf8(payload);
         BOOST_LOG_TRIVIAL(info) << "parse_json: sanitize to utf8";
+        try {
+            j_pre = json::parse(payload);
+            parse_ok = true;
+        }
+        catch (...) {}
     }
+
+    bool client_disconnected = false;
+    if (parse_ok && j_pre.is_object() && j_pre.contains("event") && j_pre["event"].is_object() &&
+        j_pre["event"].contains("event") && j_pre["event"]["event"].is_string()) {
+        client_disconnected = j_pre["event"]["event"].get<std::string>() == "client.disconnected";
+    }
+
+    // A disconnect notification is a transport message too, but it must not first mark an
+    // already-offline device as online through the generic message-received path.
+    set_online_state(!client_disconnected);
+
+    std::chrono::system_clock::time_point curr_time = std::chrono::system_clock::now();
+    auto diff1 = std::chrono::duration_cast<std::chrono::microseconds>(curr_time - last_update_time);
+
+    /* update last received time */
+    last_update_time = std::chrono::system_clock::now();
 
     try {
         bool restored_json = false;
@@ -4617,24 +4630,6 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
                 ;
             }
         }
-
-        // event info
-        try {
-            if (j.contains("event")) {
-                if (j["event"].contains("event")) {
-                    if (j["event"]["event"].get<std::string>() == "client.disconnected") {
-                        set_online_state(false);
-                        LifecycleEventContext ctx;
-                        ctx.name = dev_id;
-                        ctx.code = LifecycleEvtCode::Ok;
-                        fire_lifecycle_event(LifecycleEvent::DeviceDisconnected, ctx);
-                    }
-                    else if (j["event"]["event"].get<std::string>() == "client.connected")
-                        set_online_state(true);
-                }
-            }
-        }
-        catch (...)  {}
 
         if (!key_field_only) {
             BOOST_LOG_TRIVIAL(trace) << "parse_json  m_active_state =" << m_active_state;
