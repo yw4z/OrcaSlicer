@@ -6,6 +6,8 @@
 #include "MainFrame.hpp"
 #include "GUI_App.hpp"
 
+#include <exception>
+
 using namespace nlohmann;
 
 namespace Slic3r {
@@ -211,28 +213,38 @@ int TaskManager::schedule(TaskStateInfo* task)
     assert(task->state() == TaskState::TS_PENDING);
     task->set_state(TaskState::TS_SENDING);
 
-    LifecycleEventContext start_ctx;
-    start_ctx.name = task->params().project_name;
-    start_ctx.device_id = task->params().dev_id;
-    start_ctx.job_id = std::to_string(task->task_info_id);
-    start_ctx.source = "task_manager";
-    fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
-
     BOOST_LOG_TRIVIAL(trace) << "task_manager: schedule a task to dev_id = " << task->params().dev_id;
     boost::thread* new_sending_thread = new boost::thread();
     *new_sending_thread = Slic3r::create_thread(
         [this, task] {
+            // Keep both lifecycle callbacks on this per-task worker thread. Plugin observers can
+            // therefore associate Started and Finished for one task with a single execution context.
+            LifecycleEventContext start_ctx;
+            start_ctx.name = task->params().project_name;
+            start_ctx.device_id = task->params().dev_id;
+            start_ctx.job_id = std::to_string(task->task_info_id);
+            start_ctx.source = "task_manager";
+            fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
+
+            int result = -1;
             if (!m_agent) {
                 BOOST_LOG_TRIVIAL(trace) << "task_manager: NetworkAgent is nullptr";
-                return;
             }
-            assert(m_agent);
+            else {
+                assert(m_agent);
+                try {
 // DEBUG FOR TEST
 #if 0
-            int result = start_print_test(task->get_params(), task->update_status_fn, task->cancel_fn, task->wait_fn);
+                    result = start_print_test(task->get_params(), task->update_status_fn, task->cancel_fn, task->wait_fn);
 #else
-            int result = m_agent->start_print(task->get_params(), task->update_status_fn, task->cancel_fn, task->wait_fn);
+                    result = m_agent->start_print(task->get_params(), task->update_status_fn, task->cancel_fn, task->wait_fn);
 #endif
+                } catch (const std::exception& ex) {
+                    BOOST_LOG_TRIVIAL(error) << "task_manager: start_print threw: " << ex.what();
+                } catch (...) {
+                    BOOST_LOG_TRIVIAL(error) << "task_manager: start_print threw an unknown exception";
+                }
+            }
             if (result == 0) {
                 last_sent_timestamp = std::chrono::system_clock::now();
                 task->set_sent_time(last_sent_timestamp);
