@@ -134,13 +134,6 @@ wxString PrintJob::get_http_error_msg(unsigned int status, std::string body)
 
 void PrintJob::process(Ctl &ctl)
 {
-    LifecycleEventContext start_ctx;
-    start_ctx.name = m_project_name;
-    start_ctx.device_id = m_dev_id;
-    start_ctx.source = "print_job";
-    fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
-    m_lifecycle_started = true;
-
     /* display info */
     std::string msg;
     int curr_percent = 10;
@@ -159,6 +152,18 @@ void PrintJob::process(Ctl &ctl)
 
     int result = -1;
     std::string http_body;
+
+    const auto mark_lifecycle_started = [this]() {
+        if (m_lifecycle_started)
+            return;
+
+        LifecycleEventContext start_ctx;
+        start_ctx.name = m_project_name;
+        start_ctx.device_id = m_dev_id;
+        start_ctx.source = "print_job";
+        fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
+        m_lifecycle_started = true;
+    };
 
     int total_plate_num = plate_data.plate_count;
     if (!plate_data.is_valid) {
@@ -551,6 +556,7 @@ void PrintJob::process(Ctl &ctl)
     if (m_print_type == "from_sdcard_view") {
         BOOST_LOG_TRIVIAL(info) << "print_job: try to send with cloud, model is sdcard view";
         ctl.update_status(curr_percent, _u8L("Sending print job through cloud service"));
+        mark_lifecycle_started();
         result = m_agent->start_sdcard_print(params, update_fn, cancel_fn);
     } else if (params.connection_type != "lan") {
         if (params.dev_ip.empty())
@@ -574,6 +580,7 @@ void PrintJob::process(Ctl &ctl)
                 BOOST_LOG_TRIVIAL(info) << "print_job: use ftp send print only";
                 ctl.update_status(curr_percent, _u8L("Sending print job over LAN"));
                 is_try_lan_mode = true;
+                mark_lifecycle_started();
                 result = m_agent->start_local_print_with_record(params, update_fn, cancel_fn, wait_fn);
                 if (result < 0) {
                     error_text = wxString::Format(_L("Access code:%s IP address:%s"), params.password, params.dev_ip);
@@ -590,6 +597,7 @@ void PrintJob::process(Ctl &ctl)
                 // try to send local with record
                 BOOST_LOG_TRIVIAL(info) << "print_job: try to start local print with record";
                 ctl.update_status(curr_percent, _u8L("Sending print job over LAN"));
+                mark_lifecycle_started();
                 result = m_agent->start_local_print_with_record(params, update_fn, cancel_fn, wait_fn);
                 if (result == 0) {
                     params.comments = "";
@@ -605,18 +613,21 @@ void PrintJob::process(Ctl &ctl)
                     // try to send with cloud
                     BOOST_LOG_TRIVIAL(warning) << "print_job: try to send with cloud";
                     ctl.update_status(curr_percent, _u8L("Sending print job through cloud service"));
+                    // Started was already emitted before the local attempt.
                     result = m_agent->start_print(params, update_fn, cancel_fn, wait_fn);
                 }
             }
             else {
                 BOOST_LOG_TRIVIAL(info) << "print_job: send with cloud";
                 ctl.update_status(curr_percent, _u8L("Sending print job through cloud service"));
+                mark_lifecycle_started();
                 result = m_agent->start_print(params, update_fn, cancel_fn, wait_fn);
             }
         }
     } else {
         if (this->could_emmc_print) {
             ctl.update_status(curr_percent, _u8L("Sending print job over LAN"));
+            mark_lifecycle_started();
             result = m_agent->start_local_print(params, update_fn, cancel_fn);
         } else {
             switch(this->sdcard_state) {
@@ -627,6 +638,7 @@ void PrintJob::process(Ctl &ctl)
                     if(this->has_sdcard) {
                         // means the storage is abnormal but can be used option is enabled
                         ctl.update_status(curr_percent, _u8L("Sending print job over LAN, but the Storage in the printer is abnormal and print-issues may be caused by this."));
+                        mark_lifecycle_started();
                         result = m_agent->start_local_print(params, update_fn, cancel_fn);
                         break;
                     }
@@ -637,6 +649,7 @@ void PrintJob::process(Ctl &ctl)
                     return;
                 case DevStorage::SdcardState::HAS_SDCARD_NORMAL:
                     ctl.update_status(curr_percent, _u8L("Sending print job over LAN"));
+                    mark_lifecycle_started();
                     result = m_agent->start_local_print(params, update_fn, cancel_fn);
                     break;
                 default:
