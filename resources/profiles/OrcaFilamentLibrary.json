@@ -157,6 +157,10 @@
 			"sub_path": "filament/Polymaker/PolyLite ABS @base.json"
 		},
 		{
+			"name": "Printalot ABS @base",
+			"sub_path": "filament/Printalot/Printalot ABS @base.json"
+		},
+		{
 			"name": "Bambu ASA @base",
 			"sub_path": "filament/Bambu/Bambu ASA @base.json"
 		},
@@ -765,6 +769,10 @@
 			"sub_path": "filament/Polymaker/Panchroma PLA UV Shift @base.json"
 		},
 		{
+			"name": "PlastAR PLA @base",
+			"sub_path": "filament/Printalot/PlastAR PLA @base.json"
+		},
+		{
 			"name": "PolyLite PLA @base",
 			"sub_path": "filament/Polymaker/PolyLite PLA @base.json"
 		},
@@ -1019,6 +1027,10 @@
 		{
 			"name": "PolyLite ABS @System",
 			"sub_path": "filament/Polymaker/PolyLite ABS @System.json"
+		},
+		{
+			"name": "Printalot ABS @System",
+			"sub_path": "filament/Printalot/Printalot ABS @System.json"
 		},
 		{
 			"name": "Bambu ASA @System",
@@ -1903,6 +1915,10 @@
 		{
 			"name": "Panchroma PLA UV Shift @System",
 			"sub_path": "filament/Polymaker/Panchroma PLA UV Shift @System.json"
+		},
+		{
+			"name": "PlastAR PLA @System",
+			"sub_path": "filament/Printalot/PlastAR PLA @System.json"
 		},
 		{
 			"name": "PolyLite Dual PLA @base",
