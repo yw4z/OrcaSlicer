@@ -140,10 +140,14 @@ TEST_CASE("A working printer agent's answers reach the host unchanged", "[Plugin
                             "    def start_discovery(self, start, sending): return start and not sending\n"
                             "    def get_user_selected_machine(self): return 'machine'\n"
                             "    def get_filament_sync_mode(self): return orca.printer_agent.FilamentSyncMode.Pull\n"
-                            "    def request_bind_ticket(self): return (3, 'ticket')\n");
+                            "    def request_bind_ticket(self): return (3, 'ticket')\n"
+                            "    def bind_detect(self, dev_ip, sec_link, detect):\n"
+                            "        detect.dev_id = dev_ip\n"
+                            "        return 0\n");
     REQUIRE(agent.agent);
 
-    std::string ticket;
+    std::string  ticket;
+    detectResult detect;
 
     CHECK(agent->get_agent_info().id == "id");
     CHECK(agent->disconnect_printer() == 7);
@@ -152,4 +156,6 @@ TEST_CASE("A working printer agent's answers reach the host unchanged", "[Plugin
     CHECK(agent->get_filament_sync_mode() == FilamentSyncMode::pull);
     CHECK(agent->request_bind_ticket(&ticket) == 3);
     CHECK(ticket == "ticket");
+    CHECK(agent->bind_detect("192.168.0.2", "secure", detect) == 0);
+    CHECK(detect.dev_id == "192.168.0.2");
 }

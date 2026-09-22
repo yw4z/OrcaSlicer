@@ -69,7 +69,8 @@ public:
 
     int bind_detect(std::string dev_ip, std::string sec_link, detectResult& detect) override
     {
-        ORCA_PY_AGENT_OVERRIDE(int, bind_detect, dev_ip, sec_link, detect);
+        // Passed as a pointer: pybind11 copies a reference argument, so the plugin's writes would be lost.
+        ORCA_PY_AGENT_OVERRIDE(int, bind_detect, dev_ip, sec_link, &detect);
     }
 
     std::string get_user_selected_machine() override
