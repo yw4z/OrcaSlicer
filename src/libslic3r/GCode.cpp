@@ -2482,6 +2482,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         ctx.name = std::to_string(print->model().id().id);
         ctx.code = LifecycleEvtCode::Ok;
         ctx.msg  = path;
+        ctx.cancellation_check = [print]() { return print->canceled(); };
         fire_lifecycle_event(LifecycleEvent::GCodeExportStarted, ctx);
     }
 
@@ -2533,6 +2534,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             ctx.name = std::to_string(print->model().id().id);
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = std::string(path) + "\n" + err_msg;
+            ctx.cancellation_check = [print]() { return print->canceled(); };
             fire_lifecycle_event(LifecycleEvent::GCodeExportFinished, ctx);
         }
         throw Slic3r::RuntimeError(err_msg);
@@ -2556,6 +2558,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             ctx.name = std::to_string(print->model().id().id);
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = std::string(path) + "\n" + ex.what();
+            ctx.cancellation_check = [print]() { return print->canceled(); };
             fire_lifecycle_event(LifecycleEvent::GCodeExportFinished, ctx);
         }
         throw;
@@ -2668,6 +2671,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             ctx.name = std::to_string(print->model().id().id);
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = std::string(path) + "\nFailed to rename the output G-code file: " + ret.message();
+            ctx.cancellation_check = [print]() { return print->canceled(); };
             fire_lifecycle_event(LifecycleEvent::GCodeExportFinished, ctx);
         }
         throw Slic3r::RuntimeError(
@@ -2686,6 +2690,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         ctx.name = std::to_string(print->model().id().id);
         ctx.code = LifecycleEvtCode::Ok;
         ctx.msg  = path;
+        ctx.cancellation_check = [print]() { return print->canceled(); };
         fire_lifecycle_event(LifecycleEvent::GCodeExportFinished, ctx);
     }
 

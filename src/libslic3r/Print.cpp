@@ -2699,6 +2699,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         LifecycleEventContext ctx;
         ctx.name = std::to_string(m_model.id().id);
         ctx.code = LifecycleEvtCode::Ok;
+        ctx.cancellation_check = [this]() { return canceled(); };
         fire_lifecycle_event(LifecycleEvent::SliceStarted, ctx);
     }
 
@@ -3325,6 +3326,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         LifecycleEventContext ctx;
         ctx.name = std::to_string(m_model.id().id);
         ctx.code = LifecycleEvtCode::Ok;
+        ctx.cancellation_check = [this]() { return canceled(); };
         fire_lifecycle_event(LifecycleEvent::SliceGeometryFinished, ctx);
     }
 }
@@ -4931,6 +4933,7 @@ void Print::export_gcode_from_previous_file(const std::string& file, GCodeProces
         ctx.name = std::to_string(m_model.id().id);
         ctx.code = LifecycleEvtCode::Ok;
         ctx.msg  = file;
+        ctx.cancellation_check = [this]() { return canceled(); };
         fire_lifecycle_event(LifecycleEvent::GCodeExportStarted, ctx);
     }
 
@@ -4960,6 +4963,7 @@ void Print::export_gcode_from_previous_file(const std::string& file, GCodeProces
             ctx.name = std::to_string(m_model.id().id);
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = file + "\n" + ex.what();
+            ctx.cancellation_check = [this]() { return canceled(); };
             fire_lifecycle_event(LifecycleEvent::GCodeExportFinished, ctx);
         }
         throw Slic3r::RuntimeError(
@@ -4973,6 +4977,7 @@ void Print::export_gcode_from_previous_file(const std::string& file, GCodeProces
         ctx.name = std::to_string(m_model.id().id);
         ctx.code = LifecycleEvtCode::Ok;
         ctx.msg  = file;
+        ctx.cancellation_check = [this]() { return canceled(); };
         fire_lifecycle_event(LifecycleEvent::GCodeExportFinished, ctx);
     }
 }

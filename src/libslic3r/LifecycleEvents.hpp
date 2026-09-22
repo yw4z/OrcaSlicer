@@ -104,6 +104,11 @@ namespace Slic3r
 
         // Aggregate project dirty state for ProjectDirtyChanged.
         bool dirty = false;
+
+        // Optional host-side cancellation probe. Background slicing and G-code export events set
+        // this to the originating Print's cancellation state so dispatch can stop before calling
+        // the next capability. It is intentionally not exposed through the Python payload API.
+        std::function<bool()> cancellation_check;
     };
 
     inline std::string lifecycle_event_to_string(LifecycleEvent event)

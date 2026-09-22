@@ -2092,8 +2092,17 @@ ExecutionResult PluginManager::run_script_capability(const std::string& plugin_k
 }
 
 void PluginManager::dispatch_lifecycle_event(LifecycleEvent evt, const LifecycleEventContext& ctx) {
+    const auto is_canceled = [&ctx]() {
+        return ctx.cancellation_check && ctx.cancellation_check();
+    };
+
+    if (is_canceled())
+        return;
+
     for (const auto& cap : get_plugin_capabilities()) {
         if (!cap || !cap->is_enabled()) continue;
+        if (is_canceled())
+            break;
         try {
             cap->on_lifecycle_event(evt, ctx);
         } catch (const std::exception& ex) {
