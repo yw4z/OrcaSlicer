@@ -3424,11 +3424,6 @@ void MainFrame::init_menubar_as_editor()
             wxGetApp().open_preferences();
         },
         "", nullptr, []() { return true; }, this, 1);
-    parent_menu->AppendSeparator();
-    append_shortcut_item(
-        parent_menu, Shortcut::SpeedDial, false, _L("Open speed dial"), "",
-        [](wxCommandEvent &) { wxGetApp().open_speed_dial(); },
-        "", nullptr, []() { return true; }, this);
     //parent_menu->Insert(1, preference_item);
 #endif
     // Help menu
