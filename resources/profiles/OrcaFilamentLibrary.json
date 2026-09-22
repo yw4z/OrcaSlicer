@@ -1,6 +1,6 @@
 {
 	"name": "OrcaFilamentLibrary",
-	"version": "02.04.00.09",
+	"version": "02.04.00.10",
 	"force_update": "0",
 	"description": "Orca Filament Library",
 	"filament_list": [
@@ -783,6 +783,10 @@
 		{
 			"name": "Polymaker HT-PLA-GF @base",
 			"sub_path": "filament/Polymaker/Polymaker HT-PLA-GF @base.json"
+		},
+		{
+			"name": "Polymaker PLA Pro @base",
+			"sub_path": "filament/Polymaker/Polymaker PLA Pro @base.json"
 		},
 		{
 			"name": "SUNLU PLA Marble @base",
@@ -1927,6 +1931,10 @@
 		{
 			"name": "Polymaker HT-PLA-GF @System",
 			"sub_path": "filament/Polymaker/Polymaker HT-PLA-GF @System.json"
+		},
+		{
+			"name": "Polymaker PLA Pro @System",
+			"sub_path": "filament/Polymaker/Polymaker PLA Pro @System.json"
 		},
 		{
 			"name": "SUNLU PLA Marble @System",
