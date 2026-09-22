@@ -8,6 +8,9 @@
 // the slicing engine itself; see fire_lifecycle_event() below.
 
 #include <functional>
+#include <condition_variable>
+#include <cstddef>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -165,17 +168,79 @@ namespace Slic3r
     // require callers to hold a Print& just to report an event.
     using LifecycleHookFn = std::function<void(LifecycleEvent, const LifecycleEventContext&)>;
 
-    inline LifecycleHookFn& lifecycle_hook_fn()
+    namespace detail {
+
+    struct LifecycleHookState
     {
-        static LifecycleHookFn fn;
-        return fn;
+        std::mutex              mutex;
+        std::condition_variable cv;
+        LifecycleHookFn         fn;
+        std::size_t             active_dispatches = 0;
+        bool                    accepting        = false;
+    };
+
+    inline LifecycleHookState& lifecycle_hook_state()
+    {
+        static LifecycleHookState state;
+        return state;
     }
 
-    inline void set_lifecycle_hook_fn(LifecycleHookFn fn) { lifecycle_hook_fn() = std::move(fn); }
+    class LifecycleDispatchGuard
+    {
+    public:
+        explicit LifecycleDispatchGuard(LifecycleHookState& state) : m_state(state) {}
+
+        ~LifecycleDispatchGuard()
+        {
+            std::lock_guard<std::mutex> lock(m_state.mutex);
+            --m_state.active_dispatches;
+            if (m_state.active_dispatches == 0)
+                m_state.cv.notify_all();
+        }
+
+        LifecycleDispatchGuard(const LifecycleDispatchGuard&)            = delete;
+        LifecycleDispatchGuard& operator=(const LifecycleDispatchGuard&) = delete;
+
+    private:
+        LifecycleHookState& m_state;
+    };
+
+    } // namespace detail
+
+    // Installing a hook starts accepting dispatches. Passing an empty function stops accepting
+    // new dispatches, detaches the hook, and waits for callbacks already in progress to finish.
+    // This is used during plugin shutdown so plugin code cannot be unloaded while a lifecycle
+    // callback is still executing. The empty-function path must not be called from inside the
+    // lifecycle callback itself.
+    inline void set_lifecycle_hook_fn(LifecycleHookFn fn)
+    {
+        detail::LifecycleHookState& state = detail::lifecycle_hook_state();
+        if (fn) {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            state.fn        = std::move(fn);
+            state.accepting = true;
+            return;
+        }
+
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.accepting = false;
+        state.fn        = nullptr;
+        state.cv.wait(lock, [&state] { return state.active_dispatches == 0; });
+    }
 
     inline void fire_lifecycle_event(LifecycleEvent event, const LifecycleEventContext& ctx)
     {
-        if (const LifecycleHookFn& fn = lifecycle_hook_fn(); fn)
-            fn(event, ctx);
+        detail::LifecycleHookState& state = detail::lifecycle_hook_state();
+        LifecycleHookFn             fn;
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            if (!state.accepting || !state.fn)
+                return;
+            fn = state.fn;
+            ++state.active_dispatches;
+        }
+
+        detail::LifecycleDispatchGuard guard(state);
+        fn(event, ctx);
     }
 }

@@ -135,7 +135,8 @@ void PluginManager::shutdown()
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": PluginManager shutdown enter";
 
     // Detach the libslic3r hooks first so nothing dispatches into Python while (or after) plugins
-    // unload. Callers stop background slicing before this.
+    // unload. The lifecycle-event hook also drains callbacks already in progress before returning;
+    // the remaining hook seams retain their existing shutdown requirements.
     plugin_hooks::uninstall();
 
     // Reject new plugin loads before we drain.
