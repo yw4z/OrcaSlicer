@@ -440,16 +440,8 @@ function OnExitFilter() {
 	return nTotal;
 }
 
-function ShowNotice( nShow )
-{
-	if(nShow==0) {
-		$("#NoticeMask").hide();
-		$("#NoticeBody").hide();
-	}
-	else {
-		$("#NoticeMask").show();
-		$("#NoticeBody").show();
-	}
+function ShowNotice(nShow) {
+  	$("#NoticeMask").toggleClass("visible", nShow != 0);
 }
 
 // SNAPPY SCROLLING WITHOUT LAGS

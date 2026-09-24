@@ -21,7 +21,7 @@
 <div id="Title">
 	<div class="trans" tid="t14">Filament Selection</div>
 </div>
-<div id="Content" class="ZScrol">
+<div id="Content" class="thin-scroll">
 <!-- ORCA column browser -->
 <div class="cbr-browser-container">
 	<div class="cbr-column">
@@ -107,18 +107,18 @@
 	<div class="ButtonStyleConfirm ButtonTypeChoice trans" tid="t9" id="GotoNetPluginBtn"  onclick="GotoNetPluginPage()">Next</div>	
 </div>
 <div id="NoticeMask">
+	</div>
+		<div id="NoticeBody">
+		<div id="NoticeBar" class="trans" tid="t18">error</div>
+		<div id="NoticeContent">
+		<div id="NoticeText" class="trans" tid="t19">At least one filament must be selected. </div>
+		<div id="NoticeText" class="trans" tid="t20">Do you want to use default filament ?</div>
+		<div id="NoticeBtns">
+			<div class="ButtonStyleConfirm ButtonTypeChoice trans" tid="t21" onClick="ChooseDefaultFilament()">Yes</div>
+			<div class="ButtonStyleRegular ButtonTypeChoice trans" tid="t22" onClick="ShowNotice(0)">No</div>
+		</div>
+	</div>
 </div>
-	<div id="NoticeBody">
-	<div id="NoticeBar" class="trans" tid="t18">error</div>
-	<div id="NoticeContent">
-	<div id="NoticeText" class="trans" tid="t19">At least one filament must be selected. </div>
-	<div id="NoticeText" class="trans" tid="t20">Do you want to use default filament ?</div>
-	<div id="NoticeBtns">
-		<div class="ButtonStyleConfirm ButtonTypeChoice trans" tid="t21" onClick="ChooseDefaultFilament()">Yes</div>
-		<div class="ButtonStyleRegular ButtonTypeChoice trans" tid="t22" onClick="ShowNotice(0)">No</div>
-	</div>
-	</div>
-	</div>
 
 </body>
 <script>

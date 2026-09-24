@@ -10,7 +10,6 @@ popup shadow rgba
 TODO CONTROLS
 Color Swatch
 Jumbo sized controls (TabCtrl for Guide)
-Modal dialogs
 MultiSwitch
 SwitchButton
 RadioGroup
@@ -110,7 +109,9 @@ TabCtrl tabs changes its positions because of font width change
   --gradient-green        : linear-gradient(180deg, #45ba53 0%, #2fa744 100%);
   --gradient-orange       : linear-gradient(180deg, #e3a13d 0%, #c77a16 100%);
 
-  --menu-shadow           : 0 8px 20px rgba(0,0,0, 0.12);
+  --shadow-opacity        : rgba(0,0,0, 0.12);
+  --menu-shadow           : 0 8px  16px var(--shadow-opacity);
+  --popup-shadow          : 0 12px 24px var(--shadow-opacity);
 }
   
 @media (prefers-color-scheme: dark) { 
@@ -166,7 +167,9 @@ TabCtrl tabs changes its positions because of font width change
   --gradient-green        : linear-gradient(180deg, #45ba53 0%, #2fa744 100%);
   --gradient-orange       : linear-gradient(180deg, #e3a13d 0%, #c77a16 100%);
 
-  --menu-shadow           : 0 8px 20px rgba(0,0,0, 0.24); /*dark mode requires more opaque shadow*/
+  --shadow-opacity        : rgba(0,0,0, 0.24); /*dark mode requires more opaque shadow*/
+  --menu-shadow           : 0 8px  16px var(--shadow-opacity);
+  --popup-shadow          : 0 12px 24px var(--shadow-opacity);
 }
 }
 
@@ -1070,6 +1073,103 @@ CONTROLLING
   font-size: 13px;
   font-weight: 400;
   color: var(--dimmed-color);
+}
+
+/*--------------------------------------*/
+/*--- NoticePopup  ---------------------*/
+/*--------------------------------------*/
+/*
+STRUCTURE
+  <div id="NoticeMask">
+    <div id="NoticeBody">
+      <div id="NoticeBar" class="trans" tid="t18">error</div>
+      <div id="NoticeContent">
+        <div id="NoticeText" class="trans" tid="t37">At least one printer must be selected.</div>
+        <div id="NoticeBtns">
+          <div class="ButtonStyleConfirm ButtonTypeChoice trans" tid="t21" onClick="ChooseDefaultFilament()">Yes</div>
+          <div class="ButtonStyleRegular ButtonTypeChoice trans" tid="t22" onClick="ShowNotice(0)">No</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+OPTIONS
+  NoticeBar.notice-error > makes titlebar red for critical errors
+  NoticeBar.notice-warn  > makes titlebar orange for warnings
+  (WIP) notice-ok > just show ok button
+
+CONTROLLING
+  NoticeBar.textContent  = "Title";
+	NoticeText.textContent = "Message";
+	ShowNotice(1);
+  
+  function ShowNotice(nShow) {
+    $("#NoticeMask").toggleClass("visible", nShow != 0);
+  }
+*/
+
+#NoticeMask {
+	background-color: rgba(0,0,0, 0.24);
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	right: 0px;
+	bottom: 0px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#NoticeMask.visible {
+  display: flex;
+}
+
+#NoticeBody {
+	width: 400px;
+	border-radius: 8px;
+	border: 1px solid var(--border-color);
+	background-color: var(--bg-color);
+	color: var(--fg-color-text);
+  box-shadow: var(--popup-shadow);
+  overflow: hidden;
+}
+
+#NoticeBar {
+	background-color: var(--main-color);
+	height: 32px;
+	line-height: 32px;
+  font-size: 14px;
+	color: #fff;
+	text-align: center;
+}
+
+#NoticeBar.notice-error {
+	background-color: var(--button-bg-alert);
+}
+
+#NoticeBar.notice-warn {
+	background-color: var(--tone-orange);
+}
+
+#NoticeContent {
+	padding: 1em;	
+}
+
+#NoticeText {
+  font-size:   14px;
+  line-height: 24px;
+  margin-bottom: 0.5em;
+}
+
+#NoticeBtns {
+  margin-top: 1em;
+	display: flex;
+	justify-content:flex-end;
+  gap: var(--dialog-button-gap);
+}
+
+#NoticeBtns > .ButtonTypeChoice {
+	margin: 0;
 }
 
 /*--------------------------------------*/
