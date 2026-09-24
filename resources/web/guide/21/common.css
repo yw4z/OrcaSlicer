@@ -56,7 +56,9 @@
 }
 
 .VendorCheckbox {
-	transform: scale(1.3);
+	transform: scale(1.1);
+	margin-right: 5px;
+	margin-bottom: 1px;
 }
 
 .PrinterArea {

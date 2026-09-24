@@ -281,7 +281,7 @@ function CreateVendorBlock(vendorName)
 			'		<a>' + alt + '</a>' +
 			'		<div class="BannerBtns" onClick="ChooseVendor('+"\'"+vendorName+"\'"+')">'+
 			'			<div class="modelCount"></div>' +
-			'			<input type="checkbox" class="VendorCheckbox"/>'+
+			'			<input type="checkbox" class="VendorCheckbox CheckBoxCtrl"/>'+
 			'		</div>'+	
 			'	</div>' +
 			'	<div class="PrinterArea">	' +

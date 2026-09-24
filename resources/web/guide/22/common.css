@@ -26,15 +26,14 @@
 
 .MItem {
 	width:33%;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	margin-right: 4px !important;
 	top: -100px; /* ORCA this will be activated when item filtered with position:absolute */
 }
 
-.MItem label {
-	margin-right: 0px !important;
+.MItem .CheckBoxLabel {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 /* ORCA COLUMN BROWSER */
