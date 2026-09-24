@@ -346,9 +346,6 @@ STRUCTURE
     Label
   </div>
 
-OPTIONS
-  ExpandHorizontal
-
 CONTROLLING
   EVENT 
     JS  > el.innerHTML = "New value";
@@ -830,8 +827,8 @@ STRUCTURE (ONLY CHECKBOX)
 
 STRUCTURE (WITH LABEL)
   <label 
-    class="CheckBoxContainer"
-    title      = "Tooltip"
+    class = "CheckBoxContainer"
+    title = "Tooltip"
   >
     <input 
       type       = "checkbox"
@@ -850,36 +847,35 @@ CONTROLLING
   EVENT 
     (WIP) Create gui helper document for automizing binding and controlling events 
 */
-.CheckBoxContainer:has(.CheckBoxCtrl){
-  margin:0;
-  padding: 0;
-  margin-right: 20px;
+.CheckBoxContainer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.CheckBoxContainer:has(.CheckBoxCtrl)>.CheckBoxLabel{
-  vertical-align: middle;
+.CheckBoxLabel {
+  padding: 3px 5px;
   line-height: 1.2em;
-  margin:0;
 }
 
 .CheckBoxCtrl {
   -webkit-appearance: none;
   appearance: none;
   margin:0;
-  margin-right: 6px;
-  width: 1em;
-  height: 1em;
+  width: 1.1em;
+  height: 1.1em;
   border: 0.1em solid var(--border-color);
   border-radius: 0.15em;
   display: inline-flex;
   place-content: center;
   background-color: var(--bg-color);
+  box-sizing: border-box;
 }
 
 .CheckBoxCtrl::before {
   content: "";
-  width: 0.8em;
-  height: 0.8em;
+  width: 0.9em;
+  height: 0.9em;
   transform: scale(0);
   box-shadow: inset 1em 1em var(--fg-light-fixed);
 }
@@ -1017,6 +1013,9 @@ STRUCTURE AS PAGE CONTROLLER
     <section id="page1" role="tabpanel" aria-labelledby="Tab1" tabindex="0"       ></section>
     <section id="page2" role="tabpanel" aria-labelledby="Tab2" tabindex="0" hidden></section>
   </div>
+
+OPTIONS
+  (WIP) stab-nav-arrow
 
 CONTROLLING
   EVENT 
