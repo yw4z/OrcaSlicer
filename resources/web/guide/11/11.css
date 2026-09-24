@@ -23,7 +23,7 @@
 
 #RegionList
 {
-	border: 3px solid #C7C7C7;
+	border: 1px solid var(--main-color);
 	width: 400px;
 	cursor: pointer;
 }
