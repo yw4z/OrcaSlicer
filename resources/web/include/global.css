@@ -856,6 +856,7 @@ CONTROLLING
 .CheckBoxLabel {
   padding: 3px 5px;
   line-height: 1.2em;
+  color: var(--fg-color-text);
 }
 
 .CheckBoxCtrl {

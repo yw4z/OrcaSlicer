@@ -6,6 +6,7 @@
     font-family: "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-sans;
 	user-select: none;
 	-webkit-user-select: none;
+	color:var(--fg-color-text);
 }
 
 html
@@ -30,6 +31,14 @@ body
 	flex-direction: column;
 }
 
+.TextS1 {
+
+}
+
+.TextS2 {
+	color: var(--fg-color-label);
+}
+
 
 #Title
 {
@@ -44,10 +53,13 @@ body
 {
 	font-size:28px;
 	line-height: 28px;
-	color: #009688;
+	color: var(--main-color-fixed);
 	padding: 0px 10mm;
 }
 
+#Title div.TitleUnselected {
+	color: var(--dimmed-color);
+}
 
 #Content
 {
