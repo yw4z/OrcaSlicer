@@ -42,18 +42,6 @@ body
 	color: #BEBEC0;
 }
 
-/*----Region---*/
-.RegionItem:hover
-{
-	background-color:#4C4C55;
-}
-
-.RegionSelected:hover
-{
-	background-color:#009688;
-	color: #fff;	
-}
-
 /*----Menu----*/
 #Title div.TitleUnselected
 {
