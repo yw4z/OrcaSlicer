@@ -908,7 +908,6 @@ CONTROLLING
 .CheckBoxContainer.loading  {cursor: wait       }
 
 .CheckBoxContainer.loading .CheckBoxCtrl {
-  transform: scale(1.2);
   border-radius: 50%;
   border-width: 1px;
   border-color: var(--dimmed-color);
