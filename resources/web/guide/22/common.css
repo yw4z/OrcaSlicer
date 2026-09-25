@@ -108,7 +108,7 @@
 }
 
 .cbr-column-title-container input:is(:focus) {
-	background: var(--focus-bg-box);
+	background: var(--focus-bg);
 }
 
 .cbr-filter-box {

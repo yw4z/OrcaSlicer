@@ -73,8 +73,6 @@ TabCtrl tabs changes its positions because of font width change
   --fg-color-label        : #575757;   /*Less attention-grabbing color that mostly used for labels of controls*/
   --fg-color-disabled     : #ACACAC;   /*Dimmed text color*/
   --fg-light-fixed        : #FEFEFE;   /*Fixed bright color for text/icons with colored background*/
-  --focus-bg-item         : #BFE1DE;   /*deprecated*/
-  --focus-bg-box          : #E5F0EE;   /*deprecated*/
   --border-color          : #DBDBDB;
   --border-dimmed         : #E8E8E8;
   --icon-color            : #7C8282;
@@ -131,8 +129,6 @@ TabCtrl tabs changes its positions because of font width change
   --fg-color-label        : #B2B3B5;   /*Less attention-grabbing color that mostly used for labels of controls*/
   --fg-color-disabled     : #65656A;   /*Dimmed text color*/
   --fg-light-fixed        : #FEFEFE;   /*Fixed bright color for text/icons with colored background*/
-  --focus-bg-item         : #223C3C;   /*deprecated - replaced with checked-bg*/
-  --focus-bg-box          : #283232;   /*deprecated - replaced with focus-bg*/
   --border-color          : #4A4A51;
   --border-dimmed         : #404046;
   --icon-color            : #949494;

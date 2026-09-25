@@ -82,7 +82,7 @@
 }
 
 .PrinterBlock:hover {
-	background-color: var(--focus-bg-item);
+	background-color: var(--checked-bg);
 	border-color:var(--main-color);
 }
 
