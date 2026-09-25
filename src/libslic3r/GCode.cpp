@@ -6491,6 +6491,7 @@ LayerResult GCode::process_layer(
             std::vector<GCode::ObjectByExtruder> &objects_by_extruder = objects_by_extruder_it->second;
             std::vector<InstanceToPrint> &instances = filament_plan.first;
             std::vector<IslandOrderNode> nodes;
+            std::vector<std::pair<size_t, bool>> layout;   // Per instance, see IslandOrderCacheEntry
             std::vector<size_t>          node_instances;
             auto quantize_to_mm = [](const Point &pt) -> Point {
                 const coord_t grid = coord_t(scale_(1.));
@@ -6515,6 +6516,7 @@ LayerResult GCode::process_layer(
                     const size_t instance_idx = instances.size();
                     instances.emplace_back(object_by_extruder, layer_id, *print_object, instance_id,
                                            print_object->instances()[instance_id].model_instance->get_labeled_id());
+                    layout.emplace_back(islands.size(), ! islands.empty() && ! islands.back().by_region.empty());
                     const Point &shift = print_object->instances()[instance_id].shift;
                     const size_t first_node = nodes.size();
                     if (islands_chainable)
@@ -6534,8 +6536,9 @@ LayerResult GCode::process_layer(
 
             // Reuse the cached tour while this filament's island layout is unchanged.
             auto &cache_entry = m_ordering_cache[filament_id];
-            if (!(cache_entry.first == nodes)) {
-                cache_entry.first = nodes;
+            if (! (cache_entry.nodes == nodes && cache_entry.layout == layout)) {
+                cache_entry.nodes  = nodes;
+                cache_entry.layout = layout;
                 Points node_points;
                 node_points.reserve(nodes.size());
                 for (const IslandOrderNode &node : nodes)
@@ -6568,12 +6571,12 @@ LayerResult GCode::process_layer(
                         // A visit without explicit islands already prints everything.
                         continue;
                     std::vector<ObjectByExtruder::Island> &islands = instances[i].object_by_extruder.islands;
-                    if (!islands.back().by_region.empty())
+                    if (! islands.empty() && ! islands.back().by_region.empty())
                         last_visit.islands.emplace_back(islands.size() - 1);
                 }
-                cache_entry.second = std::move(visits);
+                cache_entry.visits = std::move(visits);
             }
-            filament_plan.second = cache_entry.second;
+            filament_plan.second = cache_entry.visits;
         }
     }
 
@@ -6896,7 +6899,13 @@ LayerResult GCode::process_layer(
                 // in this instance's frame after set_origin() above). Empty islands are skipped;
                 // the trailing catch-all island has no centroid to chain by and always goes last.
                 std::vector<ObjectByExtruder::Island> &islands = instance_to_print.object_by_extruder.islands;
-                std::vector<size_t> island_order = visit.islands;
+                std::vector<size_t> island_order;
+                island_order.reserve(visit.islands.size());
+                for (size_t idx : visit.islands)   // Never index past the islands (see IslandOrderCacheEntry)
+                    if (idx < islands.size())
+                        island_order.emplace_back(idx);
+                    else
+                        BOOST_LOG_TRIVIAL(error) << "island tour refers to island " << idx << " of " << islands.size() << ", skipped";
                 if (island_order.empty()) {
                     island_order.reserve(islands.size());
                     if (layer_to_print.object_layer != nullptr && islands.size() == layer_to_print.object_layer->lslices.size() + 1) {
