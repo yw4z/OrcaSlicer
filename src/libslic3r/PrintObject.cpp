@@ -1209,6 +1209,10 @@ bool PrintObject::has_belt_brim() const
 {
     if (! m_print->has_tilted_belt())
         return false;
+    // The purge prism is sacrificial and sits at the plate's edge; its generator sets no_brim, and
+    // this keeps it brimless whatever its config says, so a brim on the parts never blocks purging.
+    if (m_config.belt_purge_tower_object.value)
+        return false;
     if (! this->belt_brim_instances_compatible())
         return false;
     if (m_config.brim_type == btNoBrim)
