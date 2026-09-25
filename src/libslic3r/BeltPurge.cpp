@@ -165,9 +165,18 @@ void Print::_plan_belt_purge()
     if (m_wipe_tower_data.tool_ordering.empty() || m_wipe_tower_data.tool_ordering.last_extruder() == unsigned(-1))
         throw Slic3r::SlicingError("The print is empty. The model is not printable with current print settings.");
 
-    if (!m_wipe_tower_data.tool_ordering.has_wipe_tower())
-        // No toolchanges anywhere, nothing to purge.
-        return;
+    // Is there any filament change at all? Not ToolOrdering::has_wipe_tower(): that reads the
+    // FIRST layer's flag, and on a belt the first layer may be a brim apron band, which carries
+    // neither object nor support and so never gets the flag even when the print changes filament.
+    {
+        bool         any_change = false;
+        unsigned int cur        = m_wipe_tower_data.tool_ordering.first_extruder();
+        for (const auto &lt : m_wipe_tower_data.tool_ordering.layer_tools())
+            for (const unsigned int e : lt.extruders)
+                if (e != cur) { any_change = true; cur = e; }
+        if (! any_change)
+            return;
+    }
 
     this->throw_if_canceled();
 
