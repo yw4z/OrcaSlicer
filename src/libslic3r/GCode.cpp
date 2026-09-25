@@ -9427,6 +9427,7 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
     // multi-hop travel path inside the configuration space
     if (m_config.reduce_crossing_wall
         && !m_avoid_crossing_perimeters.disabled_once()
+        && m_layer != nullptr   // A brim apron layer has no Layer to avoid crossing
         && m_writer->is_current_position_clear())
         //BBS: don't generate detour travel paths when current position is unclea
     {
