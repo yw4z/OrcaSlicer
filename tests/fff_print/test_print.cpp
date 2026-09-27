@@ -280,6 +280,26 @@ TEST_CASE("Slicing lifecycle events identify the model", "[Print][LifecycleEvent
     }
 }
 
+TEST_CASE("Slicing lifecycle event name is empty without model metadata", "[Print][LifecycleEvents]")
+{
+    std::string event_id;
+    std::string event_name = "unset";
+    ScopedLifecycleHook hook([&](LifecycleEvent event, const LifecycleEventContext& ctx) {
+        if (event == LifecycleEvent::SliceStarted) {
+            event_id = ctx.id;
+            event_name = ctx.name;
+        }
+    });
+
+    Print print;
+    Model model;
+    init_print({cube(20)}, print, model);
+    print.process();
+
+    CHECK(event_id == std::to_string(print.model().id().id));
+    CHECK(event_name.empty());
+}
+
 TEST_CASE("Output filenames with numeric statistics fail before slicing finishes", "[Print][Regression]")
 {
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
