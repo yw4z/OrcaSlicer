@@ -12848,11 +12848,18 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
 
     {
         Slic3r::LifecycleEventContext ctx;
-        if (const Print* print = this->background_process.fff_print()) {
-            ctx.id = std::to_string(print->model().id().id);
-            ctx.name = print->get_model_name();
+        if (const PrintBase* print = this->background_process.current_print()) {
+            const Model& model = print->model();
+            ctx.id             = std::to_string(model.id().id);
+            if (model.model_info)
+                ctx.name = model.model_info->model_name;
+        } else {
+            // Realistically Printbase* print will never be null because select_technology already asserts an active print
+            // and the worker thread asserts it before processing.
+            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": slicing completed without an active print; lifecycle event has no model ID";
         }
-        ctx.code = evt.cancelled() ? Slic3r::LifecycleEvtCode::Warn : (has_error ? Slic3r::LifecycleEvtCode::Error : Slic3r::LifecycleEvtCode::Ok);
+        ctx.code = evt.cancelled() ? Slic3r::LifecycleEvtCode::Warn :
+                                     (has_error ? Slic3r::LifecycleEvtCode::Error : Slic3r::LifecycleEvtCode::Ok);
         ctx.msg  = evt.cancelled() ? "cancelled" : (has_error ? lifecycle_error_msg : std::string());
         Slic3r::fire_lifecycle_event(Slic3r::LifecycleEvent::SlicingJobComplete, ctx);
     }
