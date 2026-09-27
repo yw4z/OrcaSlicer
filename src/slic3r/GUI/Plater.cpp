@@ -3051,8 +3051,7 @@ Sidebar::Sidebar(Plater *parent)
 
     // add filament content
     p->m_panel_filament_content = new wxScrolledWindow(p->m_filament_area_wrapper, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
-    p->m_panel_filament_content->SetScrollbars(0, 100, 1, 2);
-    p->m_panel_filament_content->SetScrollRate(0, 5);
+    p->m_panel_filament_content->SetScrollRate(0, FromDIP(20));
     //p->m_panel_filament_content->SetMaxSize(wxSize{-1, FromDIP(174)});
     p->m_panel_filament_content->SetBackgroundColour(wxColour(255, 255, 255));
 
@@ -3144,8 +3143,7 @@ Sidebar::Sidebar(Plater *parent)
     // 3) Mixed filament rows, in their own scroll area so a long mixed list does not
     //    push the physical filament list off screen.
     p->m_mixed_scroll_area = new wxScrolledWindow(p->m_filament_area_wrapper, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
-    p->m_mixed_scroll_area->SetScrollbars(0, 100, 1, 2);
-    p->m_mixed_scroll_area->SetScrollRate(0, 5);
+    p->m_mixed_scroll_area->SetScrollRate(0, FromDIP(20));
     p->m_mixed_scroll_area->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
     {
         auto* mix_scroll_sizer = new wxBoxSizer(wxVERTICAL);
@@ -3706,10 +3704,10 @@ void Sidebar::update_presets(Preset::Type preset_type)
             int select = -1;
             // ORCA get the actual nozzle diameter from printer config
             auto nozzle_dia = get_diameter_string(nozzle_diameter->values[extruder_index]);
-            // Named variants such as "0.4 High Flow" share a physical diameter.
+            // Named variants such as "0.4HS" and "0.4 High Flow" share a physical diameter.
             // Retain the variant selection unless the diameter was customized.
             const auto selected_variant =
-                (diameter == nozzle_dia || boost::algorithm::starts_with(diameter, nozzle_dia + " ")) &&
+                diameter.substr(0, diameter.find_first_not_of("0123456789.")) == nozzle_dia &&
                 std::find(diameters.begin(), diameters.end(), diameter) != diameters.end() ? diameter : nozzle_dia;
             // ORCA try to add nozzle diameter from config if list is empty. fixes blank nozzle combo box when preset has no alias
             if(diameters[0].empty() && !nozzle_dia.empty()){
