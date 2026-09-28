@@ -19,6 +19,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <algorithm>
+#include <functional>
 
 #include <catch2/catch_tostring.hpp>
 #include <Eigen/Core>
@@ -184,16 +185,13 @@ static bool read_cad_recipe_entry(const std::string& path, std::string& out,
     return found;
 }
 
-// Rewrites the archive at `path` with the recipe entry back under the name it had before the
-// rename, which is what every project saved by an earlier build looks like on disk. Generated
-// rather than checked in because a whole project archive is not frozen evidence the way a bare
-// recipe blob is -- it has to be whatever today's exporter writes, with only the name aged.
-// miniz cannot rename in place and open_zip_writer truncates, so the entries are held across
-// the switch.
-static void rename_cad_recipe_entry_to_legacy(const std::string& path)
+// Rewrites the archive at `path`, letting `edit` change the name or data of each entry; returns
+// whether `edit` reported a change for any of them. miniz cannot edit in place and
+// open_zip_writer truncates, so the entries are held across the switch.
+static bool rewrite_3mf_entries(const std::string& path, const std::function<bool(std::string& name, std::string& data)>& edit)
 {
     std::vector<std::pair<std::string, std::string>> entries;
-    bool renamed = false;
+    bool changed = false;
     {
         mz_zip_archive zip;
         mz_zip_zero_struct(&zip);
@@ -208,22 +206,140 @@ static void rename_cad_recipe_entry_to_legacy(const std::string& path)
             std::string data((size_t) st.m_uncomp_size, '\0');
             if (st.m_uncomp_size > 0)
                 REQUIRE(mz_zip_reader_extract_to_mem(&zip, i, data.data(), data.size(), 0));
-            if (boost::algorithm::iequals(name, CAD_RECIPE_ENTRY)) {
-                name    = LEGACY_CAD_RECIPE_ENTRY;
-                renamed = true;
-            }
+            changed |= edit(name, data);
             entries.emplace_back(std::move(name), std::move(data));
         }
         close_zip_reader(&zip);
     }
-    // Without this the scenario would degrade silently into re-testing the new name if the
-    // exporter's constant ever moved again: every load below would still pass.
-    REQUIRE(renamed);
 
     Zipper out(path);
     for (const auto& e : entries)
         out.add_entry(e.first, e.second.data(), e.second.size());
     out.finalize();
+    return changed;
+}
+
+// Rewrites the archive at `path` with the recipe entry back under the name it had before the
+// rename, which is what every project saved by an earlier build looks like on disk. Generated
+// rather than checked in because a whole project archive is not frozen evidence the way a bare
+// recipe blob is -- it has to be whatever today's exporter writes, with only the name aged.
+static void rename_cad_recipe_entry_to_legacy(const std::string& path)
+{
+    const bool renamed = rewrite_3mf_entries(path, [](std::string& name, std::string&) {
+        if (!boost::algorithm::iequals(name, CAD_RECIPE_ENTRY))
+            return false;
+        name = LEGACY_CAD_RECIPE_ENTRY;
+        return true;
+    });
+    // Without this the scenario would degrade silently into re-testing the new name if the
+    // exporter's constant ever moved again: every load below would still pass.
+    REQUIRE(renamed);
+}
+
+// Replaces the first occurrence of `from` in any entry whose name ends with `suffix`.
+static bool replace_in_3mf_entry(const std::string& path, const std::string& suffix, const std::string& from, const std::string& to)
+{
+    bool replaced = false;
+    rewrite_3mf_entries(path, [&](std::string& name, std::string& data) {
+        if (replaced || !boost::algorithm::ends_with(name, suffix))
+            return false;
+        if (const size_t pos = data.find(from); pos != std::string::npos) {
+            data.replace(pos, from.size(), to);
+            replaced = true;
+        }
+        return replaced;
+    });
+    return replaced;
+}
+
+// Stores a one-plate project holding a cube whose first two facets are painted Extruder2 and
+// Extruder3, which the exporter writes as paint_color="8" and paint_color="0C".
+static void store_painted_cube(const std::string& path)
+{
+    Model        model;
+    ModelObject* object = model.add_object();
+    ModelVolume* volume = object->add_volume(make_cube(10., 10., 10.));
+    object->add_instance();
+    {
+        TriangleSelector selector(volume->mesh());
+        selector.set_facet(0, EnforcerBlockerType::Extruder2);
+        selector.set_facet(1, EnforcerBlockerType::Extruder3);
+        REQUIRE(volume->mmu_segmentation_facets.set(selector));
+    }
+    ScopedTemporaryDir backup_dir("orca_paint_src");
+    model.set_backup_path(backup_dir.string());
+
+    DynamicPrintConfig cfg;
+    PlateData          plate;
+    plate.plate_index = 0;
+    StoreParams sp;
+    sp.path     = path.c_str();
+    sp.model    = &model;
+    sp.config   = &cfg;
+    sp.strategy = SaveStrategy::Zip64 | SaveStrategy::Silence;
+    sp.plate_data_list.push_back(&plate);
+    REQUIRE(store_bbs_3mf(sp));
+}
+
+// Loads `path` through the BBS importer into `model`, releasing the plates it returns. The
+// importer stages metadata through `backup_dir`, which has to outlive the model.
+static bool load_project(const std::string& path, Model& model, const ScopedTemporaryDir& backup_dir)
+{
+    model.set_backup_path(backup_dir.string());
+    DynamicPrintConfig        config;
+    ConfigSubstitutionContext ctxt{ ForwardCompatibilitySubstitutionRule::Enable };
+    PlateDataPtrs             plates;
+    std::vector<Preset*>      project_presets;
+    bool   is_bbl_3mf = false, is_orca_3mf = false;
+    Semver file_version;
+    const bool loaded = load_bbs_3mf(path.c_str(), &config, &ctxt, &model, &plates, &project_presets, &is_bbl_3mf,
+                                     &is_orca_3mf, &file_version, nullptr, LoadStrategy::LoadModel | LoadStrategy::LoadConfig);
+    release_PlateData_list(plates);
+    return loaded;
+}
+
+TEST_CASE("A project with a plate id below 1 fails to load", "[3mf][Regression]")
+{
+    const int plate_id = GENERATE(0, -1);
+    INFO("plater_id " << plate_id);
+
+    ScopedTemporaryFile temp(".3mf");
+    store_painted_cube(temp.string());
+    {
+        ScopedTemporaryDir backup_dir("orca_plate_dst");
+        Model              model;
+        REQUIRE(load_project(temp.string(), model, backup_dir));
+    }
+
+    REQUIRE(replace_in_3mf_entry(temp.string(), "model_settings.config", "key=\"plater_id\" value=\"1\"",
+                                 "key=\"plater_id\" value=\"" + std::to_string(plate_id) + "\""));
+    ScopedTemporaryDir backup_dir("orca_plate_dst");
+    Model              model;
+    bool               loaded = true;
+    REQUIRE_NOTHROW(loaded = load_project(temp.string(), model, backup_dir));
+    REQUIRE_FALSE(loaded);
+}
+
+TEST_CASE("A project with malformed paint data loads without the damaged facet", "[3mf][Regression]")
+{
+    ScopedTemporaryFile temp(".3mf");
+    store_painted_cube(temp.string());
+    // Split codes with no children behind them: the stream runs out mid-tree.
+    REQUIRE(replace_in_3mf_entry(temp.string(), ".model", "paint_color=\"8\"", "paint_color=\"FFFFFFFFFFFFFFFF3\""));
+
+    ScopedTemporaryDir backup_dir("orca_paint_dst");
+    Model              model;
+    REQUIRE(load_project(temp.string(), model, backup_dir));
+    REQUIRE(model.objects.size() == 1);
+    const ModelVolume& volume = *model.objects.front()->volumes.front();
+    const auto&        data   = volume.mmu_segmentation_facets.get_data();
+    REQUIRE_FALSE(data.used_states[size_t(EnforcerBlockerType::Extruder2)]);
+    REQUIRE(data.used_states[size_t(EnforcerBlockerType::Extruder3)]);
+
+    TriangleSelector selector(volume.mesh());
+    REQUIRE_NOTHROW(selector.deserialize(data));
+    REQUIRE(selector.num_facets(EnforcerBlockerType::Extruder2) == 0);
+    REQUIRE(selector.num_facets(EnforcerBlockerType::Extruder3) == 1);
 }
 
 // The recipe lives only in the BBS-native backend, because that is the only one that runs:

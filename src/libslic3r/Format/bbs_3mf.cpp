@@ -1633,7 +1633,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         }
         while (it != m_plater_data.end())
         {
-            if (it->first > m_plater_data.size())
+            if (it->first <= 0 || static_cast<size_t>(it->first) > m_plater_data.size())
             {
                 add_error("invalid plate index");
                 return false;
@@ -2316,7 +2316,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         }
         while (it != m_plater_data.end())
         {
-            if (it->first > m_plater_data.size())
+            if (it->first <= 0 || static_cast<size_t>(it->first) > m_plater_data.size())
             {
                 add_error("invalid plate index");
                 return false;
