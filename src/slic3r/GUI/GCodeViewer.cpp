@@ -267,7 +267,7 @@ void GCodeViewer::SequentialView::Marker::init(std::string filename)
     } else {
         m_model.init_from_file(filename);
     }
-    m_model.set_color({ 1.0f, 1.0f, 1.0f, 0.5f });
+    m_model.set_color(default_color());
 }
 
 //BBS: GUI refactor: add canvas size from parameters
@@ -1848,6 +1848,7 @@ GCodeViewer::ImexMarkerPlan GCodeViewer::resolve_imex_marker_plan(const DynamicP
         else if (sc.y() < pri_center.y()) { plan.pri_box_offset_y = -plan.box_wy; }
     }
 
+    plan.pri_head = pri_tool;
     plan.carriages.reserve(sec_count);
     for (int i = 0; i < sec_count; ++i) {
         const int   sec_tool   = sec_tool_ids[i];
@@ -1876,6 +1877,7 @@ GCodeViewer::ImexMarkerPlan GCodeViewer::resolve_imex_marker_plan(const DynamicP
         // single term applied to the live primary position each frame:
         // `term - pos` when mirrored, `pos + term` when tracked.
         ImexMarkerPlan::Carriage carriage;
+        carriage.phys_head = sec_tool;
         carriage.mirror_x = is_mirror && !cross_gantry;
         carriage.mirror_y = is_mirror &&  cross_gantry;
         carriage.x_term   = carriage.mirror_x ? (float)(sec_center.x() + pri_center.x())
@@ -1939,6 +1941,9 @@ void GCodeViewer::render_scene(int canvas_width, int canvas_height)
     // carriage_box_draws is populated for toolhead footprint rendering after render_marker().
     // Okabe-Ito colorblind-safe palette — excludes orange (#E69F00) and sky blue (#56B4E9)
     // which are used by the bed zone fills, ensuring the markers contrast against the background.
+    // It identifies the carriages in the views that colour by anything but filament; in Filament
+    // view a carriage takes its own head's filament colour instead, so a marker, the ghost of
+    // what it prints and the toolpaths under it all agree on what is loaded there.
     static const std::array<ColorRGBA, 4> s_carriage_colors = {{
         { 1.000f, 1.000f, 1.000f, 0.65f },   // primary      — white
         { 0.941f, 0.894f, 0.259f, 0.65f },   // secondary 1  — yellow       (#F0E442)
@@ -2014,14 +2019,54 @@ void GCodeViewer::render_scene(int canvas_width, int canvas_height)
                     m_imex_marker_key.mode_active_tools != active_tools) {
                     m_imex_marker_key = ImexMarkerKey{ key, mode, mode_names, active_tools };
                     m_imex_marker_plan = resolve_imex_marker_plan(printer_cfg, mode, bed_extents);
-                    // The carriage roster — and with it the marker count and colour order —
-                    // can change with any of those inputs, so drop the markers and let the
-                    // lazy init below rebuild them.
+                    // The carriage roster — and with it the marker count — can change with any
+                    // of those inputs, so drop the markers and let the lazy init below rebuild
+                    // them. Their colours are restamped every frame regardless.
                     m_sequential_view.m_imex_secondary_markers.clear();
                 }
 
                 const ImexMarkerPlan& plan      = m_imex_marker_plan;
                 const int             sec_count = (int)plan.carriages.size();
+
+                // Filament view colours the toolpaths by the filament printing them, so a
+                // carriage takes its own head's filament colour there and the palette
+                // everywhere else. get_imex_head_filament_color() answers UNPRINTABLE_COLOR
+                // for a head it cannot resolve, which is alpha 0.5 where a filament colour
+                // decodes opaque - that difference, not the black, is what distinguishes it,
+                // and a head with no filament keeps the palette rather than borrowing a
+                // colour that would read as a real assignment - the one point where a marker
+                // and the ghost of what it prints differ, the ghost having no palette to fall
+                // back to.
+                //
+                // The map and the pem are hoisted and each head resolved once, as
+                // PartPlate::update_imex_ghost_colors() does for the ghosts: both the marker
+                // and the toolhead box of a carriage want the same answer, and rebuilding it
+                // per draw parses the plate's map string and rebuilds the pem vector.
+                const bool color_by_filament = m_viewer.get_view_type() == libvgcode::EViewType::ColorPrint;
+                std::vector<ColorRGBA> carriage_colors(sec_count + 1);
+                if (sec_count > 0) {
+                    const ConfigOptionInts pem       = effective_physical_extruder_map(*preset_bundle);
+                    const auto             plate_map = curr_plate ? curr_plate->get_imex_head_filament_map()
+                                                                  : std::map<int, int>{};
+                    std::map<int, ColorRGBA> head_colors;
+                    auto color_for = [&](int phys_head, size_t palette_index) {
+                        const ColorRGBA fallback = s_carriage_colors[palette_index % s_carriage_colors.size()];
+                        if (!color_by_filament || curr_plate == nullptr || phys_head < 0)
+                            return fallback;
+                        auto hc = head_colors.find(phys_head);
+                        if (hc == head_colors.end())
+                            hc = head_colors.emplace(phys_head,
+                                     curr_plate->get_imex_head_filament_color(phys_head, pem, plate_map)).first;
+                        if (hc->second == GLVolume::UNPRINTABLE_COLOR)
+                            return fallback;
+                        ColorRGBA c = hc->second;
+                        c.a(fallback.a());   // as translucent as the palette makes them
+                        return c;
+                    };
+                    carriage_colors[0] = color_for(plan.pri_head, 0);
+                    for (int i = 0; i < sec_count; ++i)
+                        carriage_colors[i + 1] = color_for(plan.carriages[i].phys_head, i + 1);
+                }
                 if (sec_count > 0) {
                     imex_active = true;
                     imex_box_wx = plan.box_wx;
@@ -2032,13 +2077,19 @@ void GCodeViewer::render_scene(int canvas_width, int canvas_height)
                         m_sequential_view.m_imex_secondary_markers.resize(sec_count);
                         for (int i = 0; i < sec_count; ++i) {
                             m_sequential_view.m_imex_secondary_markers[i].init(m_marker_filename);
-                            m_sequential_view.m_imex_secondary_markers[i].set_color(
-                                s_carriage_colors[(i + 1) % s_carriage_colors.size()]);
                         }
                     }
+                    // Set every frame, not once at init: the view type and the filament palette
+                    // both change without the marker list being rebuilt. The primary marker is
+                    // one of the carriages here, so it is coloured alongside them - and restored
+                    // below when no mode is active, since it is the same marker every non-IMEX
+                    // preview draws.
+                    m_sequential_view.marker.set_color(carriage_colors[0]);
+                    for (int i = 0; i < sec_count; ++i)
+                        m_sequential_view.m_imex_secondary_markers[i].set_color(carriage_colors[i + 1]);
 
                     const Vec3f prim_pos = libvgcode::convert(curr_vertex.position);
-                    carriage_box_draws.push_back({ prim_pos, s_carriage_colors[0],
+                    carriage_box_draws.push_back({ prim_pos, carriage_colors[0],
                                                    plan.pri_box_offset_x, plan.pri_box_offset_y });
 
                     for (int i = 0; i < sec_count; ++i) {
@@ -2056,14 +2107,18 @@ void GCodeViewer::render_scene(int canvas_width, int canvas_height)
                         m_sequential_view.m_imex_secondary_markers[i].set_world_position(sec_pos);
                         m_sequential_view.m_imex_secondary_markers[i].set_z_offset(m_z_offset + 0.5f);
                         carriage_box_draws.push_back({
-                            sec_pos, s_carriage_colors[(i + 1) % s_carriage_colors.size()],
+                            sec_pos, carriage_colors[i + 1],
                             carriage.box_offset_x, carriage.box_offset_y });
                     }
                 }
             }
         }
-        if (!imex_active)
+        if (!imex_active) {
             m_sequential_view.m_imex_secondary_markers.clear();
+            // The primary marker is the one every preview draws, so the carriage colour it may
+            // have been given has to come back off when no parallel mode is active.
+            m_sequential_view.marker.set_color(SequentialView::Marker::default_color());
+        }
     }
     m_sequential_view.render_marker(!m_no_render_path, canvas_width, sequential_view_height(canvas_height), m_viewer.get_view_type());
 

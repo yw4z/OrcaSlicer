@@ -103,6 +103,8 @@ public:
 
             bool is_visible() const { return m_visible; }
             void set_visible(bool visible) { m_visible = visible; }
+            // What a marker looks like when no IDEX/IQEX carriage colour applies to it.
+            static ColorRGBA default_color() { return { 1.0f, 1.0f, 1.0f, 0.5f }; }
             void set_color(const ColorRGBA& color) { m_model.set_color(color); }
 
             void render(int canvas_width, int canvas_height, const libvgcode::EViewType& view_type);
@@ -228,6 +230,7 @@ private:
         // the zone geometry, so both are resolved up front.
         struct Carriage
         {
+            int   phys_head    = -1;   // physical head this carriage is, for its filament colour
             bool  mirror_x     = false;
             bool  mirror_y     = false;
             float x_term       = 0.0f;
@@ -236,6 +239,7 @@ private:
             float box_offset_y = 0.0f;
         };
         std::vector<Carriage> carriages;        // empty => no secondary carriages to draw
+        int   pri_head = -1;                    // the primary's physical head, same purpose
         float pri_box_offset_x = 0.0f;
         float pri_box_offset_y = 0.0f;
         float box_wx = 0.0f;                    // imex_nozzle_clearance_x / _y
