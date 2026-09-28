@@ -223,6 +223,46 @@ void SavePresetDialog::Item::update()
         m_valid_type = NoValid;
     }
 
+    // Control characters (ASCII 0-31 and DEL) that can be included via copy paste. most possible ones; tab, line feed
+    if (m_valid_type == Valid) {
+        for (unsigned char c : m_preset_name) {
+            if (c < 0x20 || c == 0x7F) {
+                info_line    = _L("Name is invalid;") + "\n" + _L("control characters are not allowed.");
+                m_valid_type = NoValid;
+                break;
+            }
+        }
+    }
+
+    // Windows reserved device names (case-insensitive)
+    // windows 11 relaxed this limitation but still not allowed on earlier systems
+    if (m_valid_type == Valid) {
+        // "CON.foo.json" is also reserved, so compare only the part before the first dot
+        std::string base = m_preset_name.substr(0, m_preset_name.find('.'));
+        // trim trailing spaces
+        while (!base.empty() && base.back() == ' ') base.pop_back();
+        boost::to_upper(base);
+
+        static const std::set<std::string> reserved = {
+            "CON", "PRN", "AUX", "NUL",
+            "COM0","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+            "LPT0","LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
+        };
+        if(reserved.count(base) > 0){
+            info_line    = _L("The name is a reserved system name.");
+            m_valid_type = NoValid;
+        }
+    }
+
+    // Length limit (bytes, leave room for extension ".json")
+    // Any name over 250 bytes	e.g. 251 ASCII characters
+    // 84 or more Chinese, Japanese or Korean characters	3 bytes each in UTF-8, so 84 × 3 = 252 bytes
+    // About 63 or more emoji	4 bytes each, so 63 × 4 = 252 bytes
+    if (m_valid_type == Valid && m_preset_name.size() > 250) {
+        info_line    = _L("The name is too long.");
+        m_valid_type = NoValid;
+    }
+
     if (m_valid_type == Valid && m_preset_name.find_first_of(' ') == 0) {
         info_line    = _L("The name is not allowed to start with a space.");
         m_valid_type = NoValid;
