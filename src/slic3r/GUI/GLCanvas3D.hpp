@@ -1373,8 +1373,10 @@ private:
     void _render_cad_grid(const Transform3d& view_matrix, const Transform3d& projection_matrix);
     //BBS: add outline drawing logic
     void _render_objects(GLVolumeCollection::ERenderType type, bool with_outline = true);
-    // IMEX ghost volumes owned by PartPlate; rendered in the transparent pass.
-    void _render_imex_ghosts();
+    // IMEX ghost volumes owned by PartPlate, drawn through the shader the caller bound:
+    // the shaded pass's transparent half, or the X-Ray pass below.
+    void _render_imex_ghosts(bool xray_pass = false);
+    void _render_imex_ghosts_xray();
     // IMEX ghost hover tooltip: filament swatch + label drawn as an ImGui overlay.
     void _render_imex_ghost_tooltip();
     void _render_wireframe_overlay();
