@@ -1296,7 +1296,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                                                                                  extruder_count, extruder_volume_type_count, filament_keys,
                                                                                  "filament_self_index", "filament_extruder_variant",
                                                                                  &dynamic_slot_indices);
-        else if ((extruder_count > 1) || different_extruder)
+        // Orca: also on a printer with a single extruder variant once a filament defines several
+        // (e.g. Standard and High Flow), so each filament takes its variant for that extruder.
+        else if ((extruder_count > 1) || different_extruder || new_full_config.has_multi_variant_filament())
             new_full_config.update_values_to_printer_extruders_for_multiple_filaments(m_ori_full_print_config, extruder_count, extruder_volume_type_count, filament_keys,
                                                                                       "filament_self_index", "filament_extruder_variant");
     }
