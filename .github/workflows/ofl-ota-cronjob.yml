@@ -1,5 +1,7 @@
 name: Daily OFL OTA Update
 
+run-name: Daily OFL OTA Update [OFL barrier]
+
 # This workflow is intended for creating and publishing the OrcaFilamentLibrary (OFL) OPC package to
 # https://github.com/OrcaSlicer/orcaslicer-profiles, which generates an OTA update.
 # This cronjob runs daily at 00:00 UTC every day and scans main plus every release/vX.Y.Z branch for
@@ -66,29 +68,21 @@ jobs:
               | grep -E '^(main|release/v[0-9]+\.[0-9]+\.[0-9]+)$' | sort -u
           )
 
+          # The cron run is the checkpoint: a successful run means every
+          # dispatched branch publisher completed and the pending queue was
+          # cleared. Manual or push-triggered post_merge_profiles runs are not
+          # checkpoints for this scan.
+          successful_cron_runs="$(gh api --method GET \
+            "repos/${{ github.repository }}/actions/workflows/ofl-ota-cronjob.yml/runs" \
+            -f status=success -f branch=main -f per_page=100 --paginate \
+            --jq '.workflow_runs[] | select((.display_title // "") | contains("[OFL barrier]"))')"
+          since="$(jq -rs 'sort_by(.run_started_at) | last.run_started_at // empty' <<< "$successful_cron_runs")"
+
           for branch in "${branches[@]}"; do
             echo "::group::$branch"
 
-            # post_merge_profiles.yml's own run history, not this workflow's: this
-            # workflow only ever runs against main (schedule, or workflow_dispatch
-            # --ref main), so its head branch never varies - filtering ITS history
-            # by $branch would never match anything except main. post_merge_profiles.yml
-            # genuinely runs per-branch (this dispatch below sets --ref "$branch"),
-            # so its history is the real per-branch checkpoint. It also means a
-            # failed publish naturally gets retried tomorrow. Only runs marked by
-            # this cron count, so an unrelated successful manual run cannot advance
-            # the OFL checkpoint.
-            # --method GET is required, not cosmetic: gh api defaults to POST
-            # whenever -f fields are present unless a method is given
-            # explicitly, and POST on this list-runs endpoint 404s - confirmed
-            # on real Actions infrastructure, not just reasoned about.
-            successful_runs="$(gh api --method GET "repos/${{ github.repository }}/actions/workflows/post_merge_profiles.yml/runs" \
-              -f status=success -f branch="$branch" -f per_page=100 --paginate \
-              --jq '.workflow_runs[] | select((.display_title // "") | contains("[OFL cron "))')"
-            since="$(jq -rs 'sort_by(.run_started_at) | last.run_started_at // empty' <<< "$successful_runs")"
-
             if [ -z "$since" ]; then
-              echo "No prior successful run for $branch; checking OFL changes up to $SCAN_UNTIL."
+              echo "No prior successful OFL cron run; checking $branch through $SCAN_UNTIL."
               changed_files="$(git log --until="$SCAN_UNTIL" --name-only --pretty=format: "origin/$branch" -- \
                 resources/profiles/OrcaFilamentLibrary resources/profiles/OrcaFilamentLibrary.json \
                 | sed '/^$/d')"
