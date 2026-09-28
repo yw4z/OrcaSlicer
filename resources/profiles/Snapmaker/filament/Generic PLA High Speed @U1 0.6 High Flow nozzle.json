@@ -9,6 +9,11 @@
 		"Snapmaker U1 (0.6 High Flow nozzle)"
 	],
 	"filament_max_volumetric_speed": [
+		"18",
+		"18",
+		"18",
+		"18",
+		"18",
 		"18"
 	],
 	"filament_notes": [
