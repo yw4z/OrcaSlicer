@@ -523,8 +523,9 @@ enum NozzleVolumeType {
     nvtTPUHighFlow,  // physical variant, used on H2D/H2DP 0.4 nozzles only
     // 4 is reserved: E3D High Flow is 5 in BambuStudio's slice_info and device numbering.
     nvtE3DHighFlow = 5, // physical variant, E3D high-flow hotend on 0.4/0.6 nozzles
+    nvtExtraHighFlow = 6, // Orca: physical variant with no BambuStudio or device counterpart; only profiles name it
     // Integer values are serialized as raw ints in 3mf plate metadata and device MQTT, so they MUST stay stable.
-    nvtMaxNozzleVolumeType = nvtE3DHighFlow
+    nvtMaxNozzleVolumeType = nvtExtraHighFlow
 };
 
 enum FilamentMapMode {

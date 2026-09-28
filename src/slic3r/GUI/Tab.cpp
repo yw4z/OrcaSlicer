@@ -8234,6 +8234,8 @@ static wxString short_nozzle_volume_name(const std::string &volume_name)
         return "TPU HF";
     if (volume_name == "E3D High Flow")
         return "E3D HF";
+    if (volume_name == "Extra High Flow")
+        return "XHF";
     return from_u8(volume_name);
 }
 

@@ -155,7 +155,7 @@ class TestVariantScheme(unittest.TestCase):
     def test_the_variant_names_are_read_from_the_engine(self):
         extruder_types, volume_types, legacy, extruder_legacy = apt._variant_names()
         self.assertEqual(extruder_types, {"Direct Drive", "Bowden"})
-        self.assertEqual(volume_types, {"Standard", "High Flow", "TPU High Flow", "E3D High Flow"})
+        self.assertEqual(volume_types, {"Standard", "High Flow", "TPU High Flow", "E3D High Flow", "Extra High Flow"})
         # Hybrid is an enum value no variant string may name.
         self.assertNotIn("Hybrid", volume_types)
         self.assertEqual(legacy, {"Normal": "Standard", "Big Traffic": "High Flow"})
@@ -1223,9 +1223,9 @@ class TestVariantNames(TreeCase):
         self.assertIn('extruder_type "Magnetic Drive" is not one of (Bowden, Direct Drive)',
                       out)
         self.assertIn('V/machine/M.json: nozzle_volume_type "Turbo" is not one of (E3D High '
-                      "Flow, High Flow, Standard, TPU High Flow)", out)
+                      "Flow, Extra High Flow, High Flow, Standard, TPU High Flow)", out)
         self.assertIn('default_nozzle_volume_type "Fast Flow" is not one of (E3D High Flow, '
-                      "High Flow, Standard, TPU High Flow)", out)
+                      "Extra High Flow, High Flow, Standard, TPU High Flow)", out)
 
     def test_a_file_no_list_references_is_not_judged(self):
         # It never loads, so its variant names cannot reach anything;
