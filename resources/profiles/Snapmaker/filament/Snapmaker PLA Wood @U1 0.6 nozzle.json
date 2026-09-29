@@ -1,19 +1,22 @@
 {
 	"type": "filament",
 	"name": "Snapmaker PLA Wood @U1 0.6 nozzle",
+	"renamed_from": "Snapmaker PLA Wood U1 0.6 nozzle;Snapmaker PLA Wood @U1 0.6 High Flow nozzle;Snapmaker PLA Wood U1 0.6 High Flow nozzle",
 	"inherits": "fdm_filament_pla",
 	"from": "system",
 	"setting_id": "Kp77DCcitdmoyjqm",
 	"filament_id": "OFdd8ZqJ",
 	"instantiation": "true",
 	"compatible_printers": [
-		"Snapmaker U1 (0.6 nozzle)"
+		"Snapmaker U1 (0.6 nozzle)",
+		"Snapmaker U1 (0.6 High Flow nozzle)"
 	],
 	"filament_start_gcode": [
 		""
 	],
 	"enable_pressure_advance": [
-		"0"
+		"0",
+		"1"
 	],
 	"filament_end_gcode": [
 		"\n"
@@ -39,9 +42,6 @@
 	"hot_plate_temp_initial_layer": [
 		"65"
 	],
-	"filament_flow_ratio": [
-		"0.98"
-	],
 	"filament_max_volumetric_speed": [
 		"18"
 	],
@@ -58,7 +58,8 @@
 		"0.4"
 	],
 	"pressure_advance": [
-		"0.014"
+		"0.014",
+		"0.0134"
 	],
 	"slow_down_layer_time": [
 		"4"
@@ -110,5 +111,12 @@
 	],
 	"temperature_vitrification": [
 		"45"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard",
+		"Direct Drive High Flow"
+	],
+	"filament_notes": [
+		"High-flow nozzle: Estimated 0.6 mm high-flow starting values, not manufacturer-calibrated. Flow ratio and pressure advance use this diameter's standard values times the material's 0.4 mm HF/standard ratio from Snapmaker OrcaSlicer. Temperature uses the 0.4 mm HF-standard difference. Retraction and cooling remain diameter-specific. Volumetric speed ceiling: 18 mm^3/s, from Snorca standard preset Snapmaker PLA Wood @U1 0.6 nozzle (Snapmaker OrcaSlicer). No multiplier or cross-material extrapolation is applied. Calibrate for your nozzle and filament."
 	]
 }

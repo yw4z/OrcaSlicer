@@ -1,12 +1,14 @@
 {
 	"type": "filament",
 	"name": "Snapmaker PETG Translucent @U1 0.4 nozzle",
+	"renamed_from": "Snapmaker PETG Translucent U1 0.4 nozzle;Snapmaker PETG Translucent @U1 0.4 High Flow nozzle;Snapmaker PETG Translucent U1 0.4 High Flow nozzle",
 	"inherits": "Snapmaker PETG Translucent @U1 base",
 	"from": "system",
 	"setting_id": "k6UQJJASzFSfePqN",
 	"instantiation": "true",
 	"compatible_printers": [
-		"Snapmaker U1 (0.4 nozzle)"
+		"Snapmaker U1 (0.4 nozzle)",
+		"Snapmaker U1 (0.4 High Flow nozzle)"
 	],
 	"close_fan_the_first_x_layers": [
 		"3"
@@ -81,7 +83,8 @@
 		"10%"
 	],
 	"pressure_advance": [
-		"0.04"
+		"0.04",
+		"0.05"
 	],
 	"slow_down_min_speed": [
 		"10"
@@ -94,5 +97,15 @@
 	],
 	"filament_density": [
 		"1.25"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard",
+		"Direct Drive High Flow"
+	],
+	"filament_notes": [
+		"High-flow nozzle: Temperature, flow ratio, pressure advance and other high-flow overrides are based on Snapmaker OrcaSlicer for 0.4 mm nozzles. Volumetric speed ceiling: 10 mm^3/s, from Snorca HF preset Snapmaker PETG Translucent @U1 0.4 nozzle (Snapmaker OrcaSlicer). No multiplier or cross-material extrapolation is applied. Calibrate for your nozzle and filament."
+	],
+	"additional_cooling_fan_speed": [
+		"0"
 	]
 }

@@ -1,13 +1,15 @@
 {
 	"type": "filament",
 	"name": "Snapmaker PLA Silk @U1 0.2 nozzle",
+	"renamed_from": "Snapmaker PLA Silk U1 0.2 nozzle;Snapmaker PLA Silk @U1 0.2 High Flow nozzle;Snapmaker PLA Silk U1 0.2 High Flow nozzle",
 	"inherits": "Snapmaker PLA Basic @U1 base",
 	"from": "system",
 	"setting_id": "Q5xH6oGGlbXr14Pa",
 	"filament_id": "OFWgFOjn",
 	"instantiation": "true",
 	"compatible_printers": [
-		"Snapmaker U1 (0.2 nozzle)"
+		"Snapmaker U1 (0.2 nozzle)",
+		"Snapmaker U1 (0.2 High Flow nozzle)"
 	],
 	"activate_air_filtration": [
 		"0"
@@ -66,12 +68,6 @@
 	"fan_cooling_layer_time": [
 		"100"
 	],
-	"fan_max_speed": [
-		"100"
-	],
-	"fan_min_speed": [
-		"100"
-	],
 	"filament_cost": [
 		"25.4"
 	],
@@ -109,7 +105,7 @@
 		"5"
 	],
 	"filament_notes": [
-		""
+		"High-flow nozzle: Estimated 0.2 mm high-flow starting values, not manufacturer-calibrated. Flow ratio and pressure advance use this diameter's standard values times the material's 0.4 mm HF/standard ratio from Snapmaker OrcaSlicer. Temperature uses the 0.4 mm HF-standard difference. Retraction and cooling remain diameter-specific. Volumetric speed ceiling: 2 mm^3/s, from Snorca standard preset Snapmaker PLA Silk @U1 0.2 nozzle (Snapmaker OrcaSlicer). No multiplier or cross-material extrapolation is applied. Calibrate for your nozzle and filament."
 	],
 	"filament_ramming_parameters": [
 		"120 100 6.6 6.8 7.2 7.6 7.9 8.2 8.7 9.4 9.9 10.0| 0.05 6.6 0.45 6.8 0.95 7.8 1.45 8.3 1.95 9.7 2.45 10 2.95 7.6 3.45 7.6 3.95 7.6 4.45 7.6 4.95 7.6"
@@ -188,9 +184,6 @@
 	],
 	"nozzle_temperature_range_high": [
 		"240"
-	],
-	"nozzle_temperature_range_low": [
-		"190"
 	],
 	"overhang_fan_speed": [
 		"100"
@@ -281,5 +274,9 @@
 	],
 	"pressure_advance": [
 		"0.015"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard",
+		"Direct Drive High Flow"
 	]
 }

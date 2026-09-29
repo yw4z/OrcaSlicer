@@ -1,13 +1,15 @@
 {
 	"type": "filament",
 	"name": "Snapmaker PLA Full Spectrum @U1 0.4 nozzle",
+	"renamed_from": "Snapmaker PLA Full Spectrum U1 0.4 nozzle;Snapmaker PLA Full Spectrum @U1 0.4 High Flow nozzle;Snapmaker PLA Full Spectrum U1 0.4 High Flow nozzle",
 	"inherits": "Snapmaker PLA Basic @U1 base",
 	"from": "system",
 	"setting_id": "iybaFWrXKOsmXgMJ",
 	"filament_id": "OFOPU1xv",
 	"instantiation": "true",
 	"compatible_printers": [
-		"Snapmaker U1 (0.4 nozzle)"
+		"Snapmaker U1 (0.4 nozzle)",
+		"Snapmaker U1 (0.4 High Flow nozzle)"
 	],
 	"activate_air_filtration": [
 		"0"
@@ -26,9 +28,6 @@
 	],
 	"adaptive_pressure_advance_overhangs": [
 		"0"
-	],
-	"additional_cooling_fan_speed": [
-		"70"
 	],
 	"chamber_temperature": [
 		"0"
@@ -58,7 +57,8 @@
 		"1"
 	],
 	"enable_pressure_advance": [
-		"0"
+		"0",
+		"1"
 	],
 	"eng_plate_temp": [
 		"60"
@@ -67,12 +67,6 @@
 		"60"
 	],
 	"fan_cooling_layer_time": [
-		"100"
-	],
-	"fan_max_speed": [
-		"100"
-	],
-	"fan_min_speed": [
 		"100"
 	],
 	"filament_cooling_final_speed": [
@@ -130,7 +124,7 @@
 		"5"
 	],
 	"filament_notes": [
-		""
+		"High-flow nozzle: Temperature, flow ratio, pressure advance and other high-flow overrides are based on Snapmaker OrcaSlicer for 0.4 mm nozzles. Volumetric speed ceiling: 15 mm^3/s, from Snorca HF preset Snapmaker PLA Full Spectrum @U1 0.4 nozzle (Snapmaker OrcaSlicer). No multiplier or cross-material extrapolation is applied. Calibrate for your nozzle and filament."
 	],
 	"filament_ramming_parameters": [
 		"120 100 6.6 6.8 7.2 7.6 7.9 8.2 8.7 9.4 9.9 10.0| 0.05 6.6 0.45 6.8 0.95 7.8 1.45 8.3 1.95 9.7 2.45 10 2.95 7.6 3.45 7.6 3.95 7.6 4.45 7.6 4.95 7.6"
@@ -139,7 +133,8 @@
 		"nil"
 	],
 	"filament_retract_length_toolchange": [
-		"10"
+		"10",
+		"5"
 	],
 	"filament_retract_lift_above": [
 		"nil"
@@ -160,7 +155,8 @@
 		"nil"
 	],
 	"filament_retraction_length": [
-		"nil"
+		"nil",
+		"0.5"
 	],
 	"filament_retraction_minimum_travel": [
 		"nil"
@@ -211,7 +207,8 @@
 		"nil"
 	],
 	"filament_z_hop_types": [
-		"nil"
+		"nil",
+		"Slope Lift"
 	],
 	"full_fan_speed_layer": [
 		"0"
@@ -225,17 +222,8 @@
 	"idle_temperature": [
 		"0"
 	],
-	"nozzle_temperature": [
-		"220"
-	],
-	"nozzle_temperature_initial_layer": [
-		"220"
-	],
 	"nozzle_temperature_range_high": [
 		"240"
-	],
-	"nozzle_temperature_range_low": [
-		"190"
 	],
 	"overhang_fan_speed": [
 		"100"
@@ -247,7 +235,8 @@
 		"0.4157"
 	],
 	"pressure_advance": [
-		"0.02"
+		"0.02",
+		"0.024"
 	],
 	"reduce_fan_stop_start_freq": [
 		"1"
@@ -281,5 +270,9 @@
 	],
 	"textured_plate_temp_initial_layer": [
 		"65"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard",
+		"Direct Drive High Flow"
 	]
 }

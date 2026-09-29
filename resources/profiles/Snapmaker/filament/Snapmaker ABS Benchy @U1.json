@@ -1,13 +1,15 @@
 {
 	"type": "filament",
 	"name": "Snapmaker ABS Benchy @U1",
+	"renamed_from": "Snapmaker ABS Benchy U1;Snapmaker ABS Benchy @U1 0.4 High Flow nozzle;Snapmaker ABS Benchy U1 0.4 High Flow nozzle",
 	"inherits": "Snapmaker ABS @U1 base",
 	"from": "system",
 	"setting_id": "xszx4XRGrp88OdP8",
 	"filament_id": "OFJrvXth",
 	"instantiation": "true",
 	"compatible_printers": [
-		"Snapmaker U1 (0.4 nozzle)"
+		"Snapmaker U1 (0.4 nozzle)",
+		"Snapmaker U1 (0.4 High Flow nozzle)"
 	],
 	"compatible_prints": [
 		"0.25 Benchy @Snapmaker U1 (0.4 nozzle)"
@@ -59,5 +61,12 @@
 	],
 	"default_filament_colour": [
 		""
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard",
+		"Direct Drive High Flow"
+	],
+	"filament_notes": [
+		"Standard nozzle: eSUN ABS+\nSunlu ABS+\n\n\nHigh-flow nozzle: Other material settings are inherited from the matching standard-nozzle preset. Volumetric speed ceiling: 31 mm^3/s, from local standard fallback preset Snapmaker ABS Benchy @U1; no matching Snorca U1 material/nozzle profile. No multiplier or cross-material extrapolation is applied. Calibrate for your nozzle and filament."
 	]
 }
