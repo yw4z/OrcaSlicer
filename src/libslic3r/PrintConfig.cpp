@@ -9405,20 +9405,8 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
     }
 
     // Orca: a config saved before a key joined filament_options_with_variant stores it once per filament
-    // rather than once per filament variant. Give every variant of a filament that filament's value.
-    if (auto *self_index = config.option<ConfigOptionInts>("filament_self_index"); self_index && !self_index->empty()) {
-        const int filament_count = *std::max_element(self_index->values.begin(), self_index->values.end());
-        if (filament_count > 0 && size_t(filament_count) < self_index->size()) {
-            for (const std::string &key : filament_options_with_variant) {
-                auto *opt = dynamic_cast<ConfigOptionVectorBase *>(config.option(key));
-                if (!opt || opt->size() != size_t(filament_count))
-                    continue;
-                std::unique_ptr<ConfigOption> per_filament(opt->clone());
-                for (size_t variant = 0; variant < self_index->size(); ++variant)
-                    opt->set_at(per_filament.get(), variant, self_index->values[variant] - 1);
-            }
-        }
-    }
+    // rather than once per filament variant, and one exported by an older CLI may store a single value.
+    normalize_filament_values_to_variants(config);
 }
 
 const PrintConfigDef print_config_def;
@@ -10733,6 +10721,25 @@ void set_variant_override(ConfigOptionVectorBase &target, const ConfigOptionVect
     if (source.size() == 1 && !source.is_nil(0))
         std::fill(indices.begin(), indices.end(), 0);
     target.set_to_index(&source, indices, stride);
+}
+
+void normalize_filament_values_to_variants(DynamicPrintConfig &config)
+{
+    const auto *self_index = config.option<ConfigOptionInts>("filament_self_index");
+    if (self_index == nullptr || self_index->empty())
+        return;
+    const int filament_count = *std::max_element(self_index->values.begin(), self_index->values.end());
+    if (filament_count <= 0 || size_t(filament_count) >= self_index->size())
+        return;
+    for (const std::string &key : filament_options_with_variant) {
+        auto *opt = dynamic_cast<ConfigOptionVectorBase *>(config.option(key));
+        if (opt == nullptr || (opt->size() != size_t(filament_count) && opt->size() != 1))
+            continue;
+        std::unique_ptr<ConfigOption> per_filament(opt->clone());
+        // set_at() takes the first value for a filament past the end of a single-value vector
+        for (size_t variant = 0; variant < self_index->size(); ++variant)
+            opt->set_at(per_filament.get(), variant, self_index->values[variant] - 1);
+    }
 }
 
 
