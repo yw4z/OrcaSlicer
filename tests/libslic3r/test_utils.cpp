@@ -243,3 +243,82 @@ TEST_CASE("find_unused_filename gives up after 999 versions", "[Utils]") {
     REQUIRE_FALSE(find_unused_filename(dir.path(), "model.3mf", {}, name));
     CHECK(name == "model(999).3mf");
 }
+
+TEST_CASE("is_path_within_root accepts a root given with a trailing separator", "[utils]") {
+    ScopedTemporaryDir tmp;
+    const std::string root = tmp.path().string();
+    const std::string with_separator = GENERATE_COPY(root + "/", root + std::string(1, static_cast<char>(boost::filesystem::path::preferred_separator)));
+
+    CAPTURE(with_separator);
+    CHECK(is_path_within_root("vendor.json", with_separator));
+    CHECK(is_path_within_root("vendor/machine/printer.json", with_separator));
+    CHECK_FALSE(is_path_within_root("../vendor.json", with_separator));
+}
+
+TEST_CASE("is_path_within_root treats Windows-specific name forms the same on every platform", "[utils]") {
+    ScopedTemporaryDir tmp;
+
+    SECTION("names ending in dots or spaces stay inside the root") {
+        const std::string name = GENERATE(std::string("name."), std::string("name "), std::string("dir./file.json"), std::string("dir /file.json"));
+        CAPTURE(name);
+        CHECK(is_path_within_root(name, tmp.path()));
+    }
+    SECTION("drive-relative names are rejected") {
+        const std::string name = GENERATE(std::string("C:x"), std::string("c:x/y.json"), std::string("C:"));
+        CAPTURE(name);
+        CHECK_FALSE(is_path_within_root(name, tmp.path()));
+    }
+}
+
+TEST_CASE("is_path_within_root rejects a name with an embedded NUL", "[utils]") {
+    ScopedTemporaryDir tmp;
+    // The filesystem calls stop at the NUL, so they would act on a different path than the one checked.
+    const std::string name = GENERATE(std::string("..\0", 3), std::string("..\0x/file.json", 14), std::string("sub/..\0x", 8),
+                                      std::string("file.json\0", 10), std::string("\0file.json", 10));
+    CAPTURE(name.size());
+    CHECK_FALSE(is_path_within_root(name, tmp.path()));
+}
+
+TEST_CASE("is_symlink_target_within_root accepts relative targets that stay inside the root", "[utils]") {
+    ScopedTemporaryDir tmp;
+    const auto [link, target] = GENERATE(std::make_pair(std::string("Versions/Current"), std::string("A")),
+                                         std::make_pair(std::string("Foo.framework/Foo"), std::string("Versions/Current/Foo")),
+                                         std::make_pair(std::string("libfoo.so"), std::string("libfoo.so.1")),
+                                         std::make_pair(std::string("a/b/link"), std::string("c/d")));
+    CAPTURE(link, target);
+    CHECK(is_symlink_target_within_root(link, target, tmp.path()));
+}
+
+TEST_CASE("is_symlink_target_within_root rejects absolute targets and targets that climb out", "[utils]") {
+    ScopedTemporaryDir tmp;
+    const std::string outside = (tmp.path().parent_path() / "outside").generic_string();
+    const auto [link, target] = GENERATE_COPY(std::make_pair(std::string("sub/link"), outside),
+                                              std::make_pair(std::string("sub/link"), std::string("/etc/passwd")),
+                                              std::make_pair(std::string("sub/link"), std::string("\\outside")),
+                                              std::make_pair(std::string("sub/link"), std::string("C:/outside")),
+                                              std::make_pair(std::string("sub/link"), std::string("C:outside")),
+                                              std::make_pair(std::string("sub/link"), std::string("")),
+                                              std::make_pair(std::string("link"), std::string("..")),
+                                              std::make_pair(std::string("link"), std::string("../outside")),
+                                              std::make_pair(std::string("sub/link"), std::string("../../outside")),
+                                              std::make_pair(std::string("sub/link"), std::string("x/../../../outside")),
+                                              std::make_pair(std::string("sub/link"), std::string("..\\..\\outside")),
+                                              // symlink() stops at the NUL, so this target would be created as "..".
+                                              std::make_pair(std::string("link"), std::string("..\0", 3)));
+    CAPTURE(link, target);
+    CHECK_FALSE(is_symlink_target_within_root(link, target, tmp.path()));
+}
+
+#ifndef _WIN32
+TEST_CASE("is_symlink_target_within_root rejects a target that passes through a symlink leading out", "[utils]") {
+    ScopedTemporaryDir tmp;
+    const boost::filesystem::path root    = tmp.path() / "root";
+    const boost::filesystem::path outside = tmp.path() / "outside";
+    boost::filesystem::create_directories(root);
+    boost::filesystem::create_directories(outside);
+    boost::filesystem::create_symlink(outside, root / "out");
+
+    CHECK_FALSE(is_symlink_target_within_root("link", "out/lib.so", root));
+    CHECK(is_symlink_target_within_root("link", "in/lib.so", root));
+}
+#endif
