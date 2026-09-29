@@ -293,10 +293,8 @@ void ProjectPanel::OnScriptMessage(wxWebViewEvent& evt)
             if (!accessory_path.empty()) {
                 std::string decode_path = wxGetApp().url_decode(accessory_path.ToStdString());
                 fs::path path(decode_path);
-
-                if (fs::exists(path)) {
-                    wxLaunchDefaultApplication(path.wstring(), 0);
-                }
+                if (!desktop_open_project_attachment(this, path))
+                    BOOST_LOG_TRIVIAL(warning) << "open_3mf_accessory: not opening " << decode_path;
             }
         }
         else if (strCmd == "request_3mf_info") {
