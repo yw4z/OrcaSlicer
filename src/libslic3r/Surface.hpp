@@ -61,7 +61,7 @@ public:
             thickness(other.thickness), thickness_layers(other.thickness_layers),
             bridge_angle(other.bridge_angle), extra_perimeters(other.extra_perimeters)
         {};
-    Surface(Surface &&rhs) noexcept
+    Surface(Surface &&rhs)
         : surface_type(rhs.surface_type), expolygon(std::move(rhs.expolygon)),
             thickness(rhs.thickness), thickness_layers(rhs.thickness_layers),
             bridge_angle(rhs.bridge_angle), extra_perimeters(rhs.extra_perimeters)
@@ -87,7 +87,7 @@ public:
         return *this;
     }
 
-    Surface& operator=(Surface &&rhs) noexcept
+    Surface& operator=(Surface &&rhs)
     {
         surface_type     = rhs.surface_type;
         expolygon        = std::move(rhs.expolygon);
