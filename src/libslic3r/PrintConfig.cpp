@@ -9403,6 +9403,22 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
         }
         config.set_key_value("wiping_volumes_use_custom_matrix", new ConfigOptionBool(custom));
     }
+
+    // Orca: a config saved before a key joined filament_options_with_variant stores it once per filament
+    // rather than once per filament variant. Give every variant of a filament that filament's value.
+    if (auto *self_index = config.option<ConfigOptionInts>("filament_self_index"); self_index && !self_index->empty()) {
+        const int filament_count = *std::max_element(self_index->values.begin(), self_index->values.end());
+        if (filament_count > 0 && size_t(filament_count) < self_index->size()) {
+            for (const std::string &key : filament_options_with_variant) {
+                auto *opt = dynamic_cast<ConfigOptionVectorBase *>(config.option(key));
+                if (!opt || opt->size() != size_t(filament_count))
+                    continue;
+                std::unique_ptr<ConfigOption> per_filament(opt->clone());
+                for (size_t variant = 0; variant < self_index->size(); ++variant)
+                    opt->set_at(per_filament.get(), variant, self_index->values[variant] - 1);
+            }
+        }
+    }
 }
 
 const PrintConfigDef print_config_def;
@@ -9505,6 +9521,13 @@ std::set<std::string> filament_options_with_variant = {
     "filament_ironing_spacing",
     "filament_ironing_inset",
     "filament_ironing_speed",
+    // Orca: pressure advance
+    "enable_pressure_advance",
+    "pressure_advance",
+    "adaptive_pressure_advance",
+    "adaptive_pressure_advance_model",
+    "adaptive_pressure_advance_overhangs",
+    "adaptive_pressure_advance_bridges",
     "activate_air_filtration",
     "activate_air_filtration_during_print",
     "activate_air_filtration_on_completion",
