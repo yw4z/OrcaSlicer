@@ -331,10 +331,10 @@
 		"0"
 	],
 	"retract_restart_extra_toolchange": [
-		"1",
-		"1",
-		"1",
-		"1"
+		"0",
+		"0",
+		"0",
+		"0"
 	],
 	"retract_when_changing_layer": [
 		"1",

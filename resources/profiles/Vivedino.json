@@ -67,6 +67,14 @@
 			"sub_path": "process/fdm_process_xplorer_common.json"
 		},
 		{
+			"name": "0.04mm Ultra Fine @Xplorer 0.4",
+			"sub_path": "process/0.04mm Ultra Fine @Xplorer 0.4.json"
+		},
+		{
+			"name": "0.08mm Extra Fine @Xplorer 0.4",
+			"sub_path": "process/0.08mm Extra Fine @Xplorer 0.4.json"
+		},
+		{
 			"name": "0.12mm Fine @Xplorer 0.4",
 			"sub_path": "process/0.12mm Fine @Xplorer 0.4.json"
 		},
