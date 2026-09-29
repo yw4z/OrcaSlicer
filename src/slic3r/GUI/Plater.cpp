@@ -3672,7 +3672,7 @@ void Sidebar::update_all_preset_comboboxes()
         wxString url = from_u8(PrintHost::get_print_host_webui(&cfg));
         wxString apikey;
         if(url.empty())
-            url = wxString::Format("file://%s/web/orca/missing_connection.html", from_u8(resources_dir()));
+            url = file_url_from_path(boost::filesystem::path(resources_dir()) / "web/orca/missing_connection.html");
         else {
             const auto host_type = cfg.option<ConfigOptionEnum<PrintHostType>>("host_type")->value;
             if (cfg.has("printhost_apikey") && (host_type != htSimplyPrint))
