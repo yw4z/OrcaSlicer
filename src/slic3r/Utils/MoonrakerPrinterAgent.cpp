@@ -604,10 +604,32 @@ bool MoonrakerPrinterAgent::fetch_filament_info(std::string dev_id)
             for (const auto& tray : trays)
                 if (tray.slot_index >= 0 && tray.slot_index <= max_lane_index)
                     pem[tray.slot_index] = tray.extruder_index;
-            wxTheApp->CallAfter([pem]() {
+            // Record which device this map came from. The write below targets whichever
+            // printer preset is being edited when the callback runs, and nothing else here
+            // establishes the two are the same machine: two IMEX printers of different models
+            // with the same logical extruder count would both pass every check below.
+            const std::string src_dev_id = device_info.dev_id;
+            wxTheApp->CallAfter([pem, src_dev_id]() {
                 auto* bundle = GUI::wxGetApp().preset_bundle;
                 if (!bundle) return;
-                auto& config = bundle->printers.get_edited_preset().config;
+                auto& preset = bundle->printers.get_edited_preset();
+                auto& config = preset.config;
+
+                // Pair device to preset at callback time, on the predicate update_sync_status()
+                // uses. Matching against an identity captured when the device was selected would
+                // instead ask whether the edited preset had changed since then, and would reject
+                // the user who selects a machine and only then switches to its matching preset.
+                auto* dev_manager = GUI::wxGetApp().getDeviceManager();
+                MachineObject* obj = dev_manager ? dev_manager->get_selected_machine() : nullptr;
+                if (!obj || obj->get_dev_id() != src_dev_id) return;
+
+                const std::string preset_model = preset.get_printer_type(bundle);
+                if (preset_model != obj->get_show_printer_type()) {
+                    BOOST_LOG_TRIVIAL(info) << "MoonrakerPrinterAgent: skipping physical_extruder_map sync, the device is a "
+                                            << obj->get_show_printer_type() << " but the edited printer preset is a "
+                                            << preset_model;
+                    return;
+                }
 
                 // Only IMEX profiles read physical_extruder_map as logical -> physical extruder.
                 // Elsewhere in the tree the key carries the BBL extruder-id reading, or is unused
