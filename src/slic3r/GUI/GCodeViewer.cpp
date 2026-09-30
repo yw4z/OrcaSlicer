@@ -1967,7 +1967,8 @@ void GCodeViewer::render_scene(int canvas_width, int canvas_height)
                 PartPlateList& plate_list = wxGetApp().plater()->get_partplate_list();
                 PartPlate*     curr_plate = plate_list.get_curr_plate();
                 if (curr_plate) {
-                    std::string plate_mode = curr_plate->get_imex_mode();
+                    // Same resolution the plate itself uses, rather than a fourth copy of it.
+                    const std::string plate_mode = curr_plate->get_effective_imex_mode();
                     if (plate_mode != kImexPrimaryMode)
                         mode = plate_mode;
                 }

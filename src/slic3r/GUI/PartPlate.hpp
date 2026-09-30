@@ -330,6 +330,11 @@ public:
     void set_spiral_vase_mode(bool spiral_mode, bool as_global);
 
     std::string get_imex_mode() const;
+    // The mode that actually governs this plate: its own override if it has one,
+    // otherwise the process preset's imex_parallel_mode. Zone computation, slicing
+    // and validation all resolve it this way, so anything that warns about a mode,
+    // or reports one, has to resolve it the same way or it describes a different plate.
+    std::string get_effective_imex_mode() const;
     void        set_imex_mode(const std::string& mode);
     void        reset_imex_mode();
 

@@ -400,6 +400,26 @@ std::string PartPlate::get_imex_mode() const
     return kImexPrimaryMode;
 }
 
+std::string PartPlate::get_effective_imex_mode() const
+{
+    // Per-plate mode takes priority over the process preset; set_imex_mode() erases the
+    // key on Primary, which is what lets the preset's value survive the config merge and
+    // reach the slicer. Resolve it the same way here.
+    std::string mode = get_imex_mode();
+    if (mode != kImexPrimaryMode)
+        return mode;
+    // wxGetApp() is not available headless -- see build_imex_cache_key, which guards on the
+    // same thing. Nothing calls this from the CLI today; this keeps that from being fatal.
+    if (!m_plater)
+        return mode;
+    if (auto* bundle = wxGetApp().preset_bundle) {
+        if (auto* opt = bundle->prints.get_edited_preset().config.option<ConfigOptionString>("imex_parallel_mode"))
+            if (!opt->value.empty())
+                return opt->value;
+    }
+    return kImexPrimaryMode;
+}
+
 void PartPlate::set_imex_mode(const std::string& mode)
 {
     if (mode.empty() || mode == kImexPrimaryMode) {
@@ -682,14 +702,7 @@ std::string PartPlate::build_imex_cache_key() const
     auto* is_imex_opt = printer_cfg.option<ConfigOptionBool>("is_imex");
     if (!is_imex_opt || !is_imex_opt->value)
         return "";
-    // Per-plate mode takes priority over process preset.
-    std::string active_mode = get_imex_mode();
-    if (active_mode == kImexPrimaryMode) {
-        const DynamicPrintConfig& process_cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
-        auto* mode_opt = process_cfg.option<ConfigOptionString>("imex_parallel_mode");
-        if (mode_opt && !mode_opt->value.empty())
-            active_mode = mode_opt->value;
-    }
+    std::string active_mode = get_effective_imex_mode();
     // Mode NAME alone is not printer identity: two presets can define the same mode
     // name with different tool rosters/primary, and imex_firmware_managed_zones
     // suppresses ghost generation entirely. Both shape the baked zone/ghost set, so
@@ -792,13 +805,8 @@ bool PartPlate::resolve_active_mode_tools(std::string& out_tools_str, int& out_p
     auto* is_imex_opt = printer_cfg.option<ConfigOptionBool>("is_imex");
     if (!is_imex_opt || !is_imex_opt->value) return false;
 
-    std::string active_mode = get_imex_mode();
-    if (active_mode == kImexPrimaryMode || active_mode.empty()) {
-        const DynamicPrintConfig& proc_cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
-        if (auto* mo = proc_cfg.option<ConfigOptionString>("imex_parallel_mode"))
-            active_mode = mo->value;
-    }
-    if (active_mode.empty() || active_mode == kImexPrimaryMode) return false;
+    const std::string active_mode = get_effective_imex_mode();
+    if (active_mode == kImexPrimaryMode) return false;
 
     const ImexMode mode = find_imex_mode(printer_cfg, active_mode);
     if (!mode.found()) return false;
@@ -1201,7 +1209,9 @@ bool PartPlate::has_imex_multimaterial_conflict() const
     auto* is_imex_opt = printer_cfg.option<ConfigOptionBool>("is_imex");
     if (!is_imex_opt || !is_imex_opt->value) return false;
 
-    const std::string mode = get_imex_mode();
+    // Resolved, not the raw plate value: a plate left on Primary still slices in the
+    // process preset's mode, and this badge has to fire wherever validate() would block.
+    const std::string mode = get_effective_imex_mode();
     if (mode == kImexPrimaryMode) return false;
 
     // Both keys bail rather than defaulting through imex_cfg_int(), deliberately, and for the same
@@ -2044,8 +2054,23 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
                     std::string hover_tip;
                     if (hover_id == (int)PLATE_IMEX_MODE_ID) {
                         render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_hovered_texture);
+                        // The stored value, not the resolved one: this line carries the click
+                        // affordances, and the menu checkmark and the left-click cycle both act
+                        // on what the plate stores. Reporting the inherited mode here would leave
+                        // one control saying three different things. Where they differ -- a plate
+                        // on Primary under a process preset that names a mode, which is what
+                        // actually slices -- the inherited mode is named after it, so the tooltip
+                        // still tells the user what this plate will print as.
                         std::string cur = get_imex_mode();
+                        const std::string effective = get_effective_imex_mode();
                         if (cur == kImexPrimaryMode) cur = _u8L("Primary");
+                        if (effective != get_imex_mode()) {
+                            try {
+                                cur += (boost::format(_u8L(" (process preset: %1%)")) % effective).str();
+                            } catch (const std::exception&) {
+                                cur += (boost::format(" (process preset: %1%)") % effective).str();
+                            }
+                        }
                         // One format string, not two catalog fragments concatenated around a
                         // runtime value: translators need to move the mode name within the
                         // sentence, and the space-padded fragments were untranslatable alone.

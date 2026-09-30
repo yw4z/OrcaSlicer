@@ -13352,7 +13352,9 @@ static std::vector<wxString> collect_imex_warnings(PartPlate* plate)
     // was dropped. Bed-temp + filament-type checks below remain useful soft
     // warnings — they catch user configurations that *will* slice but produce
     // problematic gcode.
-    const std::string mode = plate->get_imex_mode();
+    // Resolved: a plate on Primary still slices in the process preset's mode, and these
+    // bed-temperature and filament-type warnings are the only notice the user gets.
+    const std::string mode = plate->get_effective_imex_mode();
     if (mode == kImexPrimaryMode) return warnings;
 
     PresetBundle* bundle = wxGetApp().preset_bundle;
