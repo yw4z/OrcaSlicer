@@ -93,7 +93,7 @@ same order - only the positions of displaced vertices differ.
    coverage per original triangle comes straight off `TriangleSplittingData::triangles_to_split`.
 3. For each layer in slot order: deserialize its stored paint mask into a `TriangleSelector` against
    the **base mesh** (never against a previous layer's output), then
-   `selector.get_facets_strict(ENFORCER)` → the painted patch. Two facts are exploited:
+   `selector.get_facets_strict(ENFORCER)` -> the painted patch. Two facts are exploited:
    - `get_facets_strict()` returns the mesh's **entire** referenced vertex array regardless of which
      state was asked for - only `.indices` is filtered by state. So `get_facets_strict(ENFORCER)`
      and `get_facets_strict(NONE)` share identical vertex indexing, which is what lets boundary
@@ -162,7 +162,7 @@ sampling a white (1.0) texel multiplies by exactly 1, i.e. leaves the layers bel
 Divide floors its divisor's magnitude at 0.05: a black texel samples to *exactly* zero, so the divisor
 really does hit zero in ordinary use, and an unbounded `1/0` would fling vertices thousands of mm away
 and poison the mesh's bounding box (and every plate/print-volume check downstream). The floor doubles as
-a cap on how far Divide can amplify the relief beneath it: at most 20×.
+a cap on how far Divide can amplify the relief beneath it: at most 20x.
 
 The **lowest painted layer ignores its blend mode**: it has nothing beneath it, and Multiply/Divide
 against an implicit zero base would annihilate (or blow up) it. Enforced in
@@ -179,7 +179,7 @@ texture samples per vertex and so has no single UV that represents it.
 - **Triplanar** (default) - samples the texture on all three world planes (`(y,z)`, `(x,z)`, `(x,y)`)
   and blends the three by the vertex's own normal raised to `TRIPLANAR_BLEND_SHARPNESS` (4). Hard-picking
   the single axis most aligned with the normal instead is discontinuous wherever that dominant axis
-  flips: on a +X face the planar coordinate is `(y, z)`, on a −Y face it is `(x, z)`, so at the shared
+  flips: on a +X face the planar coordinate is `(y, z)`, on a -Y face it is `(x, z)`, so at the shared
   edge `u` jumps. A weighted blend is continuous across the transition by construction, since the weight
   of the axis being left behind falls smoothly to zero. This removes the hard *seam*; some cross-fade
   blurring in the band right at a 90° edge is inherent to triplanar mapping. A genuinely seam-free wrap
@@ -228,7 +228,7 @@ texture samples per vertex and so has no single UV that represents it.
 
 `TextureDisplacementLayer::lscm_seam_edges` - undirected mesh-vertex-index edge pairs the unwrap is
 forced to cut along, on top of the dihedral-angle seams. `segment_into_charts()` takes a set of these
-(translated from mesh → compacted-patch numbering inside `compute_patch_unwrap()`) and refuses to
+(translated from mesh -> compacted-patch numbering inside `compute_patch_unwrap()`) and refuses to
 union two triangles across a marked edge whatever their angle. Both the unwrap cache key and the
 gizmo's `UVEditorState` include the seam list, so marking a seam (which leaves the paint mask
 untouched) still forces a re-solve. Like the paint masks, seams are mesh-index-space and so dropped on
@@ -251,7 +251,7 @@ Two ways to write to it:
 drawn over the painted patch (`rebuild_uvcheck_mesh()`/`render_uvcheck_mesh()`, P3N3T2: `normal.x` =
 distortion, `tex_coord` = uv), pulled forward with a polygon offset. **Checker** samples a procedural
 checkerboard at the layer's uv (per-vertex for LSCM/ViewProjected, in-shader triplanar otherwise) -
-squares that stay square mean low distortion. **Distortion** colours each triangle blue→green→red by
+squares that stay square mean low distortion. **Distortion** colours each triangle blue->green->red by
 `log2(uv_area / surface_area)` centred on the patch's *median* stretch (so a globally-scaled unwrap
 reads as uniformly ideal and only relative stretch shows), averaged to vertices. A separate **Show mesh
 wireframe** toggle draws the whole volume's triangle edges, rebuilt only when the vertex count changes
@@ -264,16 +264,16 @@ wireframe** toggle draws the whole volume's triangle edges, rebuilt only when th
 directly** rather than clamping the *coordinate* into range, which would smear the border row/column of
 pixels outward to infinity in every direction (streaky lines radiating out from the painted patch).
 
-### Subdivision — two modes
+### Subdivision - two modes
 
-**Uniform (`subdivide_mesh_uniform()`)** — whole-mesh, 1-to-4 split. Recursive edge-midpoint split with
+**Uniform (`subdivide_mesh_uniform()`)** - whole-mesh, 1-to-4 split. Recursive edge-midpoint split with
 a shared per-pass midpoint cache (keyed by sorted vertex-index pair) so triangles sharing an edge get
 the *same* new vertex - capped at `max_iterations` (default 6). Whole-mesh so it never leaves a
-T-junction, at the cost of densifying everywhere. Wired as a "Subdivide steps" slider (**0–5**, 0 =
+T-junction, at the cost of densifying everywhere. Wired as a "Subdivide steps" slider (**0-5**, 0 =
 no subdivision), Apply snaps back to 0. Drops texture-displacement paint (no remap) via the standard
 `save_painting()`/`set_mesh()`/`restore_painting()` dance; the other four channels are remapped.
 
-**Adaptive (`subdivide_mesh_adaptive()`)** — refine **only the painted area**, by **Rivara longest-edge
+**Adaptive (`subdivide_mesh_adaptive()`)** - refine **only the painted area**, by **Rivara longest-edge
 bisection**, which is *conformal by construction*. Only **terminal** edges are ever bisected - an edge
 that is the longest edge of *every* triangle sharing it - which splits both those triangles along one
 shared midpoint at once, so a hanging node is never created. The edge to split for a triangle that wants
@@ -325,8 +325,8 @@ a linear **ramp** needs no extra vertices (linear interpolation is exact for a r
 test: sample the combined displacement at the triangle's three edge midpoints *and its centroid*
 (sampling the interior is what catches a hill sitting inside a triangle, the blind spot of an edge-only
 test) and take the largest departure from the flat triangle's barycentric interpolation. Refine while
-that exceeds `chord_tolerance_mm` ("Detail (mm)"). Zero chord error on a ramp ⇒ untouched; high on a
-hill/ridge/noise ⇒ refined until captured. Same conformal machinery, so still crack-free. The
+that exceeds `chord_tolerance_mm` ("Detail (mm)"). Zero chord error on a ramp => untouched; high on a
+hill/ridge/noise => refined until captured. Same conformal machinery, so still crack-free. The
 per-triangle error is cached and recomputed only for the children of a split.
 
 Four knobs bracket it, and all four matter:
@@ -371,10 +371,10 @@ array is longer. `rebuild_shaded_preview_mesh()` and `rebuild_uvcheck_mesh()` th
 preview (stroke-end/slider-release) but from the **live** `TriangleSelector` state, not the flushed model
 facets, so it does not lag by a full model round-trip.
 
-The perturbed normal is the analytic one for a height field `H = ±depth_mm · h(uv)` displaced along
+The perturbed normal is the analytic one for a height field `H = +/-depth_mm - h(uv)` displaced along
 `N` over any orthonormal surface tangent pair `T`/`B`:
 
-    N' = normalize(N − (dH/da)·T − (dH/db)·B),   a = dot(p,T), b = dot(p,B)
+    N' = normalize(N - (dH/da)-T - (dH/db)-B),   a = dot(p,T), b = dot(p,B)
 
 The two slopes have to be genuine **mm-per-mm** derivatives for the preview's apparent depth to match
 the bake's.
@@ -389,28 +389,28 @@ the bake's.
   the CPU (`compute_layer_vertex_uvs()`, so island placement + tiling/rotation/offset are already folded
   in), and the perturbed normal is built with **Mikkelsen's method** ("Bump Mapping Unparametrized
   Surfaces on the GPU"): the surface gradient taken directly from the screen-space derivatives of the
-  *sampled height* and position. **This makes no uv→mm scale assumption**, which is essential, because an
+  *sampled height* and position. **This makes no uv->mm scale assumption**, which is essential, because an
   LSCM map is **conformal, not isometric**: it is globally area-scaled but the *local* mm-per-uv varies
   across the chart, so a single global `1/tiling_scale` factor gets the apparent depth wrong. `dFdx(h)`
   captures the true on-screen rate of change however the chart is stretched. This path is also what makes
   the fast preview follow the UV editor: move an island and its uv - hence its shading - moves with it
-  (the mesh rebuilds on drag-end, `on_island_edited(finished)` → `rebuild_preview()` →
+  (the mesh rebuilds on drag-end, `on_island_edited(finished)` -> `rebuild_preview()` ->
   `rebuild_shaded_preview_mesh()`). The branch is uniform and the paint weight gates by multiply, so the
-  texture derivatives stay well defined. A triangle straddling a seam has a discontinuous uv → the
-  `det≈0` guard skips it (a localised preview-only artifact, never in the bake).
+  texture derivatives stay well defined. A triangle straddling a seam has a discontinuous uv -> the
+  `det~0` guard skips it (a localised preview-only artifact, never in the bake).
 
 **Parallax (triplanar path).** Perturbing the shading normal alone welds the pattern to the base surface:
 it does not slide as the camera orbits, and does not get deeper as `depth_mm` grows. The triplanar path
 therefore shades at the point the *displaced* surface would show at this pixel, found by **ray marching**
-(parallax occlusion mapping). A point at ray parameter `s`, i.e. `P + V·s` (`P` the base point, `V` the
-unit direction to the eye), sits at height `s·dot(V,n)` above the undisplaced surface. The displaced
-surface lives in a shell between the extreme values of `amp·(h − midlevel)` - taken from both ends of
-`h ∈ [0,1]`, so it holds for an inverted layer and a raised midlevel too, where the surface sits *below*
+(parallax occlusion mapping). A point at ray parameter `s`, i.e. `P + V-s` (`P` the base point, `V` the
+unit direction to the eye), sits at height `s-dot(V,n)` above the undisplaced surface. The displaced
+surface lives in a shell between the extreme values of `amp-(h - midlevel)` - taken from both ends of
+`h  in  [0,1]`, so it holds for an inverted layer and a raised midlevel too, where the surface sits *below*
 the undisplaced one. The march starts at the top of that shell, where the ray is outside the surface by
 construction, and steps inward until the ray height drops below the sampled height. That crossing *is*
 the visible point.
 
-Solving `Q = P + V·(H(Q)/dot(V,n))` by fixed-point iteration instead is geometrically exact but the
+Solving `Q = P + V-(H(Q)/dot(V,n))` by fixed-point iteration instead is geometrically exact but the
 divisor goes to zero edge-on; the sample then lands a large fraction of a tile away and the iteration
 oscillates, which reads as a second, flat copy of the pattern ghosted over the real one. Clamping the
 step to one tile does not help - a tile-sized shift lands on the neighbouring tile, the same pattern
@@ -420,7 +420,7 @@ enough that the relief still flattens as soon as the camera tilts. Marching has 
 The hit is interpolated between the last two samples, which keeps `PARALLAX_STEPS` (24) affordable, and
 the whole march is skipped when sweeping the shell would move the sample point less than half a texel -
 the head-on case, so the common view pays almost nothing. The 140 variant samples with
-`textureLod(…, 0.0)` inside the loop, since implicit derivatives are undefined in non-uniform control
+`textureLod(..., 0.0)` inside the loop, since implicit derivatives are undefined in non-uniform control
 flow. Two uniforms exist for this: `midlevel` (parallax needs the real height, not just its derivative)
 and `eye_model_pos` (the camera in the volume's local frame).
 
@@ -457,17 +457,17 @@ but the bake samples from a **local-space** position, so the two have to be reco
 `view_project_right/up` can only express an *affine* projection - exact under an orthographic camera, but
 wrong under perspective, where the near end of a part projects larger than the far end and no pair of
 axes reproduces that. So the layer instead stores a full projective map (`view_project_matrix`, row-major
-3×4, `uv = (row0·p̃/row2·p̃, row1·p̃/row2·p̃)`), built like this:
+3x4, `uv = (row0-p/row2-p, row1-p/row2-p)`), built like this:
 
-- `K = projection · view · (instance · volume)`, i.e. local → clip, the same product the renderer uses.
+- `K = projection - view - (instance - volume)`, i.e. local -> clip, the same product the renderer uses.
   Note `Camera::get_projection_matrix()` is typed `Transform3d` (nominally affine) but its perspective
-  form explicitly writes a `(0, 0, −1, 0)` bottom row into the underlying 4×4, so `clip.w = −z_eye` is
+  form explicitly writes a `(0, 0, -1, 0)` bottom row into the underlying 4x4, so `clip.w = -z_eye` is
   genuinely carried. The build therefore multiplies **`.matrix()` products** (plain `Matrix4d`), never
   `Transform3d` products, which would not compose that row correctly.
 - Window coordinates follow `igl::project`'s convention (as `CameraUtils::project` does), with y
-  measured downward. Writing `uv = (win − rect_origin) / rect_size` makes u and v affine in
+  measured downward. Writing `uv = (win - rect_origin) / rect_size` makes u and v affine in
   `ndc = clip.xyz / clip.w`; multiplying through by `clip.w` leaves a plain linear combination of `K`'s
-  rows, which is exactly the 3×4 matrix - the perspective divide survives intact.
+  rows, which is exactly the 3x4 matrix - the perspective divide survives intact.
 - `w > 0` is checked rather than divided blindly. A point behind the projector has `w < 0` and divides
   to a plausible-looking but **mirrored** uv - the classic way a projected decal reappears on the back
   of a model. `project_uv_projective()` returns false there and the caller treats it as no height.
@@ -512,7 +512,7 @@ changes (`unwrap_changed` in `update_uv_editor()`).
 **Gestures** (canvas-owned, reported to the gizmo as incremental deltas via `IslandEditFn`): left-drag
 = move, right-drag or **R** = rotate (hold **Shift** to snap to 15° steps - quantised on the
 *cumulative* rotation, not each delta, so it doesn't judder, and accumulated incrementally so it
-survives crossing ±180°), **S** = scale (R/S modal, click/Enter to confirm, Esc to cancel), wheel =
+survives crossing +/-180°), **S** = scale (R/S modal, click/Enter to confirm, Esc to cancel), wheel =
 zoom about the cursor, middle-drag = pan, **Home**/**F** = frame all. Scale writes
 `TextureIsland::scale`; "Avg scale" (`average_island_scales()`) sets every island to the mean, so
 one island scaled by hand can be matched back to its neighbours' texel density. **Snap** (canvas-owned
@@ -542,11 +542,11 @@ gizmo via `CommandFn`; view-only ones (Frame, Snap) it handles directly.
 - `src/slic3r/GUI/Gizmos/GLGizmoTextureDisplacement.hpp/.cpp` - the gizmo and its whole panel.
 - `src/slic3r/GUI/TextureLibrary.hpp/.cpp` - scans the shipped + user texture folders, imports an
   arbitrary image into the user folder (converting it to the 8-bit grayscale PNG libslic3r decodes),
-  and loads a library file's bytes for a layer. The image→grayscale-PNG conversion lives here, on the
+  and loads a library file's bytes for a layer. The image->grayscale-PNG conversion lives here, on the
   GUI side, because libslic3r has no image toolkit; both the import path and the "pick a shipped
   texture" path go through the same one function.
 - `resources/textures/displacement/*.png` - the 10 shipped height maps (Bricks, Grid, Hexagons,
-  Knurl, Noise, Quilt, Studs, Waves, Weave, Wood Grain). All 512×512 8-bit grayscale and **seamless**
+  Knurl, Noise, Quilt, Studs, Waves, Weave, Wood Grain). All 512x512 8-bit grayscale and **seamless**
   (each is periodic over the full image in both axes, so tiling shows no seam). Generated
   procedurally; the whole `resources/` tree is installed recursively by CMake, so a new folder under
   it ships with no build-system change.
