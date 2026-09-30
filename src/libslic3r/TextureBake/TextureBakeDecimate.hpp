@@ -25,6 +25,11 @@ static constexpr double DECIMATE_FLIP_DOT = 0.2;
 static constexpr double DECIMATE_CREASE_COS = 0.5;
 // Quadric penalty weight for a crease plane.
 static constexpr double DECIMATE_CREASE_WEIGHT = 1e4;
+// Most faces a collapse may leave around its surviving vertex. Uncapped, a pinned vertex on flat
+// ground grows a fan of thousands of slivers, and validating each of its edges walks the whole fan,
+// which turns a decimation of a second or two into minutes. At 64 the triangle count moves by about
+// 1% at most, and by far less on large bakes.
+static constexpr int DECIMATE_MAX_VALENCE = 64;
 
 // Upper bound in mm on the deviation a harvested collapse may introduce; the real one is smaller,
 // since the cost sums squared distances over all incident faces.

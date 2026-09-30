@@ -236,10 +236,10 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         }
     }
 
-    // Vertex-face incidence as intrusive linked lists of slots over flat arrays.
+    // Vertex-face incidence as intrusive linked lists of slots over flat arrays, with each list's length.
     const size_t     S = face_count * 3;
-    std::vector<int> vf_head(vert_count, -1), slot_face(S), slot_vert(S), slot_next(S, -1),
-        slot_prev(S, -1), face_slot(S, -1);
+    std::vector<int> vf_head(vert_count, -1), vf_count(vert_count, 0), slot_face(S), slot_vert(S),
+        slot_next(S, -1), slot_prev(S, -1), face_slot(S, -1);
     for (size_t f = 0; f < face_count; ++f)
         for (int k = 0; k < 3; ++k) {
             const int s = int(f) * 3 + k;
@@ -252,12 +252,14 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                 slot_prev[size_t(vf_head[size_t(v)])] = s;
             vf_head[size_t(v)]   = s;
             face_slot[size_t(s)] = s;
+            ++vf_count[size_t(v)];
         }
     const auto unlink_slot = [&](int s) {
-        const int p = slot_prev[size_t(s)], nx = slot_next[size_t(s)];
+        const int p = slot_prev[size_t(s)], nx = slot_next[size_t(s)], v = slot_vert[size_t(s)];
         if (p >= 0) slot_next[size_t(p)] = nx;
-        else        vf_head[size_t(slot_vert[size_t(s)])] = nx;
+        else        vf_head[size_t(v)] = nx;
         if (nx >= 0) slot_prev[size_t(nx)] = p;
+        --vf_count[size_t(v)];
     };
     const auto move_slot = [&](int s, int nv) {
         unlink_slot(s);
@@ -267,6 +269,7 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             slot_prev[size_t(vf_head[size_t(nv)])] = s;
         vf_head[size_t(nv)]  = s;
         slot_vert[size_t(s)] = nv;
+        ++vf_count[size_t(nv)];
     };
 
     std::vector<uint8_t>  active(vert_count, 1);
@@ -463,6 +466,10 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             ++stale_pops;
             continue;
         }
+        // Ahead of the checks below, which walk the fans (see DECIMATE_MAX_VALENCE). The two shared
+        // faces, counted in both fans, go.
+        if (vf_count[size_t(v1)] + vf_count[size_t(v2)] - 4 > DECIMATE_MAX_VALENCE)
+            continue;
         if (shared_face_count(v1, v2) < 2)
             continue;
         lk_epoch += 2; // +2 so ep and ep+1 cannot collide with the next call
