@@ -9463,8 +9463,6 @@ std::set<std::string> print_options_with_variant = {
 std::set<std::string> filament_options_with_variant = {
     "filament_flow_ratio",
     "filament_max_volumetric_speed",
-    // Variant arrays use element zero when the selected column is absent.
-    // A singleton therefore retains the same tuning for every nozzle variant.
     "enable_pressure_advance",
     "pressure_advance",
     "fan_min_speed",

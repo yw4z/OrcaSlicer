@@ -940,6 +940,21 @@ class TestNormalized(TreeCase):
 # ---------------------------------------------------------------------------
 
 class TestFixVariant(TreeCase):
+    def test_cooling_arrays_require_one_value_per_declared_variant(self):
+        keys = ("fan_min_speed", "fan_max_speed", "additional_cooling_fan_speed")
+        variants = ["Direct Drive Standard", "Direct Drive High Flow", "Bowden Standard"]
+        for width in (1, 2, 3, 4):
+            with self.subTest(width=width):
+                self.preset("filament/F.json", instantiation="true",
+                            filament_extruder_variant=variants,
+                            **{key: ["20"] * width for key in keys})
+                apt.load_vendor_configs.cache_clear()
+                errors, out = self.width_errors()
+                self.assertEqual(errors, 0 if width == 3 else len(keys), out)
+                if width != 3:
+                    for key in keys:
+                        self.assertIn(f'"{key}" has {width} values', out)
+
     def preset(self, rel, **data):
         name = os.path.splitext(os.path.basename(rel))[0]
         self.t.write("V", rel, {"type": rel.split("/")[0], "name": name, **data})
@@ -968,25 +983,21 @@ class TestFixVariant(TreeCase):
                     retraction_length=["0.8", "1.2"], z_hop=["0.4"],
                     machine_max_speed_x=["500", "200"])
         errors, out = self.width_errors()
-        self.assertEqual(errors, 1, out)
-        self.assertNotIn('"z_hop"', out)
+        self.assertEqual(errors, 2, out)
+        self.assertIn('M.json: "z_hop" has 1 values for variant length 2 (no '
+                      'printer_extruder_variant, so one default variant per extruder) at stride 1, '
+                      'which takes 2', out)
         self.assertIn('M.json: "machine_max_speed_x" has 2 values for variant length 2', out)
         self.assertNotIn("retraction_length", out)
 
-    def test_one_value_applies_to_every_variant(self):
+    def test_one_value_is_an_error_where_the_list_has_more_variants(self):
         self.preset("process/P.json", instantiation="true", outer_wall_speed=["30"],
                     print_extruder_id=["1", "1"],
                     print_extruder_variant=["Direct Drive Standard", "Direct Drive High Flow"])
         errors, out = self.width_errors()
-        self.assertEqual(errors, 0, out)
-        self.assertEqual(self.width_errors("strict")[0], 0)
-
-    def test_a_short_filament_array_uses_element_zero_for_missing_variants(self):
-        self.preset("filament/F.json", instantiation="true", pressure_advance=["0.02", "0.04"],
-                    filament_extruder_variant=["Direct Drive Standard", "Direct Drive High Flow", "Bowden Standard"])
-        errors, out = self.width_errors()
-        self.assertEqual(errors, 0, out)
-        self.assertEqual(self.width_errors("strict")[0], 0)
+        self.assertEqual(errors, 1, out)
+        self.assertIn('P.json: "outer_wall_speed" has 1 values for variant length 2 at stride 1, '
+                      'which takes 2', out)
 
     def test_one_value_is_padded_to_every_variant(self):
         self.preset("machine/M.json", instantiation="true", nozzle_diameter=["0.4"] * 3,
@@ -1029,11 +1040,13 @@ class TestFixVariant(TreeCase):
         self.assertNotIn("outer_wall_speed", self.t.read("V", "process/S1.json"))
         self.assertEqual(self.width_errors("strict")[0], 0)
 
-    def test_an_inherited_single_value_is_valid_and_can_be_explicitly_expanded(self):
+    def test_an_inherited_array_is_checked_and_restated_only_when_strict(self):
         self.processes(["30"])
         self.assertEqual(self.width_errors()[0], 0)
         errors, out = self.width_errors("strict")
-        self.assertEqual(errors, 0, out)
+        self.assertEqual(errors, 1, out)
+        self.assertIn('process/D1.json: "outer_wall_speed" has 1 values for variant length 2 at '
+                      'stride 1, which takes 2 (it comes from V/process/common.json)', out)
         before = self.t.bytes_map()
         self.run_command("fix-variant")
         self.assertEqual(self.t.bytes_map(), before)

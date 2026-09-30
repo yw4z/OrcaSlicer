@@ -31,5 +31,11 @@
 		"stainless_steel",
 		"stainless_steel",
 		"stainless_steel"
+	],
+	"default_filament_profile": [
+		"Generic PLA @System",
+		"Generic PLA @System",
+		"Generic PLA @System",
+		"Generic PLA @System"
 	]
 }

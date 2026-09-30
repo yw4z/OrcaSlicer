@@ -1757,20 +1757,18 @@ def check_variant_names(profiles_dir, vendor):
 
 
 def check_variant_arrays(profiles_dir, vendor, strict=False):
-    """Variant arrays have the declared width or a shared single value,
-    and a printer's variant layout keys agree.
+    """Every variant array an instantiated preset writes is exactly its
+    variant length x stride wide, and a printer's variant layout keys agree.
 
     Only instantiated presets are judged, each at the variant length of its composed
     config (_variant_length's); a base is not, since what it writes counts only where
     it reaches a preset that does not override it. A full-width array holds one
-    value per variant; a single value at stride 1 broadcasts to every variant.
-    Short, nonempty filament arrays use element zero for missing variants,
-    matching the C++ loader. Other widths are errors. A key the preset does not write
-    takes what reaches it - the default,
+    value per variant; any other width is an error, one value included and whatever
+    the values. A key the preset does not write takes what reaches it - the default,
     or an array it inherits or includes - which the loader sizes to the preset, and
     is not checked. With strict, every instantiated preset also holds each key that
-    reaches it at its own width or as a shared single value, so a preset with
-    other variants restates non-shared arrays when necessary. The machine_max_* limits hold
+    reaches it at its own width, so a preset with other variants than the file its
+    array comes from restates the array. The machine_max_* limits hold
     a (normal, silent) pair per variant. A process that lists variants pairs each
     with its extruder id (extruder 1 everywhere when absent); a machine's layout keys
     are held to _check_printer_layout, which reports a printer_extruder_id that does
@@ -1792,7 +1790,7 @@ def check_variant_arrays(profiles_dir, vendor, strict=False):
                 continue
             value, path = config[key]
             width, need = len(_as_list(value)), variant_length * stride
-            if width == need or (stride == 1 and (width == 1 or (ptype == "filament" and 0 < width < need))):
+            if width == need:
                 continue
             print_error(f'{rel}: "{key}" has {width} values for variant length {variant_length}'
                         f"{' (' + reason + ')' if reason else ''} at stride {stride}, "

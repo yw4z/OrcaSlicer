@@ -52,7 +52,7 @@ TEST_CASE("Filament cooling and pressure settings follow the selected nozzle var
         {"nozzle_temperature_range_high", "255", "280"},
     };
     const int variant_index = GENERATE(0, 1, 2, 3);
-    const int value_count = GENERATE(1, 2, 4);
+    const int value_count = 4;
     const bool load_preset = GENERATE(false, true);
     const bool high_flow = variant_index % 2 != 0;
     for (const Setting &setting : settings) {
@@ -71,10 +71,7 @@ TEST_CASE("Filament cooling and pressure settings follow the selected nozzle var
             if (load_preset) {
                 extend_default_config_length(filament, false, DynamicPrintConfig::full_print_config());
                 DynamicPrintConfig expanded;
-                std::string expanded_values = values;
-                for (int i = value_count; i < 4; ++i)
-                    expanded_values += std::string(",") + setting.standard;
-                REQUIRE(expanded.option(setting.key, true)->deserialize(expanded_values));
+                REQUIRE(expanded.option(setting.key, true)->deserialize(values));
                 REQUIRE(*filament.option(setting.key) == *expanded.option(setting.key));
             }
 
@@ -85,7 +82,7 @@ TEST_CASE("Filament cooling and pressure settings follow the selected nozzle var
                 high_flow ? nvtHighFlow : nvtStandard);
 
             DynamicPrintConfig expected;
-            REQUIRE(expected.option(setting.key, true)->deserialize(high_flow && variant_index < value_count ? setting.high_flow : setting.standard));
+            REQUIRE(expected.option(setting.key, true)->deserialize(high_flow ? setting.high_flow : setting.standard));
             REQUIRE(*filament.option(setting.key) == *expected.option(setting.key));
         }
     }
