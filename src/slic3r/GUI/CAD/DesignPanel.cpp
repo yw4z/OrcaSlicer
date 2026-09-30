@@ -2,7 +2,7 @@
 #include "slic3r/GUI/CAD/DesignCanvas.hpp"
 #include "slic3r/GUI/CAD/DesignSketchTool.hpp"
 #include "slic3r/GUI/CAD/DesignTextDialog.hpp"           // Text: font, height, live outline
-#include "slic3r/GUI/CAD/DesignOffer.hpp"                // generated offer table — see docs/ux/tool_atlas.json
+#include "slic3r/GUI/CAD/DesignOffer.hpp"                // generated offer table — see scripts/CAD/tool_atlas.json
 #include "libslic3r/CAD/GeometryEngine.hpp"   // face_by_index for face-extrude gizmo anchor
 #include "libslic3r/TriangleMesh.hpp"     // mesh import: STL/OBJ -> indexed_triangle_set
 #include "libslic3r/Format/OBJ.hpp"
@@ -6106,7 +6106,7 @@ bool DesignPanel::sketch_plane_target(wxString& what) const
 // ---------------------------------------------------------------------------------------------
 // The object-driven offer (charter §4.1). Right-click the geometry and get a vertical list in the
 // ratified row order, with the verbs that do not apply DISABLED IN PLACE carrying their reason.
-// The rows come from DesignOffer.hpp, generated from docs/ux/tool_atlas.json — the same file the
+// The rows come from DesignOffer.hpp, generated from scripts/CAD/tool_atlas.json — the same file the
 // mockups are drawn from, so a drawing and the product cannot drift apart.
 // ---------------------------------------------------------------------------------------------
 
