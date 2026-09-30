@@ -14,6 +14,13 @@
 	"prime_tower_width": "30",
 	"prime_volume": "63",
 	"slowdown_for_curled_perimeters": [
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
 		"0"
 	],
 	"wipe_tower_filament": "0",

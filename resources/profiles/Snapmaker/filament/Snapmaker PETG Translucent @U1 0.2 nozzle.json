@@ -17,9 +17,11 @@
 		"3"
 	],
 	"complete_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"during_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"fan_max_speed": [
@@ -38,12 +40,14 @@
 		"1.25"
 	],
 	"filament_flow_ratio": [
+		"0.98",
 		"0.98"
 	],
 	"filament_loading_speed": [
 		"28"
 	],
 	"filament_max_volumetric_speed": [
+		"1",
 		"1"
 	],
 	"filament_minimal_purge_on_wipe_tower": [
@@ -59,15 +63,19 @@
 		"5"
 	],
 	"filament_retract_length_toolchange": [
+		"10",
 		"10"
 	],
 	"filament_retraction_length": [
+		"1",
 		"1"
 	],
 	"filament_retraction_minimum_travel": [
+		"nil",
 		"nil"
 	],
 	"filament_retraction_speed": [
+		"50",
 		"50"
 	],
 	"filament_unloading_speed": [
@@ -77,12 +85,14 @@
 		"100"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"hot_plate_temp": [
 		"80"
 	],
 	"nozzle_temperature_initial_layer": [
+		"250",
 		"250"
 	],
 	"nozzle_temperature_range_low": [

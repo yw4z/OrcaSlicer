@@ -14,13 +14,16 @@
 		"15"
 	],
 	"filament_retraction_length": [
+		"1.0",
 		"1.0"
 	],
 	"filament_z_hop": [
+		"0.0",
 		"0.0"
 	],
 	"description": " ",
 	"enable_pressure_advance": [
+		"1",
 		"1"
 	],
 	"filament_extruder_variant": [

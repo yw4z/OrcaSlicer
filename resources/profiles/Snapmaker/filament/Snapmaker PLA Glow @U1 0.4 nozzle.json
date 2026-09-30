@@ -15,9 +15,11 @@
 		"100"
 	],
 	"complete_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"during_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"filament_cooling_final_speed": [
@@ -59,12 +61,15 @@
 		"10"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_retraction_length": [
+		"0.4",
 		"0.4"
 	],
 	"filament_retraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_unloading_speed": [
@@ -74,9 +79,11 @@
 		"100"
 	],
 	"filament_z_hop": [
+		"0.2",
 		"0.2"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"hot_plate_temp_initial_layer": [

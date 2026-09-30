@@ -14,6 +14,13 @@
 	"ooze_prevention": "1",
 	"prime_tower_width": "30",
 	"slowdown_for_curled_perimeters": [
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
 		"0"
 	],
 	"standby_temperature_delta": "-150",

@@ -16,18 +16,23 @@
 		"Snapmaker U1 (0.8 High Flow nozzle)"
 	],
 	"filament_flow_ratio": [
+		"0.983",
 		"0.983"
 	],
 	"filament_deretraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_max_volumetric_speed": [
+		"7.6",
 		"7.6"
 	],
 	"filament_retraction_length": [
+		"0.8",
 		"0.8"
 	],
 	"filament_retraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_notes": [

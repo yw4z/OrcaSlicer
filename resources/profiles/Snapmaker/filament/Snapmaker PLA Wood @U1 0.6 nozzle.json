@@ -43,6 +43,7 @@
 		"65"
 	],
 	"filament_max_volumetric_speed": [
+		"18",
 		"18"
 	],
 	"filament_multitool_ramming_flow": [
@@ -52,9 +53,11 @@
 		"10"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_retraction_length": [
+		"0.4",
 		"0.4"
 	],
 	"pressure_advance": [
@@ -68,15 +71,18 @@
 		"100"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"activate_air_filtration": [
+		"0",
 		"0"
 	],
 	"chamber_temperatures": [
 		"0"
 	],
 	"complete_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"cool_plate_temp": [
@@ -86,21 +92,26 @@
 		"35"
 	],
 	"during_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"filament_cost": [
 		"20"
 	],
 	"filament_long_retractions_when_cut": [
+		"nil",
 		"nil"
 	],
 	"filament_retraction_distances_when_cut": [
+		"nil",
 		"nil"
 	],
 	"filament_retraction_speed": [
+		"nil",
 		"nil"
 	],
 	"nozzle_temperature": [
+		"220",
 		"220"
 	],
 	"overhang_fan_threshold": [

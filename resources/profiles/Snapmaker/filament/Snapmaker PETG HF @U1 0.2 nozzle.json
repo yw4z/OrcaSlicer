@@ -49,9 +49,11 @@
 		"5"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_retraction_length": [
+		"1.5",
 		"1.5"
 	],
 	"filament_start_gcode": [
@@ -67,6 +69,7 @@
 		"80"
 	],
 	"nozzle_temperature": [
+		"245",
 		"245"
 	],
 	"nozzle_temperature_initial_layer": [
@@ -98,6 +101,7 @@
 		"80"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"filament_notes": [

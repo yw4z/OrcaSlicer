@@ -17,9 +17,11 @@
 		"1"
 	],
 	"complete_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"during_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"fan_min_speed": [
@@ -29,6 +31,7 @@
 		"79.98"
 	],
 	"filament_deretraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_flow_ratio": [
@@ -36,12 +39,15 @@
 		"0.9312"
 	],
 	"filament_retract_length_toolchange": [
+		"10",
 		"10"
 	],
 	"filament_retraction_length": [
+		"nil",
 		"nil"
 	],
 	"filament_retraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_soluble": [
@@ -51,15 +57,18 @@
 		"65"
 	],
 	"nozzle_temperature": [
+		"225",
 		"225"
 	],
 	"nozzle_temperature_initial_layer": [
+		"225",
 		"225"
 	],
 	"nozzle_temperature_range_low": [
 		"205"
 	],
 	"pressure_advance": [
+		"0.03",
 		"0.03"
 	],
 	"slow_down_layer_time": [

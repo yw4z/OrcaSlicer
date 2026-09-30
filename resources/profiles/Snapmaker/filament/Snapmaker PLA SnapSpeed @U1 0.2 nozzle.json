@@ -7,24 +7,30 @@
 	"setting_id": "jsAgNNiUC6DoO7rz",
 	"instantiation": "true",
 	"filament_deretraction_speed": [
+		"30",
 		"30"
 	],
 	"filament_flow_ratio": [
+		"1.01",
 		"1.01"
 	],
 	"filament_max_volumetric_speed": [
+		"2",
 		"2"
 	],
 	"filament_multitool_ramming_flow": [
 		"30"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_retraction_speed": [
+		"30",
 		"30"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"hot_plate_temp": [

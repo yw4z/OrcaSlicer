@@ -11,12 +11,14 @@
 		"Snapmaker U1 (0.4 High Flow nozzle)"
 	],
 	"enable_pressure_advance": [
+		"1",
 		"1"
 	],
 	"nozzle_temperature_range_high": [
 		"240"
 	],
 	"pressure_advance": [
+		"0.03",
 		"0.03"
 	],
 	"additional_cooling_fan_speed": [
@@ -26,9 +28,11 @@
 		"1"
 	],
 	"complete_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"during_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"fan_min_speed": [
@@ -44,6 +48,7 @@
 		"4"
 	],
 	"filament_deretraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_loading_speed": [
@@ -66,6 +71,7 @@
 		"0.1"
 	],
 	"filament_retract_length_toolchange": [
+		"4",
 		"4"
 	],
 	"filament_retraction_length": [
@@ -73,6 +79,7 @@
 		"0.6"
 	],
 	"filament_retraction_speed": [
+		"nil",
 		"nil"
 	],
 	"filament_unloading_speed": [
@@ -82,15 +89,18 @@
 		"100"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"hot_plate_temp_initial_layer": [
 		"65"
 	],
 	"nozzle_temperature": [
+		"240",
 		"240"
 	],
 	"nozzle_temperature_initial_layer": [
+		"240",
 		"240"
 	],
 	"slow_down_layer_time": [

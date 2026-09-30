@@ -27,6 +27,7 @@
 		"0"
 	],
 	"enable_pressure_advance": [
+		"0",
 		"0"
 	],
 	"filament_extruder_variant": [

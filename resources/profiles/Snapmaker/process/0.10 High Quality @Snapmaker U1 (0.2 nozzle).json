@@ -8,10 +8,24 @@
 	"instantiation": "true",
 	"description": "Compared with the default profile of a 0.2 mm nozzle, it has lower speeds and acceleration, and the sparse infill pattern is Gyroid. So, it results in much higher printing quality, but a much longer printing time.",
 	"default_acceleration": [
+		"4000",
+		"4000",
+		"4000",
+		"4000",
+		"4000",
+		"4000",
+		"4000",
 		"4000"
 	],
 	"elefant_foot_compensation": "0.15",
 	"outer_wall_acceleration": [
+		"2000",
+		"2000",
+		"2000",
+		"2000",
+		"2000",
+		"2000",
+		"2000",
 		"2000"
 	],
 	"outer_wall_speed": [
@@ -36,6 +50,13 @@
 	"prime_tower_width": "28",
 	"prime_volume": "25",
 	"slowdown_for_curled_perimeters": [
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
 		"0"
 	],
 	"standby_temperature_delta": "-150",

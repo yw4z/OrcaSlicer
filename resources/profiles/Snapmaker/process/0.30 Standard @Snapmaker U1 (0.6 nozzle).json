@@ -15,6 +15,13 @@
 	"filter_out_gap_fill": "1",
 	"gap_fill_target": "topbottom",
 	"internal_bridge_speed": [
+		"100%",
+		"100%",
+		"100%",
+		"100%",
+		"100%",
+		"100%",
+		"100%",
 		"100%"
 	],
 	"prime_tower_brim_width": "5",
@@ -27,6 +34,13 @@
 	"ooze_prevention": "1",
 	"precise_outer_wall": "1",
 	"slowdown_for_curled_perimeters": [
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
 		"0"
 	],
 	"standby_temperature_delta": "-150",

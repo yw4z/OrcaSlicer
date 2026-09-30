@@ -11,24 +11,30 @@
 		"Snapmaker U1 (0.6 High Flow nozzle)"
 	],
 	"filament_deretraction_speed": [
+		"30",
 		"30"
 	],
 	"filament_flow_ratio": [
+		"0.97",
 		"0.97"
 	],
 	"filament_multitool_ramming_flow": [
 		"30"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_retraction_length": [
+		"1.6",
 		"1.6"
 	],
 	"filament_retraction_speed": [
+		"30",
 		"30"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"textured_plate_temp": [

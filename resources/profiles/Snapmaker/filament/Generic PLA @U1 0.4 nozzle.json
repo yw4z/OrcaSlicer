@@ -18,6 +18,7 @@
 		"High-flow nozzle: Uses the active Orca Generic material settings. Volumetric speed ceiling: 12 mm^3/s, from Snorca standard preset Generic PLA (Snapmaker OrcaSlicer). No multiplier or cross-material extrapolation is applied. Calibrate for your nozzle and filament."
 	],
 	"filament_max_volumetric_speed": [
+		"12",
 		"12"
 	]
 }

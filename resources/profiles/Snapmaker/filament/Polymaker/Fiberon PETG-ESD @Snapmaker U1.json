@@ -20,6 +20,7 @@
 		"70"
 	],
 	"pressure_advance": [
+		"0.04",
 		"0.04"
 	],
 	"filament_extruder_variant": [

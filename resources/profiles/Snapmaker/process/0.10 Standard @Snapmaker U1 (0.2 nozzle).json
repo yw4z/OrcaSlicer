@@ -26,6 +26,13 @@
 	"wipe_tower_extra_spacing": "120%",
 	"wipe_tower_wall_type": "rib",
 	"slowdown_for_curled_perimeters": [
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
+		"0",
 		"0"
 	],
 	"print_extruder_variant": [

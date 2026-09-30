@@ -36,6 +36,7 @@
 		"\n"
 	],
 	"filament_max_volumetric_speed": [
+		"20",
 		"20"
 	],
 	"filament_multitool_ramming": [
@@ -48,9 +49,11 @@
 		"5"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_retraction_length": [
+		"2.5",
 		"2.5"
 	],
 	"filament_start_gcode": [
@@ -60,12 +63,15 @@
 		"Snapmaker"
 	],
 	"filament_wipe": [
+		"1",
 		"1"
 	],
 	"filament_wipe_distance": [
+		"1",
 		"1"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"hot_plate_temp": [
@@ -75,6 +81,7 @@
 		"80"
 	],
 	"nozzle_temperature": [
+		"245",
 		"245"
 	],
 	"nozzle_temperature_initial_layer": [

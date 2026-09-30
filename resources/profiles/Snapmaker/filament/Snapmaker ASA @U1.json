@@ -11,6 +11,7 @@
 		"Snapmaker U1 (0.4 High Flow nozzle)"
 	],
 	"filament_retract_length_toolchange": [
+		"5",
 		"5"
 	],
 	"filament_extruder_variant": [

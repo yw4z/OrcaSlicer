@@ -43,6 +43,7 @@
 		"65"
 	],
 	"filament_max_volumetric_speed": [
+		"18",
 		"18"
 	],
 	"filament_minimal_purge_on_wipe_tower": [
@@ -52,15 +53,18 @@
 		"5"
 	],
 	"filament_retract_length_toolchange": [
+		"10",
 		"10"
 	],
 	"filament_retraction_length": [
+		"3",
 		"3"
 	],
 	"filament_type": [
 		"PLA-CF"
 	],
 	"filament_z_hop_types": [
+		"Slope Lift",
 		"Slope Lift"
 	],
 	"nozzle_temperature": [
@@ -91,12 +95,14 @@
 		"8"
 	],
 	"activate_air_filtration": [
+		"0",
 		"0"
 	],
 	"chamber_temperatures": [
 		"0"
 	],
 	"complete_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"cool_plate_temp": [
@@ -106,15 +112,19 @@
 		"45"
 	],
 	"during_print_exhaust_fan_speed": [
+		"70",
 		"70"
 	],
 	"filament_long_retractions_when_cut": [
+		"nil",
 		"nil"
 	],
 	"filament_retraction_distances_when_cut": [
+		"nil",
 		"nil"
 	],
 	"filament_retraction_speed": [
+		"nil",
 		"nil"
 	],
 	"overhang_fan_threshold": [
