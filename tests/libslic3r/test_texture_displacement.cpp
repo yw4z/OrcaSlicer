@@ -4,12 +4,14 @@
 #include <catch2/catch_all.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <limits>
 #include <set>
 #include <boost/filesystem.hpp>
 
+#include "libslic3r/AABBMesh.hpp"
 #include "libslic3r/TextureDisplacement.hpp"
 #include "libslic3r/TextureBake/TextureBakeDecimate.hpp"
 #include "libslic3r/TextureBake/TextureBakeFlip.hpp"
@@ -153,6 +155,25 @@ static TriangleSelector::TriangleSplittingData paint_whole_mesh(const indexed_tr
     TriangleSelector   selector(tm);
     for (int f = 0; f < int(mesh.indices.size()); ++f)
         selector.set_facet(f, EnforcerBlockerType::ENFORCER);
+    return selector.serialize();
+}
+
+// Paints a disc of the top face of `mesh` (the plane z = `top`) the way the gizmo's brush does: the
+// selector splits the triangles under it, so the stroke need not follow the mesh.
+static TriangleSelector::TriangleSplittingData paint_top_disc(const indexed_triangle_set &mesh, float top,
+                                                              const Vec2f &centre, float radius)
+{
+    const TriangleMesh tm(mesh);
+    const Vec3f        at(centre.x(), centre.y(), top);
+    int                start = -1;
+    Vec3d              foot;
+    AABBMesh(tm).squared_distance(at.cast<double>(), start, foot); // the brush starts on the face under it
+    TriangleSelector selector(tm);
+    selector.select_patch(start,
+                          TriangleSelector::SinglePointCursor::cursor_factory(
+                              at, at + Vec3f(0.f, 0.f, 80.f), radius, TriangleSelector::CursorType::SPHERE,
+                              Transform3d::Identity(), TriangleSelector::ClippingPlane()),
+                          EnforcerBlockerType::ENFORCER, Transform3d::Identity(), /* triangle_splitting */ true);
     return selector.serialize();
 }
 
@@ -1889,27 +1910,9 @@ TEST_CASE("TextureDisplacement: a brush stroke smaller than a triangle displaces
     // A plain 12-triangle cube. The selector splits the top triangle under a 3 mm spherical brush,
     // so the painted pieces are far smaller than the triangle. The one-run pipeline used to include
     // the whole source triangle: the entire top face rose.
-    const indexed_triangle_set cube = its_make_cube(20.f, 20.f, 20.f);
-    const TriangleMesh         mesh(cube);
-    int top = -1;
-    for (size_t t = 0; t < cube.indices.size() && top < 0; ++t) {
-        const auto &f = cube.indices[t];
-        if (cube.vertices[size_t(f[0])].z() > 19.9f && cube.vertices[size_t(f[1])].z() > 19.9f &&
-            cube.vertices[size_t(f[2])].z() > 19.9f)
-            // The triangle that contains the face centre: the brush starts there.
-            for (int k = 0; k < 3; ++k)
-                if ((cube.vertices[size_t(f[k])] - Vec3f(10.f, 10.f, 20.f)).norm() < 15.f)
-                    top = int(t);
-    }
-    REQUIRE(top >= 0);
-    TriangleSelector selector(mesh);
-    selector.select_patch(top,
-                          TriangleSelector::SinglePointCursor::cursor_factory(
-                              Vec3f(10.f, 10.f, 20.f), Vec3f(10.f, 10.f, 100.f), 3.f, TriangleSelector::CursorType::SPHERE,
-                              Transform3d::Identity(), TriangleSelector::ClippingPlane()),
-                          EnforcerBlockerType::ENFORCER, Transform3d::Identity(), /* triangle_splitting */ true);
+    const indexed_triangle_set    cube = its_make_cube(20.f, 20.f, 20.f);
     TextureDisplacementFacetsData facets;
-    facets[0] = selector.serialize();
+    facets[0] = paint_top_disc(cube, 20.f, Vec2f(10.f, 10.f), 3.f);
     REQUIRE(TriangleSelector::has_facets(facets[0], EnforcerBlockerType::ENFORCER));
 
     TextureDisplacementLayer layer;
@@ -2054,3 +2057,58 @@ TEST_CASE("Cancelling while flat faces are harvested past the budget stops the d
     CHECK(canceled <= target);
     CHECK(canceled > full);
 }
+
+TEST_CASE("A second bake beside a first comes out as fine as a single bake", "[TextureDisplacement]")
+{
+    // A stroke in each of the cube's two top triangles, baked one after the other. The first bake used
+    // to leave the unpainted ground fanned into slivers from a far corner, or re-triangulated by the
+    // flat harvest into long triangles, and the second bake refined those shapes rather than the
+    // cube's own grid: its stroke came out many times as dense, with walls off the texture's lines.
+    const indexed_triangle_set cube = its_make_cube(20.f, 20.f, 20.f);
+    const Vec2f                first_stroke(5.f, 15.f), second_stroke(15.f, 5.f);
+    constexpr float            radius = 3.f;
+
+    TextureDisplacementLayer layer;
+    layer.slot         = 0;
+    layer.image_data   = make_checkerboard_png(16, 16);
+    layer.tiling_scale = 5.f;
+    layer.depth_mm     = 0.5f;
+    TextureDisplacementOptions options;
+    options.pipeline_v2        = true;
+    options.v2_refine_mm       = 0.5f;
+    options.v2_max_triangles_k = 750; // export: the flat harvest runs
+    const auto bake = [&](const indexed_triangle_set &mesh, const Vec2f &stroke) {
+        TextureDisplacementFacetsData facets;
+        facets[0] = paint_top_disc(mesh, 20.f, stroke, radius);
+        return build_texture_displacement(mesh, { layer }, facets, options);
+    };
+    // Aspect ratios of the top-face triangles whose centroid's distance from `centre` passes `keep`.
+    const auto top_aspects = [](const indexed_triangle_set &mesh, const Vec2f &centre, auto keep) {
+        std::vector<float> out;
+        for (const stl_triangle_vertex_indices &t : mesh.indices) {
+            const Vec3f &a = mesh.vertices[size_t(t[0])], &b = mesh.vertices[size_t(t[1])], &c = mesh.vertices[size_t(t[2])];
+            const Vec3f  g = (a + b + c) / 3.f;
+            if (g.z() > 19.9f && keep((Vec2f(g.x(), g.y()) - centre).norm()))
+                out.push_back(triangle_aspect(a, b, c));
+        }
+        return out;
+    };
+    const auto in_stroke = [&](float d) { return d < radius; };
+
+    const indexed_triangle_set first = bake(cube, first_stroke);
+    REQUIRE(first.indices.size() > cube.indices.size());
+    // What the first bake leaves around its stroke is ground the second one refines: whole pieces of
+    // the cube's grid, not slivers.
+    const std::vector<float> ground = top_aspects(first, first_stroke, [&](float d) { return d > radius + 1.f; });
+    REQUIRE(!ground.empty());
+    const float worst = *std::max_element(ground.begin(), ground.end());
+    INFO("worst aspect ratio on the ground the first bake left: " << worst);
+    CHECK(worst < 6.f);
+
+    const size_t single = top_aspects(bake(cube, second_stroke), second_stroke, in_stroke).size();
+    const size_t second = top_aspects(bake(first, second_stroke), second_stroke, in_stroke).size();
+    INFO("second stroke baked alone: " << single << " triangles, after the first: " << second);
+    REQUIRE(single > 0);
+    CHECK(second <= single * 5 / 4);
+}
+

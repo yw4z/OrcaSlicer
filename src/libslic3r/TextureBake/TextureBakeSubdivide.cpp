@@ -68,7 +68,8 @@ struct PassResult
 //   2.   Rebuild, allocating once at the now-known size.
 PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, double max_edge_length,
                           int safety_cap, const std::vector<uint8_t> &face_excluded,
-                          QuantizedPointMap *pos_canon_map, const std::vector<int> &face_parent_id)
+                          QuantizedPointMap *pos_canon_map, const std::vector<int> &face_parent_id,
+                          const SubdivideWithinFn &within)
 {
     PassResult   out;
     const double max_sq     = max_edge_length * max_edge_length;
@@ -94,15 +95,55 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         return (u < v ? split_edges.get_key(u, v, 0) : split_edges.get_key(v, u, 0)) != -1;
     };
 
-    // Step 1. An excluded triangle marks none of its own edges, so its interior never refines; its
-    // boundary edges are still marked by an included neighbour, and it follows that split.
-    for (size_t t = 0; t < tri_count; ++t) {
-        if (!face_excluded.empty() && face_excluded[t])
-            continue;
+    // Graded, an edge splits while it is longer than max_edge_length + SUBDIVIDE_GRADE * (d - len/2),
+    // d its midpoint's distance from the region; less half the length bounds the edge's own distance
+    // from below, so the test errs toward splitting. Solved for d, that is the region coming within the
+    // radius below. It reads the positions alone, so two triangles sharing the edge agree.
+    const auto too_long = [&](int a, int b) {
+        const double len_sq = edge_len_sq(verts, a, b);
+        if (len_sq <= max_sq)
+            return false;
+        if (!within)
+            return true;
+        const double len = std::sqrt(len_sq);
+        return within((verts.pos[size_t(a)] + verts.pos[size_t(b)]) * 0.5,
+                      0.5 * len + (len - max_edge_length) / SUBDIVIDE_GRADE);
+    };
+
+    // Step 1. An excluded triangle marks none of its own edges while left alone, so its interior never
+    // refines; its boundary edges are still marked by an included neighbour, and ungraded it follows
+    // that split. Graded, one the refinement reaches marks its own too-long edges too, and so on
+    // outward. An earlier bake's relief meets the paint along edges already at the target length, so
+    // it is never reached and stays as it was.
+    std::vector<uint8_t> want(tri_count, 0);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, tri_count), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t t = range.begin(); t < range.end(); ++t) {
+            const int a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
+            want[t] = uint8_t(too_long(a, b)) | uint8_t(too_long(b, c) << 1) | uint8_t(too_long(c, a) << 2);
+        }
+    });
+    const auto mark_wanted = [&](size_t t) {
         const int a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
-        if (edge_len_sq(verts, a, b) > max_sq) mark_edge(a, b);
-        if (edge_len_sq(verts, b, c) > max_sq) mark_edge(b, c);
-        if (edge_len_sq(verts, c, a) > max_sq) mark_edge(c, a);
+        if (want[t] & 1) mark_edge(a, b);
+        if (want[t] & 2) mark_edge(b, c);
+        if (want[t] & 4) mark_edge(c, a);
+    };
+    std::vector<size_t> unreached;
+    for (size_t t = 0; t < tri_count; ++t)
+        if (face_excluded.empty() || !face_excluded[t])
+            mark_wanted(t);
+        else if (within && want[t] != 0)
+            unreached.push_back(t);
+    // Marks only accumulate, so the order the reached triangles are taken in does not matter.
+    for (size_t n = 0; n != unreached.size();) {
+        n = unreached.size();
+        unreached.erase(std::remove_if(unreached.begin(), unreached.end(), [&](size_t t) {
+            const int  a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
+            const bool reached = is_marked(a, b) || is_marked(b, c) || is_marked(c, a);
+            if (reached)
+                mark_wanted(t);
+            return reached;
+        }), unreached.end());
     }
     if (split_edges.size() == 0) {
         out.indices        = indices;
@@ -376,7 +417,7 @@ TriSoup to_non_indexed(const VertStore &verts, const std::vector<int> &indices,
 
 SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
                           const std::vector<uint8_t> &face_excluded, bool fast, int safety_cap,
-                          const SubdivideProgressFn &on_progress)
+                          const SubdivideProgressFn &on_progress, const SubdivideWithinFn &within)
 {
     SubdivideResult result;
     if (geometry.empty() || max_edge_length <= 0.0) {
@@ -401,7 +442,7 @@ SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
         }
 
         PassResult pass = subdivide_pass(indexed.verts, current_indices, max_edge_length, safety_cap,
-                                         current_excluded, canon_map, current_parent);
+                                         current_excluded, canon_map, current_parent, within);
         current_indices = std::move(pass.indices);
         if (!pass.face_excluded.empty())
             current_excluded = std::move(pass.face_excluded);

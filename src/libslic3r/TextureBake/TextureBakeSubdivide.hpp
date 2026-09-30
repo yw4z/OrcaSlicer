@@ -26,6 +26,9 @@ static constexpr double SUBDIVIDE_SHARP_ANGLE_DEG = 30.0;
 // A depth bound, not a work bound: the loop stops as soon as a pass changes nothing.
 static constexpr int SUBDIVIDE_MAX_ITERATIONS = 12;
 
+// Graded refinement: millimetres of edge length allowed per millimetre of distance from the region.
+static constexpr double SUBDIVIDE_GRADE = 1.0;
+
 // Built by the indexers, appended to by the passes. Double precision so repeated midpointing does
 // not drift.
 struct VertStore
@@ -56,6 +59,9 @@ struct IndexedMesh
 // Fraction, triangle count, longest remaining edge. Returning false cancels; what comes back is
 // still watertight, because passes apply whole or not at all.
 using SubdivideProgressFn = std::function<bool(double fraction, size_t triangles, double longest_edge)>;
+// Whether the region being refined comes within `radius` mm of `point`. Called from several threads
+// at once.
+using SubdivideWithinFn = std::function<bool(const Vec3d &point, double radius)>;
 
 struct SubdivideResult
 {
@@ -65,13 +71,20 @@ struct SubdivideResult
     bool             safety_cap_hit = false;
 };
 
-// `face_excluded`: one entry per input triangle; non-zero means its interior is never refined. Its
-// edges still split when an included neighbour marks them, so no T-junction appears at the boundary.
+// `face_excluded`: one entry per input triangle; non-zero means its interior is not refined unless the
+// graded refinement reaches it (see `within`). Its edges still split when an included neighbour marks
+// them, so no T-junction appears at the boundary.
 // `fast` selects the cheap position-only indexer for previews.
+// `within`, when given, grades the refinement: an edge splits only while it is longer than
+// max_edge_length plus SUBDIVIDE_GRADE times its distance from the region. Away from the region the
+// triangles are then left as whole pieces of the input's own 1->4 grid rather than refined throughout.
+// An excluded triangle the refinement reaches - one of its edges splits - splits the same graded way,
+// instead of fanning from its far corner to follow the edge it shares with an included one.
 SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
                           const std::vector<uint8_t> &face_excluded = {}, bool fast = false,
                           int safety_cap = SUBDIVIDE_SAFETY_CAP,
-                          const SubdivideProgressFn &on_progress = {});
+                          const SubdivideProgressFn &on_progress = {},
+                          const SubdivideWithinFn &within = {});
 
 // Displacement needs the same welding and sharp-edge clustering.
 IndexedMesh to_indexed(const TriSoup &geometry);

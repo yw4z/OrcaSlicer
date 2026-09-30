@@ -149,7 +149,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
     // 1. Refine to the target edge length.
     SubdivideResult sub = subdivide(
         input, settings.refine_length, face_excluded, /* fast */ false, settings.safety_cap,
-        [&](double f, size_t, double) { return report("subdivide", f); });
+        [&](double f, size_t, double) { return report("subdivide", f); }, settings.paint_within);
     result.safety_cap_hit = sub.safety_cap_hit;
     lap("subdivide", sub.geometry);
     if (!report("subdivide", 1.0)) {
@@ -180,7 +180,8 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
             }
             sub = subdivide(reg.geometry, settings.refine_length * settings.regularize_second_pass_mul,
                             excl, false, settings.safety_cap,
-                            [&](double f, size_t, double) { return report("re-subdivide", f); });
+                            [&](double f, size_t, double) { return report("re-subdivide", f); },
+                            settings.paint_within);
             result.safety_cap_hit = result.safety_cap_hit || sub.safety_cap_hit;
             // The second pass renumbers faces, so the parent map has to be composed through it.
             std::vector<int> composed(sub.face_parent_id.size());
@@ -199,12 +200,8 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
 
     // 2b. Paint finer than the input triangles. The caller includes a source triangle when any part of
     // it is painted; now that the faces are small, ask once more per face and switch the unpainted
-    // ones off. They are pinned like the excluded region from here on (their own corners at weight
-    // 1, and the displacement's boundary sealing pins the stroke's rim on the painted side), but they
-    // are refined pieces of painted triangles, not original geometry, so `soft_excluded` keeps them
-    // out of the decimation lock below. Every stage between here and the decimation rewrites faces in
-    // place, so the per-face flag stays valid by index.
-    std::vector<uint8_t> soft_excluded;
+    // ones off. They are pinned like the excluded region from here on: their own corners at weight 1,
+    // and the displacement's boundary sealing pins the stroke's rim on the painted side.
     if (settings.painted) {
         const size_t         nf     = sub.geometry.triangle_count();
         const bool           have_w = !sub.geometry.exclude_weight.empty();
@@ -228,7 +225,6 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                 if (unpainted[t])
                     sub.geometry.exclude_weight[t * 3] = sub.geometry.exclude_weight[t * 3 + 1] =
                         sub.geometry.exclude_weight[t * 3 + 2] = 1.f;
-            soft_excluded = std::move(unpainted);
         }
         lap("paint", sub.geometry, std::to_string(switched) + " faces switched off");
         if (!report("paint", 1.0)) {
@@ -294,18 +290,14 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                 for (size_t t = 0; t < locked.size(); ++t)
                     locked[t] = (displaced.exclude_weight[t * 3] + displaced.exclude_weight[t * 3 + 1] +
                                  displaced.exclude_weight[t * 3 + 2]) / 3.f > 0.99f ? 1 : 0;
-                // Faces the paint test switched off carry weight 1 too, but are refined pieces of
-                // painted triangles rather than original geometry: locking them would keep a partly
-                // painted source triangle at full refinement. Face indices survived relocate, flip
-                // and displace unchanged, so the flag still lines up.
-                for (size_t t = 0; t < locked.size() && t < soft_excluded.size(); ++t)
-                    if (soft_excluded[t])
-                        locked[t] = 0;
+                // That includes the faces the paint test switched off: the harvest would re-triangulate
+                // them into long slivers, which a later bake painted there would refine instead of the
+                // grid the graded refinement left.
                 preserved = size_t(std::count(locked.begin(), locked.end(), uint8_t(1)));
             }
         }
         // The budget is what this bake may spend on what it refines. Geometry it only preserves - the
-        // relief of an earlier bake, which this one does not paint - is counted on top of it: charged
+        // unpainted surface, and on it the relief of an earlier bake - is counted on top of it: charged
         // against the same budget, a second bake over a fresh area had to evict the first one's
         // triangles to fit, so every bake after the first came out coarser than the one before.
         const size_t target = settings.max_triangles + preserved;

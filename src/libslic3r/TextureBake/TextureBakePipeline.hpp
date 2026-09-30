@@ -73,9 +73,16 @@ struct PipelineSettings
     // once, so it must be safe to call concurrently.
     std::function<bool(const Vec3f &centroid)> painted;
 
+    // Optional. Whether the paint comes within a radius of a point, which grades the refinement (see
+    // subdivide()): only the paint and its surroundings reach refine_length, and the unpainted surface
+    // further out stays in whole pieces of its own grid. That is what a later bake painted there
+    // refines, so it meets the same grid a first bake does. Called from several threads at once.
+    SubdivideWithinFn paint_within;
+
     // Export mode only.
-    // What this bake may spend on what it refines. Geometry it only preserves (see preserve_untextured)
-    // is counted on top of it, so an earlier bake's relief does not have to be evicted to fit this one.
+    // What this bake may spend on what it refines. Geometry it only preserves (see preserve_untextured),
+    // the unpainted surface and an earlier bake's relief on it, is counted on top of it, so that relief
+    // does not have to be evicted to fit this one.
     size_t max_triangles = 750'000;
     // Keep removing zero-cost flat faces past the target. Only applies when decimation runs, i.e. when
     // the displaced mesh is over the budget - an under-budget mesh is never decimated.

@@ -2227,6 +2227,15 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
         if (pieces_area < included_area * (1.0 - 1e-4))
             settings.painted = painted_at;
     }
+    // Graded wherever some of the surface is unpainted. A yes/no to a radius, not a distance: most
+    // queries are far from the paint, and those the tree turns down at its root.
+    const bool all_painted = std::none_of(excluded.begin(), excluded.end(), [](uint8_t e) { return e != 0; });
+    if (settings.painted || !all_painted)
+        settings.paint_within = [&painted_pieces, &painted_tree](const Vec3d &p, double radius) {
+            float r2 = float(radius * radius);
+            return AABBTreeIndirect::is_any_triangle_in_radius(painted_pieces.vertices, painted_pieces.indices,
+                                                               painted_tree, Vec3f(p.cast<float>()), r2);
+        };
 
     TextureBake::DisplaceBounds bounds;
     bounds.min = bounds.max = mesh.vertices.empty() ? Vec3f::Zero() : mesh.vertices.front();
@@ -2310,8 +2319,7 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
         std::vector<uint8_t>     out_color(out.indices.size(), 0);
         const ColorFieldSampler &sampler = color_sampler;
         if (sampler) {
-            const bool all_painted = std::none_of(excluded.begin(), excluded.end(), [](uint8_t e) { return e != 0; });
-            float      max_depth   = 0.f;
+            float max_depth = 0.f;
             for (const TextureDisplacementLayer &layer : layers)
                 max_depth = std::max(max_depth, std::abs(layer.depth_mm));
             const float relief_tol = max_depth + paint_tol;
