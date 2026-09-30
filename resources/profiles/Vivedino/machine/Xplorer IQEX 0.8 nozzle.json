@@ -22,9 +22,9 @@
 	],
 	"extruder_colour": [
 		"#FCE94F",
-		"#FCE94F",
-		"#FCE94F",
-		"#FCE94F"
+		"#729FCF",
+		"#AD7FA8",
+		"#F57900"
 	],
 	"extruder_offset": [
 		"0x0",
