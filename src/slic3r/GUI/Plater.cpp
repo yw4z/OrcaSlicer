@@ -1803,8 +1803,10 @@ bool Sidebar::priv::switch_diameter_to(const wxString &diameter)
     auto* nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(printer_preset.config.option("nozzle_diameter"));
     if (nozzle_diameter && nozzle_diameter->size() > 0) {
         auto current_nozzle_dia = get_diameter_string(nozzle_diameter->values[0]);
-        // If the selected diameter is the same as current nozzle, don't switch profiles
-        if (current_nozzle_dia == diameter.ToStdString()) {
+        // A named variant can share this diameter; selecting the plain diameter
+        // must still switch back to the standard profile.
+        if (current_nozzle_dia == diameter.ToStdString() &&
+            printer_preset.config.opt_string("printer_variant") == diameter.ToStdString()) {
             return true;
         }
     }
@@ -3926,13 +3928,18 @@ void Sidebar::update_presets(Preset::Type preset_type)
             combo_flow->Show(combo_flow->GetCount() > 0);
         };
 
-        auto update_extruder_diameter = [&diameters, &nozzle_diameter](int extruder_index,ExtruderGroup & extruder) {
+        auto update_extruder_diameter = [&diameters, &nozzle_diameter, &diameter](int extruder_index,ExtruderGroup & extruder) {
             extruder.combo_diameter->Clear();
             if (extruder_index >= int(nozzle_diameter->values.size()))
                 return;
             int select = -1;
             // ORCA get the actual nozzle diameter from printer config
             auto nozzle_dia = get_diameter_string(nozzle_diameter->values[extruder_index]);
+            // Named variants such as "0.4HS" and "0.4 High Flow" share a physical diameter.
+            // Retain the variant selection unless the diameter was customized.
+            const auto selected_variant =
+                diameter.substr(0, diameter.find_first_not_of("0123456789.")) == nozzle_dia &&
+                std::find(diameters.begin(), diameters.end(), diameter) != diameters.end() ? diameter : nozzle_dia;
             // ORCA try to add nozzle diameter from config if list is empty. fixes blank nozzle combo box when preset has no alias
             if(!diameters.empty() && diameters[0].empty() && !nozzle_dia.empty()){
                 diameters[0] = nozzle_dia;
@@ -3942,7 +3949,7 @@ void Sidebar::update_presets(Preset::Type preset_type)
                 diameters.push_back(nozzle_dia);
             }
             for (size_t i = 0; i < diameters.size(); ++i) {
-                if (diameters[i] == nozzle_dia)
+                if (diameters[i] == selected_variant)
                     select = extruder.combo_diameter->GetCount();
                 extruder.combo_diameter->Append(diameters[i], {});
             }

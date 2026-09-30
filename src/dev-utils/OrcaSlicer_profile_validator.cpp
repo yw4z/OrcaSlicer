@@ -314,6 +314,13 @@ DynamicPrintConfig slice_config(PresetBundle &bundle)
             fmap[i] = int(i % nozzles) + 1;
     }
 
+    // A fresh printer selection uses its declared nozzle volumes, just like the
+    // app. Otherwise a high-flow preset is silently sliced with Standard tuning.
+    bundle.reset_default_nozzle_volume_type();
+    auto &filament_map = bundle.project_config.option<ConfigOptionInts>("filament_map", true)->values;
+    bundle.project_config.option<ConfigOptionInts>("filament_volume_map", true)->values =
+        bundle.get_default_nozzle_volume_types_for_filaments(filament_map);
+
     DynamicPrintConfig cfg = bundle.full_config();
     cfg.set_key_value("enable_prime_tower", new ConfigOptionBool(true)); // force a purge tower so the change is detectable
     // The map above drives full_config()'s per-filament variant collapse; fmmManual on the sliced config
