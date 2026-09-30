@@ -478,6 +478,8 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         const Vec3d target = collapse_target(v1, v2).cast<float>().cast<double>();
         if (check_flipped(v1, v2, target) || check_flipped(v2, v1, target))
             continue;
+        if (!reached_target && top.cost > harvest_ceil)
+            result.target_cost_detail = true;
 
         // v1 survives at the new position, v2 goes.
         pos[size_t(v1)] = target;

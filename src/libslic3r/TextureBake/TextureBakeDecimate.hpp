@@ -48,6 +48,9 @@ struct DecimateResult
     // The locked faces alone met the target, so it was unreachable without touching preserved
     // geometry.
     bool locked_over_budget = false;
+    // Reaching the target took a collapse costing more than harvest_tol, so the target removed detail
+    // and not only flat faces a harvest would have taken anyway.
+    bool target_cost_detail = false;
 };
 
 // `locked_faces`: one entry per input triangle; a vertex touching one may neither move nor be

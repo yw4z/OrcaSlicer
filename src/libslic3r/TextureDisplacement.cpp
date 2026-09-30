@@ -2291,7 +2291,6 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
 
     if (stats != nullptr) {
         stats->triangles_refined = result.triangles_refined;
-        stats->triangles_out     = result.geometry.triangle_count();
         stats->triangles_budget  = result.triangles_budget;
         stats->budget_limited    = result.budget_limited;
     }

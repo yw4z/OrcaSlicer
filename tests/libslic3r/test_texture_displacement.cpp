@@ -11,6 +11,7 @@
 #include <boost/filesystem.hpp>
 
 #include "libslic3r/TextureDisplacement.hpp"
+#include "libslic3r/TextureBake/TextureBakeDecimate.hpp"
 #include "libslic3r/TextureBake/TextureBakeFlip.hpp"
 #include "libslic3r/TextureBake/TextureBakeMesh.hpp"
 #include "libslic3r/TriangleMesh.hpp"
@@ -2012,4 +2013,22 @@ TEST_CASE("Each layer's texture is sampled only on its own painted area", "[Text
     CHECK_THAT(both(on_top, Vec3f::UnitZ()), WithinAbs(top_only(on_top, Vec3f::UnitZ()), 1e-5f));
     CHECK_THAT(both(on_side, -Vec3f::UnitX()), WithinAbs(side_only(on_side, -Vec3f::UnitX()), 1e-5f));
     CHECK_THAT(both(unpainted, Vec3f::UnitY()), WithinAbs(0.f, 1e-6f));
+}
+
+TEST_CASE("A budget met by collapsing flat faces alone removes no detail", "[TextureDisplacement]")
+{
+    // 12 * 4^5 = 12288 triangles on six flat faces, which can go down to 12 without moving the surface.
+    const TextureBake::TriSoup cube = TextureBake::to_soup(subdivide_mesh_uniform(its_make_cube(20., 20., 20.), 0.f, 5));
+    const TextureBake::DecimateResult res = TextureBake::decimate(cube, 1000, true, 0.005);
+    CHECK(res.geometry.triangle_count() <= 1000);
+    CHECK_FALSE(res.target_cost_detail);
+}
+
+TEST_CASE("A budget met only by flattening curvature removes detail", "[TextureDisplacement]")
+{
+    // A 10 degree sphere of radius 10 bulges about 0.04 mm out of each facet, far past a 0.005 mm tolerance.
+    const TextureBake::TriSoup sphere = TextureBake::to_soup(its_make_sphere(10., PI / 18.));
+    const TextureBake::DecimateResult res = TextureBake::decimate(sphere, 100, true, 0.005);
+    CHECK(res.geometry.triangle_count() <= 100);
+    CHECK(res.target_cost_detail);
 }

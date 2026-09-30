@@ -824,14 +824,13 @@ void merge_small_color_regions(const indexed_triangle_set &mesh, std::vector<int
 // classic path moves the vertices the mesh already has and has nothing to say here.
 struct TextureBakeStats
 {
-    // What the refinement produced, before simplification, and what the bake committed.
+    // What the refinement produced, before simplification.
     size_t triangles_refined = 0;
-    size_t triangles_out     = 0;
     // What the result had to fit into: the budget for what this bake refines, plus the triangles it
     // only preserves (an earlier bake's relief, which this one does not paint).
     size_t triangles_budget  = 0;
-    // The refined mesh did not fit, so the simplification had to take detail out of it to make it:
-    // the result carries less of the texture than the chosen resolution asked for.
+    // The refined mesh did not fit, and removing its flat faces was not enough, so the simplification
+    // had to take detail out of it: the result carries less of the texture than the resolution asked for.
     bool   budget_limited    = false;
 };
 

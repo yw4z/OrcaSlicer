@@ -110,8 +110,9 @@ struct PipelineResult
     size_t           collapse_count     = 0;
     bool             canceled           = false;
     // What the refinement produced, before decimation, and the count it had to fit into (the budget
-    // plus the preserved geometry). budget_limited says the refined mesh did not fit: the result
-    // carries less of the texture than the resolution asked for, which is what a caller warns about.
+    // plus the preserved geometry). budget_limited says the refined mesh did not fit without collapsing
+    // more than flat faces: the result carries less of the texture than the resolution asked for,
+    // which is what a caller warns about.
     size_t           triangles_refined  = 0;
     size_t           triangles_budget   = 0;
     bool             budget_limited     = false;

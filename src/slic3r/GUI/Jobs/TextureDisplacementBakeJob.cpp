@@ -186,7 +186,7 @@ void TextureDisplacementBakeJob::finalize(bool canceled, std::exception_ptr &ept
             NotificationType::CustomNotification, NotificationManager::NotificationLevel::WarningNotificationLevel,
             Slic3r::format(_u8L("The triangle budget limited the detail: this resolution needs %1% triangles, "
                                 "the budget kept %2%. Raise Budget or use a coarser Resolution for the full detail."),
-                           count(m_stats.triangles_refined), count(m_stats.triangles_out)));
+                           count(m_stats.triangles_refined), count(m_stats.triangles_budget)));
     }
 }
 

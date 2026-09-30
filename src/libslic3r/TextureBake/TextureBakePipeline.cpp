@@ -341,6 +341,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                                           settings.harvest_tol, locked,
                                           [&](double f) { return report("decimate", f); }, face_color);
             result.locked_over_budget = dec.locked_over_budget;
+            result.budget_limited     = result.simplified = dec.target_cost_detail;
             displaced                 = std::move(dec.geometry);
             lap("decimate", displaced, over_budget ? "over budget, simplified" : "flat faces harvested");
             BOOST_LOG_TRIVIAL(info) << "TextureBake decimate: " << before << " -> " << displaced.triangle_count()
@@ -349,8 +350,6 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         }
         result.triangles_refined = displaced_before_decimate;
         result.triangles_budget  = target;
-        result.budget_limited    = over_budget;
-        result.simplified        = over_budget;
         if (!report("decimate", 1.0)) {
             result.canceled = true;
             return result;
