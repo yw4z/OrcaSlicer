@@ -6,7 +6,6 @@
 	"setting_id": "OvD7mwbTHKOUsgiT",
 	"instantiation": "true",
 	"bottom_shell_layers": "4",
-	"bottom_shell_thickness": "0.6",
 	"initial_layer_print_height": "0.3",
 	"inner_wall_speed": "190",
 	"internal_solid_infill_acceleration": "100%",
