@@ -648,11 +648,11 @@ private:
     // mouse button driving the drag hasn't been released yet - see on_render_input_window().
     bool m_preview_params_dirty = false;
 
-    // See rebuild_shaded_preview_mesh()/render_shaded_preview_mesh(). On by default: it is the cheap,
-    // instant-updating preview, so it is the better first impression while painting. The true-
-    // displacement view (a background CPU remesh) is one click away in the View row when the user
-    // wants an exact look at what Bake will produce.
-    bool    m_use_shaded_preview = true;
+    // See rebuild_shaded_preview_mesh()/render_shaded_preview_mesh(). Off by default: the Normal
+    // (true-displacement) view shows the real geometry Bake will produce, across every layer, so it is
+    // the honest first impression. The cheap, instant-updating Fast view is one click away in the View
+    // row for painting on a heavy model.
+    bool    m_use_shaded_preview = false;
     // Set from the UV editor's per-move island edits instead of rebuilding the (potentially large) shaded
     // mesh synchronously inside that mouse handler - doing the rebuild there stalled both the UV pane
     // and the 3D view. The rebuild is instead coalesced to once per 3D frame (render_painter_gizmo).
