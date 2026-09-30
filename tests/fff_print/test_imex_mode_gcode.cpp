@@ -50,6 +50,25 @@ static bool has_line(const std::string &gcode, const std::string &expected)
     return find_exact_line(gcode, expected) != std::string::npos;
 }
 
+// Any command line -- not a comment -- containing `token`. Used where the assertion is that a
+// carriage was addressed at all, rather than with a particular value: the config block the
+// exporter appends restates every setting as "; key = value", so the comment lines have to be
+// excluded or a search for a setting's own name matches itself.
+static bool has_command_containing(const std::string &gcode, const std::string &token)
+{
+    std::size_t pos = 0;
+    while (pos < gcode.size()) {
+        const std::size_t eol = gcode.find('\n', pos);
+        const std::string line = gcode.substr(pos, (eol == std::string::npos ? gcode.size() : eol) - pos);
+        if (!line.empty() && line.front() != ';' && line.find(token) != std::string::npos)
+            return true;
+        if (eol == std::string::npos)
+            break;
+        pos = eol + 1;
+    }
+    return false;
+}
+
 // Mode scripts. Free of placeholders so that a test can tell "the script was emitted" apart
 // from "the script was expanded"; the expansion case below supplies its own template.
 static const char *kCopyScript = "SET_DUAL_CARRIAGE MODE=COPY";
@@ -79,6 +98,12 @@ static void imex_7x4_printer(DynamicPrintConfig &config)
                                        "Direct Drive Standard" },
         { "extruder_printable_height", "0,0,0,0,0,0,0" },
         { "physical_extruder_map",     "0,0,0,0,1,2,3" },
+        // Authored 1..n, as every production path does: PresetBundle writes it in
+        // full_fff_config(), and config load synthesizes it when absent. The all-1s default is
+        // not a neutral placeholder -- get_config_index_base() keys the slot-to-column lookup
+        // on it, and with every entry equal each per-filament vector collapses to filament 1's
+        // value, leaving a per-slot assertion comparing a value against itself.
+        { "filament_self_index",       "1,2,3,4,5,6,7" },
         { "is_imex",                   "1" },
         { "imex_mode_names",           "primary;copy;iq-copy" },
         { "imex_mode_active_tools",    "0:P;0:P,1:C;0:P,1:C,2:C,3:C" },
@@ -314,4 +339,48 @@ TEST_CASE("IMEX mode placeholders are defined on an ordinary single-extruder pri
     CHECK(has_line(gcode, ";IMEX_MODE:"));
     CHECK(has_line(gcode, ";IMEX_MODE_INDEX:0"));
     CHECK(has_line(gcode, ";IMEX_MODE_GCODE:"));
+}
+
+// In a parallel mode no tool changes occur, so every active carriage has to be addressed
+// explicitly: once before the print for pressure advance, and again at the second layer for the
+// drop from the initial-layer temperature. Nothing else in the suite covers either emission, and
+// a carriage that falls out of one of those loops emits nothing at all rather than emitting
+// something wrong -- it silently holds the initial-layer temperature, or whatever pressure
+// advance the firmware was last told, for the whole job. So the property worth pinning is that
+// the set of carriages addressed is exactly the set the mode declares active.
+TEST_CASE("Every carriage a parallel mode declares active is addressed, and no other",
+          "[ImexModeGcode][IMEX]")
+{
+    DynamicPrintConfig config = multifilament_config(7);
+    imex_7x4_printer(config);
+    all_regions_on_filament(config, 1);
+    set_mode_gcodes(config, { "", kCopyScript, kQuadScript });
+    config.set_deserialize_strict({
+        { "imex_parallel_mode",               "copy" },
+        { "enable_pressure_advance",          "1,1,1,1,1,1,1" },
+        // Distinct per slot, so each assertion below names one filament and no other. copy
+        // mode's secondary rides physical 1, which physical_extruder_map routes to the fifth
+        // slot -- 0.05 and 244, not the primary's 0.01 and 240.
+        { "pressure_advance",                 "0.010,0.020,0.030,0.040,0.050,0.060,0.070" },
+        { "nozzle_temperature_initial_layer", "235,235,235,235,235,235,235" },
+        { "nozzle_temperature",               "240,241,242,243,244,245,246" },
+    });
+
+    const std::string gcode = slice({ cube(20) }, config);
+
+    // imex_mode_active_tools declares copy as "0:P,1:C", so exactly these two carriages run, and
+    // each transitions to the temperature of the filament its own head is routed to. The other
+    // two heads this printer has must stay untouched.
+    CHECK(has_command_containing(gcode, "M104 S240 T0 ; set IMEX tool temperature"));
+    CHECK(has_command_containing(gcode, "M104 S244 T1 ; set IMEX tool temperature"));
+    CHECK_FALSE(has_command_containing(gcode, "T2 ; set IMEX tool temperature"));
+    CHECK_FALSE(has_command_containing(gcode, "T3 ; set IMEX tool temperature"));
+
+    // The companion loop, which skips the primary because set_extruder() has already emitted it
+    // on the ordinary path. The qualified line is therefore the one that belongs to this loop:
+    // Klipper names the first carriage as the unnumbered "extruder" and the rest by index, so
+    // dropping the secondary removes `extruder1` and leaves `extruder` in place.
+    CHECK(has_command_containing(gcode, "SET_PRESSURE_ADVANCE ADVANCE=0.05 EXTRUDER=extruder1;"));
+    CHECK(has_command_containing(gcode, "SET_PRESSURE_ADVANCE ADVANCE=0.01 EXTRUDER=extruder;"));
+    CHECK_FALSE(has_command_containing(gcode, "EXTRUDER=extruder2;"));
 }

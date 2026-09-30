@@ -4026,10 +4026,10 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                  (int) initial_extruder_id < (int) m_config.physical_extruder_map.values.size())
                     ? m_config.physical_extruder_map.values[(int) initial_extruder_id]
                     : -1;
-            // enable_pressure_advance and pressure_advance are variant-expanded, so their
-            // length is columns, not filament slots. Bound in slot space -- filament_diameter
-            // is one entry per slot -- exactly as the second-layer temperature loop does, then
-            // translate the slot to its column with get_filament_config_index().
+            // enable_pressure_advance and pressure_advance are indexed by COLUMN, not by
+            // filament slot. filament_diameter is one entry per slot and is never
+            // variant-expanded, so it is the slot-space bound; translate the slot to its column
+            // with get_filament_config_index(), as the second-layer temperature loop below does.
             const int num_pa_filament_slots = (int) print.config().filament_diameter.values.size();
             for (int tool_idx : get_imex_active_tools(print)) {
                 // Unlike the second-layer temperature loop, the primary is skipped here:
@@ -6065,11 +6065,11 @@ LayerResult GCode::process_layer(
             // Mutually exclusive with the `else` below, so a head skipped here gets no
             // transition at all. `tool_idx` is physical; the printing head uses this layer's
             // own filament, the parallel carriages resolve through the head map.
-            // nozzle_temperature is variant-expanded, so its length is columns, not slots:
-            // bound in slot space, or an out-of-slot logical reaches get_filament_config_index
-            // and comes back as filament 0.
-            const int num_filament_columns = std::min((int) print.config().nozzle_temperature.values.size(),
-                                                      (int) print.config().filament_diameter.values.size());
+            // nozzle_temperature is indexed by column: bound in slot space, or an out-of-slot
+            // logical reaches get_filament_config_index and comes back as filament 0.
+            // filament_diameter is the slot-space yardstick -- one entry per filament slot,
+            // never variant-expanded -- and is the bound the pressure advance loop uses too.
+            const int num_filament_slots = (int) print.config().filament_diameter.values.size();
             // Bounds-checked, not get_at() -- see IMEXHelpers.hpp. A clamp would hand the
             // "initial" branch below to whichever secondary sits on pem[0], giving it the wrong
             // filament's transition temperature and never its own.
@@ -6083,7 +6083,7 @@ LayerResult GCode::process_layer(
                     ? (int)first_extruder_id
                     : resolve_filament_for_head(
                           m_imex_head_filament_map, m_config.physical_extruder_map, tool_idx);
-                if (logical < 0 || logical >= num_filament_columns) continue;
+                if (logical < 0 || logical >= num_filament_slots) continue;
                 // Variant-expanded printers column each filament; index as the `else` does.
                 int temperature = print.config().nozzle_temperature.get_at(get_filament_config_index(logical));
                 if (temperature > 0)
