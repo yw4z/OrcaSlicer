@@ -4772,7 +4772,7 @@ void TabFilament::update_description_lines()
 
 void TabFilament::toggle_options()
 {
-    const int variant_index = m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0;
+    const unsigned int variant_index = m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0;
     if (!m_active_page)
         return;
     bool is_BBL_printer = false;
@@ -4861,7 +4861,7 @@ void TabFilament::toggle_options()
         // If adaptive PA is not enabled, hide the adaptive PA model section
         toggle_option("adaptive_pressure_advance", pa, 0);
         toggle_option("adaptive_pressure_advance_overhangs", pa, 0);
-        bool has_adaptive_pa = m_config->opt_bool("adaptive_pressure_advance", variant_idx);
+        bool has_adaptive_pa = m_config->opt_bool("adaptive_pressure_advance", variant_index);
         toggle_line("adaptive_pressure_advance_overhangs", has_adaptive_pa && pa, 0);
         toggle_line("adaptive_pressure_advance_model", has_adaptive_pa && pa, 0);
         toggle_line("adaptive_pressure_advance_bridges", has_adaptive_pa && pa, 0);
@@ -4872,9 +4872,9 @@ void TabFilament::toggle_options()
 
         toggle_line("activate_chamber_temp_control", printer_cfg.opt_bool("support_chamber_temp_control"));
 
-        std::string volumetric_speed_cos = m_config->opt_string("volumetric_speed_coefficients", variant_idx);
+        std::string volumetric_speed_cos = m_config->opt_string("volumetric_speed_coefficients", variant_index);
         bool enable_fit = volumetric_speed_cos != "0 0 0 0 0 0";
-        toggle_option("filament_adaptive_volumetric_speed", enable_fit, 256 + variant_idx);
+        toggle_option("filament_adaptive_volumetric_speed", enable_fit, 256 + variant_index);
     }
 
     if (m_active_page->title() == L("Setting Overrides"))
