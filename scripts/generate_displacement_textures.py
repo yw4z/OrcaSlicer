@@ -234,6 +234,46 @@ def stone_wall(u, v):
     h = h * (0.85 + 0.15 * fbm(u, v, 24, 52)) + 0.04 * fbm(u, v, 96, 53)
     return norm(h)
 
+def weathered_bricks(u, v):
+    # Running bond with some play in it: every row has its own offset and brick lengths, the bricks have
+    # rounded corners and chipped bevelled edges, a slight tilt each, and a mottled, pitted face over a
+    # gritty recessed mortar.
+    rows, per_row = 10, 4
+    rng = np.random.default_rng(181)
+    y = v * rows; row = np.floor(y).astype(int) % rows; fy = y - np.floor(y)
+    offs = (np.arange(rows) % 2) * 0.5 / per_row + (rng.random(rows) - 0.5) * 0.35 / per_row
+    lens = rng.random((rows, per_row)) * 0.3 + 0.85
+    edges = np.concatenate([np.zeros((rows, 1)), np.cumsum(lens / lens.sum(1, keepdims=True), 1)], 1)
+    x = (u - offs[row]) % 1
+    k = np.zeros_like(row)
+    for i in range(1, per_row):
+        k += x >= edges[row, i]
+    a = edges[row, k]; b = edges[row, k + 1]
+    # rounded-rectangle distance, in tile units so the corners stay round, negative inside the brick
+    g, rad = 0.006, 0.012
+    px = np.abs(x - (a + b) / 2) - ((b - a) / 2 - g - rad)
+    py = np.abs((fy - 0.5) / rows) - (0.5 / rows - g - rad)
+    d = np.hypot(np.maximum(px, 0), np.maximum(py, 0)) + np.minimum(np.maximum(px, py), 0) - rad
+    # ragged edges plus the odd bite out of an arris
+    d += 0.005 * (fbm(u, v, 40, 182, octaves=3) - 0.5) + 0.006 * smoothstep(0.66, 0.78, fbm(u, v, 24, 183, octaves=3))
+    t = np.clip(-d / 0.014, 0, 1)
+    shoulder = np.sqrt(1 - (1 - t) ** 2)  # rounded bevel
+    bid = row * per_row + k
+    per = rng.random((rows * per_row, 5))
+    # each brick sits at its own height and leans a little
+    face = 0.82 + 0.1 * per[bid, 0] + 0.04 * ((per[bid, 1] - 0.5) * (x - (a + b) / 2) / ((b - a) / 2)
+                                             + (per[bid, 2] - 0.5) * (fy - 0.5) * 2)
+    # mottled face: domain-warped noise shifted per brick so neighbours don't share a pattern
+    su = (u + per[bid, 3]) % 1; sv = (v + per[bid, 4]) % 1
+    wu = su + 0.08 * fbm(u, v, 6, 184, octaves=3); wv = sv + 0.08 * fbm(u, v, 6, 185, octaves=3)
+    mottle = smoothstep(0.3, 0.7, fbm(wu, wv, 6, 186, octaves=5, gain=0.55))
+    # shallow pits that deepen gradually from the rim; the warp keeps their outlines off the noise lattice
+    pn = fbm(wu + 0.02 * fbm(u, v, 32, 190, octaves=2), wv, 48, 187, octaves=3)
+    pits = smoothstep(0.62, 0.82, pn) ** 2 * smoothstep(0.8, 0.86, fbm(u, v, 8, 188, octaves=2))
+    face += 0.3 * (mottle - 0.5) - 0.16 * pits
+    mortar = 0.06 + 0.06 * fbm(u, v, 64, 189, octaves=3)
+    return norm(mortar + (face - mortar) * shoulder)
+
 # ---- colour textures: (rgb in 0..1, height = luminance by construction)
 def lum(rgb):
     return 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
@@ -439,7 +479,7 @@ GREY = {
     'Stone Wall': stone_wall, 'Wood Planks': wood_planks, 'Basket Weave': basket_weave, 'Chainmail': chainmail,
     'Pyramids': pyramids, 'Waffle': waffle, 'Bubbles': bubbles, 'Cracked Earth': cracked_earth,
     'Sand Ripples': sand_ripples, 'Bark': bark, 'Slate': slate, 'Triangles': triangles, 'Roof Tiles': roof_tiles,
-    'Star Tiles': star_tiles,
+    'Star Tiles': star_tiles, 'Bricks weathered': weathered_bricks,
 }
 COLOUR = {'Colour Bricks': colour_bricks, 'Mosaic Tiles': mosaic, 'Hex Tiles': hex_tiles, 'Terrazzo': terrazzo,
           'Camouflage': camouflage, 'Tartan': tartan}
