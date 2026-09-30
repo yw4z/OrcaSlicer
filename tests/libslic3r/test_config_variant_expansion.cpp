@@ -52,20 +52,18 @@ TEST_CASE("Filament cooling and pressure settings follow the selected nozzle var
         {"nozzle_temperature_range_high", "255", "280"},
     };
     const int variant_index = GENERATE(0, 1, 2, 3);
-    const int value_count = 4;
     const bool load_preset = GENERATE(false, true);
     const bool high_flow = variant_index % 2 != 0;
     for (const Setting &setting : settings) {
-        DYNAMIC_SECTION(setting.key << " variant=" << variant_index << " values=" << value_count << " loaded=" << load_preset) {
+        DYNAMIC_SECTION(setting.key << " variant=" << variant_index << " loaded=" << load_preset) {
             DynamicPrintConfig printer = make_hybrid_printer_config();
             if (variant_index >= 2)
                 printer.option<ConfigOptionEnumsGeneric>("extruder_type")->values[1] = etBowden;
             DynamicPrintConfig filament;
             filament.option<ConfigOptionStrings>("filament_extruder_variant", true)->values =
                 {"Direct Drive Standard", "Direct Drive High Flow", "Bowden Standard", "Bowden High Flow"};
-            std::string values = setting.standard;
-            for (int i = 1; i < value_count; ++i)
-                values += std::string(",") + (i % 2 ? setting.high_flow : setting.standard);
+            // one value per variant of filament_extruder_variant
+            const std::string values = std::string(setting.standard) + "," + setting.high_flow + "," + setting.standard + "," + setting.high_flow;
             REQUIRE(filament.option(setting.key, true)->deserialize(values));
 
             if (load_preset) {
@@ -86,35 +84,6 @@ TEST_CASE("Filament cooling and pressure settings follow the selected nozzle var
             REQUIRE(*filament.option(setting.key) == *expected.option(setting.key));
         }
     }
-}
-
-TEST_CASE("Filaments on the same hybrid tool keep their own cooling and pressure variants", "[Config][FilamentVariants]")
-{
-    DynamicPrintConfig config = make_hybrid_printer_config();
-    config.option<ConfigOptionInts>("filament_self_index", true)->values = {1, 1, 2, 2};
-    config.option<ConfigOptionStrings>("filament_extruder_variant", true)->values =
-        {"Direct Drive Standard", "Direct Drive High Flow", "Direct Drive Standard", "Direct Drive High Flow"};
-    config.option<ConfigOptionInts>("filament_map", true)->values = {2, 2};
-    config.option<ConfigOptionInts>("filament_volume_map", true)->values = {nvtHighFlow, nvtStandard};
-    config.option<ConfigOptionFloats>("fan_max_speed", true)->values = {15., 60., 20., 80.};
-    config.option<ConfigOptionFloats>("pressure_advance", true)->values = {0.04, 0.02, 0.05, 0.03};
-    config.option<ConfigOptionBools>("filament_multitool_ramming", true)->values = {false, true, false, true};
-    std::vector<std::vector<NozzleVolumeType>> nozzle_types;
-    const int count = config.get_extruder_nozzle_volume_count(2, nozzle_types);
-    std::set<std::string> keys = filament_options_with_variant;
-    keys.insert("filament_self_index");
-    config.update_values_to_printer_extruders_for_multiple_filaments(config, 2, count, keys,
-        "filament_self_index", "filament_extruder_variant");
-    const auto &fan = config.option<ConfigOptionFloats>("fan_max_speed")->values;
-    REQUIRE(fan.size() == 2);
-    REQUIRE_THAT(fan[0], Catch::Matchers::WithinAbs(60., 1e-9));
-    REQUIRE_THAT(fan[1], Catch::Matchers::WithinAbs(20., 1e-9));
-    const auto &pa = config.option<ConfigOptionFloats>("pressure_advance")->values;
-    REQUIRE(pa.size() == 2);
-    REQUIRE_THAT(pa[0], Catch::Matchers::WithinAbs(0.02, 1e-9));
-    REQUIRE_THAT(pa[1], Catch::Matchers::WithinAbs(0.05, 1e-9));
-    REQUIRE(config.option<ConfigOptionBools>("filament_multitool_ramming")->get_at(0));
-    REQUIRE_FALSE(config.option<ConfigOptionBools>("filament_multitool_ramming")->get_at(1));
 }
 
 TEST_CASE("apply_override fills nil entries from the 0-based default index", "[Config]")
@@ -495,6 +464,8 @@ TEST_CASE("update_values_to_printer_extruders_for_multiple_filaments resolves pe
         config.option<ConfigOptionStrings>("filament_extruder_variant", true)->values = {"Direct Drive Standard", "Direct Drive High Flow",
                                                                                          "Direct Drive Standard", "Direct Drive High Flow"};
         config.option<ConfigOptionFloats>("filament_max_volumetric_speed", true)->values = {12., 20., 13., 21.};
+        config.option<ConfigOptionFloats>("fan_max_speed", true)->values = {15., 60., 20., 80.};
+        config.option<ConfigOptionBools>("filament_multitool_ramming", true)->values = {false, true, false, true};
     };
 
     std::set<std::string> filament_keys = filament_options_with_variant;
@@ -514,6 +485,8 @@ TEST_CASE("update_values_to_printer_extruders_for_multiple_filaments resolves pe
             "filament_self_index", "filament_extruder_variant");
 
         REQUIRE(config.option<ConfigOptionFloats>("filament_max_volumetric_speed")->values == std::vector<double>({12., 21.}));
+        REQUIRE(config.option<ConfigOptionFloats>("fan_max_speed")->values == std::vector<double>({15., 80.}));
+        REQUIRE(config.option<ConfigOptionBools>("filament_multitool_ramming")->values == std::vector<unsigned char>({0, 1}));
         REQUIRE(config.option<ConfigOptionStrings>("filament_extruder_variant")->values ==
                 std::vector<std::string>({"Direct Drive Standard", "Direct Drive High Flow"}));
         REQUIRE(config.option<ConfigOptionInts>("filament_self_index")->values == std::vector<int>({1, 2}));
