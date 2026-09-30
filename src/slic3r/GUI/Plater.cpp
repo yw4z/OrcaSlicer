@@ -1797,16 +1797,17 @@ bool Sidebar::priv::switch_diameter_to(const wxString &diameter)
     Preset& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
     // The combo lists printer variants, and the variant of a mixed-nozzle machine ("0.4+0.6") is no
     // single extruder's diameter, so the preset's own variant answers first.
-    if (printer_preset.config.opt_string("printer_variant") == diameter.ToStdString()) {
+    const std::string &printer_variant = printer_preset.config.opt_string("printer_variant");
+    if (printer_variant == diameter.ToStdString()) {
         return true;
     }
+    // A named variant ("0.4 High Flow") shares its diameter with the standard profile, which selecting
+    // the plain diameter switches back to, so only a preset naming no variant is kept by its diameter.
     auto* nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(printer_preset.config.option("nozzle_diameter"));
-    if (nozzle_diameter && nozzle_diameter->size() > 0) {
+    if (printer_variant.empty() && nozzle_diameter && nozzle_diameter->size() > 0) {
         auto current_nozzle_dia = get_diameter_string(nozzle_diameter->values[0]);
-        // A named variant can share this diameter; selecting the plain diameter
-        // must still switch back to the standard profile.
-        if (current_nozzle_dia == diameter.ToStdString() &&
-            printer_preset.config.opt_string("printer_variant") == diameter.ToStdString()) {
+        // If the selected diameter is the same as current nozzle, don't switch profiles
+        if (current_nozzle_dia == diameter.ToStdString()) {
             return true;
         }
     }
@@ -3944,9 +3945,9 @@ void Sidebar::update_presets(Preset::Type preset_type)
             auto nozzle_dia = get_diameter_string(nozzle_diameter->values[extruder_index]);
             // Named variants such as "0.4HS" and "0.4 High Flow" share a physical diameter.
             // Retain the variant selection unless the diameter was customized.
-            const auto selected_variant =
-                diameter.substr(0, diameter.find_first_not_of("0123456789.")) == nozzle_dia &&
-                std::find(diameters.begin(), diameters.end(), diameter) != diameters.end() ? diameter : nozzle_dia;
+            const bool keep_variant = diameter.substr(0, diameter.find_first_not_of("0123456789.")) == nozzle_dia &&
+                                      std::find(diameters.begin(), diameters.end(), diameter) != diameters.end();
+            const std::string &selected_variant = keep_variant ? diameter : nozzle_dia;
             // ORCA try to add nozzle diameter from config if list is empty. fixes blank nozzle combo box when preset has no alias
             if(!diameters.empty() && diameters[0].empty() && !nozzle_dia.empty()){
                 diameters[0] = nozzle_dia;

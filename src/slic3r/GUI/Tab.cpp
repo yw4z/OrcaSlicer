@@ -4404,8 +4404,9 @@ void TabFilament::build()
             DynamicPrintConfig &filament_config = m_preset_bundle->filaments.get_edited_preset().config;
 
             update_dirty();
-            if (!m_postpone_update_ui && (opt_key.substr(0, opt_key.find('#')) == "nozzle_temperature_range_low" || opt_key.substr(0, opt_key.find('#')) == "nozzle_temperature_range_high")) {
-                m_config_manipulation.check_nozzle_recommended_temperature_range(&filament_config, m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0);
+            const std::string opt_key_without_idx = opt_key.substr(0, opt_key.find('#'));
+            if (!m_postpone_update_ui && (opt_key_without_idx == "nozzle_temperature_range_low" || opt_key_without_idx == "nozzle_temperature_range_high")) {
+                m_config_manipulation.check_nozzle_recommended_temperature_range(&filament_config, selected_variant_index());
             }
             on_value_change(opt_key, value);
         };
@@ -4520,6 +4521,7 @@ void TabFilament::build()
             DynamicPrintConfig& filament_config = m_preset_bundle->filaments.get_edited_preset().config;
 
             update_dirty();
+            const std::string opt_key_without_idx = opt_key.substr(0, opt_key.find('#'));
             /*if (opt_key == "cool_plate_temp" || opt_key == "cool_plate_temp_initial_layer") {
                 m_config_manipulation.check_bed_temperature_difference(BedType::btPC, &filament_config);
             }
@@ -4532,11 +4534,11 @@ void TabFilament::build()
             else if (opt_key == "textured_plate_temp" || opt_key == "textured_plate_temp_initial_layer") {
                 m_config_manipulation.check_bed_temperature_difference(BedType::btPTE, &filament_config);
             }
-            else */if (opt_key.substr(0, opt_key.find('#')) == "nozzle_temperature") {
-                m_config_manipulation.check_nozzle_temperature_range(&filament_config, m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0);
+            else */if (opt_key_without_idx == "nozzle_temperature") {
+                m_config_manipulation.check_nozzle_temperature_range(&filament_config, selected_variant_index());
             }
-            else if (opt_key.substr(0, opt_key.find('#')) == "nozzle_temperature_initial_layer") {
-                m_config_manipulation.check_nozzle_temperature_initial_layer_range(&filament_config, m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0);
+            else if (opt_key_without_idx == "nozzle_temperature_initial_layer") {
+                m_config_manipulation.check_nozzle_temperature_initial_layer_range(&filament_config, selected_variant_index());
             }
 
             on_value_change(opt_key, value);
@@ -4770,9 +4772,14 @@ void TabFilament::update_description_lines()
     //    this->update_volumetric_flow_preset_hints();
 }
 
+unsigned int TabFilament::selected_variant_index() const
+{
+    return m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0;
+}
+
 void TabFilament::toggle_options()
 {
-    const unsigned int variant_index = m_variant_combo ? std::max(0, m_variant_combo->GetSelection()) : 0;
+    const unsigned int variant_index = selected_variant_index();
     if (!m_active_page)
         return;
     bool is_BBL_printer = false;
@@ -4882,20 +4889,19 @@ void TabFilament::toggle_options()
 
     if (m_active_page->title() == L("Multimaterial")) {
         // Orca: hide specific settings for BBL printers
-        for (auto el : {"filament_minimal_purge_on_wipe_tower", "filament_loading_speed_start", "filament_loading_speed",
+        toggle_option("filament_minimal_purge_on_wipe_tower", !is_BBL_printer, 256 + variant_index);
+        for (auto el : {"filament_loading_speed_start", "filament_loading_speed",
                         "filament_unloading_speed_start", "filament_unloading_speed", "filament_toolchange_delay", "filament_cooling_moves",
                         "filament_cooling_initial_speed", "filament_cooling_final_speed"})
-            toggle_option(el, !is_BBL_printer, filament_options_with_variant.count(el) ? 256 + variant_index : -1);
+            toggle_option(el, !is_BBL_printer);
 
         bool multitool_ramming = m_config->opt_bool("filament_multitool_ramming", variant_index);
         toggle_option("filament_multitool_ramming_volume", multitool_ramming, 256 + variant_index);
         toggle_option("filament_multitool_ramming_flow", multitool_ramming, 256 + variant_index);
 
         bool is_BBL_multi_extruder = is_BBL_printer && printer_cfg.option<ConfigOptionFloats>("nozzle_diameter")->size() > 1;
-        const int selection = m_variant_combo ? m_variant_combo->GetSelection() : 0;
-        const int extruder_idx = std::max(selection, 0);
-        toggle_line("long_retractions_when_ec", is_BBL_multi_extruder, 256 + extruder_idx);
-        toggle_line("retraction_distances_when_ec", is_BBL_multi_extruder && m_config->opt_bool("long_retractions_when_ec", extruder_idx), 256 + extruder_idx);
+        toggle_line("long_retractions_when_ec", is_BBL_multi_extruder, 256 + variant_index);
+        toggle_line("retraction_distances_when_ec", is_BBL_multi_extruder && m_config->opt_bool("long_retractions_when_ec", variant_index), 256 + variant_index);
     }
 }
 
