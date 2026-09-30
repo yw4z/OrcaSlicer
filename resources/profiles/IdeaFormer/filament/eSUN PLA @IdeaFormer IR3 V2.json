@@ -2,6 +2,7 @@
 	"type": "filament",
 	"name": "eSUN PLA @IdeaFormer IR3 V2",
 	"inherits": "Generic PLA @IdeaFormer IR3 V2",
+	"filament_id": "OFkrxQC4",
 	"from": "system",
 	"setting_id": "XqkviBmFHEglXueX",
 	"instantiation": "true",

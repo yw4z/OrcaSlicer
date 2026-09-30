@@ -817,7 +817,7 @@ std::string GCodeWriter::travel_to_xy(const Vec2d &point, const std::string &com
     } else {
         w.emit_xy(point_on_plate);
     }
-    auto speed = this->point_on_first_layer(Vec3d(point.x(), point.y(), m_pos.z()))
+    auto speed = this->point_on_first_layer(Vec3d(point_on_plate.x(), point_on_plate.y(), m_pos.z()))
         ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
     w.emit_f(speed * 60.0);
     //BBS
@@ -921,7 +921,7 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
         // BBS
     Vec3d dest_point = point;
     auto travel_speed =
-        this->point_on_first_layer(point) ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
+        this->point_on_first_layer(Vec3d(point.x() - m_x_offset, point.y() - m_y_offset, point.z())) ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
     // See uses_pointwise_travel_speed(): the historical path deliberately emits the
     // raw configured speed in the final branch below, ignoring travel_speed.
     const double final_travel_speed = this->uses_pointwise_travel_speed()
@@ -1095,7 +1095,7 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment)
 
     double speed = this->config.travel_speed_z.get_at(m_cached_extruder_idx);
     if (speed == 0.) {
-        speed = this->point_on_first_layer(Vec3d(m_pos.x(), m_pos.y(), z))
+        speed = this->point_on_first_layer(Vec3d(m_pos.x() - m_x_offset, m_pos.y() - m_y_offset, z))
                     ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx)
                     : this->config.travel_speed.get_at(m_cached_extruder_idx);
     }

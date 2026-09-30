@@ -1086,7 +1086,7 @@ TEST_CASE("Belt brim lines all have the same width", "[SkirtBrim][belt]")
     REQUIRE(widths.size() > 10);
     const float lo = *std::min_element(widths.begin(), widths.end());
     const float hi = *std::max_element(widths.begin(), widths.end());
-    CHECK_THAT(hi, Catch::Matchers::WithinRel(lo, 1e-4));
+    CHECK_THAT(hi, Catch::Matchers::WithinRel(lo, 1e-4f));
 }
 
 TEST_CASE("Belt apron survives another object printing at the same Z", "[SkirtBrim][belt]")
