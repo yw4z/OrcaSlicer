@@ -2032,3 +2032,25 @@ TEST_CASE("A budget met only by flattening curvature removes detail", "[TextureD
     CHECK(res.geometry.triangle_count() <= 100);
     CHECK(res.target_cost_detail);
 }
+
+TEST_CASE("Cancelling while flat faces are harvested past the budget stops the decimation", "[TextureDisplacement]")
+{
+    // 12 * 4^6 = 49152 triangles: the budget is met almost at once, and the harvest after it runs to
+    // a dozen triangles over several times the two polling intervals a cancel takes to be seen.
+    const TextureBake::TriSoup cube   = TextureBake::to_soup(subdivide_mesh_uniform(its_make_cube(20., 20., 20.), 0.f, 6));
+    const size_t               target = cube.triangle_count() - 1000;
+    const size_t full = TextureBake::decimate(cube, target, true, 0.005).geometry.triangle_count();
+
+    // The Cancel button pressed once the bar is full: every call after the first to report 1.0 cancels.
+    bool       full_seen = false;
+    const auto cancel_when_full = [&full_seen](double f) {
+        if (full_seen)
+            return false;
+        full_seen = f >= 1.0;
+        return true;
+    };
+    const size_t canceled = TextureBake::decimate(cube, target, true, 0.005, {}, cancel_when_full).geometry.triangle_count();
+    CHECK(full_seen);
+    CHECK(canceled <= target);
+    CHECK(canceled > full);
+}

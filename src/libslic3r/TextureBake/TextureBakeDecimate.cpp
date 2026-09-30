@@ -457,6 +457,16 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
 
         const HeapEntry top = heap_pop();
         ++pops;
+        if (on_progress) {
+            // Every 16 k pops as well as whenever the fraction moves: this is the only place a cancel
+            // is seen, and past the target the fraction stops moving.
+            const double p = std::min(1.0, double(init_faces - active_faces) / double(to_remove));
+            if (p - last_progress > 0.005 || (pops & 0x3fff) == 0) {
+                last_progress = p;
+                if (!on_progress(p))
+                    break;
+            }
+        }
         // The popped entry is the cheapest left, so exceeding the tolerance ends the run.
         if (reached_target && top.cost > harvest_ceil)
             break;
@@ -527,15 +537,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             }
         }
         maybe_compact();
-
-        if (on_progress) {
-            const double p = std::min(1.0, double(init_faces - active_faces) / double(to_remove));
-            if (p - last_progress > 0.005) {
-                last_progress = p;
-                if (!on_progress(p))
-                    break;
-            }
-        }
     }
 
     BOOST_LOG_TRIVIAL(info) << "TextureBake decimate: pops=" << pops << " stale=" << stale_pops
