@@ -2086,7 +2086,7 @@ void UVEditorPanel::apply_state(const UVEditorCanvas::PaneState &s)
     m_clear_seams->Enable(s.has_layer && s.has_seams);
     m_clear_edits->Enable(s.has_layer && s.has_uv_edits);
 
-    m_stats->SetLabel(s.unwrapped ? wxString::Format(_L("%d islands · %s faces"), s.island_count,
+    m_stats->SetLabel(s.unwrapped ? wxString::Format(_L("%d islands, %s faces"), s.island_count,
                                                      wxString(std::to_string(s.face_count))) :
                                     wxString());
     refresh_selection_tools();

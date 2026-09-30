@@ -6919,9 +6919,9 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
                     if (!slot_painted(l.slot))
                         skipped.push_back(layer_name(l));
                 if (skipped.size() > 2)
-                    note += " · " + Slic3r::format(_u8L("%1% layers not painted, skipped"), skipped.size());
+                    note += ", " + Slic3r::format(_u8L("%1% layers not painted, skipped"), skipped.size());
                 else if (!skipped.empty())
-                    note += " · " + Slic3r::format(_u8L("%1% not painted, skipped"),
+                    note += ", " + Slic3r::format(_u8L("%1% not painted, skipped"),
                                                    skipped.size() == 2 ? skipped[0] + ", " + skipped[1] : skipped[0]);
             }
             ImGui::PushTextWrapPos(x0 + panel_w);
