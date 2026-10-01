@@ -12128,6 +12128,21 @@ PRINT_CONFIG_CACHE_INITIALIZE((
     SLAMaterialConfig, SLAPrintConfig, SLAPrintObjectConfig, SLAPrinterConfig, SLAFullPrintConfig))
 static int print_config_static_initialized = print_config_static_initializer();
 
+// The same set() calls ConfigBase::apply_only() makes, without looking every key up by name. Out of line so the
+// option list is expanded for this once, not in every file that includes PrintConfig.hpp.
+#define PRINT_CONFIG_APPLY_TO_DEFINITION(r, data, CLASS_NAME) \
+    bool CLASS_NAME::apply_to(ConfigBase &target) const \
+    { \
+        auto *dst = dynamic_cast<CLASS_NAME*>(&target); \
+        if (dst == nullptr) \
+            return false; \
+        visit_option_pairs(*dst, *this, [](const char*, ConfigOption &a, const ConfigOption &b) { a.set(&b); return true; }); \
+        return true; \
+    }
+BOOST_PP_SEQ_FOR_EACH(PRINT_CONFIG_APPLY_TO_DEFINITION, _, (PrintObjectConfig)(PrintRegionConfig)(MachineEnvelopeConfig)(GCodeConfig)
+    (SLAMaterialConfig)(SLAPrintConfig)(SLAPrintObjectConfig)(SLAPrinterConfig))
+#undef PRINT_CONFIG_APPLY_TO_DEFINITION
+
 //BBS: remove unused command currently
 CLIActionsConfigDef::CLIActionsConfigDef()
 {
@@ -12765,18 +12780,10 @@ OtherSlicingStatesConfigDef::OtherSlicingStatesConfigDef()
 
     new_def("initial_no_support_extruder", coInt, "Initial no support extruder", "Zero-based index of the first extruder used for printing without support. Same as initial_no_support_tool.");
     new_def("in_head_wrap_detect_zone", coBool, "In head wrap detect zone", "Indicates if the first layer overlaps with the head wrap zone.");
-
-    def = this->add("imex_mode", coString);
-    def->label   = L("IDEX/IQEX active mode");
-    def->tooltip = L("Name of the active IDEX/IQEX parallel print mode for this plate (e.g. 'primary', 'mirror', 'copy'). Empty string if IDEX/IQEX is not enabled.");
-
-    def = this->add("imex_mode_index", coInt);
-    def->label   = L("IDEX/IQEX active mode index");
-    def->tooltip = L("Zero-based index of the active IDEX/IQEX parallel print mode within imex_mode_names.");
-
-    def = this->add("imex_mode_gcode", coString);
-    def->label   = L("IDEX/IQEX active mode G-code");
-    def->tooltip = L("The raw mode G-code template for the active IDEX/IQEX parallel print mode, after placeholder evaluation. Globals defined here flow into machine_start_gcode.");
+    new_def("curr_bed_type", coString, "Current bed type", "Name of the currently selected bed plate type (e.g. 'Textured PEI Plate', 'Smooth High Temp Plate').");
+    new_def("imex_mode", coString, "IDEX/IQEX active mode", "Name of the active IDEX/IQEX parallel print mode for this plate (e.g. 'primary', 'mirror', 'copy'). Empty string if IDEX/IQEX is not enabled.");
+    new_def("imex_mode_index", coInt, "IDEX/IQEX active mode index", "Zero-based index of the active IDEX/IQEX parallel print mode within imex_mode_names.");
+    new_def("imex_mode_gcode", coString, "IDEX/IQEX active mode G-code", "The raw mode G-code template for the active IDEX/IQEX parallel print mode, after placeholder evaluation. Globals defined here flow into machine_start_gcode.");
 }
 
 PrintStatisticsConfigDef::PrintStatisticsConfigDef()
