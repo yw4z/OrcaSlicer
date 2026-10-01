@@ -157,6 +157,11 @@ button (to terminate a chain, say) declines to also open a menu, through a read-
 Past either budget the event is navigation, and navigation does not transition the state
 machine.
 
+Navigation itself is Prepare's: the camera reads the drag actions set in Preferences > Control
+for each button. The left button is shared with picking, so a whole body is swept with a
+rectangle on plain left-drag only while no camera action is assigned to it, and with
+Shift+left-drag otherwise — Prepare's own rectangle selection.
+
 Entering a sketch changes three things at once so the mode is legible: a banner above the
 canvas (a sibling of the canvas, not a child over it — on GTK a child window over a
 `wxGLCanvas` is a native window and does not reliably stack over GL), the printer bed muted so
@@ -181,6 +186,24 @@ rasterise under the software GL context the tab also supports. Seams of closed s
 degenerate edges are left out (`GeometryEngine::display_edges`), and the polylines are sampled
 once per shape, keyed by its `TShape`, because a recompute that leaves a body unchanged is the
 common case.
+
+## Following the app
+
+The tab is a page of Orca's main window and answers to the same settings as Prepare.
+
+- **Theme.** Its chrome is coloured from a table of light/dark token pairs. A theme switch
+  reaches `DesignPanel::on_sys_color_changed` from `MainFrame`, which moves every colour that is
+  one theme's token onto the other theme's and then runs the app's own dark pass; the icons are
+  Orca's sidebar grey, which the icon cache maps per theme, so they are re-rasterised rather
+  than re-tinted.
+- **Scale.** Sizes are in DIP, and a DPI change reaches `DesignPanel::msw_rescale`, which
+  re-rasterises every icon (button faces, flyout rows, card headers, the tree's image list).
+- **Viewport text.** The status line and the active tool's values are drawn by the canvas in
+  its ImGui pass, so they go with the canvas: a top-level window over GL does not follow its
+  frame and was left floating over other applications.
+- **Undo.** The tab keeps its own history (the recipe is not part of Prepare's snapshots), but
+  it has no Undo/Redo of its own: the top bar, `Ctrl+Z` and Edit drive it while the tab is
+  shown, greyed to what an undo would actually do.
 
 ## The offer is generated, not hand-written
 
