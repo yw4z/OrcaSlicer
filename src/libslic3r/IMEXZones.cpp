@@ -64,7 +64,7 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
     // (imex_head_filament_map).
     //
     // Only Primary / Copy / Mirror land in this map. A Span head shares the primary's zone
-    // instead of owning one, so it deliberately gets no entry (and hence no zone centre --
+    // instead of owning one, so it deliberately gets no entry (and hence no zone center --
     // see ImexZoneLayout::head_zone_centers), and an extra Primary entry beyond the first is
     // ignored. Any further role must decide here whether it owns a cell.
     std::map<int, ImexRole> zone_roles;
@@ -107,12 +107,12 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
     // that assignment when the printer is reconfigured as a 2-tool IDEX, and the
     // `primary < n_rows * n_cols` bound above then drops it from zone_roles.
     //
-    // Every zone, strip, ghost centre and slice offset below is derived from pri_col/pri_row,
-    // which would still be sitting at their (0,0) initialisers — a position no active tool
+    // Every zone, strip, ghost center and slice offset below is derived from pri_col/pri_row,
+    // which would still be sitting at their (0,0) initializers — a position no active tool
     // occupies. That yields a primary zone and a secondary zone that both claim the whole bed:
     // imex_primary_zone() reports the plate clear while the blocking boxes report it full, and
     // under imex_firmware_managed_zones compute_imex_slice_offset() shifts the slice by the bed
-    // centre. Degrade to "this plate has no IMEX zones" instead — the same answer the earlier
+    // center. Degrade to "this plate has no IMEX zones" instead — the same answer the earlier
     // early returns give, and the one every consumer already handles.
     if (out.primary_head < 0)
         return ImexZoneLayout{};

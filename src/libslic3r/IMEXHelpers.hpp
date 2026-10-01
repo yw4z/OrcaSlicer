@@ -49,7 +49,7 @@ inline constexpr const char* kImexPrimaryMode = "primary";
 //     "no such mode": a missing script is a mode with no script, and the row's index
 //     still has to be reported to {imex_mode_index}. Callers that need tools already
 //     treat an empty tools string as "no tools" (imex_primary_tool_for_mode() returns -1,
-//     parse_imex_active_tools() returns {}), which is the behaviour they had before.
+//     parse_imex_active_tools() returns {}), which is the behavior they had before.
 //   * `ragged` separates "the profile omitted this row" from "the author wrote an empty
 //     entry" — a distinction every open-coded call site used to lose.
 //
@@ -293,7 +293,7 @@ std::map<int,int> parse_imex_head_filament_map(const std::string& s);
 //
 // `pem` has one entry per logical filament slot, so its size is the slot count and the
 // result is always a valid index into it (or -1). An override naming a slot at or past
-// that size cannot be honoured — every consumer indexes a per-filament array, and the
+// that size cannot be honored — every consumer indexes a per-filament array, and the
 // ConfigOption get_at() several of them use clamps rather than failing, which would turn a
 // corrupt 3MF's "1:9999" into a silently wrong filament. Such an override is ignored and
 // the printer's own routing applies, exactly as if the override were absent.
@@ -339,14 +339,14 @@ enum class ImexRole { Primary, Copy, Mirror, Span };
 // `letter` is the suffix the role carries in the `imex_mode_active_tools` on-disk format
 // ("0:P,1:C,2:M,3:S"). That string is written into printer profiles and into 3MF projects,
 // so the letters are FORMAT: never renumber, rename or reorder them, only append. The table
-// order is also the order the modes editor cycles its tiles through and lists its colour
+// order is also the order the modes editor cycles its tiles through and lists its color
 // legend in, which is why Primary comes first.
 //
 // Everything that used to open-code the letters or a parallel small-int encoding of the
 // enum now goes through this table or through ImexRole itself, so adding a fifth role means
 // editing the enum, this table, and the places that must genuinely make a new decision
 // about it (the transform switch, the zone/marker classification, the editor's per-role
-// colour + label) — not a scattered set of int mappings that fail silently when missed.
+// color + label) — not a scattered set of int mappings that fail silently when missed.
 struct ImexRoleDesc {
     ImexRole role;
     char     letter;
@@ -584,7 +584,7 @@ Vec2d compute_imex_slice_offset(bool firmware_managed,
 // the one definition of "overlap" shared by the object and prime-tower placement
 // checks. Area-based: Clipper yields no result for shapes sharing only an edge, so
 // a hull flush against a zone boundary is NOT reported, it has to cross. That
-// matches the long-standing object behaviour. An empty hull never violates.
+// matches the long-standing object behavior. An empty hull never violates.
 bool imex_hull_violates_zones(const std::vector<BoundingBoxf3>& zones, const Polygon& hull);
 
 } // namespace Slic3r

@@ -25,13 +25,13 @@ namespace GUI {
 // IMEXModesCtrl — visual parallel-mode editor for the IDEX/IQEX printer tab
 //
 // A tool tile holds an `std::optional<ImexRole>`: the role the mode gives that tool, or
-// nullopt for Inactive (grey — the tool does not take part in this mode). Inactive is the
+// nullopt for Inactive (gray — the tool does not take part in this mode). Inactive is the
 // editor's own state and the only reason the tile is not a bare ImexRole; it is the absence
 // of a role, so it is spelled as one rather than as an extra enumerator that libslic3r would
 // then have to keep rejecting. Roles themselves are never re-encoded here — no int state
 // table, no second copy of the on-disk letters.
 //
-//   nullopt          (grey)   — not participating in this mode
+//   nullopt          (gray)   — not participating in this mode
 //   ImexRole::Primary (green) — the tool the slicer generates paths for
 //   ImexRole::Copy    (blue)  — firmware duplicates Primary at an offset
 //   ImexRole::Mirror  (amber) — firmware mirrors Primary about an axis
@@ -41,7 +41,7 @@ namespace GUI {
 //                               offered on tools sharing primary's gantry, and
 //                               only on multi-gantry printers (n_rows >= 2).
 //
-// Colour and legend text are the editor's business and live in role_style(); the tile cycle
+// Color and legend text are the editor's business and live in role_style(); the tile cycle
 // order and the serialized letters come from kImexRoleTable in IMEXHelpers.hpp, so the
 // editor cannot drift from the slicer's reading of a mode string.
 //
@@ -128,8 +128,8 @@ private:
     // opened under a different language.
     std::string unique_mode_name(const std::vector<std::string>& also_taken) const;
 
-    // Everything the editor draws for one role, in ONE place: a new role needs a colour and
-    // a legend name here and nowhere else in this file. nullopt is Inactive (grey).
+    // Everything the editor draws for one role, in ONE place: a new role needs a color and
+    // a legend name here and nowhere else in this file. nullopt is Inactive (gray).
     // `label` is deliberately untranslated — it names a role, and the legend sits next to
     // the same letters the preset stores.
     struct RoleStyle { wxColour bg; wxColour fg; const char* label; };
@@ -216,7 +216,7 @@ private:
     // only tools and gcode are restored.
     void reset_row_to_parent(wxPanel* panel);
 
-    // Rebuild the instruction text, colour legend and column headers for the CURRENT grid.
+    // Rebuild the instruction text, color legend and column headers for the CURRENT grid.
     // These depend on the grid shape -- the Span role is only offered on a multi-gantry printer,
     // and the header spacing is derived from the column count -- so they cannot be built once in
     // the constructor: adding a second gantry has to reveal Span without a save-and-reopen cycle.

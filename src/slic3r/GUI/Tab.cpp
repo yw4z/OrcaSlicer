@@ -5836,7 +5836,13 @@ if (is_marlin_flavor)
                     plater->update();
                 };
                 auto* sizer = new wxBoxSizer(wxHORIZONTAL);
-                sizer->Add(m_imex_modes_ctrl, 1, wxEXPAND);
+                // Align the left edge with the option-line labels above. A full-width line's
+                // widget is inset by 15 (OptionsGroup::append_line), while an ordinary line's
+                // custom control is inset by 10 and then paints its label further in again, so
+                // the two do not line up without this. One number, tuned against the settings
+                // page. Unscaled on purpose: the 15 and 10 it compensates for are raw pixels too,
+                // so a DIP-scaled correction here would drift apart from them on a HiDPI display.
+                sizer->Add(m_imex_modes_ctrl, 1, wxEXPAND | wxLEFT, 8);
                 return sizer;
             };
             modes_og->append_line(line);

@@ -11,18 +11,24 @@
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/Widgets/Button.hpp"
+#include "slic3r/GUI/Widgets/StateColor.hpp"
 #include "slic3r/GUI/wxExtensions.hpp"
 
 namespace Slic3r {
 namespace GUI {
 
+// Icon size for every button in this control -- the help button beside the legend and the
+// edit / remove buttons on each row. One constant so the three cannot drift apart.
+static constexpr int kImexIconPx = 20;
+
 IMEXModesCtrl::IMEXModesCtrl(wxWindow* parent, int n_cols, int n_rows, int layout)
     : wxPanel(parent, wxID_ANY), m_n_cols(std::max(1, n_cols)), m_n_rows(std::max(1, n_rows)), m_layout(layout)
 {
-    // Pull the app's window-default colour explicitly. Without this, GTK gives
+    // Pull the app's window-default color explicitly. Without this, GTK gives
     // child wxPanels a slightly lighter "widget bg" instead of the app's dark
     // theme — making chromeless ScalableButtons inside the panel render with a
-    // visible light box around the icon. Sub-panels inherit this colour.
+    // visible light box around the icon. Sub-panels inherit this color.
     SetBackgroundColour(wxGetApp().get_window_default_clr());
 
     m_outer = new wxBoxSizer(wxVERTICAL);
@@ -38,15 +44,13 @@ IMEXModesCtrl::IMEXModesCtrl(wxWindow* parent, int n_cols, int n_rows, int layou
     m_hdr_panel->SetBackgroundColour(GetBackgroundColour());
     rebuild_info_and_header();
 
-    auto* add_btn = new wxButton(this, wxID_ANY, _L("+ Add Mode"),
-                                 wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-    add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { add_row(); notify(); });
-
+    // Add Mode is built by rebuild_info_and_header() into the info panel, above the rows:
+    // at the bottom it moved down the page every time a mode was added, so its position
+    // depended on how many modes you already had.
     m_outer->Add(m_info_panel, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
     m_outer->Add(m_hdr_panel,  0, wxEXPAND | wxBOTTOM, FromDIP(2));
     m_outer->Add(m_rows_sizer, 0, wxEXPAND);
     m_outer->AddSpacer(FromDIP(4));
-    m_outer->Add(add_btn, 0);
     // SetSizer(), not SetSizerAndFit(): no row exists yet, so there is nothing to fit to --
     // rows arrive from add_row() / load_from_config() / set_grid_size(). Deliberately NOT
     // followed by m_outer->SetSizeHints(this) once they do: this panel owns a sizer, so
@@ -55,23 +59,37 @@ IMEXModesCtrl::IMEXModesCtrl(wxWindow* parent, int n_cols, int n_rows, int layou
     // for via GetEffectiveMinSize(). An explicitly set min size takes PRIORITY over the best
     // size in that call, so a size hint would pin the reserved height to the row count that
     // happened to be on screen when it ran -- adding a mode after that would clip the bottom
-    // row and the "+ Add Mode" button, which is the very failure the hint is meant to avoid.
+    // row, which is the very failure the hint is meant to avoid.
     SetSizer(m_outer);
 }
 
+// A wxTextCtrl cannot paint its own border on GTK -- Orca sidesteps that in ::TextInput by
+// drawing one on a StaticBox, but that has no multiline form and nothing in the tree uses it
+// that way. A one-pixel panel behind the control gives the same visible edge for both the
+// single-line name and the multiline G-code box, in the color the settings fields above use:
+// the inputs here were landing on GTK's near-black default, invisible against the panel.
+static wxPanel* framed_input(wxWindow* parent)
+{
+    wxColour clr(0xDB, 0xDB, 0xDB);
+    if (wxGetApp().dark_mode())
+        clr = StateColor::darkModeColorFor(clr);
+    auto* frame = new wxPanel(parent, wxID_ANY);
+    frame->SetBackgroundColour(clr);
+    frame->SetSizer(new wxBoxSizer(wxVERTICAL));
+    return frame;
+}
+
 void IMEXModesCtrl::rebuild_info_and_header() {
-    // --- Info panel: instruction text + colour legend ---
+    // --- Info panel: help button + color legend ---
     m_info_panel->DestroyChildren();
     auto* info_sizer = new wxBoxSizer(wxVERTICAL);
 
-    // Keep this to one line. Per-role detail lives in the legend tooltips below, so the
-    // panel does not open with a paragraph the user has to read before touching anything.
+    // The overview rides on the "?" button at the head of the legend rather than sitting in
+    // the panel as body text: it is read once and then only gets in the way, while the legend
+    // beside it is the part worth keeping on screen. Per-role detail is on the swatches.
     const wxString instructions =
         _L("Each mode names the tool heads that take part and the role each one plays. "
-           "Click a tool button to cycle its role — hover a colour below for what each role does.");
-    auto* inst = new wxStaticText(m_info_panel, wxID_ANY, instructions);
-    inst->Wrap(FromDIP(620));
-    info_sizer->Add(inst, 0, wxBOTTOM, FromDIP(6));
+           "Click a tool button to cycle its role — hover a color below for what each role does.");
 
     // Color legend — swatches sized to the body text height so they read as
     // matched pairs with their labels regardless of system DPI / font scale,
@@ -80,6 +98,24 @@ void IMEXModesCtrl::rebuild_info_and_header() {
     // tiles cycle in. A role added to that table appears here with no edit of its own.
     auto* leg_sizer = new wxBoxSizer(wxHORIZONTAL);
     const int swatch_side = m_info_panel->GetCharHeight();
+
+    // Action row: Add Mode, then the "?" carrying the overview. Width-matched to the mode
+    // column so the button sits over the field it creates.
+    auto* act_sizer = new wxBoxSizer(wxHORIZONTAL);
+    auto* add_btn = new Button(m_info_panel, _L("Add Mode"));
+    add_btn->SetStyle(ButtonStyle::Confirm, ButtonType::Window);
+    // Width-matched to the mode column. The height has to be a real number: Button takes its
+    // min size literally, so a -1 there collapses it to a sliver rather than meaning "auto".
+    add_btn->SetMinSize(wxSize(FromDIP(130), add_btn->GetBestSize().GetHeight()));
+    add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { add_row(); notify(); });
+    act_sizer->Add(add_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
+
+    auto* help_btn = new ScalableButton(m_info_panel, wxID_ANY, "question", wxEmptyString,
+                                        wxDefaultSize, wxDefaultPosition,
+                                        wxBU_EXACTFIT | wxNO_BORDER, /*use_default_disabled_bitmap=*/true, kImexIconPx);
+    help_btn->SetToolTip(instructions);
+    act_sizer->Add(help_btn, 0, wxALIGN_CENTER_VERTICAL);
+    info_sizer->Add(act_sizer, 0, wxBOTTOM, FromDIP(6));
     for (const ImexRoleDesc& d : kImexRoleTable) {
         if (!role_offered(d.role)) continue;
         const RoleStyle style = role_style(d.role);
@@ -97,21 +133,21 @@ void IMEXModesCtrl::rebuild_info_and_header() {
 
     // --- Column header row ---
     // Spacers sized to align with the mode-row fields below. Name field: FromDIP(130) + FromDIP(6)
-    // gap; tool grid: n_cols*(FromDIP(36)+FromDIP(2))-FromDIP(2) + FromDIP(6) gap. grid_px tracks
+    // gap; tool grid: n_cols*(FromDIP(24)+FromDIP(2))-FromDIP(2) + FromDIP(6) gap. grid_px tracks
     // the live column count, so the G-code header stays aligned after a grid change.
     m_hdr_panel->DestroyChildren();
     auto* hdr_sizer = new wxBoxSizer(wxHORIZONTAL);
-    auto* hdr_name  = new wxStaticText(m_hdr_panel, wxID_ANY, _L("Name"));
+    auto* hdr_name  = new wxStaticText(m_hdr_panel, wxID_ANY, _L("Mode"));
     auto* hdr_tools = new wxStaticText(m_hdr_panel, wxID_ANY, _L("Tools"));
     auto* hdr_gcode = new wxStaticText(m_hdr_panel, wxID_ANY, _L("G-code"));
-    hdr_name->SetToolTip(_L("How the mode is labelled in the plate's IDEX/IQEX mode selector. "
+    hdr_name->SetToolTip(_L("How the mode is labeled in the plate's IDEX/IQEX mode selector. "
                             "Required — a mode with no name cannot be selected."));
     hdr_tools->SetToolTip(_L("Which tool heads take part in the mode and what role each one plays. "
                              "Click a tile to cycle its role."));
     hdr_gcode->SetToolTip(_L("G-code run at print start to put the printer into this mode "
                              "(for example a Klipper SET_PRINT_MODE call). The slicer only emits "
                              "the Primary tool's paths; the firmware drives the others."));
-    const int grid_px = m_n_cols * FromDIP(38) - FromDIP(2);  // approx grid panel width
+    const int grid_px = m_n_cols * FromDIP(26) - FromDIP(2);  // tile 24 + 2px gap, less the trailing gap
     const int name_col_px = FromDIP(136);
     hdr_sizer->Add(hdr_name,  0, wxALIGN_CENTER_VERTICAL);
     hdr_sizer->AddSpacer(std::max(0, name_col_px - hdr_name->GetBestSize().x));
@@ -227,8 +263,8 @@ std::string IMEXModesCtrl::unique_mode_name(const std::vector<std::string>& also
 }
 
 IMEXModesCtrl::RoleStyle IMEXModesCtrl::role_style(std::optional<ImexRole> role) {
-    // Grey / "Inactive" is the no-role answer; every role gets an explicit case so a new
-    // one is a compile-time -Wswitch prompt rather than a tile that silently renders grey.
+    // Gray / "Inactive" is the no-role answer; every role gets an explicit case so a new
+    // one is a compile-time -Wswitch prompt rather than a tile that silently renders gray.
     if (!role)
         return { wxColour(90, 90, 90), *wxWHITE, "Inactive" };
     switch (*role) {
@@ -345,6 +381,11 @@ void IMEXModesCtrl::add_row(const std::string& name,
     r.panel = new wxPanel(this, wxID_ANY);
     r.panel->SetBackgroundColour(GetBackgroundColour());
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
+    // The mode column is vertical: name on top, and for a deletable row the remove button
+    // beneath it. Remove used to sit next to Edit in the right-hand column, one icon apart
+    // from a button people press often -- a destructive action does not belong there.
+    auto* name_col = new wxBoxSizer(wxVERTICAL);
+    wxPanel* name_frame = nullptr;   // border frame for the name field; null on the Primary row
 
     if (is_primary) {
         r.orig_name = kImexPrimaryMode;
@@ -354,19 +395,26 @@ void IMEXModesCtrl::add_row(const std::string& name,
         wxFont f = lbl->GetFont();
         f.SetWeight(wxFONTWEIGHT_BOLD);
         lbl->SetFont(f);
-        sizer->Add(lbl, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
+        name_col->Add(lbl, 0, wxLEFT | wxRIGHT, 1);   // match the 1px frame the other rows carry
     } else {
         // A nameless mode cannot be selected on a plate and used to be dropped on
         // save together with its tool roles and G-code, so a name is pre-filled
         // here and restored below if the field is left empty. That keeps the
-        // "+ Add Mode → assign tools → never typed a name" path from losing work
+        // "Add Mode → assign tools → never typed a name" path from losing work
         // without ever showing an error.
         const std::string nm = name.empty() ? unique_mode_name({}) : name;
         // The name as first shown, i.e. the one the plate's mode selector offered while this
         // row looked like this. remove_row() reports it alongside the current name, because
         // renaming is not routed through on_mode_removed and the two then diverge.
         r.orig_name = nm;
-        r.name = new wxTextCtrl(r.panel, wxID_ANY, from_u8(nm), wxDefaultPosition, FromDIP(wxSize(130, -1)));
+        name_frame = framed_input(r.panel);
+        r.name = new wxTextCtrl(name_frame, wxID_ANY, from_u8(nm), wxDefaultPosition, FromDIP(wxSize(130, -1)));
+        name_frame->GetSizer()->Add(r.name, 1, wxEXPAND | wxALL, 1);
+        // An unset background makes the field inherit GTK's widget default rather than the
+        // app's, which reads as a lighter box against this panel. Set the light-theme color
+        // explicitly, then let UpdateDarkUI swap it for the dark palette.
+        r.name->SetBackgroundColour(*wxWHITE);
+        wxGetApp().UpdateDarkUI(r.name);
         r.name->SetHint(_L("Mode name (required)"));
         r.name->SetToolTip(_L("Name of this parallel mode, as it appears in the plate's IDEX/IQEX mode "
                               "selector. Stored in the project by name, so renaming a mode that "
@@ -425,7 +473,7 @@ void IMEXModesCtrl::add_row(const std::string& name,
             if (it != tool_roles.end()) role = it->second;
 
             auto* btn = new wxButton(grid_panel, wxID_ANY, wxEmptyString,
-                                     wxDefaultPosition, FromDIP(wxSize(36, 26)), wxBU_EXACTFIT);
+                                     wxDefaultPosition, FromDIP(wxSize(24, 24)), wxBU_EXACTFIT);
             apply_btn(btn, tool_idx, role);
 
             int btn_pos = (int)r.btns.size();
@@ -493,11 +541,23 @@ void IMEXModesCtrl::add_row(const std::string& name,
 
     // from_u8(): `gcode` arrives from the preset as UTF-8. Handing the raw std::string to
     // wxString would decode it through the current locale's encoding instead.
-    r.gcode = new wxTextCtrl(r.panel, wxID_ANY, from_u8(gcode),
-                             wxDefaultPosition, FromDIP(wxSize(220, 54)), wxTE_MULTILINE);
+    auto* gcode_frame = framed_input(r.panel);
+    // wxBORDER_NONE matters off GTK: a wxTextCtrl's default border resolves to a themed or
+    // sunken edge on Windows and to NSBezelBorder on macOS, which would sit immediately inside
+    // the frame below and read as two borders.
+    r.gcode = new wxTextCtrl(gcode_frame, wxID_ANY, from_u8(gcode),
+                             wxDefaultPosition, FromDIP(wxSize(220, 54)),
+                             wxTE_MULTILINE | wxBORDER_NONE);
+    gcode_frame->GetSizer()->Add(r.gcode, 1, wxEXPAND | wxALL, 1);
+    // Same monospace face EditGCodeDialog gives its editor, so G-code reads the same
+    // wherever it is edited; and the same explicit-light-then-UpdateDarkUI treatment as the
+    // name field above, for the same reason.
+    r.gcode->SetFont(wxGetApp().code_font());
+    r.gcode->SetBackgroundColour(*wxWHITE);
+    wxGetApp().UpdateDarkUI(r.gcode);
     // Tooltip only, no SetHint(): wxTextEntry has no native placeholder for a
     // multiline control, so wxWidgets emulates one by writing the hint into the
-    // control as grey text — indistinguishable from real G-code in this box.
+    // control as gray text — indistinguishable from real G-code in this box.
     r.gcode->SetToolTip(_L("G-code emitted once at the start of a print that uses this mode, before "
                            "the machine start G-code. This is where the printer is put into the "
                            "matching firmware mode — for example a Klipper SET_PRINT_MODE call or a "
@@ -508,17 +568,22 @@ void IMEXModesCtrl::add_row(const std::string& name,
     r.gcode->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { notify(); });
 
     if (!is_primary) {
-        sizer->Add(r.name, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
+        name_frame->SetSizerAndFit(name_frame->GetSizer());
+        name_col->Add(name_frame, 0);
     }
+    sizer->Add(name_col, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     sizer->Add(grid_panel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
-    sizer->Add(r.gcode,   1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+    sizer->Add(gcode_frame, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
 
-    // Edit + remove (for non-primary) — stacked vertically.
+    // Edit on top, per-row reset under it, in one column top-aligned with the G-code box.
+    // Remove is not here -- it sits under the name field, away from the button people press
+    // most. The column is top- rather than centre-justified so the edit icon keeps the same
+    // position whatever a row's height turns out to be.
     auto* btn_col = new wxBoxSizer(wxVERTICAL);
     wxTextCtrl* gcode_ctrl = r.gcode;
     auto* ph_btn = new ScalableButton(r.panel, wxID_ANY, "edit", wxEmptyString,
                                       wxDefaultSize, wxDefaultPosition,
-                                      wxBU_EXACTFIT | wxNO_BORDER, 16);
+                                      wxBU_EXACTFIT | wxNO_BORDER, /*use_default_disabled_bitmap=*/true, kImexIconPx);
     ph_btn->SetToolTip(_L("Edit G-code / browse placeholders"));
     ph_btn->Bind(wxEVT_BUTTON, [this, gcode_ctrl](wxCommandEvent&) {
         // EditGCodeDialog takes and returns UTF-8 (get_edited_gcode() is a ToUTF8()).
@@ -531,7 +596,7 @@ void IMEXModesCtrl::add_row(const std::string& name,
     if (!is_primary) {
         auto* rm = new ScalableButton(r.panel, wxID_ANY, "imex_remove", wxEmptyString,
                                       wxDefaultSize, wxDefaultPosition,
-                                      wxBU_EXACTFIT | wxNO_BORDER, 16);
+                                      wxBU_EXACTFIT | wxNO_BORDER, /*use_default_disabled_bitmap=*/true, kImexIconPx);
         rm->SetToolTip(_L("Remove mode"));
         rm->Bind(wxEVT_BUTTON, [this, this_panel](wxCommandEvent&) {
             const std::vector<std::string> removed = remove_row(this_panel);
@@ -544,27 +609,22 @@ void IMEXModesCtrl::add_row(const std::string& name,
             if (removed_cb && !removed.empty())
                 removed_cb(removed);
         });
-        btn_col->Add(rm, 0);
+        name_col->Add(rm, 0, wxALIGN_RIGHT | wxTOP, FromDIP(2));
     }
-    sizer->Add(btn_col, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
-
-    // Per-row reset gets its own column on the right so the icon reads as
-    // distinct from the edit/remove column. Reset only renders when this row
-    // has a counterpart in the saved preset (user-added rows beyond the saved
-    // mode count get no reset — the X button covers "remove user-added row").
-    auto* reset_col = new wxBoxSizer(wxVERTICAL);
+    // Reset only renders when this row has a counterpart in the saved preset (user-added rows
+    // beyond the saved mode count get no reset — remove covers "drop the row I just added").
     wxPanel* this_panel_for_reset = r.panel;
     if (row_has_parent_counterpart(static_cast<int>(m_rows.size()))) {
         r.reset_btn = new ScalableButton(r.panel, wxID_ANY, "dot", wxEmptyString,
                                          wxDefaultSize, wxDefaultPosition,
-                                         wxBU_EXACTFIT | wxNO_BORDER, 16);
+                                         wxBU_EXACTFIT | wxNO_BORDER, /*use_default_disabled_bitmap=*/true, kImexIconPx);
         r.reset_btn->SetToolTip(_L("Discard in-session edits to this mode (snap back to saved value)"));
         r.reset_btn->Bind(wxEVT_BUTTON, [this, this_panel_for_reset](wxCommandEvent&) {
             reset_row_to_parent(this_panel_for_reset);
         });
-        reset_col->Add(r.reset_btn, 0, wxALIGN_CENTER_VERTICAL);
+        btn_col->Add(r.reset_btn, 0, wxTOP, FromDIP(2));
     }
-    sizer->Add(reset_col, 0, wxALIGN_CENTER_VERTICAL);
+    sizer->Add(btn_col, 0, wxALIGN_TOP | wxRIGHT, FromDIP(4));
     r.panel->SetSizerAndFit(sizer);
 
     m_rows_sizer->Add(r.panel, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
@@ -606,7 +666,7 @@ std::vector<std::string> IMEXModesCtrl::remove_row(wxPanel* panel) {
 
         Layout();
         // Defer widget destruction so any in-flight GTK events for
-        // panel's children (including the × button we're inside) finish
+        // panel's children (including the remove button we're inside) finish
         // processing before the wxEvtHandlers are freed.
         wxTheApp->CallAfter([panel]() { panel->Destroy(); });
         return removed_names;

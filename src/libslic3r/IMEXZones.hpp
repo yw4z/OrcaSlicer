@@ -27,18 +27,18 @@ struct ImexZoneLayout
     // Physical T-index of the active mode's Primary tool; -1 when the layout is empty.
     int primary_head = -1;
 
-    // Physical head -> XY centre of that head's zone. One entry per tool the mode makes
+    // Physical head -> XY center of that head's zone. One entry per tool the mode makes
     // active, Primary included. A Span tool has no entry: it shares the primary's zone
-    // rather than owning one. Ghost placement offsets by centre[head] - centre[primary].
+    // rather than owning one. Ghost placement offsets by center[head] - center[primary].
     //
-    // EXCEPTION, read before using the X component. These centres are built from the head's
+    // EXCEPTION, read before using the X component. These centers are built from the head's
     // OWN grid cell, but an AGGREGATED representative's zone rectangle is pinned to the
     // primary's column and then expanded to a full-width row strip. So for an aggregated head
-    // whose own column differs from the primary's, centre[head].x names a column its painted
-    // zone does not have, and `centre[head] - centre[primary]` carries a bogus X offset.
+    // whose own column differs from the primary's, center[head].x names a column its painted
+    // zone does not have, and `center[head] - center[primary]` carries a bogus X offset.
     // Reachable at imex_tools_per_gantry >= 3 when the primary-column tool on the aggregated
     // gantry is inactive (e.g. tpg=3, gantry_count=2, mode "0:P,1:S,4:M,5:M").
-    // Both current consumers pin X to the primary's centre for aggregated heads --
+    // Both current consumers pin X to the primary's center for aggregated heads --
     // PartPlate::calc_imex_ghosts() via bed_x_center, GCodeViewer via sec_center_of() -- and a
     // new consumer must do the same until this is either pinned here or the aggregate flag is
     // exposed on the layout.

@@ -1272,11 +1272,18 @@ void PartPlate::render_imex_zones(bool force_default_color)
     };
 
     // Standard (Okabe-Ito orange + sky blue)
+    // Alphas are deliberately low: these fills cover whole quadrants of the bed and sit under
+    // the model for the entire session, so at the saturation that reads well on a swatch they
+    // dominate the scene. The zone a tool owns only has to be legible, not loud.
+    // The three themes below keep their original alphas -- they are chosen for discriminability
+    // (and k_high_contrast explicitly for low vision), which is the opposite trade.
     static const IMEXTheme k_standard = {
-        { 0.337f, 0.706f, 0.914f, 0.45f },   // copy   — sky blue  #56B4E9
-        { 0.902f, 0.624f, 0.000f, 0.45f },   // mirror — orange    #E69F00
-        { 0.850f, 0.100f, 0.100f, 0.55f },   // danger — red
-        { 0.300f, 0.900f, 0.200f, 0.40f },   // margin — lime green
+        { 0.337f, 0.706f, 0.914f, 0.22f },   // copy   — sky blue  #56B4E9
+        { 0.902f, 0.624f, 0.000f, 0.22f },   // mirror — orange    #E69F00
+        // Dimmed less than the fills: this strip marks where a head collides, so it stays the
+        // most prominent thing on the bed even after the surrounding zones recede.
+        { 0.850f, 0.100f, 0.100f, 0.40f },   // danger — red
+        { 0.300f, 0.900f, 0.200f, 0.20f },   // margin — lime green
     };
     // Deuteranopia / Protanopia: avoids red-green confusion.
     // Danger strip uses strong blue-violet (red invisible to protanopes).
