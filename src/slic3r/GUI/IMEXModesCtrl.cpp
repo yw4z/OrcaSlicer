@@ -12,6 +12,7 @@
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/Widgets/Button.hpp"
+#include "slic3r/GUI/Widgets/ComboBox.hpp"
 #include "slic3r/GUI/Widgets/StateColor.hpp"
 #include "slic3r/GUI/wxExtensions.hpp"
 
@@ -21,6 +22,10 @@ namespace GUI {
 // Icon size for every button in this control -- the help button beside the legend and the
 // edit / remove buttons on each row. One constant so the three cannot drift apart.
 static constexpr int kImexIconPx = 20;
+
+// Mode column width. The name field carries a drop-down arrow, which eats interior space, so
+// this is wider than a bare text field needed. The header spacer below derives from it.
+static constexpr int kNameColPx = 176;
 
 IMEXModesCtrl::IMEXModesCtrl(wxWindow* parent, int n_cols, int n_rows, int layout)
     : wxPanel(parent, wxID_ANY), m_n_cols(std::max(1, n_cols)), m_n_rows(std::max(1, n_rows)), m_layout(layout)
@@ -148,7 +153,7 @@ void IMEXModesCtrl::rebuild_info_and_header() {
                              "(for example a Klipper SET_PRINT_MODE call). The slicer only emits "
                              "the Primary tool's paths; the firmware drives the others."));
     const int grid_px = m_n_cols * FromDIP(26) - FromDIP(2);  // tile 24 + 2px gap, less the trailing gap
-    const int name_col_px = FromDIP(136);
+    const int name_col_px = FromDIP(kNameColPx + 6);
     hdr_sizer->Add(hdr_name,  0, wxALIGN_CENTER_VERTICAL);
     hdr_sizer->AddSpacer(std::max(0, name_col_px - hdr_name->GetBestSize().x));
     hdr_sizer->Add(hdr_tools, 0, wxALIGN_CENTER_VERTICAL);
@@ -207,7 +212,7 @@ IMEXModesCtrl::get_mode_data() const {
         // through wxConvLibc, which on Windows is the ANSI codepage. The two agree only on a
         // UTF-8 locale, so mixing them turns a non-ASCII mode name into mojibake (or an empty
         // field, once from_u8() rejects it) on the round trip through the preset.
-        std::string nm = r.is_primary ? std::string(kImexPrimaryMode) : into_u8(r.name->GetValue());
+        std::string nm = r.is_primary ? std::string(kImexPrimaryMode) : into_u8(r.name->GetTextCtrl()->GetValue());
         if (nm.empty()) nm = unique_mode_name(names);
         names.push_back(nm);
         tools.push_back(active_tools_string(r));
@@ -251,7 +256,7 @@ std::string IMEXModesCtrl::unique_mode_name(const std::vector<std::string>& also
         if (std::find(also_taken.begin(), also_taken.end(), cand) != also_taken.end())
             return true;
         for (const auto& r : m_rows)
-            if (!r.is_primary && r.name && into_u8(r.name->GetValue()) == cand)
+            if (!r.is_primary && r.name && into_u8(r.name->GetTextCtrl()->GetValue()) == cand)
                 return true;
         return false;
     };
@@ -329,6 +334,38 @@ std::optional<ImexRole> IMEXModesCtrl::next_tile_role(std::optional<ImexRole> cu
     return std::nullopt;  // walked off the end → back to Inactive
 }
 
+// The tool grid says which topologies this printer can express, so a two-tool machine is not
+// offered the four-carriage modes. Names a row already uses are dropped, leaving only what is
+// still free. These are conventions, not keywords -- nothing in the slicer reads a mode's name
+// except as the key a plate stores -- so the field stays typeable and this is only a shortcut.
+std::vector<wxString> IMEXModesCtrl::suggested_mode_names() const {
+    std::vector<std::string> pool = { "copy", "mirror" };
+    // Four carriages to drive, however they are arranged.
+    if (m_n_cols * m_n_rows >= 4)
+        for (const char* n : { "iq-copy", "iq-mirror" })
+            pool.emplace_back(n);
+    // Multicolor needs a Span partner beside the primary, so two tools on a gantry, and a
+    // second gantry to copy the pair onto. imex_resolve_routing() refuses a multicolor mode
+    // with no Span on the primary's gantry, so offering one here that it would reject is
+    // worse than not offering it at all.
+    if (m_n_cols >= 2 && m_n_rows >= 2)
+        for (const char* n : { "mc-copy", "mc-mirror" })
+            pool.emplace_back(n);
+
+    std::vector<wxString> out;
+    for (const std::string& cand : pool) {
+        bool taken = false;
+        for (const Row& r : m_rows)
+            if (!r.is_primary && r.name && into_u8(r.name->GetTextCtrl()->GetValue()) == cand) {
+                taken = true;
+                break;
+            }
+        if (!taken)
+            out.push_back(from_u8(cand));
+    }
+    return out;
+}
+
 void IMEXModesCtrl::apply_btn(wxButton* btn, int tool_idx, std::optional<ImexRole> role) {
     // Always label as T{n} — the button color already encodes the role.
     const RoleStyle style = role_style(role);
@@ -341,7 +378,7 @@ void IMEXModesCtrl::apply_btn(wxButton* btn, int tool_idx, std::optional<ImexRol
 IMEXModesCtrl::RowSnapshot IMEXModesCtrl::snapshot_row(const Row& r) const {
     RowSnapshot s;
     // UTF-8 throughout -- this snapshot is compared against the preset's own values.
-    s.name  = r.is_primary ? std::string(kImexPrimaryMode) : into_u8(r.name->GetValue());
+    s.name  = r.is_primary ? std::string(kImexPrimaryMode) : into_u8(r.name->GetTextCtrl()->GetValue());
     s.tools = active_tools_string(r);
     s.gcode = into_u8(r.gcode->GetValue());
     return s;
@@ -385,13 +422,12 @@ void IMEXModesCtrl::add_row(const std::string& name,
     // beneath it. Remove used to sit next to Edit in the right-hand column, one icon apart
     // from a button people press often -- a destructive action does not belong there.
     auto* name_col = new wxBoxSizer(wxVERTICAL);
-    wxPanel* name_frame = nullptr;   // border frame for the name field; null on the Primary row
 
     if (is_primary) {
         r.orig_name = kImexPrimaryMode;
         r.name = nullptr;
         auto* lbl = new wxStaticText(r.panel, wxID_ANY, _L("Primary"),
-                                     wxDefaultPosition, FromDIP(wxSize(130, -1)));
+                                     wxDefaultPosition, FromDIP(wxSize(kNameColPx, -1)));
         wxFont f = lbl->GetFont();
         f.SetWeight(wxFONTWEIGHT_BOLD);
         lbl->SetFont(f);
@@ -407,31 +443,47 @@ void IMEXModesCtrl::add_row(const std::string& name,
         // row looked like this. remove_row() reports it alongside the current name, because
         // renaming is not routed through on_mode_removed and the two then diverge.
         r.orig_name = nm;
-        name_frame = framed_input(r.panel);
-        r.name = new wxTextCtrl(name_frame, wxID_ANY, from_u8(nm), wxDefaultPosition, FromDIP(wxSize(130, -1)));
-        name_frame->GetSizer()->Add(r.name, 1, wxEXPAND | wxALL, 1);
-        // An unset background makes the field inherit GTK's widget default rather than the
-        // app's, which reads as a lighter box against this panel. Set the light-theme color
-        // explicitly, then let UpdateDarkUI swap it for the dark palette.
-        r.name->SetBackgroundColour(*wxWHITE);
-        wxGetApp().UpdateDarkUI(r.name);
-        r.name->SetHint(_L("Mode name (required)"));
+        // Editable: no wxCB_READONLY, so the inner text control stays live and any name can
+        // still be typed, which the mode table needs -- it is authored for whatever hardware
+        // the user has. ComboBox derives from TextInput and paints the same border the settings
+        // fields do, so it needs no frame panel of its own.
+        r.name = new ::ComboBox(r.panel, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                                FromDIP(wxSize(kNameColPx, -1)), 0, nullptr, 0);
+        for (const wxString& sug : suggested_mode_names())
+            r.name->Append(sug);
+        // Constructed empty on purpose: ComboBox hands its value to TextInput as the LABEL --
+        // the small right-aligned slot a unit like "mm" lives in -- because a read-only combo
+        // hides the text control and shows that label instead. This one is editable, so the
+        // value belongs in the text control; left in the label it renders as a second, greyed
+        // copy of the name beside the hint.
+        r.name->GetTextCtrl()->ChangeValue(from_u8(nm));
+        r.name->GetTextCtrl()->SetHint(_L("Mode name (required)"));
         r.name->SetToolTip(_L("Name of this parallel mode, as it appears in the plate's IDEX/IQEX mode "
                               "selector. Stored in the project by name, so renaming a mode that "
                               "plates already use makes them fall back to Primary. Cannot be empty "
                               "— a blank name is replaced with a generated one."));
-        r.name->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { notify(); });
+        r.name->GetTextCtrl()->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { notify(); });
+        // Picking a suggestion writes it into the text control, so everything downstream keeps
+        // reading one place for the name.
+        r.name->Bind(wxEVT_COMBOBOX, [this, cb = r.name](wxCommandEvent& e) {
+            // SetSelection() has already written the pick into the label; move it to the text
+            // control and clear the label again, so the name lives in exactly one place.
+            cb->GetTextCtrl()->ChangeValue(cb->GetDropDown().GetValue());
+            cb->SetLabel(wxEmptyString);
+            e.Skip();
+            notify();
+        });
         // Restore a name rather than let the row reach get_mode_data() unnamed.
         // Row is located by panel pointer (stable across add/remove) so a
         // kill-focus delivered while the rows are being torn down is a no-op.
-        r.name->Bind(wxEVT_KILL_FOCUS, [this, panel = r.panel](wxFocusEvent& e) {
+        r.name->GetTextCtrl()->Bind(wxEVT_KILL_FOCUS, [this, panel = r.panel](wxFocusEvent& e) {
             e.Skip();
             if (m_clearing_rows) return; // focus-out emitted while the rows are being deleted
             for (auto& row_ref : m_rows) {
                 if (row_ref.panel != panel) continue;
-                if (!row_ref.name || !row_ref.name->GetValue().empty()) return;
+                if (!row_ref.name || !row_ref.name->GetTextCtrl()->GetValue().empty()) return;
                 // ChangeValue(), not SetValue(): no nested wxEVT_TEXT.
-                row_ref.name->ChangeValue(from_u8(unique_mode_name({})));
+                row_ref.name->GetTextCtrl()->ChangeValue(from_u8(unique_mode_name({})));
                 notify();
                 return;
             }
@@ -567,10 +619,8 @@ void IMEXModesCtrl::add_row(const std::string& name,
                            "needs no firmware setup."));
     r.gcode->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { notify(); });
 
-    if (!is_primary) {
-        name_frame->SetSizerAndFit(name_frame->GetSizer());
-        name_col->Add(name_frame, 0);
-    }
+    if (!is_primary)
+        name_col->Add(r.name, 0);
     sizer->Add(name_col, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     sizer->Add(grid_panel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     sizer->Add(gcode_frame, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
@@ -643,7 +693,7 @@ std::vector<std::string> IMEXModesCtrl::remove_row(wxPanel* panel) {
         // name field notifies on every keystroke). Reporting only the current name is what
         // let "rename, then delete" leave the plate on a mode that no longer exists.
         std::vector<std::string> removed_names;
-        const std::string current = m_rows[i].name ? into_u8(m_rows[i].name->GetValue())
+        const std::string current = m_rows[i].name ? into_u8(m_rows[i].name->GetTextCtrl()->GetValue())
                                                    : std::string();
         for (const std::string& n : {m_rows[i].orig_name, current})
             if (!n.empty() && std::find(removed_names.begin(), removed_names.end(), n) == removed_names.end())
@@ -658,7 +708,7 @@ std::vector<std::string> IMEXModesCtrl::remove_row(wxPanel* panel) {
         auto still_in_use = [this](const std::string& n) {
             return std::any_of(m_rows.begin(), m_rows.end(), [&n](const Row& r) {
                 return r.is_primary ? n == kImexPrimaryMode
-                                    : r.name && into_u8(r.name->GetValue()) == n;
+                                    : r.name && into_u8(r.name->GetTextCtrl()->GetValue()) == n;
             });
         };
         removed_names.erase(std::remove_if(removed_names.begin(), removed_names.end(), still_in_use),
@@ -728,7 +778,7 @@ void IMEXModesCtrl::reset_row_to_parent(wxPanel* panel) {
         if (r.panel != panel) continue;
         if (!p_names || i >= p_names->values.size()) return;
         if (!r.is_primary && r.name)
-            r.name->ChangeValue(from_u8(p_names->values[i]));
+            r.name->GetTextCtrl()->ChangeValue(from_u8(p_names->values[i]));
         if (p_gcodes && i < p_gcodes->values.size())
             r.gcode->ChangeValue(from_u8(p_gcodes->values[i]));
         if (p_tools && i < p_tools->values.size()) {

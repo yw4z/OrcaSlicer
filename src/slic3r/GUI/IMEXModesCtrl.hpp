@@ -18,6 +18,8 @@
 
 class ScalableButton;
 
+class ComboBox;
+
 namespace Slic3r {
 namespace GUI {
 
@@ -151,11 +153,14 @@ private:
     static std::optional<ImexRole> next_tile_role(std::optional<ImexRole> current,
                                                   const std::function<bool(ImexRole)>& allowed);
 
+    // Mode names this printer's tool grid can actually carry, minus those already taken.
+    std::vector<wxString> suggested_mode_names() const;
+
     void apply_btn(wxButton* btn, int tool_idx, std::optional<ImexRole> role);
 
     struct Row {
         wxPanel*             panel;
-        wxTextCtrl*          name;       // nullptr for primary row (name is fixed)
+        ::ComboBox*          name;       // nullptr for primary row (name is fixed)
         wxTextCtrl*          gcode;
         std::vector<wxButton*> btns;
         std::vector<std::optional<ImexRole>> btn_roles;   // nullopt == Inactive
