@@ -4689,67 +4689,6 @@ void PrintObject::combine_infill()
     }
 }
 
-// Belt printer: clip an ExtrusionEntityCollection to a region defined by clip_expoly.
-// Handles ExtrusionPath, ExtrusionMultiPath, ExtrusionLoop, and nested ExtrusionEntityCollection.
-static void clip_support_fills(ExtrusionEntityCollection &fills, const ExPolygons &clip_region)
-{
-    ExtrusionEntitiesPtr new_entities;
-    for (ExtrusionEntity *entity : fills.entities) {
-        if (auto *path = dynamic_cast<ExtrusionPath *>(entity)) {
-            ExtrusionEntityCollection clipped;
-            path->intersect_expolygons(clip_region, &clipped);
-            if (!clipped.empty()) {
-                for (ExtrusionEntity *e : clipped.entities)
-                    new_entities.push_back(e->clone());
-            }
-            delete entity;
-        } else if (auto *multipath = dynamic_cast<ExtrusionMultiPath *>(entity)) {
-            ExtrusionPaths new_paths;
-            for (const ExtrusionPath &p : multipath->paths) {
-                ExtrusionEntityCollection clipped;
-                p.intersect_expolygons(clip_region, &clipped);
-                for (ExtrusionEntity *e : clipped.entities)
-                    if (auto *cp = dynamic_cast<ExtrusionPath *>(e))
-                        new_paths.push_back(std::move(*cp));
-            }
-            if (!new_paths.empty()) {
-                multipath->paths = std::move(new_paths);
-                new_entities.push_back(multipath);
-            } else {
-                delete entity;
-            }
-        } else if (auto *loop = dynamic_cast<ExtrusionLoop *>(entity)) {
-            ExtrusionPaths new_paths;
-            for (const ExtrusionPath &p : loop->paths) {
-                ExtrusionEntityCollection clipped;
-                p.intersect_expolygons(clip_region, &clipped);
-                for (ExtrusionEntity *e : clipped.entities)
-                    if (auto *cp = dynamic_cast<ExtrusionPath *>(e))
-                        new_paths.push_back(std::move(*cp));
-            }
-            if (!new_paths.empty()) {
-                // Loop is no longer a closed loop after clipping; emit as individual paths.
-                for (auto &p : new_paths)
-                    new_entities.push_back(new ExtrusionPath(std::move(p)));
-                delete entity;
-            } else {
-                delete entity;
-            }
-        } else if (auto *coll = dynamic_cast<ExtrusionEntityCollection *>(entity)) {
-            clip_support_fills(*coll, clip_region);
-            if (!coll->empty()) {
-                new_entities.push_back(coll);
-            } else {
-                delete entity;
-            }
-        } else {
-            // Unknown entity type — keep as-is.
-            new_entities.push_back(entity);
-        }
-    }
-    fills.entities = std::move(new_entities);
-}
-
 void PrintObject::_generate_support_material()
 {
     if (is_tree(m_config.support_type.value)) {
