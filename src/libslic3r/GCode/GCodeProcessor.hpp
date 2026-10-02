@@ -1164,6 +1164,7 @@ class Print;
         // transform on move positions so bounds checks operate in the
         // pre-machine-frame (build-volume) frame.
         MachineFrameTransform m_machine_frame_transform;
+        bool                  m_belt_printer{ false };
 
         unsigned int m_line_id;
         unsigned int m_last_line_id;
