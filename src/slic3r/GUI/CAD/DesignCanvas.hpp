@@ -1,11 +1,19 @@
 #ifndef slic3r_DesignCanvas_hpp_
 #define slic3r_DesignCanvas_hpp_
 
+#include <vector>
+#include "libslic3r/Point.hpp"
+#include "libslic3r/CAD/CadDocument.hpp"
+#include "libslic3r/Color.hpp"
+#include <utility>
+#include <wx/colour.h>
+#include <wx/event.h>
 #include <wx/panel.h>
 
 #include <functional>
 #include <memory>
 #include <string>
+#include <wx/string.h>
 
 #include "slic3r/GUI/3DBed.hpp"
 #include "slic3r/GUI/Camera.hpp"
