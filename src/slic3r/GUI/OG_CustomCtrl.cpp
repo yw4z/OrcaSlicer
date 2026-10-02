@@ -808,7 +808,7 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord h_pos, wxCoord v_pos)
         wxCoord icon_pos = h_pos;
         if (is_multi_extruder) {
             static ScalableBitmap multi_extruder(ctrl, "multi_extruder");
-            h_pos = draw_act_bmps(dc, wxPoint(h_pos, v_pos), multi_extruder.bmp(), multi_extruder.bmp(), false, 0, true).x;
+            h_pos = draw_act_bmps(dc, wxPoint(h_pos - multi_extruder.bmp().GetWidth() - ctrl->m_h_gap, v_pos), multi_extruder.bmp(), multi_extruder.bmp(), false, 0, true).x + ctrl->m_h_gap;
         }
         is_url_string = !suppress_hyperlinks && !og_line.label_path.empty();
         // BBS
