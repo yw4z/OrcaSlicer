@@ -681,3 +681,32 @@ TEST_CASE("Belt printers switch the part fan by height above the belt", "[Print]
     CHECK(fan_off > 10);
     CHECK(fan_on  > 10);
 }
+
+// Organic supports under an overhang on a belt printer reach below the object's first layer,
+// where the virtual belt raft layers sit at negative Z. The lowest of them used to get a
+// negative height and abort slicing with a negative flow error.
+TEST_CASE("Belt printers slice organic tree supports that reach the belt", "[Print][belt][Support]")
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "belt_printer",               1 },
+        { "belt_slice_rotation",        "x" },
+        { "belt_slice_rotation_angle",  45 },
+        { "belt_slice_rotation_global", 1 },
+        { "gcode_remap_x",              "rev_x" },
+        { "gcode_remap_y",              "pos_z" },
+        { "gcode_remap_z",              "pos_y" },
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "z_hop",                      0 },
+        { "enable_support",             1 },
+        { "support_type",               "tree(auto)" },
+        { "support_style",              "organic" },
+        { "machine_start_gcode",        "T[initial_tool]\n" },
+        { "layer_change_gcode",         "G92 E0\n" },
+    });
+    std::string gcode;
+    REQUIRE_NOTHROW(gcode = slice({ TestMesh::overhang }, config));
+    CHECK(! gcode.empty());
+}
