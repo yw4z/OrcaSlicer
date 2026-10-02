@@ -1279,7 +1279,7 @@ void Tab::check_extruder_options_status(int index, bool &sys_extruder, bool &mod
     }
 
     for (auto page : pages_to_check) {
-        /*if (page->title() != "Speed" && page->title() != "Motion ability" && page->title() != "Filament" && page->title() != "Setting Overrides" && page->title() != "Multimaterial") {
+        /*if (page->title() != "Speed" && page->title() != "Motion" && page->title() != "Filament" && page->title() != "Overrides" && page->title() != "Multi.") {
             continue;
         }*/
         for (auto group : page->m_optgroups) {
@@ -1421,7 +1421,7 @@ void Tab::update_changed_tree_ui()
                 continue;
             bool sys_page = true;
             bool modified_page = false;
-            if (page->title() == "General") {
+            if (page->title() == "Printer") {
                 std::initializer_list<const char*> optional_keys{ "extruders_count", "printable_area" };
                 for (auto &opt_key : optional_keys) {
                     get_sys_and_mod_flags(opt_key, sys_page, modified_page);
@@ -1437,7 +1437,7 @@ void Tab::update_changed_tree_ui()
                     get_sys_and_mod_flags("compatible_printers", sys_page, modified_page);
                 }
             }
-            if (page->title() == "Speed" || page->title() == "Motion ability" || page->title() == "Filament" || page->title() == "Setting Overrides" || page->title() == "Multimaterial") {
+            if (page->title() == "Speed" || page->title() == "Motion" || page->title() == "Filament" || page->title() == "Overrides" || page->title() == "Multi.") {
                 auto options = generate_extruder_options();
                 for (size_t switch_index = 0; switch_index < options.size(); ++switch_index) {
                     std::vector<PageShp> pages_to_check = { page };
@@ -3095,7 +3095,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("tree_support_auto_brim", "support_settings_tree");
         optgroup->append_single_option_line("tree_support_brim_width", "support_settings_tree");
 
-    page = add_options_page(L("Multimaterial"), "custom-gcode_multi_material"); // ORCA: icon only visible on placeholders
+    page = add_options_page(L("Multi."), "custom-gcode_multi_material"); // ORCA: icon only visible on placeholders
         optgroup = page->new_optgroup(L("Prime tower"), L"param_tower");
         optgroup->append_single_option_line("enable_prime_tower", "multimaterial_settings_prime_tower");
         optgroup->append_single_option_line("prime_tower_skip_points", "multimaterial_settings_prime_tower");
@@ -4130,7 +4130,7 @@ void TabFilament::set_custom_gcode(const t_config_option_key& opt_key, const std
 void TabFilament::add_filament_overrides_page()
 {
     //BBS
-    PageShp page = add_options_page(L("Setting Overrides"), "custom-gcode_setting_override"); // ORCA: icon only visible on placeholders
+    PageShp page = add_options_page(L("Overrides"), "custom-gcode_setting_override"); // ORCA: icon only visible on placeholders
 
     const int extruder_idx = 0; // #ys_FIXME
 
@@ -4291,7 +4291,7 @@ void TabFilament::add_filament_overrides_page()
 
 void TabFilament::update_filament_overrides_page(const DynamicPrintConfig* printers_config)
 {
-    if (!m_active_page || m_active_page->title() != "Setting Overrides")
+    if (!m_active_page || m_active_page->title() != "Overrides")
         return;
 
     //BBS: GUI refactor
@@ -4703,7 +4703,7 @@ void TabFilament::build()
         optgroup = page->new_optgroup(L("Plugin Configuration"), L"param_gcode");
         optgroup->append_single_option_line("filament_plugin_config_overrides");
 
-    page = add_options_page(L("Multimaterial"), "custom-gcode_multi_material"); // ORCA: icon only visible on placeholders
+    page = add_options_page(L("Multi."), "custom-gcode_multi_material"); // ORCA: icon only visible on placeholders
         optgroup = page->new_optgroup(L("Wipe tower parameters"), "param_tower");
         optgroup->append_single_option_line("filament_minimal_purge_on_wipe_tower", "material_multimaterial#multimaterial-wipe-tower-parameters", 0);
         optgroup->append_single_option_line("filament_tower_interface_pre_extrusion_dist", "material_multimaterial#multimaterial-wipe-tower-parameters");
@@ -4931,10 +4931,10 @@ void TabFilament::toggle_options()
         toggle_option("filament_adaptive_volumetric_speed", enable_fit, 256 + variant_index);
     }
 
-    if (m_active_page->title() == L("Setting Overrides"))
+    if (m_active_page->title() == L("Overrides"))
         update_filament_overrides_page(&printer_cfg);
 
-    if (m_active_page->title() == L("Multimaterial")) {
+    if (m_active_page->title() == L("Multi.")) {
         // Orca: hide specific settings for BBL printers
         toggle_option("filament_minimal_purge_on_wipe_tower", !is_BBL_printer, 256 + variant_index);
         for (auto el : {"filament_loading_speed_start", "filament_loading_speed",
@@ -5137,7 +5137,7 @@ void TabPrinter::build_fff()
     m_sys_extruders_count = parent_preset == nullptr ? 0 :
             static_cast<const ConfigOptionFloats*>(parent_preset->config.option("nozzle_diameter"))->values.size();
 
-    auto page = add_options_page(L("Basic information"), "custom-gcode_object-info"); // ORCA: icon only visible on placeholders
+    auto page = add_options_page(L("Printer"), "custom-gcode_object-info"); // ORCA: icon only visible on placeholders
     auto optgroup = page->new_optgroup(L("Printable space"), "param_printable_space");
 
         create_line_with_widget(optgroup.get(), "printable_area", "custom-svg-and-png-bed-textures_124612", [this](wxWindow* parent) {
@@ -5269,7 +5269,7 @@ void TabPrinter::build_fff()
 
     const int gcode_field_height = 15; // 150
     const int notes_field_height = 25; // 250
-    page = add_options_page(L("Machine G-code"), "custom-gcode_gcode"); // ORCA: icon only visible on placeholders
+    page = add_options_page(L("G-code"), "custom-gcode_gcode"); // ORCA: icon only visible on placeholders
         optgroup = page->new_optgroup(L("File header G-code"), L"param_gcode", 0);
         optgroup->m_on_change = [this, &optgroup_title = optgroup->title](const t_config_option_key& opt_key, const boost::any& value) {
             validate_custom_gcode_cb(this, optgroup_title, opt_key, value);
@@ -5420,7 +5420,7 @@ void TabPrinter::build_sla()
 {
     //if (!m_pages.empty())
     //    m_pages.resize(0);
-    //auto page = add_options_page(L("General"), "printer");
+    //auto page = add_options_page(L("Printer"), "printer");
     //auto optgroup = page->new_optgroup(L("Size and coordinates"));
 
     //create_line_with_widget(optgroup.get(), "printable_area", "custom-svg-and-png-bed-textures_124612", [this](wxWindow* parent) {
@@ -5517,7 +5517,7 @@ void TabPrinter::append_option_line(ConfigOptionsGroupShp optgroup, const std::s
 
 PageShp TabPrinter::build_kinematics_page()
 {
-    auto page = add_options_page(L("Motion ability"), "custom-gcode_motion", true); // ORCA: icon only visible on placeholders
+    auto page = add_options_page(L("Motion"), "custom-gcode_motion", true); // ORCA: icon only visible on placeholders
 
     if (m_use_silent_mode) {
         // Legend for OptionsGroups
@@ -5610,7 +5610,7 @@ PageShp TabPrinter::build_kinematics_page()
 /* Previous name build_extruder_pages().
  *
  * This function was renamed because of now it implements not just an extruder pages building,
- * but "Motion ability" and "Single extruder MM setup" too
+ * but "Motion" and "Single extruder MM setup" too
  * (These pages can changes according to the another values of a current preset)
  * */
 void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
@@ -5628,7 +5628,7 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     // Add/delete Kinematics page according to is_marlin_flavor
     size_t existed_page = 0;
     for (size_t i = n_before_extruders; i < m_pages.size(); ++i) // first make sure it's not there already
-        if (m_pages[i]->title().find(L("Motion ability")) != std::string::npos) {
+        if (m_pages[i]->title().find(L("Motion")) != std::string::npos) {
             if (m_rebuild_kinematics_page)
                 m_pages.erase(m_pages.begin() + i);
             else
@@ -5651,7 +5651,7 @@ if (is_marlin_flavor)
 
     if (from_initial_build) {
         // create a page, but pretend it's an extruder page, so we can add it to m_pages ourselves
-        auto page     = add_options_page(L("Multimaterial"), "custom-gcode_multi_material", true); // ORCA: icon only visible on placeholders
+        auto page     = add_options_page(L("Multi."), "custom-gcode_multi_material", true); // ORCA: icon only visible on placeholders
         auto optgroup = page->new_optgroup(L("Single extruder multi-material setup"), "param_multi_material");
         optgroup->append_single_option_line("single_extruder_multi_material", "printer_multimaterial_setup#single-extruder-multi-material");
         ConfigOptionDef def;
@@ -5770,7 +5770,7 @@ if (is_marlin_flavor)
         auto page = add_options_page(page_name, "custom-gcode_extruder", true); // ORCA: icon only visible on placeholders
         m_pages.insert(m_pages.begin() + n_before_extruders + extruder_idx, page);
 
-        auto optgroup = page->new_optgroup(L("Basic information"), L"param_information", -1, true);
+        auto optgroup = page->new_optgroup(L("Printer"), L"param_information", -1, true);
             optgroup->append_single_option_line("nozzle_diameter", "printer_extruder_basic_information#nozzle-diameter", extruder_idx);
             optgroup->append_single_option_line("nozzle_type", "printer_basic_information_accessory#nozzle-type", extruder_idx);
             //optgroup->append_single_option_line("nozzle_volume_type", "", extruder_idx);
@@ -6036,7 +6036,7 @@ void TabPrinter::reload_config()
 
     // "extruders_count" doesn't update from the update_config(),
     // so update it implicitly
-    if (m_active_page && m_active_page->title() == "Multimaterial")
+    if (m_active_page && m_active_page->title() == "Multi.")
         m_active_page->set_value("extruders_count", int(m_extruders_count));
 
 }
@@ -6047,7 +6047,7 @@ void TabPrinter::activate_selected_page(std::function<void()> throw_if_canceled)
 
     // "extruders_count" doesn't update from the update_config(),
     // so update it implicitly
-    if (m_active_page && m_active_page->title() == "Multimaterial")
+    if (m_active_page && m_active_page->title() == "Multi.")
         m_active_page->set_value("extruders_count", int(m_extruders_count));
 
 }
@@ -6191,7 +6191,7 @@ void TabPrinter::toggle_options()
     //if (m_active_page->title() == "Custom G-code") {
     //    toggle_option("change_filament_gcode", have_multiple_extruders);
     //}
-    if (m_active_page->title() == L("Basic information")) {
+    if (m_active_page->title() == L("Printer")) {
         const auto &printer_cfg = m_preset_bundle->printers.get_edited_preset().config;
 
         // SoftFever: hide BBL specific settings
@@ -6216,13 +6216,13 @@ void TabPrinter::toggle_options()
     }
 
 
-    if (m_active_page->title() == L("Machine G-code")) {
+    if (m_active_page->title() == L("G-code")) {
         PresetBundle *preset_bundle = wxGetApp().preset_bundle;
         std::string   printer_type  = preset_bundle->printers.get_edited_preset().get_printer_type(preset_bundle);
         toggle_line("wrapping_detection_gcode", DevPrinterConfigUtil::support_wrapping_detection(printer_type));
     }
 
-    if (m_active_page->title() == L("Multimaterial")) {
+    if (m_active_page->title() == L("Multi.")) {
         const bool supports_wipe_tower_2 = !is_BBL_printer && m_config->opt_enum<WipeTowerType>("wipe_tower_type") == WipeTowerType::Type2;
         toggle_line("wipe_tower_type", !is_BBL_printer);
         // SoftFever: hide specific settings for BBL printer
@@ -6343,7 +6343,7 @@ void TabPrinter::toggle_options()
         toggle_option("travel_slope", m_config->opt_enum("z_hop_types", i) != ZHopType::zhtNormal, i);
     }
 
-    if (m_active_page->title() == L("Motion ability")) {
+    if (m_active_page->title() == L("Motion")) {
         auto gcf = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
         update_input_shaper_menu(gcf);
 
@@ -8492,7 +8492,7 @@ void Tab::switch_excluder(int extruder_id, bool reload)
                 if (extruder_id2 > 0)
                     index = get_index_for_extruder(extruder_id2);
                 is_extruder = true;
-            } else if (page->title().StartsWith("Motion ability")) {
+            } else if (page->title().StartsWith("Motion")) {
                 index = get_index_for_extruder(extruder_id == -1 ? 0 : extruder_id, 2);
             }
         }
@@ -8528,8 +8528,8 @@ void Tab::sync_excluder()
     Preset & printer_preset = m_preset_bundle->printers.get_edited_preset();
     auto nozzle_volumes = m_preset_bundle->project_config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
     auto extruders      = printer_preset.config.option<ConfigOptionEnumsGeneric>("extruder_type");
-    // Motion ability options hold a (normal, silent) pair per variant, so switch_excluder indexes that page with stride 2.
-    const int stride = m_active_page->title().StartsWith("Motion ability") ? 2 : 1;
+    // Motion options hold a (normal, silent) pair per variant, so switch_excluder indexes that page with stride 2.
+    const int stride = m_active_page->title().StartsWith("Motion") ? 2 : 1;
     auto get_index_for_extruder =
             [this, &extruders, stride, variant_keys = extruder_variant_keys[m_type >= Preset::TYPE_COUNT ? Preset::TYPE_PRINT : m_type]](int extruder_id, NozzleVolumeType nozzle_type) {
         return m_config->get_index_for_extruder(extruder_id + 1, variant_keys.first,
