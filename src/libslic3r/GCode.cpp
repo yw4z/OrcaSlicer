@@ -8507,6 +8507,14 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
     // the speed fade tracks perpendicular distance from the plane on
     // belt printers; otherwise this falls back to the slicing layer id.
     const int _layer = this->effective_layer_index_for_point(path_point_mm);
+    // Belt printers: tell the cooling buffer which band above the belt this path starts in,
+    // once per layer and at every change (CoolingBuffer::apply_belt_band_fan consumes it).
+    if (m_enable_cooling_markers && m_config.belt_printer.value &&
+        (m_belt_band_tag_layer != m_layer_index || m_belt_band_tag != _layer)) {
+        gcode += ";_BELT_BAND:" + std::to_string(_layer) + "\n";
+        m_belt_band_tag       = _layer;
+        m_belt_band_tag_layer = m_layer_index;
+    }
     if (path_on_first_layer || object_layer_over_raft()) {
         //BBS: for solid infill of first layer, speed can be higher as long as
         //wall lines have be attached

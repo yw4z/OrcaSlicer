@@ -596,3 +596,58 @@ TEST_CASE("Belt printers refuse an object taller than the gantry clearance", "[P
         CHECK_FALSE(print.validate().string.empty());
     }
 }
+
+// On a belt every tilted layer starts on the belt, so "first layer" cooling is a band along
+// the belt, not the first slicing layers: the part fan goes off for the paths that start
+// within a layer height of the belt and back on above it, on every layer. The G-code is in
+// machine coordinates, so the generator tags the band changes and the cooling buffer
+// applies them; before that the buffer compared machine-frame moves with a slicing-frame
+// plane and never switched the fan at all.
+TEST_CASE("Belt printers switch the part fan by height above the belt", "[Print][belt][Cooling]")
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "belt_printer",                 1 },
+        { "belt_slice_rotation",          "x" },
+        { "belt_slice_rotation_angle",    45 },
+        { "belt_slice_rotation_global",   1 },
+        { "gcode_remap_x",                "rev_x" },
+        { "gcode_remap_y",                "pos_z" },
+        { "gcode_remap_z",                "pos_y" },
+        { "layer_height",                 0.2 },
+        { "initial_layer_print_height",   0.2 },
+        { "skirt_loops",                  0 },
+        { "z_hop",                        0 },
+        { "close_fan_the_first_x_layers", 1 },
+        { "full_fan_speed_layer",         0 },
+        { "fan_min_speed",                100 },
+        { "fan_max_speed",                100 },
+        { "slow_down_layer_time",         1000 },
+        { "fan_cooling_layer_time",       1001 },
+        { "reduce_fan_stop_start_freq",   0 },
+        { "machine_start_gcode",          "T[initial_tool]\n" },
+        { "layer_change_gcode",           "G92 E0\n" },
+    });
+    const std::string gcode = slice({ cube(20) }, config);
+    REQUIRE(! gcode.empty());
+
+    // The tags are consumed by the cooling buffer and never reach the file.
+    CHECK(gcode.find(";_BELT_BAND") == std::string::npos);
+
+    size_t fan_off = 0, fan_on = 0;
+    GCodeReader parser;
+    parser.parse_buffer(gcode, [&](GCodeReader &, const GCodeReader::GCodeLine &line) {
+        if (line.cmd_is("M107"))
+            ++ fan_off;
+        else if (line.cmd_is("M106")) {
+            float s = 0.f;
+            if (line.has_value('S', s) && s <= 0.f)
+                ++ fan_off;
+            else
+                ++ fan_on;
+        }
+    });
+    // A flat-bed print turns the fan on once. Here it cycles with the layers.
+    CHECK(fan_off > 10);
+    CHECK(fan_on  > 10);
+}

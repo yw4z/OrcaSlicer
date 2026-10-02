@@ -2,6 +2,7 @@
 #define slic3r_GCode_hpp_
 
 #include "libslic3r.h"
+#include <limits>
 #include "ExPolygon.hpp"
 #include "GCodeWriter.hpp"
 #include "GCode/BeltKinematics.hpp"
@@ -854,6 +855,10 @@ protected:
         BeltFloorObjectGuard(const PrintObject *&s, const PrintObject *o) : slot(s) { slot = o; }
         ~BeltFloorObjectGuard() { slot = nullptr; }
     };
+
+    // Last ";_BELT_BAND" tag written and the layer it was written on (see _extrude()).
+    int m_belt_band_tag{std::numeric_limits<int>::min()};
+    int m_belt_band_tag_layer{std::numeric_limits<int>::min()};
 
     std::set<unsigned int>                  m_initial_layer_extruders;
     std::vector<std::vector<unsigned int>>  m_sorted_layer_filaments;
