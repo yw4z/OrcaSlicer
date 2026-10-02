@@ -9461,7 +9461,8 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         // When "Wipe while retracting" is enabled, then extruder moves to another position, and travel from this position can cross perimeters.
         // Because of it, it is necessary to call avoid crossing perimeters again with new starting point after calling retraction()
         // FIXME Lukas H.: Try to predict if this second calling of avoid crossing perimeters will be needed or not. It could save computations.
-        if (last_post_before_retract != this->last_pos() && m_config.reduce_crossing_wall) {
+        if (last_post_before_retract != this->last_pos() && m_config.reduce_crossing_wall
+            && m_layer != nullptr) {   // A brim apron layer has no Layer to avoid crossing
             // If in the previous call of m_avoid_crossing_perimeters.travel_to was use_external_mp_once set to true restore this value for next call.
             if (used_external_mp_once)
                 m_avoid_crossing_perimeters.use_external_mp_once();
