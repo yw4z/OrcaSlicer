@@ -373,8 +373,6 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(RemapAxis)
 static t_config_enum_values s_keys_map_BeltSupportFloorMode {
     { "none",           int(BeltSupportFloorMode::None) },
     { "generator_only", int(BeltSupportFloorMode::GeneratorOnly) },
-    { "clip_only",      int(BeltSupportFloorMode::ClipOnly) },
-    { "both",           int(BeltSupportFloorMode::Both) },
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(BeltSupportFloorMode)
 
@@ -9354,6 +9352,9 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
     //BBS: handle legacy options
     if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";
+    } else if (opt_key == "belt_support_floor_mode" && (value == "clip_only" || value == "both")) {
+        // Never implemented; both behaved like "none".
+        value = "none";
     } else if (opt_key == "enable_wipe_tower") {
         opt_key = "enable_prime_tower";
     } else if (opt_key == "wipe_tower_width") {
