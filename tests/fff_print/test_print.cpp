@@ -562,3 +562,37 @@ TEST_CASE("Belt printers never start a scarf seam below the layer", "[Print][bel
     });
     CHECK(worst_backstep < 0.2);
 }
+
+// printable_height on a belt printer is the clearance under the gantry, so an object taller
+// than that is refused whatever the machine-frame transform does to the emitted coordinates.
+TEST_CASE("Belt printers refuse an object taller than the gantry clearance", "[Print][belt]")
+{
+    auto belt_config = [](double printable_height) {
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_deserialize_strict({
+            { "belt_printer",               1 },
+            { "belt_slice_rotation",        "x" },
+            { "belt_slice_rotation_angle",  45 },
+            { "belt_slice_rotation_global", 1 },
+            { "gcode_remap_x",              "rev_x" },
+            { "gcode_remap_y",              "pos_z" },
+            { "gcode_remap_z",              "pos_y" },
+            { "printable_height",           printable_height },
+            { "skirt_loops",                0 },
+        });
+        return config;
+    };
+
+    SECTION("a 20 mm cube fits under 50 mm of clearance") {
+        Print print;
+        Model model;
+        init_print({ cube(20) }, print, model, belt_config(50));
+        CHECK(print.validate().string.empty());
+    }
+    SECTION("a 60 mm cube does not") {
+        Print print;
+        Model model;
+        init_print({ cube(60) }, print, model, belt_config(50));
+        CHECK_FALSE(print.validate().string.empty());
+    }
+}

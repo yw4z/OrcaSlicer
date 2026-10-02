@@ -20,7 +20,6 @@
 #include "GCode.hpp"
 #include "BeltGCode.hpp"
 #include "BeltTransform.hpp"
-#include "GCode/MachineFrameTransform.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/WipeTower2.hpp"
 #include "GCode/WipeTowerEstimate.hpp"
@@ -1621,17 +1620,11 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     // is not comparable to printable_height (which is gantry clearance in the
     // build-volume frame).  Compare against the model's pre-shear Z instead,
     // mirroring the bbox computed in PrintObject::update_slicing_parameters.
-    // When the post-gcode MachineFrameTransform is active the printer's
-    // physical Z mapping is non-trivial — skip the check entirely.
+    // The machine-frame transform only changes how that height is written to
+    // G-code, not how much room there is under the gantry.
     const bool belt_printer = this->config().belt_printer.value;
-    bool skip_max_height_check = false;
-    if (belt_printer) {
-        MachineFrameTransform machine_frame;
-        machine_frame.init_from_config(this->config());
-        skip_max_height_check = machine_frame.is_active();
-    }
     const double shrinkage_compensation_z = this->shrinkage_compensation().z();
-    for (size_t print_object_idx = 0; !skip_max_height_check && print_object_idx < m_objects.size(); ++ print_object_idx) {
+    for (size_t print_object_idx = 0; print_object_idx < m_objects.size(); ++ print_object_idx) {
         const PrintObject &print_object = *m_objects[print_object_idx];
 
         double effective_max_z       = 0;
