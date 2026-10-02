@@ -439,6 +439,15 @@ ImexRole imex_role_from_suffix(const std::string& suffix);
 // in hand and need the full head/role list (e.g. ghost factory/updater).
 std::vector<std::pair<int, ImexRole>> parse_imex_active_tools(const std::string& active_tools_for_mode);
 
+// What a mode does, as the plate's mode icon shows it. The heads beside the primary that
+// imex_primary_tool_for_mode() finds decide: none is Primary, any Span head is Custom (the
+// multicolor modes), any Mirror head is Mirror, and all heads copying is Copy. One Mirror head is
+// enough because an IQEX mirror mode copies within the primary's gantry.
+enum class ImexModeKind { Primary, Copy, Mirror, Custom };
+inline constexpr size_t kImexModeKindCount = 4;
+static_assert(size_t(ImexModeKind::Custom) + 1 == kImexModeKindCount);
+ImexModeKind imex_mode_kind(const std::string& active_tools_for_mode);
+
 // =============================================================================
 // The one derivation of "what does this plate's mode do, and does its filament reach
 // the primary" — shared by the hard block and the pre-slice warning

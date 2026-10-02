@@ -2115,11 +2115,17 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
                 PresetBundle* pb = wxGetApp().preset_bundle;
                 auto* is_imex_opt = pb ? pb->printers.get_edited_preset().config.option<ConfigOptionBool>("is_imex") : nullptr;
                 if (is_imex_opt && is_imex_opt->value) {
+                    // The icon shows the mode the plate slices as, the one its ghosts follow.
+                    std::string  active_tools;
+                    int          primary_phys = -1;
+                    const size_t kind = size_t(resolve_active_mode_tools(active_tools, primary_phys) ?
+                                                   imex_mode_kind(active_tools) :
+                                                   ImexModeKind::Primary);
                     // Both the mode name and the conflict warning describe the same hovered icon,
                     // and set_hover_tooltip records one string per frame, so they are composed here.
                     std::string hover_tip;
                     if (hover_id == (int)PLATE_IMEX_MODE_ID) {
-                        render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_hovered_texture);
+                        render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_hovered_textures[kind]);
                         // The stored value, not the resolved one: this line carries the click
                         // affordances, and the menu checkmark and the left-click cycle both act
                         // on what the plate stores. Reporting the inherited mode here would leave
@@ -2151,7 +2157,7 @@ void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
                             hover_tip = (boost::format("IDEX/IQEX mode: %1% (left-click to cycle, right-click for menu)") % cur).str();
                         }
                     } else {
-                        render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_texture);
+                        render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_textures[kind]);
                     }
                     // Warning badge: IMEX parallel mode active alongside multi-material objects
                     if (has_imex_multimaterial_conflict()) {
@@ -5407,18 +5413,17 @@ void PartPlateList::generate_icon_textures()
         }
     }
 
-    // IDEX/IQEX mode icon textures (fall back gracefully if SVG not present yet)
+    // IDEX/IQEX mode icon textures, one per ImexModeKind (fall back gracefully if an SVG is missing)
     {
-        file_name = path + (m_is_dark ? "plate_imex_mode_dark.svg" : "plate_imex_mode.svg");
-        if (!m_imex_mode_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
-            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":load file %1% failed (IDEX/IQEX mode icon)") % file_name;
-        }
-    }
-    {
-        file_name = path + (m_is_dark ? "plate_imex_mode_hover_dark.svg" : "plate_imex_mode_hover.svg");
-        if (!m_imex_mode_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
-            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":load file %1% failed (IDEX/IQEX mode hover icon)") % file_name;
-        }
+        static const char* kind_names[] = { "normal", "copy", "mirror", "custom" }; // the Primary kind shows "normal"
+        static_assert(std::size(kind_names) == kImexModeKindCount && std::tuple_size_v<decltype(m_imex_mode_textures)> == kImexModeKindCount);
+        for (size_t kind = 0; kind < kImexModeKindCount; ++kind)
+            for (const bool hovered : { false, true }) {
+                file_name = path + "plate_imex_" + kind_names[kind] + "_mode" + (hovered ? "_hover" : "") + (m_is_dark ? "_dark.svg" : ".svg");
+                GLTexture& texture = hovered ? m_imex_mode_hovered_textures[kind] : m_imex_mode_textures[kind];
+                if (!texture.load_from_svg_file(file_name, true, false, false, icon_size))
+                    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":load file %1% failed (IDEX/IQEX mode icon)") % file_name;
+            }
     }
 
 	std::string text_str = "01";
@@ -5464,8 +5469,10 @@ void PartPlateList::release_icon_textures()
     m_plate_set_filament_map_hovered_texture.reset();
 	m_plate_name_edit_texture.reset();
 	m_plate_name_edit_hovered_texture.reset();
-    m_imex_mode_texture.reset();
-    m_imex_mode_hovered_texture.reset();
+    for (GLTexture& texture : m_imex_mode_textures)
+        texture.reset();
+    for (GLTexture& texture : m_imex_mode_hovered_textures)
+        texture.reset();
     m_imex_warn_texture.reset();
 	for (int i = 0;i < MAX_PLATE_COUNT; i++) {
 		m_idx_textures[i].reset();

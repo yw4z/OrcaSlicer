@@ -308,6 +308,20 @@ std::vector<std::pair<int, ImexRole>> parse_imex_active_tools(const std::string&
     return out;
 }
 
+ImexModeKind imex_mode_kind(const std::string& active_tools_for_mode)
+{
+    const int          primary = imex_primary_tool_for_mode(active_tools_for_mode);
+    std::set<ImexRole> roles;
+    for (const auto& [phys, role] : parse_imex_active_tools(active_tools_for_mode))
+        if (phys != primary && role != ImexRole::Primary)
+            roles.insert(role);
+    if (roles.empty())
+        return ImexModeKind::Primary;
+    if (roles.count(ImexRole::Span))
+        return ImexModeKind::Custom;
+    return roles.count(ImexRole::Mirror) ? ImexModeKind::Mirror : ImexModeKind::Copy;
+}
+
 ImexGantryGrouping group_imex_active_tools_by_gantry(const std::string& active_tools_for_mode,
                                                      int                tools_per_gantry)
 {

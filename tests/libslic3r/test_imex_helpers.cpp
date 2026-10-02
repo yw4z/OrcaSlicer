@@ -873,6 +873,26 @@ TEST_CASE("parse_imex_active_tools - Span suffix whitespace tolerant", "[IMEX]")
     REQUIRE(out[1].second == ImexRole::Span);
 }
 
+TEST_CASE("A mode's icon kind follows the roles of the heads beside its primary", "[IMEX]") {
+    const auto [roster, kind] = GENERATE(table<std::string, ImexModeKind>({
+        { "",                ImexModeKind::Primary }, // a mode with no row prints as Primary
+        { "0:P",             ImexModeKind::Primary },
+        { "0",               ImexModeKind::Primary }, // a legacy bare index is the primary
+        { "0:P,0:C",         ImexModeKind::Primary }, // the primary's head, whatever else it lists
+        { "0:P,1:C",         ImexModeKind::Copy    },
+        { "0:P,1:C,2:C,3:C", ImexModeKind::Copy    },
+        { "0,1,2",           ImexModeKind::Copy    },
+        { "0:P,1:M",         ImexModeKind::Mirror  },
+        { "0:P,1:C,2:M,3:M", ImexModeKind::Mirror  }, // IQEX mirror copies within the primary's gantry
+        { "0,1:M",           ImexModeKind::Mirror  },
+        { "0:P,1:S,2:C,3:C", ImexModeKind::Custom  },
+        { "0:P,1:S,2:M,3:M", ImexModeKind::Custom  },
+        { "0:P,1:S",         ImexModeKind::Custom  },
+    }));
+    CAPTURE(roster);
+    REQUIRE(imex_mode_kind(roster) == kind);
+}
+
 TEST_CASE("group_imex_active_tools_by_gantry - paired-gantry mc-mirror aggregates", "[IMEX]") {
     // 2x2 IQEX, primary T0, T1 declared Span (multicolor partner on primary's gantry),
     // T2/T3 mirror with column-pairing T2↔T0 and T3↔T1.

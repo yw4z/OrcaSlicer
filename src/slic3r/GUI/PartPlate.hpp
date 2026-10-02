@@ -769,8 +769,8 @@ class PartPlateList : public ObjectBase
     GLTexture m_plate_set_filament_map_hovered_texture;
     GLTexture m_plate_name_edit_texture;
     GLTexture m_plate_name_edit_hovered_texture;
-    GLTexture m_imex_mode_texture;
-    GLTexture m_imex_mode_hovered_texture;
+    std::array<GLTexture, 4> m_imex_mode_textures;          // indexed by ImexModeKind
+    std::array<GLTexture, 4> m_imex_mode_hovered_textures;
     GLTexture m_imex_warn_texture;  // warning badge for IMEX + multi-material conflict
     GLTexture m_idx_textures[MAX_PLATE_COUNT];
     // set render option
