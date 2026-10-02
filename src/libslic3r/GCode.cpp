@@ -10289,6 +10289,10 @@ std::string GCode::set_object_info(Print *print) {
             for (PrintInstance& inst : object->instances()) {
                 inst.unique_id = unique_id++;
                 inst.id        = inst_id++;
+                // Outlines are in plate coordinates. On a belt printer that is the frame after
+                // the slicing rotation has been undone and before the G-code axis remap and
+                // machine-frame shear: where the object stands on the belt, which is what an
+                // object picker shows. Klipper cancels by name, so nothing depends on more.
                 auto bbox      = inst.get_bounding_box();
                 auto center    = print->translate_to_print_space(Vec2d(bbox.center().x(), bbox.center().y()));
                 auto inst_name = get_instance_name(object, inst);
