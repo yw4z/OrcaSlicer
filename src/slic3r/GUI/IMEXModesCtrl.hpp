@@ -154,7 +154,7 @@ private:
                                                   const std::function<bool(ImexRole)>& allowed);
 
     // Mode names this printer's tool grid can actually carry, minus those already taken.
-    std::vector<wxString> suggested_mode_names() const;
+    std::vector<wxString> suggested_mode_names(const ::ComboBox* skip = nullptr) const;
 
     void apply_btn(wxButton* btn, int tool_idx, std::optional<ImexRole> role);
 

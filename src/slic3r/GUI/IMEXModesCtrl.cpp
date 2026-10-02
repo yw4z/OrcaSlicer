@@ -338,7 +338,7 @@ std::optional<ImexRole> IMEXModesCtrl::next_tile_role(std::optional<ImexRole> cu
 // offered the four-carriage modes. Names a row already uses are dropped, leaving only what is
 // still free. These are conventions, not keywords -- nothing in the slicer reads a mode's name
 // except as the key a plate stores -- so the field stays typeable and this is only a shortcut.
-std::vector<wxString> IMEXModesCtrl::suggested_mode_names() const {
+std::vector<wxString> IMEXModesCtrl::suggested_mode_names(const ::ComboBox* skip) const {
     std::vector<std::string> pool = { "copy", "mirror" };
     // Four carriages to drive, however they are arranged.
     if (m_n_cols * m_n_rows >= 4)
@@ -356,7 +356,8 @@ std::vector<wxString> IMEXModesCtrl::suggested_mode_names() const {
     for (const std::string& cand : pool) {
         bool taken = false;
         for (const Row& r : m_rows)
-            if (!r.is_primary && r.name && into_u8(r.name->GetTextCtrl()->GetValue()) == cand) {
+            if (!r.is_primary && r.name && r.name != skip &&
+                into_u8(r.name->GetTextCtrl()->GetValue()) == cand) {
                 taken = true;
                 break;
             }
@@ -431,7 +432,7 @@ void IMEXModesCtrl::add_row(const std::string& name,
         wxFont f = lbl->GetFont();
         f.SetWeight(wxFONTWEIGHT_BOLD);
         lbl->SetFont(f);
-        name_col->Add(lbl, 0, wxLEFT | wxRIGHT, 1);   // match the 1px frame the other rows carry
+        name_col->Add(lbl, 0);   // the combo below carries no frame, so no inset to match
     } else {
         // A nameless mode cannot be selected on a plate and used to be dropped on
         // save together with its tool roles and G-code, so a name is pre-filled
@@ -451,6 +452,16 @@ void IMEXModesCtrl::add_row(const std::string& name,
                                 FromDIP(wxSize(kNameColPx, -1)), 0, nullptr, 0);
         for (const wxString& sug : suggested_mode_names())
             r.name->Append(sug);
+        // Rebuilt on open: add_row() runs before this row joins m_rows and before the rows
+        // below it exist, so a list built once there filters against only part of the table
+        // and offers names that are already taken. By the time the list drops, every row is
+        // present -- and this row's own name is excluded from "taken" so it stays offered.
+        r.name->Bind(wxEVT_COMBOBOX_DROPDOWN, [this, cb = r.name](wxCommandEvent& e) {
+            cb->Clear();
+            for (const wxString& sug : suggested_mode_names(cb))
+                cb->Append(sug);
+            e.Skip();
+        });
         // Constructed empty on purpose: ComboBox hands its value to TextInput as the LABEL --
         // the small right-aligned slot a unit like "mm" lives in -- because a read-only combo
         // hides the text control and shows that label instead. This one is editable, so the
@@ -466,11 +477,14 @@ void IMEXModesCtrl::add_row(const std::string& name,
         // Picking a suggestion writes it into the text control, so everything downstream keeps
         // reading one place for the name.
         r.name->Bind(wxEVT_COMBOBOX, [this, cb = r.name](wxCommandEvent& e) {
-            // SetSelection() has already written the pick into the label; move it to the text
-            // control and clear the label again, so the name lives in exactly one place.
+            // Do NOT call SetLabel() here. It is overridden, and on an editable combo it
+            // writes the TEXT CONTROL rather than the label (ComboBox.cpp, the IsShown()
+            // branch) -- clearing it would erase the name that was just picked. The label
+            // stays empty for this control's whole life anyway: it is constructed empty and
+            // every write routes through the same override.
+            // ChangeValue is still needed: SetSelection() early-returns when the index is
+            // unchanged, so re-picking the current item would otherwise leave typed-over text.
             cb->GetTextCtrl()->ChangeValue(cb->GetDropDown().GetValue());
-            cb->SetLabel(wxEmptyString);
-            e.Skip();
             notify();
         });
         // Restore a name rather than let the row reach get_mode_data() unnamed.
