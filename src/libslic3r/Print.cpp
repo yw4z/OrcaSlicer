@@ -1553,6 +1553,21 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         add_warning(warningtemp);
     }
 
+    // The purge tower is a model object the GUI creates and sizes; libslic3r only purges
+    // into one that exists. A project sliced without it (the CLI on a project saved before
+    // the tower was generated) changes filament with nowhere to purge.
+    if (m_config.belt_printer.value && m_config.enable_belt_purge_tower.value
+        && m_config.print_sequence != PrintSequence::ByObject
+        && ! m_config.spiral_mode.value && extruders.size() > 1 && ! this->has_belt_purge_tower()) {
+        StringObjectException warningtemp;
+        warningtemp.string     = L("The belt purge tower is enabled but the project has no purge tower object; "
+                                   "filament changes will not be purged. Open the project in the application "
+                                   "to generate the tower.");
+        warningtemp.opt_key    = "enable_belt_purge_tower";
+        warningtemp.is_warning = true;
+        add_warning(warningtemp);
+    }
+
     if (m_config.belt_printer.value && m_config.enable_belt_purge_tower.value) {
         const size_t prism_count = std::count_if(m_objects.begin(), m_objects.end(), [](const PrintObject *object) {
             return object->config().belt_purge_tower_object.value;

@@ -336,6 +336,36 @@ TEST_CASE("Belt purge planning requires its managed purge object", "[Print][Purg
     CHECK_FALSE(print.has_wipe_tower());
 }
 
+// The GUI creates the purge tower object; a project sliced without one (the CLI) must say
+// that its filament changes go unpurged.
+TEST_CASE("Belt purge tower enabled without a tower object warns", "[Print][PurgeTower][belt]")
+{
+    DynamicPrintConfig config = multifilament_config(2, {
+        { "belt_printer",            1 },
+        { "enable_belt_purge_tower", 1 },
+        { "layer_change_gcode",      "G92 E0\n" }
+    });
+    auto purge_warnings = [](Print &print) {
+        std::vector<StringObjectException> warnings;
+        print.validate(&warnings);
+        return std::count_if(warnings.begin(), warnings.end(), [](const StringObjectException &w) {
+            return w.opt_key == "enable_belt_purge_tower";
+        });
+    };
+
+    Model model;
+    Print print;
+    build_cubes(model, print, config, /*n=*/2, /*overlap=*/false);
+    model.objects[1]->config.set_key_value("extruder", new ConfigOptionInt(2));
+    print.apply(model, config);
+    REQUIRE(print.extruders().size() > 1);
+    CHECK(purge_warnings(print) == 1);
+
+    model.objects.front()->config.set_key_value("belt_purge_tower_object", new ConfigOptionBool(true));
+    print.apply(model, config);
+    CHECK(purge_warnings(print) == 0);
+}
+
 TEST_CASE("Belt purge rejects multiple managed purge objects", "[Print][PurgeTower][Regression]")
 {
     DynamicPrintConfig config = multifilament_config(2, {
