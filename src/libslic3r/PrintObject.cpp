@@ -1249,7 +1249,9 @@ bool PrintObject::belt_brim_instances_compatible() const
     // matters for configurations that do not.
     if (m_instances.size() <= 1)
         return true;
-    const int    axis = m_slicing_params.belt_floor_from_axis;
+    // From the config, not m_slicing_params: this runs while those can be stale. A tilt
+    // about Y runs the belt along X, any other tilt along Y (see compute_belt_height_and_floor).
+    const int    axis = m_print->config().belt_slice_rotation.value == BeltRotationAxis::Y ? 0 : 1;
     const Point &ref  = m_instances.front().shift;
     for (const PrintInstance &inst : m_instances) {
         const coord_t along = axis == 0 ? inst.shift.x() - ref.x() : inst.shift.y() - ref.y();
