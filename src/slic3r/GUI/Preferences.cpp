@@ -1,4 +1,5 @@
 #include "Preferences.hpp"
+#include "CloudProvider.hpp"
 #include "OptionsGroup.hpp"
 #include "GUI_App.hpp"
 #include "MainFrame.hpp"
@@ -10,14 +11,63 @@
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Format/DRC.hpp"
 #include "libslic3r/CAD/SketchEngine.hpp"
+#include <wx/gdicmn.h>
+#include <wx/arrstr.h>
+#include "slic3r/GUI/Widgets/Label.hpp"
+#include <wx/event.h>
+#include <wx/dcclient.h>
+#include "slic3r/GUI/Widgets/StateColor.hpp"
+#include <cmath>
+#include <tuple>
+#include <string>
+#include <vector>
+#include <functional>
+#include <cstdlib>
+#include <cassert>
+#include <algorithm>
+#include <wx/intl.h>
+#include <cstddef>
+#include "libslic3r/libslic3r.h"
+#include "libslic3r/Utils.hpp"
+#include "slic3r/GUI/Widgets/TextInput.hpp"
+#include <utility>
+#include "slic3r/GUI/Widgets/SpinInput.hpp"
+#include "slic3r/GUI/Widgets/CheckBox.hpp"
+#include "libslic3r/Format/bbs_3mf.hpp"
+#include <boost/lexical_cast.hpp>
+#include "slic3r/GUI/Event.hpp"
+#include <boost/log/trivial.hpp>
+#include "libslic3r/Preset.hpp"
+#include "slic3r/GUI/Widgets/Button.hpp"
+#include <wx/chartype.h>
+#include <wx/dirdlg.h>
+#include "slic3r/GUI/GUI_Utils.hpp"
+#include "slic3r/GUI/GUI.hpp"
+#include "slic3r/GUI/Widgets/TabCtrl.hpp"
+#include "slic3r/GUI/Field.hpp"
+#include <map>
+#include "slic3r/GUI/ReleaseNote.hpp"
 #include <wx/language.h>
 #include "OG_CustomCtrl.hpp"
+#include "libslic3r_version.h"
 #include "wx/graphics.h"
 #include <wx/listimpl.cpp>
 #include <wx/display.h>
+#include <wx/string.h>
+#include <wx/panel.h>
+#include <wx/utils.h>
+#include <wx/valtext.h>
+#include <wx/textctrl.h>
+#include <wx/spinctrl.h>
+#include <wx/tglbtn.h>
+#include <wx/stattext.h>
+#include <wx/treebase.h>
+#include <wx/types.h>
+#include <wx/timer.h>
 #include "NetworkTestDialog.hpp"
 #include "Widgets/StaticLine.hpp"
 #include "Widgets/RadioGroup.hpp"
+#include "Shortcuts.hpp"
 #include "slic3r/Utils/bambu_networking.hpp"
 #include "slic3r/Utils/NetworkAgent.hpp"
 #include "NetworkPluginDialog.hpp"
@@ -285,6 +335,7 @@ std::tuple<wxBoxSizer*, ComboBox*> PreferencesDialog::create_item_combobox_base(
     auto combobox = new ::ComboBox(m_parent, wxID_ANY, wxEmptyString, wxDefaultPosition, DESIGN_LARGE_COMBOBOX_SIZE, 0, nullptr, wxCB_READONLY);
     combobox->GetDropDown().SetUseContentWidth(true);
     combobox->SetToolTip(tip);
+    combobox->SetName(param);   // select_tab() finds the row by this name
 
     std::vector<wxString>::iterator iter;
     for (iter = vlist.begin(); iter != vlist.end(); iter++) {
@@ -1042,8 +1093,8 @@ wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxString too
             if (m_bambu_cloud_checkbox)      m_bambu_cloud_checkbox->Enable(!enabled);
         }
         else if (param == "hide_login_side_panel") {
-            if (wxGetApp().mainframe && wxGetApp().mainframe->m_webview) {
-                wxGetApp().mainframe->m_webview->SendCloudProvidersInfo();
+            if (WebViewPanel* home = WebViewPanel::if_built()) {
+                home->SendCloudProvidersInfo();
             }
         }
         // ORCA: apply the preview dimming change immediately to the currently loaded preview
@@ -1252,9 +1303,8 @@ wxBoxSizer *PreferencesDialog::create_item_bambu_cloud(wxString title, wxString 
         app_config->save();
 
         // Update homepage visibility immediately
-        auto *mainframe = wxGetApp().mainframe;
-        if (mainframe && mainframe->m_webview)
-            mainframe->m_webview->SendCloudProvidersInfo();
+        if (WebViewPanel* home = WebViewPanel::if_built())
+            home->SendCloudProvidersInfo();
     });
 
     m_sizer->Add(cb, 0, wxALIGN_CENTER);
@@ -1474,7 +1524,7 @@ void PreferencesDialog::create()
     app_config = get_app_config();
 
     m_parent = new MyscrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
-    m_parent->SetScrollRate(5, 5);
+    m_parent->SetScrollRate(0, FromDIP(20));
     m_parent->SetBackgroundColour(*wxWHITE);
 
     m_sizer_body = new wxBoxSizer(wxVERTICAL);
@@ -1520,6 +1570,19 @@ void PreferencesDialog::create()
 
 PreferencesDialog::~PreferencesDialog()
 {
+}
+
+void PreferencesDialog::select_tab(PreferencesTab tab, const std::string& option)
+{
+    if (const auto index = m_tab_index.find(tab); index != m_tab_index.end())
+        m_pref_tabs->SelectItem(index->second);
+    wxWindow* control = option.empty() ? nullptr : m_parent->FindWindow(wxString(option));
+    if (control == nullptr)
+        return;
+    int unit = 1;
+    m_parent->GetScrollPixelsPerUnit(nullptr, &unit);
+    m_parent->Scroll(wxDefaultCoord, (m_parent->CalcUnscrolledPosition(control->GetPosition()).y - FromDIP(10)) / unit);
+    control->SetFocus();   // the focused tint marks the row
 }
 
 void PreferencesDialog::on_dpi_changed(const wxRect &suggested_rect) {
@@ -1599,7 +1662,7 @@ void PreferencesDialog::create_items()
     //////////////////////////
     //// GENERAL TAB 
     /////////////////////////////////////
-    m_pref_tabs->AppendItem(_L("General"));
+    m_tab_index[PreferencesTab::General] = m_pref_tabs->AppendItem(_L("General"));
     f_sizers.push_back(new wxFlexGridSizer(1, 1, v_gap, 0));
     g_sizer = f_sizers.back();
     g_sizer->AddGrowableCol(0, 1);
@@ -1730,8 +1793,8 @@ void PreferencesDialog::create_items()
     auto item_multi_machine    = create_item_checkbox(_L("Multi device management"), _L("With this option enabled, you can send a task to multiple devices at the same time and manage multiple devices."), "enable_multi_machine", _L("(Requires restart)"));
     g_sizer->Add(item_multi_machine);
 
-    auto item_speed_dial = create_item_checkbox(_L("Open the Speed Dial with the Space key"),
-        _L("When enabled, pressing Space (with no other key held) opens the Speed Dial action search from any page."),
+    auto item_speed_dial = create_item_checkbox(_L("Open the Speed Dial from the keyboard"),
+        _L("When enabled, the Speed Dial keyboard shortcut (Space by default) opens the action search from any page."),
         "enable_speed_dial");
     g_sizer->Add(item_speed_dial);
 
@@ -1789,7 +1852,7 @@ void PreferencesDialog::create_items()
     //////////////////////////
     //// CONTROL TAB
     /////////////////////////////////////
-    m_pref_tabs->AppendItem(_L("Control"));
+    m_tab_index[PreferencesTab::Control] = m_pref_tabs->AppendItem(_L("Control"));
     f_sizers.push_back(new wxFlexGridSizer(1, 1, v_gap, 0));
     g_sizer = f_sizers.back();
     g_sizer->AddGrowableCol(0, 1);
@@ -1816,7 +1879,10 @@ void PreferencesDialog::create_items()
 
     auto item_mix_print_high_low_temperature = create_item_checkbox(_L("Remove mixed temperature restriction"), _L("With this option enabled, you can print materials with a large temperature difference together."), "enable_high_low_temp_mixed_printing");
     g_sizer->Add(item_mix_print_high_low_temperature);
- 
+
+    auto item_remember_print_action = create_item_checkbox(_L("Remember last print action"), _L("If enabled, OrcaSlicer will remember the last selected option in the print button's dropdown (e.g. Print, Export plate sliced file, Export G-code file) and use it as the default on next startup."), "remember_print_action");
+    g_sizer->Add(item_remember_print_action);
+
     //// CONTROL > Camera
     g_sizer->Add(create_item_title(_L("Camera")), 1, wxEXPAND);
 
@@ -1859,6 +1925,14 @@ void PreferencesDialog::create_items()
     auto item_right_mouse_drag  = create_item_combobox(_L("Right Mouse Drag"), _L("Set the action that dragging the right mouse button should perform."), "right_mouse_drag_action", ButtonDragActions);
     g_sizer->Add(item_right_mouse_drag);
 
+    //// CONTROL > Keyboard
+    g_sizer->Add(create_item_title(_L("Keyboard")), 1, wxEXPAND);
+
+    auto item_shortcuts = create_item_button(_L("Keyboard shortcuts"), _L("Edit") + dots, "", _L("Choose the key for each action."), [this]() {
+        wxGetApp().keyboard_shortcuts(ShortcutContext::Global, this);
+    });
+    g_sizer->Add(item_shortcuts);
+
     //// CONTROL > Clear my choice on ...
     g_sizer->Add(create_item_title(_L("Clear my choice on...")), 1, wxEXPAND);
 
@@ -1883,7 +1957,7 @@ void PreferencesDialog::create_items()
     //////////////////////////
     //// GRAPHICS TAB
     /////////////////////////////////////
-    m_pref_tabs->AppendItem(_L("Graphics"));
+    m_tab_index[PreferencesTab::Graphics] = m_pref_tabs->AppendItem(_L("Graphics"));
     f_sizers.push_back(new wxFlexGridSizer(1, 1, v_gap, 0));
     g_sizer = f_sizers.back();
     g_sizer->AddGrowableCol(0, 1);
@@ -1908,6 +1982,15 @@ void PreferencesDialog::create_items()
         , SETTING_OPENGL_REALISTIC_PHONG
     );
     g_sizer->Add(item_realistic_phong);
+
+    auto item_realistic_preview = create_item_checkbox(
+        _L("Enable in Preview"),
+        _L("Also applies realistic view to the Preview canvas, not just Prepare.\n"
+           "Preview draws the full toolpath geometry, so shadows and SSAO cost considerably"
+           " more there than on a plain model."),
+        SETTING_OPENGL_REALISTIC_PREVIEW
+    );
+    g_sizer->Add(item_realistic_preview);
 
     auto item_realistic_ssao = create_item_checkbox(
         _L("SSAO ambient occlusion"),
@@ -1996,6 +2079,23 @@ void PreferencesDialog::create_items()
     //// GRAPHICS > G-code Preview
     g_sizer->Add(create_item_title(_L("G-code Preview")), 1, wxEXPAND);
 
+    // ORCA: view type the preview opens with
+    std::vector<wxString>    PreviewViewTypeLabels;
+    std::vector<std::string> PreviewViewTypeValues;
+    for (const auto& [value, label] : GCodeViewer::default_view_type_choices()) {
+        PreviewViewTypeValues.push_back(value);
+        PreviewViewTypeLabels.push_back(from_u8(label));
+    }
+    auto item_preview_view_type = create_item_combobox(
+        _L("Default view type"),
+        _L("The color scheme the sliced preview opens with.\n"
+           "Automatic: Filament for multi material prints, Line Type for single material ones.\n"
+           "Last used: the view type you selected last.\n"
+           "Any other value always opens that view type.\n"
+           "You can still switch the view type in the preview afterwards."),
+        "preview_default_view_type", PreviewViewTypeLabels, PreviewViewTypeValues);
+    g_sizer->Add(item_preview_view_type);
+
     auto item_dim_previous_layers = create_item_checkbox(
         _L("Dim lower layers"),
         _L("When scrubbing the layer slider in the sliced preview, render the layers below the current one darkened so that only the layer being viewed is shown at full brightness."),
@@ -2031,7 +2131,7 @@ void PreferencesDialog::create_items()
     //////////////////////////
     //// ONLINE TAB
     /////////////////////////////////////
-    m_pref_tabs->AppendItem(_L("Online"));
+    m_tab_index[PreferencesTab::Online] = m_pref_tabs->AppendItem(_L("Online"));
     f_sizers.push_back(new wxFlexGridSizer(1, 1, v_gap, 0));
     g_sizer = f_sizers.back();
     g_sizer->AddGrowableCol(0, 1);

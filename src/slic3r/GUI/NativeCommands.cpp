@@ -10,6 +10,7 @@
 #include "GUI_Factories.hpp"
 #include "GUI_ObjectList.hpp"
 #include "I18N.hpp"
+#include "Shortcuts.hpp"
 #include "IMSlider.hpp"
 #include "MainFrame.hpp"
 #include "NetworkTestDialog.hpp"
@@ -18,6 +19,9 @@
 #include "PlateSettingsDialog.hpp"
 #include "DeviceCore/DevManager.h"
 
+#include "libslic3r/Config.hpp"
+#include <functional>
+#include <initializer_list>
 #include <libslic3r/Model.hpp>
 #include <libslic3r/Utils.hpp>
 
@@ -25,11 +29,15 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include "libslic3r/libslic3r.h"
 #include <memory>
+#include "slic3r/GUI/ActionRegistry.hpp"
 #include <string>
 #include <tuple>
 #include <utility>
 
+#include <vector>
+#include <wx/string.h>
 #include <wx/utils.h>
 
 namespace Slic3r { namespace GUI {
@@ -563,7 +571,7 @@ std::vector<NativeCommand> build_command_catalog()
 
     // ---- Help ---- (mirrors the top-bar Help menu, plus the wiki/YouTube links)
     add("help_keyboard_shortcuts", _u8L("Keyboard Shortcuts"), _u8L("Help"), [](const std::string&) {
-        wxGetApp().keyboard_shortcuts();
+        wxGetApp().keyboard_shortcuts(ShortcutContext::Global);
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
     add("help_setup_wizard", _u8L("Setup Wizard"), _u8L("Help"), [](const std::string&) {

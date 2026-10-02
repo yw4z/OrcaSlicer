@@ -1,6 +1,24 @@
 #ifndef slic3r_GLCanvas3D_hpp_
 #define slic3r_GLCanvas3D_hpp_
 
+#include "libslic3r/Point.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include <cstdlib>
+#include <map>
+#include <cmath>
+#include "libslic3r/Geometry.hpp"
+#include "libslic3r/BoundingBox.hpp"
+#include <array>
+#include "libslic3r/Config.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/Technologies.hpp"
+#include "libslic3r/Model.hpp"
+#include "libvgcode/include/Types.hpp"
+#include "libvgcode/include/PathVertex.hpp"
+#include "libslic3r/Color.hpp"
+#include "libslic3r/libslic3r.h"
+#include "libslic3r/Line.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
 #include <stddef.h>
 #include <memory>
 #include <chrono>
@@ -25,6 +43,14 @@
 
 #include <float.h>
 
+#include <wx/setup.h>
+#include <wx/event.h>
+#include <utility>
+#include <vector>
+#include <string>
+#include <wx/string.h>
+#include <wx/colour.h>
+#include <wx/time.h>
 #include <wx/timer.h>
 
 class wxSizeEvent;
@@ -63,6 +89,7 @@ class PartPlateList;
 #ifdef SLIC3R_CAD
 class DesignSketchTool;   // Design tab: interactive 2D sketch tool
 #endif
+struct KeyChord;
 
 #if ENABLE_RETINA_GL
 class RetinaHelper;
@@ -184,9 +211,6 @@ wxDECLARE_EVENT(EVT_GLCANVAS_MOUSE_DRAGGING_FINISHED, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_UPDATE_BED_SHAPE, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_TAB, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_RESETGIZMOS, SimpleEvent);
-wxDECLARE_EVENT(EVT_GLCANVAS_MOVE_SLIDERS, wxKeyEvent);
-wxDECLARE_EVENT(EVT_GLCANVAS_EDIT_COLOR_CHANGE, wxKeyEvent);
-wxDECLARE_EVENT(EVT_GLCANVAS_JUMP_TO, wxKeyEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_UNDO, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_REDO, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_SWITCH_TO_OBJECT, SimpleEvent);
@@ -338,6 +362,8 @@ class GLCanvas3D
             int move_volume_idx{ -1 };
             bool move_requires_threshold{ false };
             Point move_start_threshold_position_2D{ Invalid_2D_Point };
+            // Orca: Keep the world-space point selected at the start of a mouse pan.
+            std::optional<Vec3d> camera_pan_anchor;
         };
 
         bool dragging{ false };
@@ -346,7 +372,12 @@ class GLCanvas3D
         Drag drag;
         bool ignore_right_up;
 
-        void set_start_position_2D_as_invalid() { drag.start_position_2D = Drag::Invalid_2D_Point; }
+        // Orca: The screen-space start and world-space anchor describe the same pan session.
+        // Invalidating one must invalidate the other so a new drag cannot reuse stale depth.
+        void set_start_position_2D_as_invalid() {
+            drag.start_position_2D = Drag::Invalid_2D_Point;
+            drag.camera_pan_anchor.reset();
+        }
         void set_start_position_3D_as_invalid() { drag.start_position_3D = Drag::Invalid_3D_Point; }
         void set_move_start_threshold_position_2D_as_invalid() { drag.move_start_threshold_position_2D = Drag::Invalid_2D_Point; }
 
@@ -549,6 +580,8 @@ private:
     bool m_fps_overlay_tick{ false };
     LayersEditing m_layers_editing;
     Mouse m_mouse;
+    // Orca: Gesture pans have their own lifecycle and stable world-space anchor.
+    std::optional<Vec3d> m_gesture_pan_anchor;
     GLGizmosManager m_gizmos;
     //BBS: GUI refactor: GLToolbar
     mutable GLToolbar m_main_toolbar;
@@ -626,7 +659,23 @@ private:
     bool m_dynamic_background_enabled;
     bool m_multisample_allowed;
     bool m_moving;
-    bool m_tab_down;
+    // The key-down being dispatched, kept for the char event that may follow it.
+    struct KeyDown
+    {
+        int  code   = WXK_NONE;
+        bool repeat = false;
+    };
+    KeyDown m_key_down;
+    // A keyboard move or rotation of the selection runs from the key-down that started it to
+    // that key's release, so a held key becomes one undo step.
+    struct SelectionEdit
+    {
+        enum Kind { None, Move, Rotate };
+        Kind  kind = None;
+        int   key  = WXK_NONE;   // raw key code of the key-down, matched against the key-up
+        Vec3d direction{ Vec3d::UnitX() };
+    };
+    SelectionEdit m_selection_edit;
     bool m_camera_movement;
     //BBS: add toolpath outside
     bool m_toolpath_outside{ false };
@@ -1094,6 +1143,13 @@ public:
     void on_idle(wxIdleEvent& evt);
     void on_char(wxKeyEvent& evt);
     void on_key(wxKeyEvent& evt);
+    // Runs the Plater/Preview shortcut bound to chord, swallowing auto-repeats of one-shot
+    // shortcuts; false when nothing is bound.
+    bool handle_shortcut(const KeyChord& chord);
+    void apply_selection_move(bool slow, bool camera_space);
+    void apply_selection_rotate(double angle_z_rad);
+    void finish_selection_edit();
+    void update_shortcut_tooltips();
     void on_mouse_wheel(wxMouseEvent& evt);
     void on_timer(wxTimerEvent& evt);
     void on_render_timer(wxTimerEvent& evt);
@@ -1269,6 +1325,8 @@ public:
     Vec3d _mouse_to_3d(const Point& mouse_pos, float* z = nullptr);
 
     bool make_current_for_postinit();
+    // Sizes ImGui's fonts and style for this canvas; the fonts are rebuilt when the size changes.
+    void set_imgui_scaling();
 
 private:
     bool _is_shown_on_screen() const;
@@ -1288,6 +1346,7 @@ private:
     bool _init_collapse_toolbar();
 
     bool _set_current();
+    bool _set_shown_canvas_current();
     void _resize(unsigned int w, unsigned int h);
 
     //BBS: add part plate related logic
@@ -1301,6 +1360,7 @@ private:
     void _picking_pass();
     void _rectangular_selection_picking_pass();
     bool _is_fxaa_enabled() const;
+    bool _is_realistic_view_enabled() const;
     bool _is_ssao_enabled() const;
     int _get_effective_fps_cap() const;
     bool _is_fps_overlay_enabled() const;
@@ -1333,6 +1393,8 @@ private:
     //BBS: add outline drawing logic
     void _render_objects(GLVolumeCollection::ERenderType type, bool with_outline = true);
     void _render_wireframe_overlay();
+    bool _is_xray_view_active() const;
+    void _render_xray_volumes();
     //BBS: GUI refactor: add canvas size as parameters
     void _render_gcode(int canvas_width, int canvas_height);
     void _render_gcode_overlay(int canvas_width, int canvas_height);
@@ -1379,6 +1441,20 @@ private:
 
     // Convert the screen space coordinate to world coordinate on the bed.
     Vec3d _mouse_to_bed_3d(const Point& mouse_pos);
+
+    // Orca: Navigation type selects the legacy pivot policy used when no visible surface is hit.
+    enum class ECameraNavigationType : unsigned char
+    {
+        Mouse,
+        Gesture
+    };
+
+    // Orca: These helpers keep clipping, orbit pivots, and perspective-pan depth selection consistent.
+    ClippingPlane get_raycaster_clipping_plane() const;
+    bool is_bed_visible() const;
+    std::optional<Vec3d> get_camera_orbit_target(ECameraNavigationType navigation_type) const;
+    Vec3d get_camera_pan_anchor(Camera& camera, ECameraNavigationType navigation_type,
+        const Vec2d& screen_position) const;
 
     void _start_timer() { m_timer.Start(100, wxTIMER_CONTINUOUS); }
     void _stop_timer() { m_timer.Stop(); }

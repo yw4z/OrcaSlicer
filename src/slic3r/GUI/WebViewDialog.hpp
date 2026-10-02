@@ -6,6 +6,13 @@
 #include "wx/cmdline.h"
 #include "wx/notifmsg.h"
 #include "wx/settings.h"
+#include <wx/setup.h>
+#include <wx/string.h>
+#include <wx/event.h>
+#include <string>
+#include <functional>
+#include <wx/dialog.h>
+#include <wx/accel.h>
 #include <wx/webview.h>
 
 #if wxUSE_WEBVIEW_EDGE
@@ -24,6 +31,7 @@
 #include <wx/tbarbase.h>
 #include "wx/textctrl.h"
 #include <wx/timer.h>
+#include "Lazy.hpp"
 
 
 namespace Slic3r {
@@ -33,7 +41,7 @@ class NetworkAgent;
 namespace GUI {
 
 
-class WebViewPanel : public wxPanel
+class WebViewPanel : public wxPanel, public LazyInstance<WebViewPanel>
 {
 public:
     WebViewPanel(wxWindow *parent);

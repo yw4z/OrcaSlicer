@@ -1,15 +1,32 @@
 #include "GLGizmoFlatten.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/Shortcuts.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmosCommon.hpp"
 
 #include "libslic3r/LayOnFace.hpp"
 #include "libslic3r/Model.hpp"
 
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Geometry.hpp"
+#include <cassert>
+#include <algorithm>
+#include <cstddef>
+#include "libslic3r/TriangleMesh.hpp"
+#include <memory>
 #include <numeric>
 
 #include <glad/gl.h>
+#include <string>
+#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
+#include "slic3r/GUI/Selection.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include "slic3r/GUI/SceneRaycaster.hpp"
+#include <vector>
+#include <utility>
+#include "slic3r/GUI/MeshUtils.hpp"
 
 namespace Slic3r {
 namespace GUI {
@@ -54,7 +71,7 @@ void GLGizmoFlatten::data_changed(bool is_serializing)
 
 bool GLGizmoFlatten::on_init()
 {
-    m_shortcut_key = WXK_CONTROL_F;
+    m_shortcut = Shortcut::GizmoFlatten;
     return true;
 }
 

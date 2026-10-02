@@ -1,4 +1,11 @@
 #include "slic3r/GUI/CAD/McpControl.hpp"
+#include "libslic3r/Point.hpp"
+#include <stdexcept>
+#include <math.h>
+#include <TopAbs_ShapeEnum.hxx>
+#include <Standard_TypeDef.hxx>
+#include <exception>
+#include <cstdint>
 
 #ifndef _WIN32  // POSIX Unix-domain-socket transport only (slice 1)
 
@@ -1989,11 +1996,10 @@ json action_set_feature_expr(DesignPanel* panel, const json& params)
 // Dispatch one parsed request ON THE MAIN THREAD. Returns a JSON-RPC reply string.
 std::string handle_on_main(const std::string& method, const json& params, const json& id)
 {
-    MainFrame* mf = wxGetApp().mainframe;
     // The panel is built on first use, and in a headless session nobody clicks the tab that
     // would build it -- so build it here rather than refusing. Safe: this runs on the main
     // thread (see the CallAfter that dispatches us).
-    DesignPanel* panel = mf ? mf->ensure_design_panel() : nullptr;
+    DesignPanel* panel = DesignPanel::ensure();
     if (!panel)
         return rpc_error(id, -32001, "Design panel not ready");
 

@@ -1,10 +1,46 @@
 #include "GLGizmoBrimEars.hpp"
+#include <cstddef>
+#include <Eigen/Geometry>
+#include <algorithm>
+#include <cereal/archives/binary.hpp>
+#include <cmath>
+#include <cstdint>
 #include <glad/gl.h>
+#include "libslic3r/Color.hpp"
+#include "slic3r/GUI/Selection.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include "libslic3r/CutUtils.hpp"
+#include <string>
+#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
+#include "slic3r/GUI/GLModel.hpp"
+#include <memory>
+#include "slic3r/GUI/MeshUtils.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include <utility>
+#include "slic3r/GUI/Event.hpp"
+#include "libslic3r/Utils.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/BrimEarsPoint.hpp"
+#include "libslic3r/Geometry.hpp"
+#include <limits>
+#include <vector>
+#include <imgui.h>
+#include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Config.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "slic3r/GUI/GUI_ObjectLayers.hpp"
+#include "libslic3r/libslic3r.h"
+#include "libslic3r/MultiPoint.hpp"
+#include "libslic3r/TriangleMeshSlicer.hpp"
+#include "libslic3r/Model.hpp"
+#include "slic3r/GUI/SceneRaycaster.hpp"
+#include <map>
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/Camera.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmosCommon.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/Shortcuts.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExPolygon.hpp"
@@ -46,7 +82,7 @@ bool GLGizmoBrimEars::on_init()
 {
     m_new_point_head_radius = get_brim_default_radius();
 
-    m_shortcut_key = WXK_CONTROL_E;
+    m_shortcut = Shortcut::GizmoBrimEars;
 
     const wxString ctrl = GUI::shortkey_ctrl_prefix();
     const wxString alt  = GUI::shortkey_alt_prefix();

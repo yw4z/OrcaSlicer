@@ -4,6 +4,7 @@
 #include "slic3r/GUI/3DScene.hpp"
 #include "slic3r/GUI/Camera.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/Shortcuts.hpp"
 #include "slic3r/GUI/GUI_ObjectList.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
@@ -22,11 +23,33 @@
 //#include "slic3r/GUI/Gizmos/GLGizmoHollow.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSeam.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoTextureDisplacement.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSimplify.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoEmboss.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSVG.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoMeshBoolean.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoAssembly.hpp"
+#include <wx/timer.h>
+#include <vector>
+#include <cstddef>
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Utils.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoMeasure.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmosCommon.hpp"
+#include <utility>
+#include <map>
+#include <imgui.h>
+#include "slic3r/GUI/ImGuiWrapper.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
+#include <algorithm>
+#include <memory>
+#include "slic3r/GUI/Gizmos/GLGizmoPainterBase.hpp"
+#include <cassert>
+#include <boost/container_hash/hash.hpp>
+#include <wx/colour.h>
+#include <wx/event.h>
+#include <optional>
+#include "libslic3r/AppConfig.hpp"
 #ifdef SLIC3R_CAD
 #include "slic3r/GUI/Gizmos/GLGizmoPrimitive.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSketch.hpp"
@@ -170,6 +193,13 @@ void GLGizmosManager::switch_gizmos_icon_filename()
         case(EType::FuzzySkin):
             gizmo->set_icon_filename(m_is_dark ? "toolbar_fuzzy_skin_paint_dark.svg" : "toolbar_fuzzy_skin_paint.svg");
             break;
+        case(EType::TextureDisplacement):
+            // One shared icon in both themes (no dedicated dark variant yet) - but it must still be
+            // *this* gizmo's icon. Handing it the fuzzy-skin one here quietly replaced the icon set at
+            // construction, so the toolbar ended up showing two identical fuzzy-skin buttons after any
+            // light/dark switch.
+            gizmo->set_icon_filename("toolbar_texture_displacement.svg");
+            break;
         case(EType::MeshBoolean):
             gizmo->set_icon_filename(m_is_dark ? "toolbar_meshboolean_dark.svg" : "toolbar_meshboolean.svg");
             break;
@@ -227,6 +257,8 @@ bool GLGizmosManager::init()
     m_gizmos.emplace_back(new GLGizmoSeam(m_parent, m_is_dark ? "toolbar_seam_dark.svg" : "toolbar_seam.svg", EType::Seam));
     m_gizmos.emplace_back(new GLGizmoFuzzySkin(m_parent, m_is_dark ? "toolbar_fuzzy_skin_paint_dark.svg" : "toolbar_fuzzy_skin_paint.svg", EType::FuzzySkin));
     m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, m_is_dark ? "mmu_segmentation_dark.svg" : "mmu_segmentation.svg", EType::MmSegmentation));
+    // One shared icon (no dedicated dark variant yet); it recolours acceptably in both themes.
+    m_gizmos.emplace_back(new GLGizmoTextureDisplacement(m_parent, "toolbar_texture_displacement.svg", EType::TextureDisplacement));
     m_gizmos.emplace_back(new GLGizmoEmboss(m_parent, m_is_dark ? "toolbar_text_dark.svg" : "toolbar_text.svg", EType::Emboss));
     m_gizmos.emplace_back(new GLGizmoSVG(m_parent));
     m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, m_is_dark ? "toolbar_measure_dark.svg" : "toolbar_measure.svg", EType::Measure));
@@ -486,15 +518,13 @@ bool GLGizmosManager::is_running() const
     return m_current != Undefined;
 }
 
-bool GLGizmosManager::handle_shortcut(int key)
+bool GLGizmosManager::open_gizmo_by_shortcut(Shortcut shortcut)
 {
     if (!m_enabled)
         return false;
 
-    auto is_key = [pressed_key = key](int gizmo_key) { return (gizmo_key == pressed_key - 64) || (gizmo_key == pressed_key - 96); };
-    // allowe open shortcut even when selection is empty    
-    if (GLGizmoBase* gizmo_emboss = m_gizmos[Emboss].get();
-        is_key(gizmo_emboss->get_shortcut_key())) {
+    // The text tool opens without a selection because it creates its own object.
+    if (GLGizmoBase* gizmo_emboss = m_gizmos[Emboss].get(); gizmo_emboss->shortcut() == shortcut) {
         dynamic_cast<GLGizmoEmboss *>(gizmo_emboss)->on_shortcut_key();
         return true;
     }
@@ -502,16 +532,21 @@ bool GLGizmosManager::handle_shortcut(int key)
     if (m_parent.get_selection().is_empty())
         return false;
 
-    auto is_gizmo = [is_key](const std::unique_ptr<GLGizmoBase> &gizmo) {
-        return gizmo->is_activable() && is_key(gizmo->get_shortcut_key());
-    };
-    auto it = std::find_if(m_gizmos.begin(), m_gizmos.end(), is_gizmo);
-
+    auto it = std::find_if(m_gizmos.begin(), m_gizmos.end(), [shortcut](const std::unique_ptr<GLGizmoBase> &gizmo) {
+        return gizmo->is_activable() && gizmo->shortcut() == shortcut;
+    });
     if (it == m_gizmos.end())
         return false;
 
-    EType gizmo_type = EType(it - m_gizmos.begin());
-    return open_gizmo(gizmo_type);
+    return open_gizmo(EType(it - m_gizmos.begin()));
+}
+
+bool GLGizmosManager::on_delete_key()
+{
+    const bool processed = (m_current == Cut || m_current == Measure || m_current == Assembly) && gizmo_event(SLAGizmoEventType::Delete);
+    if (processed)
+        m_parent.set_as_dirty();
+    return processed;
 }
 
 bool GLGizmosManager::is_dragging() const
@@ -546,6 +581,8 @@ bool GLGizmosManager::gizmo_event(SLAGizmoEventType action, const Vec2d& mouse_p
         return dynamic_cast<GLGizmoCut3D*>(m_gizmos[Cut].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == FuzzySkin)
         return dynamic_cast<GLGizmoFuzzySkin*>(m_gizmos[FuzzySkin].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
+    else if (m_current == TextureDisplacement)
+        return dynamic_cast<GLGizmoTextureDisplacement*>(m_gizmos[TextureDisplacement].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == MeshBoolean)
         return dynamic_cast<GLGizmoMeshBoolean*>(m_gizmos[MeshBoolean].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == BrimEars)
@@ -559,6 +596,7 @@ bool GLGizmosManager::is_paint_gizmo()
     return m_current == EType::FdmSupports ||
            m_current == EType::MmSegmentation ||
            m_current == EType::FuzzySkin ||
+           m_current == EType::TextureDisplacement ||
            m_current == EType::Seam;
 }
 
@@ -856,15 +894,6 @@ bool GLGizmosManager::on_char(wxKeyEvent& evt)
             }
             break;
         }
-        //skip some keys when gizmo
-        case 'A':
-        case 'a':
-        {
-            if (is_running()) {
-                processed = true;
-            }
-            break;
-        }
         //case WXK_RETURN:
         //{
         //    if ((m_current == SlaSupports) && gizmo_event(SLAGizmoEventType::ApplyChanges))
@@ -883,12 +912,6 @@ bool GLGizmosManager::on_char(wxKeyEvent& evt)
         //}
 
 
-        case WXK_BACK:
-        case WXK_DELETE: {
-            if ((m_current == Cut || m_current == Measure || m_current == Assembly) && gizmo_event(SLAGizmoEventType::Delete))
-                processed = true;
-            break;
-        }
         //case 'A':
         //case 'a':
         //{
@@ -930,11 +953,6 @@ bool GLGizmosManager::on_char(wxKeyEvent& evt)
             break;
         }
         }
-    }
-
-    if (!processed && !evt.HasModifiers()) {
-        if (handle_shortcut(keyCode))
-            processed = true;
     }
 
     if (processed)
@@ -1077,39 +1095,23 @@ bool GLGizmosManager::on_key(wxKeyEvent& evt)
                         processed = select(digit);
                     }
                 }
-                else if (keyCode == 'F' || keyCode == 'T' || keyCode == 'S' || keyCode == 'C' || keyCode == 'H' || keyCode == 'G') {
-                    processed = mmu_seg->on_key_down_select_tool_type(keyCode);
-                    if (processed) {
-                        // force extra frame to automatically update window size
-                        wxGetApp().imgui()->set_requires_extra_frame();
-                    }
-                }
             }
         }
-        else if (m_current == FdmSupports) {
-            GLGizmoFdmSupports* fdm_support = dynamic_cast<GLGizmoFdmSupports*>(get_current());
-            if (fdm_support != nullptr && (keyCode == 'F' || keyCode == 'S' || keyCode == 'C' || keyCode == 'G')) {
-                processed = fdm_support->on_key_down_select_tool_type(keyCode);
-            }
-            if (processed) {
-                // force extra frame to automatically update window size
-                wxGetApp().imgui()->set_requires_extra_frame();
-            }
-        }
-        else if (m_current == Seam) {
-            GLGizmoSeam* seam = dynamic_cast<GLGizmoSeam*>(get_current());
-            if (seam != nullptr && (keyCode == 'S' || keyCode == 'C')) {
-                processed = seam->on_key_down_select_tool_type(keyCode);
-            }
-            if (processed) {
-                // force extra frame to automatically update window size
-                wxGetApp().imgui()->set_requires_extra_frame();
-            }
-        } else if (m_current == Measure || m_current == Assembly) {
+        else if (m_current == Measure || m_current == Assembly) {
             if (keyCode == WXK_CONTROL)
                 gizmo_event(SLAGizmoEventType::CtrlDown, Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.CmdDown());
             else if (keyCode == WXK_SHIFT)
                 gizmo_event(SLAGizmoEventType::ShiftDown, Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.CmdDown());
+        }
+
+        if (!processed) {
+            if (auto painter = dynamic_cast<GLGizmoPainterBase*>(get_current()); painter != nullptr) {
+                const std::optional<Shortcut> shortcut = wxGetApp().shortcuts().lookup(ShortcutContext::Painting, KeyChord::from_event(evt));
+                processed = shortcut.has_value() && painter->on_tool_shortcut(*shortcut);
+                if (processed)
+                    // force extra frame to automatically update window size
+                    wxGetApp().imgui()->set_requires_extra_frame();
+            }
         }
     }
 
@@ -1563,6 +1565,8 @@ std::string get_name_from_gizmo_etype(GLGizmosManager::EType type)
         return "Color Painting";
     case GLGizmosManager::EType::FuzzySkin:
         return "Fuzzy Skin Painting";
+    case GLGizmosManager::EType::TextureDisplacement:
+        return "Texture Displacement";
     default:
         return "";
     }

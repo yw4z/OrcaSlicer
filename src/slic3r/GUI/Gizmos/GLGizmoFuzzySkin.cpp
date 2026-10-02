@@ -6,6 +6,7 @@
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/Shortcuts.hpp"
 #include "slic3r/GUI/GUI_ObjectList.hpp"
 #include "slic3r/GUI/ImGuiWrapper.hpp"
 #include "slic3r/GUI/MsgDialog.hpp"
@@ -13,8 +14,24 @@
 #include "slic3r/Utils/UndoRedo.hpp"
 #include "GLGizmoUtils.hpp"
 
+#include <array>
+#include <cassert>
 #include <glad/gl.h>
 #include <algorithm>
+#include <string>
+#include <utility>
+#include "slic3r/GUI/Gizmos/GLGizmoPainterBase.hpp"
+#include <vector>
+#include "slic3r/GUI/Gizmos/GLGizmosManager.hpp"
+#include <imgui.h>
+#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Config.hpp"
+#include "slic3r/GUI/Event.hpp"
+#include <wx/busycursor.h>
+#include "libslic3r/Color.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include <memory>
 
 namespace Slic3r::GUI {
 
@@ -31,7 +48,7 @@ std::string GLGizmoFuzzySkin::on_get_name() const
 
 bool GLGizmoFuzzySkin::on_init()
 {
-    m_shortcut_key = WXK_CONTROL_H;
+    m_shortcut = Shortcut::GizmoFuzzySkin;
 
     const wxString ctrl  = GUI::shortkey_ctrl_prefix();
     const wxString alt   = GUI::shortkey_alt_prefix();
