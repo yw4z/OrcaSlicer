@@ -741,6 +741,7 @@ static void imex_7x4_printer(DynamicPrintConfig &config)
         // "G10 S<t> P<n>" from the same code, so the flavor is pinned rather than defaulted.
         { "gcode_flavor",              "klipper" },
     });
+    size_flush_to_nozzles(config);
 }
 
 // Route every region to one filament. An unset *_filament_id is not "inherit":

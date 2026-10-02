@@ -114,6 +114,7 @@ static void imex_7x4_printer(DynamicPrintConfig &config)
         // compares the two scripts and nothing else.
         { "gcode_flavor",              "klipper" },
     });
+    size_flush_to_nozzles(config);
 }
 
 // Set the mode scripts positionally, one per name in imex_mode_names. Assigning the vector

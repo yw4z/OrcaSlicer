@@ -173,6 +173,7 @@ static void imex_printer(DynamicPrintConfig &config)
         { "initial_layer_print_height","0.2" },
         { "gcode_flavor",              "klipper" },
     });
+    size_flush_to_nozzles(config);
 }
 
 // Route every region to one filament. An unset *_filament_id is not "inherit":
