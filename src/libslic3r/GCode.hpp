@@ -843,9 +843,6 @@ protected:
     // _extrude() needs for the first-layer-plane probe is published here instead.
     // Scoped by BeltBrimZGuard in process_belt_brim_layer(), never left set.
     std::optional<coordf_t> m_belt_brim_z;
-    // Counter standing in for Layer::id() on apron layers, which precede layer 0.
-    size_t m_belt_brim_layer_idx{0};
-
     // Belt brim only.  Brim and coincident apron bands are emitted before m_layer
     // is switched to their object, so belt_height_above_floor() would otherwise
     // read the previously visited object's belt description -- making a brim's

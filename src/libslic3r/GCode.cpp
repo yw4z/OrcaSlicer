@@ -5326,7 +5326,9 @@ LayerResult GCode::process_belt_brim_layer(
             break;
         }
 
-    m_cur_layer_idx = m_belt_brim_layer_idx ++;
+    // Apron bands precede object layer 0 and have no layer id of their own; they take the
+    // filament and nozzle assignment in effect at the first object layer.
+    m_cur_layer_idx = 0;
 
     // Publish the band's Z for _extrude()'s first-layer-plane probe, and make sure
     // it cannot leak past this layer even if an extrusion throws.
