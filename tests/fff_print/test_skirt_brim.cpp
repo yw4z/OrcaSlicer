@@ -919,12 +919,15 @@ TEST_CASE("Belt inner-only leading brim does not reject the prime tower or spira
         CHECK_FALSE(print.objects().front()->has_belt_brim());
         CHECK(print.validate().string.empty());
     }
-    SECTION("a real inner brim still rejects the prime tower") {
+    // enable_prime_tower stays on for any multi-filament project, but a belt printer never
+    // prints the classic tower, so the setting alone must not cost the print its brim.
+    SECTION("a real inner brim is accepted with the prime tower setting on") {
         Print print;
         Model model;
         init_inner_leading_with_prime_tower(print, model, 4);
         CHECK(print.objects().front()->has_belt_brim());
-        CHECK_FALSE(print.validate().string.empty());
+        CHECK(print.validate().string.empty());
+        CHECK_FALSE(gcode(print).empty());
     }
 }
 

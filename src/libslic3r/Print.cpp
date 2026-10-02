@@ -1420,11 +1420,10 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
             return { L("Draft shield is not compatible with belt printer mode.") };
 
         // Belt brim spans many layers and owns the layers below the object, which
-        // neither the prime tower nor spiral vase can share.
+        // spiral vase cannot share. The prime tower setting is no obstacle: belt
+        // printers never print the classic tower, and the belt purge prism is an
+        // ordinary object that never takes a brim.
         if (this->has_belt_brim()) {
-            if (m_config.enable_prime_tower.value)
-                return { L("Brim is not compatible with the prime tower on a belt printer. "
-                           "Disable one of them.") };
             if (m_config.spiral_mode.value)
                 return { L("Brim is not compatible with spiral vase mode on a belt printer. "
                            "Disable one of them.") };
