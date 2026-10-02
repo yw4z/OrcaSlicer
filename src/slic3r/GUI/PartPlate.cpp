@@ -1152,7 +1152,12 @@ Polygon PartPlate::imex_wipe_tower_hull() const
 
     Vec3d wt_pos, wt_size;
     // full_config(), not the print preset: wipe_tower_x/y are project options the estimate
-    // dereferences unchecked. apply_extruder=false - none of its keys are variant-keyed.
+    // dereferences unchecked. apply_extruder=false, so the per-filament arrays arrive as the
+    // concatenation of each preset's declared variants rather than one entry per filament.
+    // That matters now: filament_minimal_purge_on_wipe_tower became variant-keyed upstream and
+    // WipeTower2::extract_wipe_volumes indexes it by raw filament slot, so a multi-variant
+    // filament preset on a single-extruder-multi-material machine would estimate the tower
+    // from the wrong column. No shipped preset pairs the two today.
     // plate_extruder_size is a floor, not an override; the scene passes 0, and both counts
     // come from the same object walk.
     arrangement::ArrangePolygon ap = estimate_wipe_tower_polygon(preset_bundle->full_config(false), m_plate_index, wt_pos, wt_size, plate_extruder_size);
