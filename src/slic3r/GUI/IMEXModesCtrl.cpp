@@ -487,16 +487,29 @@ void IMEXModesCtrl::add_row(const std::string& name,
                                 FromDIP(wxSize(kNameColPx, -1)), 0, nullptr, 0);
         for (const wxString& sug : suggested_mode_names())
             r.name->Append(sug);
-        // Rebuilt on open: add_row() runs before this row joins m_rows and before the rows
-        // below it exist, so a list built once there filters against only part of the table
-        // and offers names that are already taken. By the time the list drops, every row is
-        // present -- and this row's own name is excluded from "taken" so it stays offered.
-        r.name->Bind(wxEVT_COMBOBOX_DROPDOWN, [this, cb = r.name](wxCommandEvent& e) {
-            cb->Clear();
-            for (const wxString& sug : suggested_mode_names(cb))
-                cb->Append(sug);
+        // Rebuilt on every click that could open the list: add_row() runs before this row joins
+        // m_rows and before the rows below it exist, so a list built once there filters against
+        // only part of the table and offers names that are already taken. By then every row is
+        // present -- and this row's own name is excluded from "taken" so it stays offered. It
+        // has to be BEFORE ComboBox opens it, not in wxEVT_COMBOBOX_DROPDOWN, which ComboBox
+        // sends after sizing and showing the popup from the old items: with every name taken
+        // that showed an empty popup. Bound handlers run ahead of ComboBox's own event-table
+        // entries, so this rebuilds first and, with nothing to offer, keeps it shut. Only clicks
+        // can open it: focus lives in the inner text control, so keys never reach the combo.
+        const auto on_open_click = [this, cb = r.name](wxMouseEvent& e) {
+            if (!cb->is_drop_down()) {
+                cb->Clear();
+                for (const wxString& sug : suggested_mode_names(cb))
+                    cb->Append(sug);
+                if (cb->GetCount() == 0) {
+                    cb->SetFocus(); // what ComboBox's own click would have done, short of the list
+                    return;
+                }
+            }
             e.Skip();
-        });
+        };
+        r.name->Bind(wxEVT_LEFT_DOWN, on_open_click);
+        r.name->Bind(wxEVT_LEFT_DCLICK, on_open_click);
         // Constructed empty on purpose: ComboBox hands its value to TextInput as the LABEL --
         // the small right-aligned slot a unit like "mm" lives in -- because a read-only combo
         // hides the text control and shows that label instead. This one is editable, so the
