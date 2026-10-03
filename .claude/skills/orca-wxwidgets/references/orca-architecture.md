@@ -403,9 +403,13 @@ page object to insert and remove by pointer). `LazyPage(parent, name, order, fac
 factory is `new Panel(parent)`. Its `Show(true)` builds the panel the first time (only once the
 top-level frame is shown — `MainFrame::Show` completes the start page on the frame's first show) and
 forwards later shows/hides to the panel, so the panel's own `Show()` override stays its activation
-hook. A panel built while its page is hidden stays hidden, and `when_built` gives it the dark-UI pass
-the frame ran before it existed (`apply_dark_ui_to_lazy_panel`). `pending()` is true only while the page
-is in the book.
+hook. The build runs before the placeholder's own `wxPanel::Show(true)`, so an on-demand build creates
+its controls in a hidden window as a prebuild does: on MSW each control created or moved inside a
+shown window re-clips and repaints its shown siblings, which made a large panel's first show take
+seconds. A lazy panel's constructor therefore runs off screen (except the start page's) and must not
+rely on `IsShownOnScreen()`. A panel built while its page is hidden stays hidden, and `when_built`
+gives it the dark-UI pass the frame ran before it existed (`apply_dark_ui_to_lazy_panel`).
+`pending()` is true only while the page is in the book.
 
 ### Staged construction: StagedBuild
 
