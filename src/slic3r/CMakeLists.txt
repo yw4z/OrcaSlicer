@@ -147,6 +147,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/WebPanel.hpp
     GUI/Widgets/WebHosting.cpp
     GUI/Widgets/WebHosting.hpp
+    GUI/AuiMgr.cpp
+    GUI/AuiMgr.hpp
     GUI/AuiPaneLayout.cpp
     GUI/AuiPaneLayout.hpp
     GUI/DragCanvas.cpp

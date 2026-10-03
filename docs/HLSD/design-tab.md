@@ -204,6 +204,14 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
 - **Undo.** The tab keeps its own history (the recipe is not part of Prepare's snapshots), but
   it has no Undo/Redo of its own: the top bar, `Ctrl+Z` and Edit drive it while the tab is
   shown, greyed to what an undo would actually do.
+- **Docking.** The sidebar docks like Prepare's — either side, floating, resized, or collapsed
+  with the canvas's collapse button or `Shift+Tab` — through its own AUI manager under the
+  toolbar, because Prepare's manages the Plater and the Plater is not on this page. The button is
+  the canvas's own toolbar rather than Prepare's, which collapses Prepare's sidebar. The layout,
+  collapse included, is kept apart from Prepare's (`design_window_layout`) and starts where
+  Prepare's sidebar is, at its width, so the canvas edge holds still across the tab switch until
+  the user moves one of them. A floating sidebar is a top-level window, so it is hidden with the
+  tab rather than left over the other pages, and View > Reset Window Layout resets both tabs.
 
 ## The offer is generated, not hand-written
 

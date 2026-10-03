@@ -617,8 +617,10 @@ Spacing constants come from `SidebarProps` (`Plater.hpp`): `TitlebarMargin()`, `
 
 ### Docking
 
-`Plater::priv` owns `AuiMgr m_aui_mgr` (a `wxAuiManager` subclass whose `CreateFloatingFrame` returns a
-themed `FloatFrame : wxAuiFloatingFrame`), managing the plater. Panes: `"sidebar"` (left, no close
+Docks are `AuiMgr`s (`AuiMgr.hpp`), a `wxAuiManager` subclass carrying Orca's dock art, theme and
+Wayland rule (`references/webview-gl-aui-media.md`). `Plater::priv` owns `m_aui_mgr`, managing the
+plater; the Design tab owns its own for its sidebar (`DesignPanel::m_aui`, layout in
+`design_window_layout`). Plater panes: `"sidebar"` (left, no close
 button, not top/bottom dockable), `"main"` (`CenterPane()`, the `panel_3d`), `"uv_editor"` (right,
 hidden until the texture-displacement gizmo shows it), plus dynamic dock panes. The default perspective
 is saved right after `AddPane`; the app-config `window_layout` is applied with

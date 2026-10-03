@@ -20,6 +20,7 @@
 #include "libslic3r/Line.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
 #include <stddef.h>
+#include <functional>
 #include <memory>
 #include <chrono>
 #include <cstdint>
@@ -594,6 +595,9 @@ private:
     mutable float m_sc{1};
     mutable float m_paint_toolbar_width;
     bool m_collapse_toolbar_enabled{true};
+    // The collapse button of a sidebar other than Prepare's, from set_collapse_toolbar().
+    GLToolbar*                    m_collapse_toolbar{nullptr};
+    std::function<CollapseSide()> m_collapse_side;
     bool m_plate_chrome_enabled{true};
     // Design tab: render the world-axis triad at the bed centre (= modeling origin) instead of
     // the bed corner. Default false preserves the main editor's corner triad.
@@ -1008,6 +1012,10 @@ public:
     void enable_return_toolbar(bool enable);
     void enable_separator_toolbar(bool enable);
     void enable_collapse_toolbar(bool enable);
+    // A canvas beside a sidebar other than Prepare's shows that sidebar's collapse button: `toolbar`,
+    // set up with setup_collapse_toolbar(), on the edge `side` reports. Call before the canvas is
+    // initialized, which loads the toolbar's background.
+    void set_collapse_toolbar(GLToolbar* toolbar, std::function<CollapseSide()> side);
     void enable_plate_chrome(bool enable);
     void set_axes_at_bed_center(bool b) { m_axes_at_bed_center = b; }
     void set_show_bed(bool b) { m_show_bed = b; }
@@ -1374,6 +1382,8 @@ private:
     // BBS
     //bool _init_view_toolbar();
     bool _init_collapse_toolbar();
+    GLToolbar&   collapse_toolbar() const;
+    CollapseSide collapse_side() const;
 
     bool _set_current();
     bool _set_shown_canvas_current();
