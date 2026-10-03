@@ -1256,6 +1256,29 @@ TEST_CASE("A mixed filament outranks the multi-color rule on the same plate",
     }
 }
 
+// A tool change added from the layer slider switches heads mid-print just as a painted color
+// does, so a parallel mode has to judge it with the plate's other filaments. Before it counted,
+// a one-filament plate with a slider change to a copying head's filament passed validate().
+TEST_CASE("A layer slider tool change counts as a color in a parallel mode", "[MultiFilament][IMEX]")
+{
+    DynamicPrintConfig config = multifilament_config(7);
+    imex_7x4_printer(config);
+    all_regions_on_filament(config, 1); // filament 1 => logical slot 0 => physical head 0
+    config.set_deserialize_strict({ { "imex_parallel_mode", "copy" } });
+
+    Slic3r::Model model;
+    Slic3r::Print print;
+    init_print({ cube(20) }, print, model, config);
+    std::vector<StringObjectException> warnings;
+    REQUIRE(print.validate(&warnings).string.empty());
+
+    // Filament 5 routes to head 1, which copies the primary in this mode.
+    model.plates_custom_gcodes[model.curr_plate_index].gcodes.push_back(
+        { 5.0, CustomGCode::Type::ToolChange, 5, "", "" });
+    print.apply(model, print.full_print_config());
+    REQUIRE_FALSE(print.validate(&warnings).string.empty());
+}
+
 // Guard rail: the block must not fire on a well-formed plate. Filament 1 (slot 0) routes to
 // head 0, which `copy` declares Primary, so the Primary tool has something to print with.
 TEST_CASE("An IMEX plate whose filament routes to the Primary tool validates",

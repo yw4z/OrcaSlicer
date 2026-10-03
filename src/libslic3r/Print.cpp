@@ -1768,11 +1768,14 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     if (m_config.is_imex.value && !m_objects.empty()) {
         const std::string& parallel_mode = m_objects.front()->config().imex_parallel_mode.value;
         if (!parallel_mode.empty() && parallel_mode != kImexPrimaryMode) {
+            // Tool changes added from the layer slider switch heads mid-print as a painted color
+            // does, so they count here, as the plate's warning badge counts them.
+            const std::vector<unsigned int> imex_extruders = this->extruders(/*conside_custom_gcode=*/true);
             std::vector<int> used_filaments_0b;
             std::vector<int> used_slots_1b;
-            used_filaments_0b.reserve(extruders.size());
-            used_slots_1b.reserve(extruders.size());
-            for (unsigned int e : extruders) {
+            used_filaments_0b.reserve(imex_extruders.size());
+            used_slots_1b.reserve(imex_extruders.size());
+            for (unsigned int e : imex_extruders) {
                 used_filaments_0b.push_back((int)e);
                 used_slots_1b.push_back((int)e + 1);
             }
