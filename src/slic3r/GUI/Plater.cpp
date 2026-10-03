@@ -22909,12 +22909,9 @@ int Plater::select_plate_by_hover_id(int hover_id, bool right_click, bool isModi
         ret = select_plate(plate_index);
         if (!ret) {
             PartPlate* curr_plate = p->partplate_list.get_curr_plate();
-            // Build ordered mode list: kImexPrimaryMode first, then all named modes.
-            std::vector<std::string> modes;
-            modes.push_back(kImexPrimaryMode);
-            const DynamicPrintConfig& printer_cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
-            for (const ImexMode& m : imex_mode_table(printer_cfg))
-                if (!m.name.empty() && m.name != kImexPrimaryMode) modes.push_back(m.name);
+            // Ordered mode list: kImexPrimaryMode first, then each named mode once.
+            const std::vector<std::string> modes =
+                imex_plate_mode_choices(wxGetApp().preset_bundle->printers.get_edited_preset().config);
 
             if (right_click) {
                 // Show a popup menu with all modes.

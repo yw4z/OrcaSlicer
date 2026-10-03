@@ -5,6 +5,7 @@
 #include <wx/stattext.h>
 
 #include <algorithm>
+#include <boost/algorithm/string/predicate.hpp>
 #include <utility>
 
 #include "slic3r/GUI/EditGCodeDialog.hpp"
@@ -262,7 +263,7 @@ std::map<int, ImexRole> IMEXModesCtrl::roles_for_mode(const std::string& active_
     return roles;
 }
 
-std::string IMEXModesCtrl::unique_mode_name(const std::vector<std::string>& also_taken) const {
+std::string IMEXModesCtrl::unique_mode_name(const std::vector<std::string>& also_taken, const std::string& base) const {
     auto is_taken = [&](const std::string& cand) {
         if (std::find(also_taken.begin(), also_taken.end(), cand) != also_taken.end())
             return true;
@@ -272,10 +273,33 @@ std::string IMEXModesCtrl::unique_mode_name(const std::vector<std::string>& also
         return false;
     };
     for (int n = 2; ; ++n) {
-        std::string cand = "Mode " + std::to_string(n);
+        std::string cand = base + " " + std::to_string(n);
         if (!is_taken(cand))
             return cand;
     }
+}
+
+bool IMEXModesCtrl::fix_row_name(Row& r) {
+    if (r.is_primary || !r.name)
+        return false;
+    const std::string name = into_u8(r.name->GetTextCtrl()->GetValue());
+    // Case-insensitive: a row named "Primary" works, but its menu entry reads the same as the
+    // built-in Primary's.
+    const bool reserved = boost::iequals(name, kImexPrimaryMode);
+    bool taken = false;
+    for (const Row& other : m_rows)
+        if (&other != &r && !other.is_primary && other.name && into_u8(other.name->GetTextCtrl()->GetValue()) == name)
+            taken = true;
+    if (!name.empty() && !reserved && !taken)
+        return false;
+    std::string base = name;
+    // "copy 2" taken becomes "copy 3", not "copy 2 2".
+    if (const size_t sp = base.find_last_of(' '); sp != std::string::npos && sp > 0 && sp + 1 < base.size() &&
+        base.find_first_not_of("0123456789", sp + 1) == std::string::npos)
+        base.erase(sp);
+    // ChangeValue(), not SetValue(): no nested wxEVT_TEXT.
+    r.name->GetTextCtrl()->ChangeValue(from_u8(name.empty() || reserved ? unique_mode_name({}) : unique_mode_name({}, base)));
+    return true;
 }
 
 IMEXModesCtrl::RoleStyle IMEXModesCtrl::role_style(std::optional<ImexRole> role) {
@@ -501,15 +525,24 @@ void IMEXModesCtrl::add_row(const std::string& name,
         // Restore a name rather than let the row reach get_mode_data() unnamed.
         // Row is located by panel pointer (stable across add/remove) so a
         // kill-focus delivered while the rows are being torn down is a no-op.
+        r.name->GetTextCtrl()->Bind(wxEVT_SET_FOCUS, [this, panel = r.panel](wxFocusEvent& e) {
+            e.Skip();
+            for (auto& row_ref : m_rows)
+                if (row_ref.panel == panel && row_ref.name)
+                    row_ref.focus_name = into_u8(row_ref.name->GetTextCtrl()->GetValue());
+        });
         r.name->GetTextCtrl()->Bind(wxEVT_KILL_FOCUS, [this, panel = r.panel](wxFocusEvent& e) {
             e.Skip();
             if (m_clearing_rows) return; // focus-out emitted while the rows are being deleted
             for (auto& row_ref : m_rows) {
                 if (row_ref.panel != panel) continue;
-                if (!row_ref.name || !row_ref.name->GetTextCtrl()->GetValue().empty()) return;
-                // ChangeValue(), not SetValue(): no nested wxEVT_TEXT.
-                row_ref.name->GetTextCtrl()->ChangeValue(from_u8(unique_mode_name({})));
-                notify();
+                // Only an edit is checked. Tabbing through a hand-edited profile's duplicate
+                // leaves it alone rather than renaming the row plates resolve to.
+                const wxString value = row_ref.name ? row_ref.name->GetTextCtrl()->GetValue() : wxString();
+                if (!value.empty() && into_u8(value) == row_ref.focus_name)
+                    return;
+                if (fix_row_name(row_ref))
+                    notify();
                 return;
             }
         });
@@ -806,8 +839,11 @@ void IMEXModesCtrl::reset_row_to_parent(wxPanel* panel) {
         Row& r = m_rows[i];
         if (r.panel != panel) continue;
         if (!p_names || i >= p_names->values.size()) return;
-        if (!r.is_primary && r.name)
+        if (!r.is_primary && r.name) {
             r.name->GetTextCtrl()->ChangeValue(from_u8(p_names->values[i]));
+            // The saved name may since have been given to another row, which keeps it.
+            fix_row_name(r);
+        }
         if (p_gcodes && i < p_gcodes->values.size())
             r.gcode->ChangeValue(from_u8(p_gcodes->values[i]));
         if (p_tools && i < p_tools->values.size()) {

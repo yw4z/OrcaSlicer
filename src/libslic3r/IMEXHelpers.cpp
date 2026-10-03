@@ -651,6 +651,15 @@ std::vector<ImexMode> imex_mode_table(const ConfigBase& cfg)
     return table;
 }
 
+std::vector<std::string> imex_plate_mode_choices(const ConfigBase& cfg)
+{
+    std::vector<std::string> choices{ kImexPrimaryMode };
+    for (const ImexMode& m : imex_mode_table(cfg))
+        if (!m.name.empty() && std::find(choices.begin(), choices.end(), m.name) == choices.end())
+            choices.push_back(m.name);
+    return choices;
+}
+
 bool imex_hull_violates_zones(const std::vector<BoundingBoxf3>& zones, const Polygon& hull)
 {
     if (hull.points.empty())

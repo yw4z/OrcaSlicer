@@ -1330,6 +1330,14 @@ TEST_CASE("imex_mode_table - every row agrees with find_imex_mode on that name",
     }
 }
 
+TEST_CASE("A plate offers Primary then each mode name once in table order", "[IMEX]") {
+    // A profile can carry the same name twice; a plate stores a mode by name, so only the
+    // first row of a name is reachable, and listing it twice traps the plate's mode cycle.
+    const DynamicPrintConfig cfg = mode_cfg({ "copy", "mirror", "copy", "", "primary", "iq-copy" }, {}, {});
+    REQUIRE(imex_plate_mode_choices(cfg) == std::vector<std::string>{ kImexPrimaryMode, "copy", "mirror", "iq-copy" });
+    REQUIRE(imex_plate_mode_choices(mode_cfg({}, {}, {})) == std::vector<std::string>{ kImexPrimaryMode });
+}
+
 // ---------------------------------------------------------------------------
 // imex_resolve_routing — the one derivation shared by the hard block and the warning
 // ---------------------------------------------------------------------------

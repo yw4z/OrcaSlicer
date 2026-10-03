@@ -40,8 +40,8 @@ inline constexpr const char* kImexPrimaryMode = "primary";
 // Resolution rule. Applied by find_imex_mode() / imex_mode_table() and NOWHERE else;
 // every consumer in the tree goes through one of the two:
 //   * `imex_mode_names` is the roster. A mode exists iff a row of that array carries its
-//     name, and the FIRST such row wins. (The modes editor uniquifies names on entry, so
-//     duplicates only reach here from a hand-edited profile; first-match is what a
+//     name, and the FIRST such row wins. (The modes editor makes a name unique when it is
+//     committed, so duplicates reach here from a hand-edited profile; first-match is what a
 //     std::find over the names array already did, and what the editor's own row order
 //     means.)
 //   * A sibling array too short to reach that row yields an EMPTY string for that field
@@ -86,6 +86,11 @@ ImexMode find_imex_mode(const ConfigBase& cfg, const std::string& name);
 // by the same rule. Empty when `imex_mode_names` is absent. Use this where the caller
 // wants every mode (the modes editor, the plate's mode menu) rather than one by name.
 std::vector<ImexMode> imex_mode_table(const ConfigBase& cfg);
+
+// The modes a plate can be set to, in the order its mode button cycles them: kImexPrimaryMode,
+// then each name in the table once. A repeated name is listed at its first row only, the one
+// find_imex_mode() resolves it to, and empty names and rows named kImexPrimaryMode are left out.
+std::vector<std::string> imex_plate_mode_choices(const ConfigBase& cfg);
 
 // =============================================================================
 // PHYSICAL vs LOGICAL extruder indices — read this before adding a new IMEX call site

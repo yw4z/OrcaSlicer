@@ -121,14 +121,14 @@ private:
     // outside the currently visible rows × cols without losing data on save.
     static std::map<int, ImexRole> roles_for_mode(const std::string& active_tools);
 
-    // "Mode N" for the lowest N >= 2 not already used by a row or by `also_taken`
-    // (N == 1 is conceptually the fixed Primary row). Deterministic for a given set
-    // of rows, so get_mode_data() is stable across calls and matches_config() stays
+    // `base` + " N" for the lowest N >= 2 not already used by a row or by `also_taken`
+    // (N == 1 is the fixed Primary row, or the name being made unique). Deterministic for a
+    // given set of rows, so get_mode_data() is stable across calls and matches_config() stays
     // honest. Intentionally NOT translated: mode names are identifiers — objects
     // store one in `imex_parallel_mode` and GCode.cpp matches it against
     // `imex_mode_names` by string — so a locale-dependent name would break a project
     // opened under a different language.
-    std::string unique_mode_name(const std::vector<std::string>& also_taken) const;
+    std::string unique_mode_name(const std::vector<std::string>& also_taken, const std::string& base = "Mode") const;
 
     // Everything the editor draws for one role, in ONE place: a new role needs a color and
     // a legend name here and nowhere else in this file. nullopt is Inactive (gray).
@@ -172,6 +172,9 @@ private:
         // the plates a delete strands. Rebuilding the rows (load_from_config / set_grid_size)
         // re-seeds it, which is correct: config and rows agree again at that point.
         std::string          orig_name;
+        // The name when the field last took focus, so a commit that leaves it unchanged is not
+        // treated as an edit.
+        std::string          focus_name;
         bool                 is_primary {false};
         ScalableButton*      reset_btn {nullptr};   // nullptr when row has no parent counterpart
         bool                 reset_dirty_cached {false};
@@ -208,6 +211,11 @@ private:
     void clear_rows();
 
     std::string active_tools_string(const Row& r) const;
+
+    // Replaces an edited row's name when it is empty, the reserved Primary name in any case, or
+    // one another row already carries: a plate stores the name and find_imex_mode() takes its
+    // first row, so the edited row yields. Returns whether it changed the name; the caller notifies.
+    bool fix_row_name(Row& r);
 
     void notify();
 
