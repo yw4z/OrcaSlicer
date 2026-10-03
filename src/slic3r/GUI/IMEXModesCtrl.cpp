@@ -30,11 +30,12 @@ static constexpr int kNameColPx = 176;
 IMEXModesCtrl::IMEXModesCtrl(wxWindow* parent, int n_cols, int n_rows, int layout)
     : wxPanel(parent, wxID_ANY), m_n_cols(std::max(1, n_cols)), m_n_rows(std::max(1, n_rows)), m_layout(layout)
 {
-    // Pull the app's window-default color explicitly. Without this, GTK gives
-    // child wxPanels a slightly lighter "widget bg" instead of the app's dark
-    // theme — making chromeless ScalableButtons inside the panel render with a
-    // visible light box around the icon. Sub-panels inherit this color.
-    SetBackgroundColour(wxGetApp().get_window_default_clr());
+    // Set explicitly: GTK otherwise gives child wxPanels a slightly lighter "widget bg",
+    // which shows as a light box around the chromeless ScalableButtons. The page's own
+    // color, as OG_CustomCtrl takes it, because the dark-mode walk only remaps palette
+    // colors: the app's window default is not one, so it never matched the page and
+    // froze in whichever theme the editor was last built in. Sub-panels inherit this color.
+    SetBackgroundColour(parent->GetBackgroundColour());
 
     m_outer = new wxBoxSizer(wxVERTICAL);
     m_rows_sizer = new wxBoxSizer(wxVERTICAL);
@@ -84,6 +85,16 @@ static wxPanel* framed_input(wxWindow* parent)
     return frame;
 }
 
+// The settings page's label color, set before the walk as Tab's labels are, so the theme
+// remaps it with the page. Left on the system text color, a label follows the OS theme on MSW
+// rather than Orca's, and on GTK a dark walk pins a color the light map cannot undo.
+static wxStaticText* page_label(wxStaticText* lbl)
+{
+    lbl->SetForegroundColour(wxColour("#363636"));
+    wxGetApp().UpdateDarkUI(lbl);
+    return lbl;
+}
+
 void IMEXModesCtrl::rebuild_info_and_header() {
     // --- Info panel: help button + color legend ---
     m_info_panel->DestroyChildren();
@@ -126,7 +137,7 @@ void IMEXModesCtrl::rebuild_info_and_header() {
         const RoleStyle style = role_style(d.role);
         auto* swatch = new wxPanel(m_info_panel, wxID_ANY, wxDefaultPosition, wxSize(swatch_side, swatch_side));
         swatch->SetBackgroundColour(style.bg);
-        auto* leg_label = new wxStaticText(m_info_panel, wxID_ANY, style.label);
+        auto* leg_label = page_label(new wxStaticText(m_info_panel, wxID_ANY, style.label));
         const wxString hint = role_hint(d.role);
         swatch->SetToolTip(hint);
         leg_label->SetToolTip(hint);
@@ -142,9 +153,9 @@ void IMEXModesCtrl::rebuild_info_and_header() {
     // the live column count, so the G-code header stays aligned after a grid change.
     m_hdr_panel->DestroyChildren();
     auto* hdr_sizer = new wxBoxSizer(wxHORIZONTAL);
-    auto* hdr_name  = new wxStaticText(m_hdr_panel, wxID_ANY, _L("Mode"));
-    auto* hdr_tools = new wxStaticText(m_hdr_panel, wxID_ANY, _L("Tools"));
-    auto* hdr_gcode = new wxStaticText(m_hdr_panel, wxID_ANY, _L("G-code"));
+    auto* hdr_name  = page_label(new wxStaticText(m_hdr_panel, wxID_ANY, _L("Mode")));
+    auto* hdr_tools = page_label(new wxStaticText(m_hdr_panel, wxID_ANY, _L("Tools")));
+    auto* hdr_gcode = page_label(new wxStaticText(m_hdr_panel, wxID_ANY, _L("G-code")));
     hdr_name->SetToolTip(_L("How the mode is labeled in the plate's IDEX/IQEX mode selector. "
                             "Required — a mode with no name cannot be selected."));
     hdr_tools->SetToolTip(_L("Which tool heads take part in the mode and what role each one plays. "
@@ -427,8 +438,8 @@ void IMEXModesCtrl::add_row(const std::string& name,
     if (is_primary) {
         r.orig_name = kImexPrimaryMode;
         r.name = nullptr;
-        auto* lbl = new wxStaticText(r.panel, wxID_ANY, _L("Primary"),
-                                     wxDefaultPosition, FromDIP(wxSize(kNameColPx, -1)));
+        auto* lbl = page_label(new wxStaticText(r.panel, wxID_ANY, _L("Primary"),
+                                                wxDefaultPosition, FromDIP(wxSize(kNameColPx, -1))));
         wxFont f = lbl->GetFont();
         f.SetWeight(wxFONTWEIGHT_BOLD);
         lbl->SetFont(f);
@@ -538,8 +549,11 @@ void IMEXModesCtrl::add_row(const std::string& name,
             auto it = tool_roles.find(tool_idx);
             if (it != tool_roles.end()) role = it->second;
 
+            // wxBU_AUTODRAW, which wx ignores on a text button, is what GUI_App::UpdateDarkUI
+            // skips: without it every theme change ran the role colors through the palette
+            // map and left the labels gray. apply_btn() owns these colors in both themes.
             auto* btn = new wxButton(grid_panel, wxID_ANY, wxEmptyString,
-                                     wxDefaultPosition, FromDIP(wxSize(24, 24)), wxBU_EXACTFIT);
+                                     wxDefaultPosition, FromDIP(wxSize(24, 24)), wxBU_EXACTFIT | wxBU_AUTODRAW);
             apply_btn(btn, tool_idx, role);
 
             int btn_pos = (int)r.btns.size();
@@ -620,6 +634,7 @@ void IMEXModesCtrl::add_row(const std::string& name,
     // name field above, for the same reason.
     r.gcode->SetFont(wxGetApp().code_font());
     r.gcode->SetBackgroundColour(*wxWHITE);
+    r.gcode->SetForegroundColour(wxColour("#262E30")); // the palette's input text color
     wxGetApp().UpdateDarkUI(r.gcode);
     // Tooltip only, no SetHint(): wxTextEntry has no native placeholder for a
     // multiline control, so wxWidgets emulates one by writing the hint into the
