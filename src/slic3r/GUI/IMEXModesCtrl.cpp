@@ -115,7 +115,7 @@ void IMEXModesCtrl::rebuild_info_and_header() {
     add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { add_row(); notify(); });
     act_sizer->Add(add_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
 
-    auto* help_btn = new ScalableButton(m_info_panel, wxID_ANY, "question", wxEmptyString,
+    auto* help_btn = new ScalableButton(m_info_panel, wxID_ANY, "icon_qusetion", wxEmptyString,
                                         wxDefaultSize, wxDefaultPosition,
                                         wxBU_EXACTFIT | wxNO_BORDER, /*use_default_disabled_bitmap=*/true, kImexIconPx);
     help_btn->SetToolTip(instructions);
@@ -658,7 +658,7 @@ void IMEXModesCtrl::add_row(const std::string& name,
     btn_col->Add(ph_btn, 0, wxBOTTOM, FromDIP(2));
 
     if (!is_primary) {
-        auto* rm = new ScalableButton(r.panel, wxID_ANY, "imex_remove", wxEmptyString,
+        auto* rm = new ScalableButton(r.panel, wxID_ANY, "delete", wxEmptyString,
                                       wxDefaultSize, wxDefaultPosition,
                                       wxBU_EXACTFIT | wxNO_BORDER, /*use_default_disabled_bitmap=*/true, kImexIconPx);
         rm->SetToolTip(_L("Remove mode"));
