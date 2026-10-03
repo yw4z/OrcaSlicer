@@ -36,6 +36,7 @@
 #include <map>
 #include <math.h>
 #include <set>
+#include <wx/accel.h>
 #include <wx/event.h>
 #include <wx/gdicmn.h>
 #include <wx/chartype.h>

@@ -1,8 +1,14 @@
 #include "libslic3r/CAD/CadDocument.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/CAD/SketchEngine.hpp"
+#include "libslic3r/CAD/GeometryEngine.hpp"
 #include "libslic3r/CAD/SketchConstraints.hpp"
 #include "libslic3r/CAD/SketchSolver.hpp"
 #include "libslic3r/CAD/SketchImport.hpp"   // transform_regions for imported art
 
+#include <Standard_Handle.hxx>
+#include <TopAbs_ShapeEnum.hxx>
+#include <Standard_TypeDef.hxx>
 #include <array>
 
 #include <Standard_Failure.hxx>
@@ -27,6 +33,10 @@
 #include <BRepOffsetAPI_DraftAngle.hxx>
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
+#include <functional>
+#include <exception>
+#include <cstdint>
+#include <cereal/cereal.hpp>
 #include <gp_Pln.hxx>
 #include <TopTools_ListOfShape.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -72,6 +82,9 @@
 #include <cstdio>
 #include <functional>
 #include <initializer_list>
+#include <math.h>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <algorithm>
 #include <sstream>
@@ -79,6 +92,9 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/array.hpp>
 #include <BRepTools.hxx>
+#include <string>
+#include <vector>
+#include <utility>
 
 namespace Slic3r {
 
