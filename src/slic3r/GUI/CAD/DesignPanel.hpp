@@ -506,6 +506,7 @@ private:
     AuiMgr   m_aui;
     wxString m_default_layout;
     bool     m_sidebar_collapsed{false};
+    bool     m_laid_out{false};   // the tab has been shown, so the panel has its size
     void load_window_layout();
     void load_default_layout();
     void collapse_sidebar(bool collapse);

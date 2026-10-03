@@ -7255,6 +7255,7 @@ void DesignPanel::on_tab_shown()
     update_reference_planes();   // entering the Design tab: show the XY/XZ/YZ planes if no object yet
     if (show_clock.Time() > 100)   // a slow first show is what users report; the usual one is not news
         BOOST_LOG_TRIVIAL(info) << "Design tab shown: bed, project recipe and planes in " << show_clock.Time() << " ms";
+    m_laid_out = true;
     update_sidebar_pane();
     if (m_viewport) m_viewport->force_repaint();   // the page was just re-shown: paint it for real
 }
@@ -7414,12 +7415,14 @@ void DesignPanel::collapse_sidebar(bool collapse)
     update_sidebar_pane();
 }
 
-// The sidebar shows unless collapsed; a floating one also only while the tab is shown, since it is
+// The sidebar shows unless collapsed, and not before the tab is first shown: wxAUI caps a new dock at
+// the managed panel's width at that Update() and the dock keeps that size, while the panel is 20 px
+// wide until the page lays it out. A floating one also shows only while the tab is shown, since it is
 // a top-level window and does not hide with the page.
 void DesignPanel::update_sidebar_pane(bool force_update)
 {
     wxAuiPaneInfo& sidebar = m_aui.GetPane(m_form);
-    const bool     show    = !m_sidebar_collapsed && (sidebar.IsDocked() || IsShownOnScreen());
+    const bool     show    = !m_sidebar_collapsed && m_laid_out && (sidebar.IsDocked() || IsShownOnScreen());
     if (sidebar.IsOk() && sidebar.IsShown() != show) {
         sidebar.Show(show);
         force_update = true;

@@ -88,6 +88,7 @@ available; GTK2/WebKit1 is an opt-out configuration the GUI does not support.
 24. ImGui text uses `_u8L`; ImGui sizes are physical pixels (scale by `GLCanvas3D::get_scale()`);
     a font atlas must fit `GL_MAX_TEXTURE_SIZE`. §[ImGui boundary](#the-imgui-layer-boundary)
 25. After `AddPane` or any `wxAuiPaneInfo` change, call `wxAuiManager::Update()` once for the batch.
+    Keep a docked pane hidden until the managed window has been laid out.
     §[AUI](#wxauimanager-and-orcas-docking)
 26. Give every pane a unique, stable `Name()` free of layout delimiters (`|`, `;`, `=`, `\`).
     §[AUI](#wxauimanager-and-orcas-docking)
@@ -920,6 +921,16 @@ widgets beside the canvas (a sibling, not a child over it), or in a popup.
 - **Update.** "Update() must be invoked after AddPane() or InsertPane() … any number of changes may be
   made to wxAuiPaneInfo structures (retrieved with wxAuiManager::GetPane), but to realize the changes,
   Update() must be called" (`interface/wx/aui/framemanager.h:747-756`). Batch, then `Update()` once.
+- **Dock size** [source]. The docs limit "any new dock" to a `SetDockSizeConstraint` fraction of the
+  window (`interface/wx/aui/framemanager.h:660-672`). The source applies it to the managed window's client
+  size at the `Update()` that creates the dock, sizing the dock from its panes' `best_size` and then
+  raising it to their `min_size` (`src/aui/framemanager.cpp:2748-2848`); a dock with a resizable pane
+  keeps that size (`2674-2677`), and resizing the managed window only re-lays the docks out
+  (`4542-4546`). A pane first shown before its managed window is laid out — a `wxDefaultSize` window is
+  20×20 until its first sizer layout (`references/sizers-layout.md`) — docks at that width or its
+  `min_size` and stays there. Hiding a dock's last shown pane empties it, and the next `Update()`
+  removes it (`2733-2738`) with any `dock_size` a `LoadPerspective` restored, so the pane comes back
+  at its `best_size`.
 - **Names** [source]. A duplicate `Name()` hits `wxFAIL` (silent in Orca); duplicate and empty names
   get a random identifier (`src/aui/framemanager.cpp:949-1010`), which `LoadPerspective` can never
   match. `AddPane` rejects a null window, but its "already managed" check looks up `paneInfo.window`
@@ -983,7 +994,9 @@ Plater (Prepare and Preview); `DesignPanel::m_aui` manages the Design tab's body
   takes `AuiMgr::sidebar_pane_info()`; the layout has its own app-config key, is reset from
   `Plater::reset_window_layout`, and is saved by a `shutdown()` called from `MainFrame::shutdown`,
   which also detaches a floating pane (Lifetime below). Where floating is disabled it forces
-  `Dock().Floatable(false)` after loading, as plugin panes do. `DesignPanel` is the model
+  `Dock().Floatable(false)` after loading, as plugin panes do. A `LazyPage` builds its panel at 20×20
+  and lays it out only as the tab shows, so the sidebar stays hidden until the tab is first shown (Dock
+  size above). `DesignPanel` is the model
   (`docs/HLSD/design-tab.md`). A `GLCanvas3D` beside such a sidebar gets that sidebar's collapse
   button with `set_collapse_toolbar`; without it the canvas falls back to the Plater's button, which
   collapses Prepare's sidebar.
