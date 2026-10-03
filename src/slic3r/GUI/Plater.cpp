@@ -6993,7 +6993,7 @@ struct Plater::priv
     // config and plate contents (thin wrapper over GUI::ensure_belt_purge_tower
     // in BeltPurgeTower.cpp). Returns true when the model was mutated.
     bool ensure_belt_purge_tower();
-    BeltPurgeSignature m_belt_purge_sig;
+    std::vector<BeltPurgeSignature> m_belt_purge_sigs;
     void delete_all_objects_from_model();
     void reset(bool apply_presets_change = false);
     void center_selection();
@@ -10633,7 +10633,7 @@ void Plater::priv::process_validation_warnings(const std::vector<StringObjectExc
 // wrapper that hands it the model, plates, object list, and cached signature.
 bool Plater::priv::ensure_belt_purge_tower()
 {
-    return GUI::ensure_belt_purge_tower(model, partplate_list, sidebar->obj_list(), m_belt_purge_sig);
+    return GUI::ensure_belt_purge_tower(model, partplate_list, sidebar->obj_list(), m_belt_purge_sigs);
 }
 
 
