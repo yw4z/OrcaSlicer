@@ -1273,15 +1273,16 @@ bool PartPlate::has_imex_multimaterial_conflict() const
     const std::string mode = get_effective_imex_mode();
     if (mode == kImexPrimaryMode) return false;
 
-    // Both keys bail rather than defaulting through imex_cfg_int(), deliberately, and for the same
-    // reason: this reports a routing CONFLICT, so it must run on the printer's real configuration
-    // or not at all. Without physical_extruder_map there is no mapping to check; with a defaulted
+    // Bails rather than defaulting through imex_cfg_int(), deliberately: this reports a routing
+    // CONFLICT, so it must run on the printer's real configuration or not at all. With a defaulted
     // grid the conflict would be computed against a shape the printer does not have. A false
     // conflict warning is worse than staying quiet, so an absent key means "no answer" here --
     // unlike the geometry paths, where a defaulted value still describes a drawable bed.
     auto* tpg_opt   = printer_cfg.option<ConfigOptionInt>("imex_tools_per_gantry");
-    auto* pem_opt   = printer_cfg.option<ConfigOptionInts>("physical_extruder_map");
-    if (!tpg_opt || !pem_opt) return false;
+    if (!tpg_opt) return false;
+    // The map Print::apply() hands validate(): a printer that authors none gets the identity,
+    // which the raw key's single default entry does not describe.
+    const ConfigOptionInts pem = effective_physical_extruder_map(*pb);
 
     // Resolve the active mode's tools string from the printer config. Print::validate()
     // resolves the same name the same way and keeps going on an empty result -- the mixed
@@ -1311,7 +1312,7 @@ bool PartPlate::has_imex_multimaterial_conflict() const
             return true;
     }
 
-    return !imex_multicolor_block_reason(mode, active_tools_str, tpg_opt->value, used_0b, *pem_opt).empty();
+    return !imex_multicolor_block_reason(mode, active_tools_str, tpg_opt->value, used_0b, pem).empty();
 }
 
 void PartPlate::render_imex_zones(bool force_default_color)

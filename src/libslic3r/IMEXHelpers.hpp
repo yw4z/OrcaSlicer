@@ -221,10 +221,12 @@ bool imex_suppresses_bare_toolchange(const std::string& parallel_mode, unsigned 
 //
 // Multi-color in a parallel mode requires the firmware to swap tools mid-print on the
 // primary gantry while the slaved gantry follows automatically. That works only when
-// every used filament has its own dedicated physical head (no MMU lane sharing) AND
-// the active mode definition explicitly marks a Span tool on the primary's gantry
-// (Span declares "this tool is the within-gantry multicolor partner of Primary"; it
-// disambiguates the multicolor topology from independent same-gantry copies).
+// every used filament has its own dedicated physical head (no MMU lane sharing), the
+// active mode definition explicitly marks a Span tool on the primary's gantry (Span
+// declares "this tool is the within-gantry multicolor partner of Primary"; it
+// disambiguates the multicolor topology from independent same-gantry copies), AND every
+// used filament routes to the primary or one of its Span tools, the only heads that print
+// colors of their own.
 //
 // Catches:
 //   - IDEX (1 tool per gantry): primary's gantry can never carry a Span partner → blocked
@@ -235,7 +237,8 @@ bool imex_suppresses_bare_toolchange(const std::string& parallel_mode, unsigned 
 //   - IQEX 4-tool independent copies (T0:P,T1:C,T2:M,T3:M): no Span declared, T1 is an
 //     independent copy → blocked
 //   - IQEX paired-gantry multicolor (T0:P,T1:S,T2:M,T3:M): Span on T1 declares the
-//     multicolor partner, no MMU sharing → ALLOWED
+//     multicolor partner, no MMU sharing → ALLOWED for colors on T0 and T1; a color
+//     routed to T2, T3 or past the end of the map → blocked
 //
 // Returns empty string for: non-IMEX (empty parallel_mode), Primary mode, single-color
 // prints, or any configuration where multi-color is physically supportable.

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <unordered_set>
 
+#include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 
 #include "libslic3r/ClipperUtils.hpp"
@@ -166,6 +167,31 @@ std::string imex_multicolor_block_reason(const std::string& parallel_mode,
                  "multicolor partner. Either reduce the print to a single filament, switch to "
                  "Primary mode, or open the printer settings IDEX/IQEX Modes editor and mark a "
                  "tool on the primary's gantry as Span.");
+    }
+    // Only the primary and its Span partners print the plate's colors; every other active head
+    // replays them. A color routed anywhere else -- a copying head, one the mode leaves inactive,
+    // or past the end of the map -- has no head of its own to print from.
+    std::set<int> color_heads{ primary_physical };
+    for (const auto& [phys, role] : parse_imex_active_tools(active_tools_str))
+        if (phys / tpg == primary_gantry && role == ImexRole::Span)
+            color_heads.insert(phys);
+    for (int filament : used_filaments_0b) {
+        const int phys = pem.values.empty() ? filament
+                       : (filament >= 0 && filament < (int) pem.values.size()) ? pem.values[filament] : -1;
+        if (color_heads.count(phys))
+            continue;
+        std::string tools;
+        for (int head : color_heads)
+            tools += (tools.empty() ? "T" : "/T") + std::to_string(head);
+        // Filaments are numbered from 1 as the sidebar shows them, heads by their T index; the map
+        // decides which head a filament is on, so with MMU lanes the two numbers differ.
+        if (phys < 0)
+            return (boost::format(L("In this Span mode only %1% print colors, but filament %2% isn't routed to any "
+                                    "tool. Use filaments routed to %1%, or switch this plate to Primary mode.")) %
+                    tools % (filament + 1)).str();
+        return (boost::format(L("In this Span mode only %1% print colors, but filament %2% is routed to T%3%. Use "
+                                "filaments routed to %1%, or switch this plate to Primary mode.")) %
+                tools % (filament + 1) % phys).str();
     }
     return {};
 }

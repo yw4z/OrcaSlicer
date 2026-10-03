@@ -263,6 +263,34 @@ TEST_CASE("imex_multicolor_block_reason - IQEX paired-gantry multicolor allowed 
     REQUIRE(imex_multicolor_block_reason("copy", "0:P,1:S,2:M,3:M", 2, {0, 1}, pem).empty());
 }
 
+TEST_CASE("A Span mode refuses a color routed to a tool outside the primary's gantry pair", "[IMEX]") {
+    // 2x2 IQEX mc-copy: T0 (Primary) and T1 (Span) print the plate's colors; T2 and T3 replay
+    // them on the other gantry. A third painted filament routed to T3 has no head of its own.
+    auto pem = make_pem({0, 1, 2, 3});
+    const std::string reason = imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C", 2, {0, 1, 3}, pem);
+    // The message names the color tools and where the map sends the offending filament (1-based).
+    REQUIRE_THAT(reason, Catch::Matchers::ContainsSubstring("only T0/T1 print colors, but filament 4 is routed to T3"));
+    REQUIRE_THAT(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C", 2, {0, 4}, pem),
+                 Catch::Matchers::ContainsSubstring("filament 5 isn't routed to any tool"));
+    // A head the mode leaves inactive is no better, and neither is no head at all.
+    REQUIRE_FALSE(imex_multicolor_block_reason("mc-copy", "0:P,1:S,3:C", 2, {0, 2}, pem).empty());
+    REQUIRE_FALSE(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C", 2, {0, 4}, pem).empty());
+    // Being on the primary's gantry is not enough; the head has to be a Span partner.
+    REQUIRE_FALSE(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C,4:C,5:C", 3, {0, 2},
+                                               make_pem({0, 1, 2, 3, 4, 5})).empty());
+    // Routing goes through the map: with AFC lanes on head 0, filament 4 lands on the Span head
+    // and filament 5 on a copying one.
+    const auto afc = make_pem({0, 0, 0, 0, 1, 2, 3});
+    REQUIRE(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C", 2, {0, 4}, afc).empty());
+    REQUIRE_THAT(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C", 2, {0, 5}, afc),
+                 Catch::Matchers::ContainsSubstring("filament 6 is routed to T2"));
+    // The pair's own two colors stay allowed, and so does a third Span partner where the
+    // gantry carries one.
+    REQUIRE(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:C,3:C", 2, {0, 1}, pem).empty());
+    REQUIRE(imex_multicolor_block_reason("mc-copy", "0:P,1:S,2:S,3:C,4:C,5:C", 3, {0, 1, 2},
+                                         make_pem({0, 1, 2, 3, 4, 5})).empty());
+}
+
 TEST_CASE("imex_multicolor_block_reason - MMU lane sharing blocks multi-color", "[IMEX]") {
     // pem maps both filament 0 and filament 1 to the same physical head 0 — that's
     // an MMU/AFC manifold. IMEX parallel modes can't slave the secondary gantry
