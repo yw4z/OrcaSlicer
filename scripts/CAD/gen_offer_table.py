@@ -114,7 +114,7 @@ def main():
         "struct OfferVerb {",
         "    const char* id;",
         "    const char* name;        // drawing-office word (L10); marked L(); translated at use",
-        "    int         row;         // 0..7, the ratified index — NEVER reorder",
+        "    int         row;         // index into kOfferRowNames, the ratified address — NEVER reorder",
         "    const char* key;         // shortcut shown in the row, or nullptr",
         "    const char* action;",
         "    const char* refusal;     // why this row is greyed, in the product's own words",
@@ -135,11 +135,20 @@ def main():
         "// Row labels, in ratified order.",
         "static const char* const kOfferRowNames[] = {",
     ]
+    # A flat row's label is never shown, so it is not marked for translation.
     for s in A["slots"]:
-        lines.append(f'    {tstr(s["label"])},')
+        lines.append(f'    {cstr(s["label"]) if s.get("flat") else tstr(s["label"])},')
     lines += [
         "};",
         f"static const int kOfferRowCount = {len(slots)};",
+        "// A flat row is not a family: its verbs come first, at the top level of the offer, each",
+        "// an item of its own.",
+        "static const bool kOfferRowFlat[] = {",
+    ]
+    for s in A["slots"]:
+        lines.append(f'    {"true" if s.get("flat") else "false"},')
+    lines += [
+        "};",
         "",
         "static const OfferVerb kOfferVerbs[] = {",
     ]

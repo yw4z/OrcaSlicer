@@ -848,6 +848,8 @@ if (SLIC3R_CAD)
     list(APPEND SLIC3R_GUI_SOURCES
         GUI/CAD/DesignPanel.cpp
         GUI/CAD/DesignPanel.hpp
+        GUI/CAD/DesignRowList.cpp
+        GUI/CAD/DesignRowList.hpp
         GUI/CAD/DesignTextDialog.cpp
         GUI/CAD/DesignTextDialog.hpp
         GUI/CAD/DesignCanvas.cpp

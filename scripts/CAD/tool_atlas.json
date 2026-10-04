@@ -67,6 +67,12 @@
       "angle": 225,
       "label": "Modify",
       "why": "edits or removes what is already there"
+    },
+    {
+      "id": "top",
+      "label": "Top",
+      "flat": true,
+      "why": "the verbs a selection is opened for most. A flat slot is not a family: its verbs sit first, at the top level of the offer, each an item of its own, and its label is never shown. Appended last, so no ratified index moved."
     }
   ],
   "selections": [
@@ -1044,7 +1050,7 @@
     {
       "id": "rename",
       "name": "Rename…",
-      "slot": "modify",
+      "slot": "top",
       "key": "F2",
       "feature": "Tree",
       "mcp": null,
@@ -1084,7 +1090,7 @@
     {
       "id": "colour",
       "name": "Color",
-      "slot": "modify",
+      "slot": "top",
       "key": null,
       "feature": null,
       "mcp": null,

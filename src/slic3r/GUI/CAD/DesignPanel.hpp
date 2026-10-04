@@ -12,7 +12,6 @@
 #include <wx/panel.h>
 #include <wx/scrolwin.h>
 #include <wx/string.h>
-#include <wx/treebase.h>   // wxTreeItemId
 
 #include <vector>
 #include <memory>
@@ -30,8 +29,6 @@ class wxCheckBox;
 class wxCheckListBox;
 class wxSpinCtrl;
 class wxSpinCtrlDouble;
-class wxTreeCtrl;
-class wxImageList;
 class wxStaticText;
 class wxStaticLine;
 class Button;      // Orca-styled button (Widgets/Button.hpp)
@@ -53,6 +50,7 @@ class ScalableButton;
 namespace Slic3r { namespace GUI {
 
 class DesignTextDialog;
+class DesignRowList;
 
 class DesignCanvas;
 
@@ -539,8 +537,8 @@ private:
     void set_active_tool_btn(ScalableButton* b);   // nullptr clears the highlight
     // Owns the themed DropDown flyouts (and the item vectors they hold by ref).
     std::vector<std::shared_ptr<void>> m_flyout_keepalive;
-    // Icons that are not a plain ScalableButton face (flyout rows, card headers, the tree's image
-    // list, theme-twinned buttons): each re-creates its bitmaps for the current scale and theme.
+    // Icons that are not a plain ScalableButton face (flyout rows, card headers, theme-twinned
+    // buttons): each re-creates its bitmaps for the current scale and theme.
     std::vector<std::function<void()>> m_icon_refresh;
     void refresh_icons();
     wxCheckBox*       m_construction{nullptr};   // sketch-mode construction toggle
@@ -711,16 +709,16 @@ private:
     // Document variables panel (below the feature tree / parts)
     StaticBox*        m_var_box{nullptr};
     wxListCtrl*       m_var_list{nullptr};
-    ScalableButton*         m_btn_add_var{nullptr};
-    ScalableButton*         m_btn_edit_var{nullptr};
-    ScalableButton*         m_btn_del_var{nullptr};
+    ::Button*         m_btn_add_var{nullptr};
+    ::Button*         m_btn_edit_var{nullptr};
+    ::Button*         m_btn_del_var{nullptr};
     void              refresh_variables();            // rebuild m_var_list from m_doc.variables
     void              on_add_variable();
     void              on_edit_variable();
     void              on_remove_variable();
 
     // Feature-tree button
-    ScalableButton*   m_btn_interfere{nullptr};
+    ::Button*         m_btn_interfere{nullptr};
 
     // Pattern controls (replicate the target body: linear or circular).
     ComboBox*         m_pattern_type{nullptr};      // 0 = Linear, 1 = Circular
@@ -903,21 +901,18 @@ private:
     std::function<void(double)> m_value_cont;   // deferred apply, run on Confirm
     std::function<void()>       m_value_cancel; // optional action when the card is cancelled
 
-    // Feature tree: a wxTreeCtrl with per-feature-type icons. Callers keep using
-    // integer row indices via tree_selection()/set_tree_selection(); m_tree_items
-    // maps feature order -> tree node, rebuilt by refresh_tree().
-    wxTreeCtrl*               m_tree{nullptr};
-    wxTreeCtrl*               m_parts{nullptr};        // Bodies list under the feature tree
+    // Feature tree: one row per feature, in feature order, with a per-type icon and the row's
+    // own Edit / Show-hide / Delete icons. Callers use row indices via
+    // tree_selection()/set_tree_selection(); refresh_tree() rebuilds the rows.
+    DesignRowList*            m_tree{nullptr};
+    // Bodies list under the feature tree: one row per body (parallel to m_doc.bodies). Selecting
+    // one highlights that body and makes it the target for the next op.
+    DesignRowList*            m_parts{nullptr};
     wxStaticText*             m_parts_label{nullptr};  // its "Bodies" caption (hidden when empty)
-    wxBoxSizer*               m_parts_hdr{nullptr};    // Bodies card header (icon + title)
+    wxBoxSizer*               m_parts_hdr{nullptr};    // Bodies card header (icon + title + body actions)
     wxStaticLine*             m_parts_rule{nullptr};   // rule under that header
-    wxBoxSizer*               m_hdr_tree_row{nullptr}; // Feature tree header: title + row actions
+    wxBoxSizer*               m_hdr_tree_row{nullptr}; // Feature tree header: title + list actions
     wxStaticText*             m_hdr_tree{nullptr};     // its title label
-    wxImageList*              m_tree_images{nullptr};
-    std::vector<wxTreeItemId> m_tree_items;
-    // Parts list: tree rows for each body (parallel to m_doc.bodies). Selecting one
-    // highlights that body and makes it the target for the next op.
-    std::vector<wxTreeItemId> m_tree_body_items;
 
     // Section views (non-destructive): named "Section View N" entries listed in the tree, each a
     // horizontal clip height. View-only — NOT bodies/features, never serialized. Key X adds one;
@@ -953,7 +948,7 @@ private:
     int  tree_body_selection() const;     // selected Parts-list body index, or -1
     void refresh_parts();                 // rebuild the Bodies list under the feature tree
     void set_tree_selection(int row);
-    static int tree_icon_for(CadFeatureType t);
+    static const char* tree_icon_for(CadFeatureType t);
 
     wxStaticText*     m_status{nullptr};
     // m_status's foreground as created, captured before any caller touches it. Callers signal

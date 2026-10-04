@@ -3,6 +3,7 @@
 #include "slic3r/GUI/CAD/DesignCanvas.hpp"
 #include "slic3r/GUI/CAD/DesignSketchTool.hpp"
 #include "slic3r/GUI/CAD/DesignTextDialog.hpp"           // Text: font, height, live outline
+#include "slic3r/GUI/CAD/DesignRowList.hpp"              // Feature tree and Bodies rows with their own actions
 #include "slic3r/GUI/CAD/DesignOffer.hpp"                // generated offer table — see scripts/CAD/tool_atlas.json
 #include "libslic3r/CAD/GeometryEngine.hpp"   // face_by_index for face-extrude gizmo anchor
 #include "libslic3r/TriangleMesh.hpp"     // mesh import: STL/OBJ -> indexed_triangle_set
@@ -58,12 +59,9 @@
 #include <wx/spinctrl.h>
 #include <wx/listctrl.h>
 #include <wx/string.h>
-#include <wx/treebase.h>
 #include <wx/tglbtn.h>
 #include <wx/textctrl.h>
 #include <wx/translation.h>
-#include <wx/treectrl.h>
-#include <wx/imaglist.h>
 #include <wx/statline.h>
 #include <wx/statbmp.h>
 #include <wx/image.h>
@@ -240,6 +238,43 @@ static StaticBox* make_card(wxWindow* parent)
     // follows a theme switch by itself. No hover accent: the frame is not clickable.
     c->SetBorderColor(StateColor(kDpTokens[TokBorder].light));
     return c;
+}
+
+// The sidebar's icon-only buttons (card headers, constraint rows) highlight under the pointer with
+// a rounded chip. Orca's ::Button rather than a ScalableButton: a native button cannot take that
+// hover colour (macOS ignores a button background, MSW turns the button owner-drawn), while
+// ::Button paints itself the same on every platform. Its sizes are in pixels, and the panel
+// background is a Design token the dark map does not know, so refresh_icons() re-applies this
+// after a DPI or theme change to every button named "design_icon_btn".
+static void style_sidebar_icon_btn(::Button* b)
+{
+    b->SetPaddingSize(b->FromDIP(wxSize(2, 2)));
+    b->SetMinSize(b->FromDIP(wxSize(24, 24)));   // square, whatever the icon size
+    b->SetCornerRadius(b->FromDIP(4));
+    b->SetBackgroundColor(StateColor(
+        std::pair<wxColour, int>(wxColour(DesignRowList::hover_chip), StateColor::Hovered),   // dark-mapped at paint
+        std::pair<wxColour, int>(dp_panel_bg(),                       StateColor::Normal)));   // must stay last
+}
+
+static ::Button* sidebar_icon_btn(wxWindow* parent, const char* icon, const wxString& tip, int px = 20)
+{
+    auto* b = new ::Button(parent, "", icon, wxBORDER_NONE, px);
+    b->SetName("design_icon_btn");
+    b->SetCanFocus(false);
+    b->SetIconSpacing(0);   // off macOS an empty label still reserves the icon-text gap
+    b->SetBorderColor(StateColor());
+    b->SetToolTip(tip);
+    style_sidebar_icon_btn(b);
+    return b;
+}
+
+// The icons on each Feature tree and Bodies row (DesignRowList::Action::id).
+enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete };
+
+// A row's eye shows the state the row is in; its tip names what a click does.
+static DesignRowList::Action eye_action(bool shown)
+{
+    return { RowVisibility, shown ? "design_eye" : "design_eye_off", shown ? _L("Hide") : _L("Show") };
 }
 
 // Prepare outlines every numeric field (rounded, #4A4A51 on dark). wxSpinCtrlDouble is a
@@ -1040,29 +1075,20 @@ DesignPanel::DesignPanel(wxWindow* parent)
         fadd("color", b_color);
         m_verb_actions["btn:colour"] = [this] { on_set_body_color(); };
         m_verb_actions["btn:delete"] = [this] { on_delete_feature(); };
-        // Rename exists as a slow double-click on the row too, but the offer is this tab's only
-        // tool vocabulary — a rename that only a double-click reveals is not discoverable, and
-        // the row IS the object, so it belongs in the menu (and on F2) as well as on the row.
+        // A row's double-click is Edit, so renaming needs a door of its own. The offer is this
+        // tab's only tool vocabulary and the row IS the object, so rename sits in the offer, in
+        // the feature row's right-click menu and on F2, and opens the editor on the row itself.
         auto rename_feature = [this] {
             // A BODY renames ITSELF. The earlier version resolved the body to
             // CadBody::source_feature and renamed that feature, which is the wrong object: a
             // body accumulates many features and the first one is not its name. The body row
             // is editable now (CadBody::user_name), so the verb opens the editor there.
-            const int b = tree_body_selection();
-            if (b >= 0 && b < int(m_tree_body_items.size())) {
-                const wxTreeItemId row = m_tree_body_items[b];
-                // After the menu, not inside it: an editor opened from within PopupMenu's
-                // nested loop never appears.
-                CallAfter([this, row] { m_parts->SetFocus(); m_parts->EditLabel(row); });
-                return;
-            }
-            const int sel = tree_selection();
-            if (sel != wxNOT_FOUND && sel < int(m_tree_items.size())) {
-                const wxTreeItemId row = m_tree_items[sel];
-                CallAfter([this, row] { m_tree->SetFocus(); m_tree->EditLabel(row); });
-            } else {
+            if (const int b = tree_body_selection(); b >= 0)
+                m_parts->begin_rename(b);
+            else if (const int sel = tree_selection(); sel != wxNOT_FOUND)
+                m_tree->begin_rename(sel);
+            else
                 set_status(_L("Select a feature, or a body, first — then rename it"));   // not an error
-            }
         };
         m_verb_actions["btn:rename"] = rename_feature;
         m_keys_feature[WXK_F2]        = rename_feature;   // a function key, so no letter space spent
@@ -3047,8 +3073,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
             t->Wrap(240);
 
     // Feature tree card. Same idiom as Prepare's sections (icon + Head_14 title + rule) via the
-    // shared card_header helper, instead of the bare micro-label this used to be; the row-edit
-    // actions live in the header, as Prepare puts its section actions.
+    // shared card_header helper, instead of the bare micro-label this used to be. What acts on one
+    // feature sits on that feature's row; the header keeps reordering and the interference check.
     m_tree_box = make_card(m_form);
     auto* tree_inner = new wxBoxSizer(wxVERTICAL);
     m_tree_box->SetSizer(tree_inner);
@@ -3062,43 +3088,21 @@ DesignPanel::DesignPanel(wxWindow* parent)
               FromDIP(SidebarProps::ContentMargin()));
     tree_inner->Add(new wxStaticLine(m_tree_box), 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP,
               FromDIP(SidebarProps::TitlebarMargin()));
-    m_tree = new wxTreeCtrl(m_tree_box, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 64)),
-                            wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_NO_LINES |
-                            wxTR_FULL_ROW_HIGHLIGHT | wxBORDER_SIMPLE | wxTR_EDIT_LABELS);
+    // Sized to its rows, so a short history wastes no block, and scrolling past 9.
+    m_tree = new DesignRowList(m_tree_box, 9);
     m_tree->SetBackgroundColour(dp_panel_bg());
-    // Per-feature-type icons (indices match tree_icon_for): sketch/extrude/dressup/hole/thread.
-    // The list is sized from the bitmaps themselves (image-list sizes are physical and must match
-    // them), and rebuilt with the other icons on a DPI or theme change.
-    auto tree_images = [this] {
-        static const char* const kIcons[] = { "design_sketch", "design_extrude", "design_dressup",
-                                              "design_hole", "design_thread", "design_shell" };
-        std::vector<wxBitmap> bmps;
-        for (const char* name : kIcons)
-            bmps.push_back(create_scaled_bitmap(name, this, 16));
-        const wxSize sz = bmps.front().GetSize();
-        m_tree_images = new wxImageList(sz.x, sz.y);
-        for (const wxBitmap& b : bmps)
-            m_tree_images->Add(b);
-        m_tree->AssignImageList(m_tree_images);   // takes ownership; frees the previous list
-    };
-    tree_images();
-    m_icon_refresh.push_back(tree_images);
     tree_inner->Add(m_tree, 0, wxEXPAND | wxALL, 12);
 
     // Selecting a body-producing feature (Extrude/Fillet/Chamfer/Hole/Thread) in the
     // tree highlights the solid in the viewport; a Sketch row clears the highlight
     // (its face is already shown via the persistent sketch overlay).
-    m_tree->Bind(wxEVT_TREE_SEL_CHANGED, [this](wxTreeEvent&) {
+    m_tree->on_select = [this] {
         if (!m_viewport) return;
-        // Bodies live in the Parts list now; picking a feature here drops any body selection
-        // so the two lists can't both claim to be "the target".
-        // ONLY when this tree actually has a selection. These two lists clear each other's
-        // selection so that "the target" is never ambiguous, and that was harmless while both
-        // calls were UnselectAll() — a no-op on a wxTR_SINGLE tree. Now that Unselect() really
-        // clears, the pair became a loop: clicking a body row runs apply_body_row, which calls
-        // m_tree->Unselect(), which fires THIS handler, which cleared the body row the user had
-        // just clicked. The guard keeps the mutual-exclusion and drops the echo.
-        if (m_parts && tree_selection() != wxNOT_FOUND) m_parts->Unselect();
+        // Picking a feature drops any body selection, so the two lists never both claim to be
+        // "the target" — but ONLY when this tree has a selection. Each list notifies on every
+        // change, so clicking a body row runs apply_body_row, whose m_tree->unselect() fires
+        // THIS handler, which would otherwise clear the body row the user had just clicked.
+        if (m_parts && tree_selection() != wxNOT_FOUND) m_parts->unselect();
         const int sel = tree_selection();
         const bool body = (sel >= 0 && sel < int(m_doc.features.size()) &&
                            m_doc.features[sel].type != CadFeatureType::Sketch &&
@@ -3116,27 +3120,31 @@ DesignPanel::DesignPanel(wxWindow* parent)
                 _L("%s selected — F2 or right-click renames it, double-click edits it"),
                 wxString::FromUTF8(m_doc.features[sel].name)));
         }
-    });
+    };
 
     // Double-click a row = Edit, the same gesture that re-opens a committed sketch on the canvas.
-    // Without it the row only highlights and the feature looks dead until the user finds the
-    // Edit button in the section header.
-    m_tree->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent&) { on_edit_feature(); });
+    m_tree->on_activate = [this] { on_edit_feature(); };
 
-    // Right-click a row: the three things a row can do. Renaming had no discoverable route at
-    // all — the header pencil is Edit, a double-click ACTIVATES the row and is also Edit (the
-    // "slow double-click renames" the old comment promised does not survive wxGTK, which fires
-    // ITEM_ACTIVATED first), none of the seven header icons renames, and F2 is a function key
-    // nothing announces. A user who wants to name a sketch tries the row, and now the row
-    // answers. rename.
-    m_tree->Bind(wxEVT_TREE_ITEM_RIGHT_CLICK, [this](wxTreeEvent& e) {
-        m_tree->SelectItem(e.GetItem());          // right-click targets what it points at
-        const int sel = tree_selection();
-        if (sel == wxNOT_FOUND) return;
-        // EVERYTHING A ROW CAN DO, in one place. The header icons stay as a quick bar, but the
-        // menu is the reference: the element you click answers with what applies to it, and a
-        // menu grows without spending an icon nobody recognises. Split into what the row IS
-        // (name, contents), where it SITS (order, visibility) and what removes it.
+    // The row's own Edit / Show-hide / Delete, on the row the click selected. The body list is
+    // cleared here too, not left to on_select, which re-clicking the selected row does not run:
+    // a body row still selected would be what on_toggle_visibility acts on.
+    m_tree->on_action = [this](int, int id) {
+        if (m_parts) m_parts->unselect();
+        switch (id) {
+        case RowEdit:       on_edit_feature();      break;
+        case RowVisibility: on_toggle_visibility(); break;
+        case RowDelete:     on_delete_feature();    break;
+        }
+    };
+
+    // Right-click a row: everything a row can do. Renaming had no discoverable route at all — a
+    // double-click is Edit, and F2 is a function key nothing announces. A user who wants to name
+    // a sketch tries the row, and the row answers.
+    m_tree->on_menu = [this](int row, const wxPoint& screen) {
+        // EVERYTHING A ROW CAN DO, in one place. The row's icons are the quick bar, but the menu
+        // is the reference: the element you click answers with what applies to it, and a menu
+        // grows without spending an icon nobody recognises. Split into what the row IS (name,
+        // contents), where it SITS (order, visibility) and what removes it.
         wxMenu menu;
         const int id_rename = wxWindow::NewControlId();
         const int id_edit   = wxWindow::NewControlId();
@@ -3150,8 +3158,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // Scale artwork acts on THIS feature's imported outline, so it belongs to the row and
         // is offered only where it means something. It used to hide inside the header's Move
         // button, which otherwise moved a body — two different subjects on one icon.
-        const bool art = sel < int(m_doc.features.size()) &&
-                         !m_doc.features[sel].imported_regions.empty();
+        const bool art = row < int(m_doc.features.size()) &&
+                         !m_doc.features[row].imported_regions.empty();
         if (art) menu.Append(id_art, _L("Scale artwork"));
         menu.AppendSeparator();
         menu.Append(id_up,     _L("Move up"));
@@ -3159,99 +3167,43 @@ DesignPanel::DesignPanel(wxWindow* parent)
         menu.Append(id_vis,    _L("Show / hide"));
         menu.AppendSeparator();
         menu.Append(id_del,    _L("Delete"));
-        menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-            const int row = tree_selection();
-            if (row != wxNOT_FOUND && row < int(m_tree_items.size()))
-                m_tree->EditLabel(m_tree_items[row]);
-        }, id_rename);
+        menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { m_verb_actions["btn:rename"](); }, id_rename);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_edit_feature(); },      id_edit);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_move_feature(-1); },    id_up);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_move_feature(+1); },    id_down);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_toggle_visibility(); }, id_vis);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_delete_feature(); },    id_del);
         if (art)
-            menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-                const int row = tree_selection();
-                if (row != wxNOT_FOUND) on_transform_imported(row);
-            }, id_art);
-        m_tree->PopupMenu(&menu);
-    });
-
-    // In-place rename of a feature row (slow double-click, the offer's Rename verb, or F2).
-    // The name is what makes a tree of eight sketches readable, and the tree row IS the object —
-    // so renaming belongs on the row, not in a side-panel field. Bodies are computed results,
-    // not named features, so a body row must never open an editor (it cannot, they live in the
-    // Parts list, but the guard keeps a future change from slipping a body into this tree).
-    auto item_index = [this](const wxTreeItemId& it) -> int {
-        for (size_t i = 0; i < m_tree_items.size(); ++i)
-            if (m_tree_items[i] == it) return int(i);
-        return wxNOT_FOUND;
+            menu.Bind(wxEVT_MENU, [this, row](wxCommandEvent&) { on_transform_imported(row); }, id_art);
+        m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
     };
-    m_tree->Bind(wxEVT_TREE_BEGIN_LABEL_EDIT, [this, item_index](wxTreeEvent& e) {
-        // The event's item is the authority for WHAT is being edited; tree_selection() is not,
-        // because the editor can open on a row that is not the current selection. A row that is
-        // not a feature (a body, or a stray id) gets the edit vetoed before it can take a name.
-        if (tree_body_selection() >= 0 || item_index(e.GetItem()) == wxNOT_FOUND) { e.Veto(); return; }
-        e.Skip();
-    });
-    m_tree->Bind(wxEVT_TREE_END_LABEL_EDIT, [this, item_index](wxTreeEvent& e) {
-        if (e.IsEditCancelled()) return;
-        const int idx = item_index(e.GetItem());
-        if (idx == wxNOT_FOUND) { e.Veto(); return; }
-        wxString label = e.GetLabel();
-        label.Trim(true).Trim(false);
-        if (label.empty()) { e.Veto(); return; }   // a nameless row is worse than a badly named one
-        m_doc.features[idx].name = std::string(label.ToUTF8().data());
-        sync_recipe_to_model();   // the name is part of the recipe, so the save path persists it
-        e.Skip();                 // let wx finish applying the label to the item it is holding
-        // REBUILD LATER, NOT NOW. refresh_tree() deletes and re-creates every wxTreeItemId, and
-        // we are inside wx's own END_LABEL_EDIT dispatch for one of them — destroying it here
-        // frees the item the caller is still using and takes the process down. Measured: typing
-        // a name and pressing Enter killed the app outright, with the keystrokes traced and no
-        // trace for the Return. Deferring to the next event-loop turn lets wx finish first.
-        CallAfter([this] { refresh_tree(); });
-    });
 
-    // Feature-tree edit actions: act on the selected feature (delete / reorder). These sit in the
-    // card header (Prepare puts its section actions there too) rather than on a loose row below.
+    // In-place rename of a feature row (F2, the offer's Rename verb, or the row's menu). The name
+    // is what makes a tree of eight sketches readable, and the tree row IS the object — so
+    // renaming belongs on the row, not in a side-panel field. The list hands the name over after
+    // its editor's events have finished, so rebuilding the rows here is safe.
+    m_tree->on_rename = [this](int row, const wxString& name) {
+        if (row < 0 || row >= int(m_doc.features.size())) return;
+        m_doc.features[row].name = std::string(name.ToUTF8().data());
+        refresh_tree();   // which syncs the recipe, so the save path persists the name
+    };
+
+    // The header keeps what is not one row's own action: reordering, which moves the selected
+    // feature among the others, and the interference check, which reports on every body.
     {
         wxBoxSizer* trow = m_hdr_tree_row;
-        auto edit_btn = [this](const char* icon, const wxString& tip) {
-            // Header-sized: reads as a section action, not a primary control.
-            auto* b = new ScalableButton(m_tree_box, wxID_ANY, icon, "", FromDIP(wxSize(24, 24)),
-                                         wxDefaultPosition, wxBU_EXACTFIT | wxBORDER_NONE, false, 20);
-            b->SetToolTip(tip);
-            return b;
-        };
-        auto* edit = edit_btn("design_edit", _L("Edit"));
-        edit->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_edit_feature(); });
         // NO Move here. Moving a body is not a feature-row action — this header sits over the
         // FEATURE tree, and the button had to guess its subject from whatever happened to be
         // selected, answering a feature row with an instruction about bodies. It lives where a
-        // body lives: the Bodies card's own action row, and the offer for a selected body.
+        // body lives: on each body's row in the Bodies list, and in the offer for a selected body.
         // Scaling imported artwork, which shared this button, moved to the row's own menu.
-        auto* vis = edit_btn("design_eye", _L("Show / hide"));
-        vis->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_toggle_visibility(); });
-        auto* del  = edit_btn("design_delete", _L("Delete"));
-        del->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-            // A body row deletes the feature that made it. on_delete_body() already resolves
-            // CadBody::source_feature and asks for confirmation by name; it was reachable only
-            // from the right-click offer, so this button answered a selected body row with
-            // "select the FEATURE that created this body" — an instruction the user cannot act
-            // on, since the tree does not say which feature that is. It does now.
-            if (tree_body_selection() >= 0) on_delete_body();
-            else                            on_delete_feature();
-        });
-        auto* up   = edit_btn("design_moveup", _L("Move up"));
+        auto* up   = sidebar_icon_btn(m_tree_box, "design_moveup", _L("Move up"));
         up->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_move_feature(-1); });
-        auto* down = edit_btn("design_movedown", _L("Move down"));
+        auto* down = sidebar_icon_btn(m_tree_box, "design_movedown", _L("Move down"));
         down->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_move_feature(+1); });
-        m_btn_interfere = edit_btn("color_palette", _L("Check interference — find overlapping bodies"));
+        m_btn_interfere = sidebar_icon_btn(m_tree_box, "color_palette", _L("Check interference — find overlapping bodies"));
         m_btn_interfere->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_check_interference(); });
         const int gap = FromDIP(SidebarProps::ElementSpacing());
-        trow->Add(edit, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
-        trow->Add(vis,  0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
-        trow->Add(del,  0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
         trow->Add(up,   0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
         trow->Add(down, 0, wxALIGN_CENTER_VERTICAL);
         // Interference check sits after a rule: it reports, it does not edit the recipe.
@@ -3274,45 +3226,20 @@ DesignPanel::DesignPanel(wxWindow* parent)
     m_parts_hdr = new wxBoxSizer(wxHORIZONTAL);
     m_parts_hdr->Add(card_header(m_parts_box, "design_extrude", _L("Bodies"), m_parts_label), 0,
                      wxALIGN_CENTER_VERTICAL);
-    // The bodies card carries the actions that act on a BODY. Move came from the feature-tree
-    // header, where it had to guess whether its subject was a body or a feature; Show/hide,
-    // Delete and Colour are deliberate COPIES of feature-tree actions, because a body row is a
-    // different subject and a user working in this list should not have to travel to another
-    // card to hide or recolour what they have selected. Boolean is not a copy — it is the one
-    // body-body operation, gated through on_boolean_tool. Each one already resolves the body row
-    // itself (on_toggle_visibility, on_delete_body, on_set_body_color), so nothing here decides
-    // policy — the card only gives them a home next to the rows they act on.
+    // The bodies card header carries the body actions that are not one row's own. Boolean is the
+    // one body-body operation, gated through on_boolean_tool, and Colour recolours the selected
+    // body, resolving it itself (on_set_body_color), so nothing here decides policy. Move,
+    // Show/hide and Delete act on one body, so they sit on its row, as a feature's actions do.
     {
-        auto body_btn = [this](const char* icon, const wxString& tip) {
-            auto* b = new ScalableButton(m_parts_box, wxID_ANY, icon, "", FromDIP(wxSize(24, 24)),
-                                         wxDefaultPosition, wxBU_EXACTFIT | wxBORDER_NONE, false, 20);
-            b->SetToolTip(tip);
-            return b;
-        };
-        auto* bmove = body_btn("design_move",   _L("Move body"));
-        bmove->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-            if (m_sel_solid_body >= 0 && m_sel_solid_body < int(m_doc.bodies.size())) {
-                on_move_body();
-            } else {
-                set_status(StatusKind::Info, _L("Select a body row first, then move it"));
-            }
-        });
         // Boolean lives here as well as on the toolbar: combining two bodies is a body action,
         // and a user working in the body list should not have to leave it to find this.
-        auto* bbool = body_btn("design_boolean", _L("Boolean — join, subtract or intersect with another body"));
+        auto* bbool = sidebar_icon_btn(m_parts_box, "design_boolean", _L("Boolean — join, subtract or intersect with another body"));
         bbool->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_boolean_tool(); });
-        auto* bvis  = body_btn("design_eye",    _L("Show / hide"));
-        bvis->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_toggle_visibility(); });
-        auto* bdel  = body_btn("design_delete", _L("Delete"));
-        bdel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_delete_body(); });
-        auto* bcol  = body_btn("color_palette", _L("Color"));
+        auto* bcol  = sidebar_icon_btn(m_parts_box, "color_palette", _L("Color"));
         bcol->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_set_body_color(); });
         const int bgap = FromDIP(SidebarProps::ElementSpacing());
         m_parts_hdr->AddStretchSpacer(1);
-        m_parts_hdr->Add(bmove, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, bgap);
         m_parts_hdr->Add(bbool, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, bgap);
-        m_parts_hdr->Add(bvis,  0, wxALIGN_CENTER_VERTICAL | wxRIGHT, bgap);
-        m_parts_hdr->Add(bdel,  0, wxALIGN_CENTER_VERTICAL | wxRIGHT, bgap);
         m_parts_hdr->Add(bcol,  0, wxALIGN_CENTER_VERTICAL);
     }
     parts_inner->Add(m_parts_hdr, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP,
@@ -3322,9 +3249,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
               FromDIP(SidebarProps::TitlebarMargin()));
     m_parts_hdr->ShowItems(false);   // no bodies yet on a fresh document
     m_parts_rule->Hide();
-    m_parts = new wxTreeCtrl(m_parts_box, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 48)),
-                             wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_NO_LINES |
-                             wxTR_FULL_ROW_HIGHLIGHT | wxBORDER_SIMPLE | wxTR_EDIT_LABELS);
+    m_parts = new DesignRowList(m_parts_box, 6);   // scrolls past 6
     m_parts->SetBackgroundColour(dp_panel_bg());
     parts_inner->Add(m_parts, 0, wxEXPAND | wxALL, 12);
     // Start hidden: a fresh document has no bodies, and refresh_parts() only runs on the first
@@ -3333,16 +3258,16 @@ DesignPanel::DesignPanel(wxWindow* parent)
     m_parts_label->Hide();
     // Taking a body from the list means the SAME state change however it was asked for, so the
     // normalisation lives here and not inside a selection handler. That distinction is not
-    // pedantry: SelectItem() on a row that is ALREADY selected fires no SEL_CHANGED at all, so a
-    // version of this that only ran on selection left a stale vertex/edge from an earlier
-    // viewport pick in place — and offer_selection_kind() tests vertex FIRST, so right-clicking
-    // the body row served the VERTEX offer (Fillet greyed, Mirror in place of Repeat) while the
-    // row sat highlighted. Measured on the rig 2026-08-02; it is invisible from the code alone.
+    // pedantry: selecting a row that is ALREADY selected notifies nobody, so a version of this
+    // that only ran on selection left a stale vertex/edge from an earlier viewport pick in place
+    // — and offer_selection_kind() tests vertex FIRST, so right-clicking the body row served the
+    // VERTEX offer (Fillet greyed, Mirror in place of Repeat) while the row sat highlighted.
+    // Measured on the rig 2026-08-02; it is invisible from the code alone.
     auto apply_body_row = [this](int b) {
         if (!m_viewport || b < 0) return;
         // One selection at a time: a body row and a feature row mean different things to the
         // op bar, so clear the feature tree's highlight when a body takes over.
-        if (m_tree) m_tree->Unselect();       // wxTR_SINGLE: UnselectAll() does nothing here
+        if (m_tree) m_tree->unselect();
         m_viewport->set_body_highlight(false);   // the per-body overlay does the tint
         m_viewport->select_body(b);              // also drops the vertex/edge marker
         m_sel_solid_body   = b;
@@ -3351,53 +3276,41 @@ DesignPanel::DesignPanel(wxWindow* parent)
         m_pick_face = m_pick_face_body = -1;   // chosen from the list, no face was pointed at
         set_status(StatusKind::Info, wxString::Format(_L("Body %d selected — right-click for what applies to it"), b + 1));
     };
-    m_parts->Bind(wxEVT_TREE_SEL_CHANGED, [this, apply_body_row](wxTreeEvent&) {
-        apply_body_row(tree_body_selection());
-    });
+    m_parts->on_select = [this, apply_body_row] { apply_body_row(tree_body_selection()); };
+    // The row's own Move / Show-hide / Delete. apply_body_row runs unconditionally, as for the
+    // menu below: a face picked in the viewport since the row was selected has moved
+    // m_sel_solid_body, which is the body on_move_body and on_delete_body act on.
+    m_parts->on_action = [this, apply_body_row](int row, int id) {
+        apply_body_row(row);
+        switch (id) {
+        case RowMove:       on_move_body();         break;
+        case RowVisibility: on_toggle_visibility(); break;
+        case RowDelete:     on_delete_body();       break;
+        }
+    };
     // The third door onto the offer, after the viewport right-click and the Menu key. A body ROW
     // is an unambiguous body, so the offer reports BodySolid and the body verbs act on the row you
     // can see highlighted. That is the confirmation a face pick cannot give: pointing at a face
     // lights the face, never the body the verb will actually change. The status line above has
     // been promising this right-click since before it existed.
+    m_parts->on_menu = [this, apply_body_row](int row, const wxPoint& screen) {
+        apply_body_row(row);   // unconditional — see above
+        // Let the modal menu take the loop after this handler returns — same CallAfter as the
+        // sketch path, which learned it the hard way.
+        CallAfter([this, screen] { show_offer_menu(screen); });
+    };
     // Renaming a BODY names the body itself. It does NOT rename the feature that created it:
     // an Extrude, a Cut and a Fillet all land on one body, so source_feature is one operation in
     // its history and renaming that is renaming the wrong object — reported, correctly, as "you
     // consider the extrusion = the body". CadBody::user_name is carried across recompute() by
     // index and written into the recipe, so the name outlives both the rebuild and the save.
-    m_parts->Bind(wxEVT_TREE_BEGIN_LABEL_EDIT, [this](wxTreeEvent& e) {
-        if (tree_body_selection() < 0) { e.Veto(); return; }
-        e.Skip();
-    });
-    m_parts->Bind(wxEVT_TREE_END_LABEL_EDIT, [this](wxTreeEvent& e) {
-        if (e.IsEditCancelled()) return;
-        const int b = tree_body_selection();
-        if (b < 0 || b >= int(m_doc.bodies.size())) { e.Veto(); return; }
-        wxString label = e.GetLabel();
-        label.Trim(true).Trim(false);
-        if (label.empty()) { e.Veto(); return; }      // a nameless row is worse than a bad name
+    m_parts->on_rename = [this](int b, const wxString& name) {
+        if (b < 0 || b >= int(m_doc.bodies.size())) return;
         m_doc.bodies[b].has_user_name = true;
-        m_doc.bodies[b].user_name     = std::string(label.ToUTF8().data());
+        m_doc.bodies[b].user_name     = std::string(name.ToUTF8().data());
         sync_recipe_to_model();                        // the name is part of what gets saved
-        e.Skip();
-        // Rebuild on the NEXT event-loop turn: refresh_parts() destroys every wxTreeItemId and
-        // we are inside wx's own END_LABEL_EDIT dispatch for one of them. The feature tree
-        // learned this the hard way — doing it here took the process down.
-        CallAfter([this] { refresh_parts(); });
-    });
-
-    m_parts->Bind(wxEVT_TREE_ITEM_MENU, [this, apply_body_row](wxTreeEvent& e) {
-        if (e.GetItem().IsOk())
-            m_parts->SelectItem(e.GetItem());   // the row under the cursor, never a stale one
-        apply_body_row(tree_body_selection());  // unconditional — see above, SelectItem on an
-                                                // already-selected row raises no event
-        // GetPoint() is tree-client; it is (-1,-1) when the KEYBOARD menu key raised this, so fall
-        // back to the shared anchor rather than popping the menu at a garbage coordinate.
-        const wxPoint p = e.GetPoint();
-        const wxPoint screen = (p.x >= 0 && p.y >= 0) ? m_parts->ClientToScreen(p) : offer_anchor();
-        // Let the modal menu take the loop after this handler returns — same CallAfter as the
-        // sketch path, which learned it the hard way.
-        CallAfter([this, screen] { show_offer_menu(screen); });
-    });
+        refresh_parts();
+    };
 
     // --- Variables (document-scope named expressions) ---
     // Below the feature tree + parts, always visible. wxListCtrl in report mode with two
@@ -3413,15 +3326,9 @@ DesignPanel::DesignPanel(wxWindow* parent)
                      wxALIGN_CENTER_VERTICAL);
         var_hdr->AddStretchSpacer();
         // Icon actions in the card header, as the Feature tree and Bodies cards have them.
-        auto var_btn = [this](const char* icon, const wxString& tip) {
-            auto* b = new ScalableButton(m_var_box, wxID_ANY, icon, "", FromDIP(wxSize(24, 24)),
-                                         wxDefaultPosition, wxBU_EXACTFIT | wxBORDER_NONE, false, 20);
-            b->SetToolTip(tip);
-            return b;
-        };
-        m_btn_add_var  = var_btn("add",           _L("Add variable"));
-        m_btn_edit_var = var_btn("design_edit",   _L("Edit variable"));
-        m_btn_del_var  = var_btn("design_delete", _L("Delete variable"));
+        m_btn_add_var  = sidebar_icon_btn(m_var_box, "add",           _L("Add variable"));
+        m_btn_edit_var = sidebar_icon_btn(m_var_box, "design_edit",   _L("Edit variable"));
+        m_btn_del_var  = sidebar_icon_btn(m_var_box, "design_delete", _L("Delete variable"));
         m_btn_add_var->Bind(wxEVT_BUTTON,  [this](wxCommandEvent&) { on_add_variable(); });
         m_btn_edit_var->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_edit_variable(); });
         m_btn_del_var->Bind(wxEVT_BUTTON,  [this](wxCommandEvent&) { on_remove_variable(); });
@@ -6687,7 +6594,15 @@ void DesignPanel::show_offer_menu(const wxPoint& screen_pos)
         }
     }
 
-    for (int row = 0; row < kOfferRowCount; ++row) {
+    // Flat rows first, then the families, each group in ratified order. A flat row's verbs sit at
+    // the top level, each an item of its own: they are what a selection is opened for most.
+    std::vector<int> rows;
+    for (const bool flat : {true, false})
+        for (int row = 0; row < kOfferRowCount; ++row)
+            if (kOfferRowFlat[row] == flat) rows.push_back(row);
+    bool flat_items = false;
+
+    for (const int row : rows) {
         std::vector<const OfferVerb*> live, family;
         for (int i = 0; i < kOfferVerbCount; ++i) {
             const OfferVerb& v = kOfferVerbs[i];
@@ -6697,6 +6612,34 @@ void DesignPanel::show_offer_menu(const wxPoint& screen_pos)
         }
         if (family.empty())
             continue;                                   // no verb of this family in this mode
+
+        if (kOfferRowFlat[row]) {
+            // Only the verbs about this selection; one blocked by the document stays, greyed,
+            // with its reason, as it would inside a family.
+            for (const OfferVerb* v : family) {
+                if (!(v->accepts & bit)) continue;
+                const int id = base + int(bound.size());
+                if (applies(*v)) {
+                    offer_trace("row=%d %s -> %s%s", row, kOfferRowNames[row], v->id,
+                                v->action ? "" : " (no GUI route)");
+                    append_offer_item(&menu, id, label(*v), *v)->Enable(v->action != nullptr);
+                    bound.push_back(v);
+                } else {
+                    offer_trace("row=%d %s DISABLED (%s)", row, kOfferRowNames[row],
+                                v->refusal ? v->refusal : "blocked");
+                    wxString s = tr(v->name);
+                    if (v->refusal) s += wxString::FromUTF8("   —   ") + tr(v->refusal);
+                    append_offer_item(&menu, id, s, *v)->Enable(false);
+                    bound.push_back(nullptr);
+                }
+                flat_items = true;
+            }
+            continue;
+        }
+        if (flat_items) {
+            menu.AppendSeparator();                     // between the flat items and the families
+            flat_items = false;
+        }
         const wxString fam = tr(kOfferRowNames[row]);
 
         if (live.empty()) {
@@ -7170,43 +7113,44 @@ void DesignPanel::on_add_draft()
     refresh_tree();
 }
 
-int DesignPanel::tree_icon_for(CadFeatureType t)
+// The Feature tree's per-type row icon, by family.
+const char* DesignPanel::tree_icon_for(CadFeatureType t)
 {
     switch (t) {
-    case CadFeatureType::Sketch:  return 0;
-    case CadFeatureType::Extrude: return 1;
+    case CadFeatureType::Sketch:
+    case CadFeatureType::Plane:
+    case CadFeatureType::Axis:
+    case CadFeatureType::CoordSys:
+    case CadFeatureType::Project:        return "design_sketch";    // sketches, datums, projections
     case CadFeatureType::Fillet:
-    case CadFeatureType::Chamfer: return 2;
-    case CadFeatureType::Hole:    return 3;
-    case CadFeatureType::Thread:  return 4;
-    case CadFeatureType::Shell:   return 5;
-    case CadFeatureType::Revolve: return 1;
-    case CadFeatureType::Sweep:   return 1;
-    case CadFeatureType::Pattern: return 1;
-    case CadFeatureType::Plane:   return 0;   // datum plane: sketch-family icon
-    case CadFeatureType::Loft:    return 1;
-    case CadFeatureType::Draft:   return 5;   // dressup-family icon
-    case CadFeatureType::Import:  return 1;   // imported solid: solid-family icon
-    case CadFeatureType::Boolean: return 1;   // body-body combine: solid-family icon
-    case CadFeatureType::Cut:     return 1;   // plane split: solid-family icon
-    case CadFeatureType::Axis:    return 0;   // datum axis: sketch-family icon
-    case CadFeatureType::CoordSys: return 0;  // datum coord sys: sketch-family icon
-    case CadFeatureType::SurfaceExtrude:  return 1;
-    case CadFeatureType::SurfaceRevolve:  return 1;
-    case CadFeatureType::SurfaceLoft:     return 1;
-    case CadFeatureType::SurfaceFill:     return 1;
-    case CadFeatureType::ThickenSurface:  return 1;
-    case CadFeatureType::SurfaceOffset:   return 1;
-    case CadFeatureType::Transform:       return 1;   // solid-family icon
-    case CadFeatureType::Mirror:          return 1;   // solid-family icon
-    case CadFeatureType::Thicken:         return 1;   // solid-family icon
-    case CadFeatureType::Rib:             return 1;   // solid-family icon
-    case CadFeatureType::Project:         return 0;   // sketch-family icon (produces sketch)
-    case CadFeatureType::DeleteFace:      return 5;   // dressup-family icon
-    case CadFeatureType::Helix:           return 4;   // thread-family icon (curve)
-    case CadFeatureType::Mate:            return 2;   // dressup-family icon (assembly)
+    case CadFeatureType::Chamfer:
+    case CadFeatureType::Mate:           return "design_dressup";
+    case CadFeatureType::Hole:           return "design_hole";
+    case CadFeatureType::Thread:
+    case CadFeatureType::Helix:          return "design_thread";
+    case CadFeatureType::Shell:
+    case CadFeatureType::Draft:
+    case CadFeatureType::DeleteFace:     return "design_shell";
+    case CadFeatureType::Extrude:
+    case CadFeatureType::Revolve:
+    case CadFeatureType::Sweep:
+    case CadFeatureType::Loft:
+    case CadFeatureType::Pattern:
+    case CadFeatureType::Import:
+    case CadFeatureType::Boolean:
+    case CadFeatureType::Cut:
+    case CadFeatureType::Transform:
+    case CadFeatureType::Mirror:
+    case CadFeatureType::Thicken:
+    case CadFeatureType::Rib:
+    case CadFeatureType::SurfaceExtrude:
+    case CadFeatureType::SurfaceRevolve:
+    case CadFeatureType::SurfaceLoft:
+    case CadFeatureType::SurfaceFill:
+    case CadFeatureType::ThickenSurface:
+    case CadFeatureType::SurfaceOffset:  return "design_extrude";   // solids and surfaces
     }
-    return 0;
+    return "design_sketch";
 }
 
 // The reason detect_mate_conflicts() recorded for this feature, or nullptr. A linear scan: an
@@ -7269,8 +7213,12 @@ void DesignPanel::refresh_icons()
     std::function<void(wxWindow*)> walk = [&walk](wxWindow* w) {
         if (auto* b = dynamic_cast<ScalableButton*>(w))
             b->msw_rescale();
-        else if (auto* b = dynamic_cast<::Button*>(w))
+        else if (auto* b = dynamic_cast<::Button*>(w)) {
             b->Rescale();
+            if (b->GetName() == "design_icon_btn")
+                style_sidebar_icon_btn(b);   // pixel sizes and the panel colour, for the new scale and theme
+        } else if (auto* l = dynamic_cast<DesignRowList*>(w))
+            l->Rescale();
         else if (auto* c = dynamic_cast<::CheckBox*>(w))
             c->Rescale();
         else if (auto* c = dynamic_cast<::ComboBox*>(w))
@@ -7307,7 +7255,7 @@ void DesignPanel::on_sys_color_changed()
             walk(child);
     };
     walk(this);
-    // The native controls (trees, lists, spins) take the app's own dark pass.
+    // The native controls (lists, spins) take the app's own dark pass.
     wxGetApp().UpdateDarkUIWin(this);
     refresh_icons();
     refresh_tree();   // the rows carry their own text colours
@@ -7475,23 +7423,22 @@ void DesignPanel::refresh_tree()
     // last feature still clears it, through the tree-edit call site that always did.
     if (!m_doc.features.empty()) sync_recipe_to_model();
 
-    // Preserve the selected row across the rebuild — wxTreeCtrl::DeleteAllItems
-    // drops the selection, which made every edit/add feel like it "lost" the
-    // selection (and broke Edit/Move/Delete on the just-touched feature).
+    // Preserve the selected row across the rebuild — set_rows() drops the selection, which made
+    // every edit/add feel like it "lost" the selection (and broke Edit/Move/Delete on the
+    // just-touched feature).
     const int keep = tree_selection();
 
-    m_tree->DeleteAllItems();
-    m_tree_items.clear();
-    m_tree_body_items.clear();
-    wxTreeItemId root = m_tree->AddRoot("root");
     // Datum/reference planes carry no solid; feed them to the viewport so they render as
     // translucent rectangles (otherwise a Plane feature is invisible in the canvas).
     refresh_datum_planes();
     update_reference_planes();   // body added/removed -> show/hide the XY/XZ/YZ origin planes
+    std::vector<DesignRowList::Row> rows;
+    rows.reserve(m_doc.features.size());
     for (size_t fi = 0; fi < m_doc.features.size(); ++fi) {
         const CadFeature& f = m_doc.features[fi];
-        const int img = tree_icon_for(f.type);
-        wxTreeItemId id = m_tree->AppendItem(root, wxString::FromUTF8(f.name), img, img);
+        DesignRowList::Row row;
+        row.icon  = tree_icon_for(f.type);
+        row.label = wxString::FromUTF8(f.name);
         // Three states, in this order of precedence:
         //   disabled  -> dim. A SUPPRESSED mate is the user's answer to a conflict, so it must
         //                read as suppressed rather than keep shouting about the conflict.
@@ -7502,23 +7449,19 @@ void DesignPanel::refresh_tree()
         // A conflict is NOT a document error — the document still evaluates — so the row is
         // marked and never hidden, and the reason goes to the status line on selection rather
         // than into a modal that interrupts without offering an action.
-        m_tree->SetItemTextColour(id, !f.enabled                            ? dp_item_dim()
-                                    : mate_conflict_reason(int(fi)) != nullptr ? wxColour(235, 110, 110)
-                                                                               : dp_item_text());
-        m_tree_items.push_back(id);
+        row.colour = !f.enabled                            ? dp_item_dim()
+                   : mate_conflict_reason(int(fi)) != nullptr ? wxColour(235, 110, 110)
+                                                              : dp_item_text();
+        row.actions = {
+            { RowEdit, "design_edit", _L("Edit") },
+            eye_action(f.enabled),
+            { RowDelete, "design_delete", _L("Delete") },
+        };
+        rows.push_back(std::move(row));
     }
+    m_tree->set_rows(std::move(rows));
     refresh_parts();   // bodies live in their own list below the tree, never clipped by history
-    if (keep >= 0 && keep < int(m_tree_items.size()))
-        m_tree->SelectItem(m_tree_items[keep]);
-
-    // Size the tree to its content (clamped) so it doesn't waste a fixed-height block when
-    // there are few features, and scrolls internally past ~9 rows instead of growing forever.
-    const int rows  = int(m_tree_items.size());   // bodies are in their own list now
-    const int rowH  = std::max(m_tree->GetCharHeight() + 8, 20);
-    const int shown = std::min(std::max(rows, 1), 9);
-    const wxSize ts(-1, shown * rowH + 8);
-    m_tree->SetMinSize(ts);
-    m_tree->SetMaxSize(ts);
+    m_tree->select(keep);
     if (m_form && m_form->GetSizer()) { update_cards_frame(); m_form->Layout(); m_form->FitInside(); }
 }
 
@@ -7529,11 +7472,9 @@ void DesignPanel::refresh_parts()
     if (m_parts == nullptr) return;
     const int keep = tree_body_selection();
 
-    m_parts->DeleteAllItems();
-    m_tree_body_items.clear();
-    wxTreeItemId proot = m_parts->AddRoot("root");
-
     sync_body_visible();   // keep flags parallel before reading them for the row colour
+    std::vector<DesignRowList::Row> rows;
+    rows.reserve(m_doc.bodies.size());
     for (size_t b = 0; b < m_doc.bodies.size(); ++b) {
         // "Body N" keeps the positional identity every status line and message uses ("Body 2
         // selected", the interference report), and the NAME follows it because that is the part
@@ -7547,17 +7488,24 @@ void DesignPanel::refresh_parts()
         const wxString bname = m_doc.bodies[b].has_user_name
                              ? wxString::FromUTF8(m_doc.bodies[b].user_name)
                              : wxString::FromUTF8(m_doc.bodies[b].name);
-        wxTreeItemId id = m_parts->AppendItem(proot,
-            bname.IsEmpty() ? wxString::Format(_L("Body %zu"), b + 1)
-                            : wxString::Format(_L("Body %zu — %s"), b + 1, bname));
-        // Hidden bodies are greyed so the show/hide state reads at a glance (eye toggle).
-        m_parts->SetItemTextColour(id, vis ? dp_item_text() : dp_item_dim());
-        m_tree_body_items.push_back(id);
+        DesignRowList::Row row;
+        row.label = bname.IsEmpty() ? wxString::Format(_L("Body %zu"), b + 1)
+                                    : wxString::Format(_L("Body %zu — %s"), b + 1, bname);
+        row.edit_text = bname;   // the name is the body's to edit, not its number
+        // Hidden bodies are greyed and their eye is closed, so the state reads at a glance.
+        row.colour  = vis ? dp_item_text() : dp_item_dim();
+        row.actions = {
+            { RowMove, "design_move", _L("Move") },
+            eye_action(vis),
+            { RowDelete, "design_delete", _L("Delete") },
+        };
+        rows.push_back(std::move(row));
     }
+    m_parts->set_rows(std::move(rows));
 
     // Hide the whole block until there is something to list, so an empty document doesn't
     // show a stray empty box.
-    const bool any = !m_tree_body_items.empty();
+    const bool any = m_parts->GetItemCount() > 0;
     m_parts->Show(any);
     if (m_parts_label) m_parts_label->Show(any);
     if (m_parts_hdr)   m_parts_hdr->ShowItems(any);   // icon + title live in this sizer
@@ -7565,26 +7513,14 @@ void DesignPanel::refresh_parts()
     // ...and the frame with it, or an empty bordered box floats there.
     if (m_parts_box && m_form && m_form->GetSizer()) m_form->GetSizer()->Show(m_parts_box, any, false);
 
-    if (any) {
-        const int rowH  = std::max(m_parts->GetCharHeight() + 8, 20);
-        const int shown = std::min(int(m_tree_body_items.size()), 6);   // scrolls past 6
-        const wxSize ps(-1, shown * rowH + 8);
-        m_parts->SetMinSize(ps);
-        m_parts->SetMaxSize(ps);
-        if (keep >= 0 && keep < int(m_tree_body_items.size()))
-            m_parts->SelectItem(m_tree_body_items[keep]);
-    }
+    if (any)
+        m_parts->select(keep);
     if (m_form && m_form->GetSizer()) { update_cards_frame(); m_form->Layout(); m_form->FitInside(); }
 }
 
 int DesignPanel::tree_body_selection() const
 {
-    if (m_parts == nullptr) return -1;
-    const wxTreeItemId sel = m_parts->GetSelection();
-    if (!sel.IsOk()) return -1;
-    for (size_t i = 0; i < m_tree_body_items.size(); ++i)
-        if (m_tree_body_items[i] == sel) return int(i);
-    return -1;
+    return m_parts == nullptr ? -1 : m_parts->selection();
 }
 
 void DesignPanel::update_section_flip_btn()
@@ -7824,17 +7760,13 @@ bool DesignPanel::place_on_face()
 
 int DesignPanel::tree_selection() const
 {
-    const wxTreeItemId sel = m_tree->GetSelection();
-    if (!sel.IsOk()) return wxNOT_FOUND;
-    for (size_t i = 0; i < m_tree_items.size(); ++i)
-        if (m_tree_items[i] == sel) return int(i);
-    return wxNOT_FOUND;
+    return m_tree->selection();
 }
 
 void DesignPanel::set_tree_selection(int row)
 {
-    if (row >= 0 && row < int(m_tree_items.size()))
-        m_tree->SelectItem(m_tree_items[row]);
+    if (row >= 0 && row < int(m_tree->GetItemCount()))
+        m_tree->select(row);
 }
 
 // The selection (the solid pick, the hit face and the committed-loop pick) names bodies, faces and
@@ -8004,12 +7936,11 @@ void DesignPanel::on_toggle_visibility()
                                            &m_body_visible, &m_body_xform);
             }
             refresh_tree();
-            // Keep the row selected for repeat toggles. m_parts, NOT m_tree: these ids belong
-            // to the Bodies list, and handing a foreign item to the feature tree left the row
-            // unselected — so the second press of the eye found tree_body_selection() == -1 and
-            // fell through to the FEATURE-level branch below instead of un-hiding the body.
-            if (m_parts != nullptr && bsel < int(m_tree_body_items.size()))
-                m_parts->SelectItem(m_tree_body_items[bsel]);
+            // Keep the row selected for repeat toggles. m_parts, NOT m_tree: the row is a body,
+            // and selecting it in the feature tree left the body row unselected — so the second
+            // press of the eye found tree_body_selection() == -1 and fell through to the
+            // FEATURE-level branch below instead of un-hiding the body.
+            if (m_parts != nullptr) m_parts->select(bsel);
             set_status(StatusKind::Info, wxString::Format(now_visible ? _L("Body %d shown")
                                                             : _L("Body %d hidden"), bsel + 1));
         }
@@ -8412,11 +8343,11 @@ void DesignPanel::rebuild_constraint_list()
     for (int i = 0; i < int(cons.size()); ++i) {
         auto* row = new wxBoxSizer(wxHORIZONTAL);
         // Delete button first (fixed left position, always visible — long labels can
-        // horizontally scroll but ✗ stays put and clickable). BMP-safe ✗ glyph.
-        auto* del = new ScalableButton(m_cards, wxID_ANY, "design_delete", "", FromDIP(wxSize(24, 24)),
-                                       wxDefaultPosition, wxBU_EXACTFIT | wxBORDER_NONE, false, 16);
-        del->SetToolTip(_L("Delete constraint"));
-        del->Bind(wxEVT_BUTTON, [this, i](wxCommandEvent&) { delete_constraint(i); });
+        // horizontally scroll but ✗ stays put and clickable).
+        auto* del = sidebar_icon_btn(m_cards, "design_delete", _L("Delete constraint"), 16);
+        // After the click: deleting rebuilds these rows, and with them this button, which must
+        // not be destroyed while its own click is still being dispatched.
+        del->Bind(wxEVT_BUTTON, [this, i](wxCommandEvent&) { CallAfter([this, i] { delete_constraint(i); }); });
         // Clickable label: selecting it highlights the referenced entities.
         auto* lbl = new wxStaticText(m_cards, wxID_ANY, constraint_label(cons[i]));
         lbl->SetCursor(wxCursor(wxCURSOR_HAND));
@@ -8467,8 +8398,8 @@ void DesignPanel::delete_constraint(int idx)
 {
     // Live session: the constraint lives in the sketch tool, not in any feature. Removing it
     // re-solves and fires on_constraints_changed, which rebuilds these rows — so this branch
-    // deliberately does NOT call rebuild_constraint_list() itself (it would run twice, and the
-    // second run would delete the wxButton whose click handler is still on the stack).
+    // deliberately does NOT call rebuild_constraint_list() itself (it would run twice). A row's ✗
+    // calls this after its click has finished, so either rebuild may destroy that button.
     if (live_constraint_scope()) {
         if (!m_viewport->remove_sketch_constraint(idx))
             return;

@@ -53,7 +53,7 @@ inline uint32_t offer_bit(OfferSel s) { return 1u << int(s); }
 struct OfferVerb {
     const char* id;
     const char* name;        // drawing-office word (L10); marked L(); translated at use
-    int         row;         // 0..7, the ratified index — NEVER reorder
+    int         row;         // index into kOfferRowNames, the ratified address — NEVER reorder
     const char* key;         // shortcut shown in the row, or nullptr
     const char* action;
     const char* refusal;     // why this row is greyed, in the product's own words
@@ -81,8 +81,22 @@ static const char* const kOfferRowNames[] = {
     L("Transform"),
     L("Reference"),
     L("Modify"),
+    "Top",
 };
-static const int kOfferRowCount = 8;
+static const int kOfferRowCount = 9;
+// A flat row is not a family: its verbs come first, at the top level of the offer, each
+// an item of its own.
+static const bool kOfferRowFlat[] = {
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+};
 
 static const OfferVerb kOfferVerbs[] = {
     {"sketch", L("Sketch"), 0, "Shift+S", "key:S+S", L("Click a face or a reference plane in the viewport, then a sketch tool"), 0x00000403u, 0, 0, false, false, nullptr, "design_sketch", L("Click a face or a reference plane, then pick a drawing tool")},
@@ -125,9 +139,9 @@ static const OfferVerb kOfferVerbs[] = {
     {"mass_props", L("Volume and area"), 6, nullptr, "btn:mass", nullptr, 0x000000feu, 1, 0, false, false, nullptr, "info", L("Report the volume and surface area of the selected body")},
     {"interference", L("Interference"), 6, nullptr, "btn:interference", L("Interference needs at least two bodies"), 0x00000280u, 2, 0, false, false, nullptr, nullptr, L("Check whether two bodies overlap — reports, changes nothing")},
     {"edit_feature", L("Edit"), 7, nullptr, "btn:edit", nullptr, 0x00007d8eu, 0, 0, false, false, nullptr, "design_edit", L("Reopen the selected feature to change what it was made from")},
-    {"rename", L("Rename…"), 7, "F2", "btn:rename", L("Select a feature, or a body, to rename it"), 0x00004080u, 0, 0, false, false, nullptr, nullptr, L("Give this feature a name you will recognise in the tree (a body takes its name from the feature that makes it)")},
+    {"rename", L("Rename…"), 8, "F2", "btn:rename", L("Select a feature, or a body, to rename it"), 0x00004080u, 0, 0, false, false, nullptr, nullptr, L("Give this feature a name you will recognise in the tree (a body takes its name from the feature that makes it)")},
     {"delete_face", L("Delete Face"), 7, nullptr, "fly:dressup#3", L("Delete Face needs a body — add or import one first"), 0x0000000eu, 1, 0, false, false, nullptr, "design_delete", L("Remove faces from a body and heal the solid")},
-    {"colour", L("Color"), 7, nullptr, "btn:colour", nullptr, 0x000001feu, 1, 0, false, false, nullptr, "color_palette", L("Set the selected body's display color")},
+    {"colour", L("Color"), 8, nullptr, "btn:colour", nullptr, 0x000001feu, 1, 0, false, false, nullptr, "color_palette", L("Set the selected body's display color")},
     {"delete", L("Delete"), 7, "Del", "btn:delete", nullptr, 0x000f7c00u, 0, 0, false, false, nullptr, "design_delete", L("Delete what is selected")},
     {"delete_body", L("Delete Body"), 7, nullptr, "btn:delete_body", nullptr, 0x000001feu, 1, 0, false, false, nullptr, "design_delete", L("Delete this whole body — removes the feature it was made from")},
     {"sk_line_t", L("Line"), 0, "L", "key:L", nullptr, 0x000f8000u, 0, 0, false, true, L("Line"), "design_line", L("Line — click start, then end")},

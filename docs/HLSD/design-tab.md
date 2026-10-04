@@ -197,7 +197,14 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
   Orca's sidebar grey, which the icon cache maps per theme, so they are re-rasterised rather
   than re-tinted.
 - **Scale.** Sizes are in DIP, and a DPI change reaches `DesignPanel::msw_rescale`, which
-  re-rasterises every icon (button faces, flyout rows, card headers, the tree's image list).
+  re-rasterises every icon (button faces, flyout rows, card headers, the feature and body lists'
+  row icons).
+- **Sidebar icons.** Every clickable icon in the sidebar shows a hover chip. The card-header and
+  constraint-row buttons are Orca's self-painted `Button`, because a native button cannot take a
+  hover background on macOS. The Feature tree and Bodies lists are a custom-drawn
+  `DesignRowList` rather than a `wxTreeCtrl`, so each row carries its own actions — Edit,
+  Show/hide and Delete on a feature, Move, Show/hide and Delete on a body — and the eye shows
+  whether that row is hidden.
 - **Viewport text.** The status line and the active tool's values are drawn by the canvas in
   its ImGui pass, so they go with the canvas: a top-level window over GL does not follow its
   frame and was left floating over other applications.
@@ -219,7 +226,11 @@ Right-clicking geometry opens the *offer*: eight families in a fixed order, each
 permanent row index, verbs that do not apply shown disabled **in place with their reason**
 rather than removed. The invariant is that a verb's row index is identical in every selection
 where it appears and that adding a verb never moves an existing one — the hand learns the
-position, so the menu is never re-sorted, compacted or adaptively ordered.
+position, so the menu is never re-sorted, compacted or adaptively ordered. Above the families
+sits one *flat* row, holding Rename and Color — what a selection is opened for most: its verbs are
+items of their own at the top of the menu rather than a family's submenu. It is appended after
+the eight, so it moved no existing index, and it reads the same from the viewport and from a row
+of the Bodies list.
 
 An invariant across 92 verbs and 20 selection kinds does not survive by review, so the map
 exists once, as data: `scripts/CAD/tool_atlas.json` carries every verb with its row, key, icon,
@@ -250,6 +261,7 @@ scripted action and a clicked one cannot diverge. It is off unless the variable 
 | `src/libslic3r/CAD/SketchSolver.*` | constraint solving, over the vendored solver |
 | `src/libslic3r/slvs/` | vendored 2D constraint solver (GPLv3) |
 | `src/slic3r/GUI/CAD/DesignPanel.*` | the tab: toolbar, feature cards, tree, key maps |
+| `src/slic3r/GUI/CAD/DesignRowList.*` | the Feature tree and Bodies lists, with per-row actions |
 | `src/slic3r/GUI/CAD/DesignCanvas.*` | viewport integration |
 | `src/slic3r/GUI/CAD/DesignSketchTool.*` | in-canvas sketching |
 | `src/slic3r/GUI/CAD/DesignInteraction.hpp` | the Esc level contract |
