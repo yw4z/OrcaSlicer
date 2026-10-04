@@ -899,6 +899,11 @@ void DesignCanvas::set_on_solid_selection_changed(std::function<void(int, int, i
     };
 }
 
+void DesignCanvas::set_on_empty_pick(std::function<void()> cb)
+{
+    m_sketch_tool.on_empty_pick = std::move(cb);
+}
+
 void DesignCanvas::select_body(int body)
 {
     m_sketch_tool.select_body(body);

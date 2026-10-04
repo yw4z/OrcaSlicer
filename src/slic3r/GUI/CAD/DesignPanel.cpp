@@ -3826,6 +3826,12 @@ DesignPanel::DesignPanel(wxWindow* parent)
                                       : _L("Nothing selected"));
         m_status->Refresh();
     });
+    // A click on nothing drops a list row as it drops a pick. Not while a card is open: the
+    // feature being edited keeps its row.
+    m_viewport->set_on_empty_pick([this] {
+        if (m_active == Tool::None && deselect_rows())
+            set_status(StatusKind::Info, _L("Nothing selected"));
+    });
 
     // Visual Extrude gizmo (C5b): dragging/editing the in-canvas depth arrow writes the
     // matching spin field and re-previews (which re-feeds the gizmo with the new depth).
@@ -7524,6 +7530,16 @@ void DesignPanel::refresh_parts()
 int DesignPanel::tree_body_selection() const
 {
     return m_parts == nullptr ? -1 : m_parts->selection();
+}
+
+// Unselect the Feature tree and Bodies rows; each list's on_select clears what its row lit. True
+// if a row was selected.
+bool DesignPanel::deselect_rows()
+{
+    const bool any = (m_tree && tree_selection() != wxNOT_FOUND) || tree_body_selection() >= 0;
+    if (m_tree) m_tree->unselect();
+    if (m_parts) m_parts->unselect();
+    return any;
 }
 
 void DesignPanel::update_section_flip_btn()
@@ -11763,11 +11779,12 @@ void DesignPanel::escape()
         }
         return;
 
-    case CadLevel::Idle:
+    case CadLevel::Idle: {
         // Deselect. In a sketch this is the floor: the session is left through Finish or Cancel,
         // both of which say which one they are, and never through a key pressed on the way out of
-        // something else.
-        if (m_viewport && m_viewport->clear_any_selection()) {
+        // something else. The Feature tree and Bodies rows count as selections too.
+        const bool row = deselect_rows();
+        if ((m_viewport && m_viewport->clear_any_selection()) || row) {
             set_status(StatusKind::Info, wxString());
             return;
         }
@@ -11782,6 +11799,7 @@ void DesignPanel::escape()
             set_status(StatusKind::Info, _L("Sketch kept — Finish to commit it, Cancel to discard"));
         }
         return;
+    }
     }
 }
 

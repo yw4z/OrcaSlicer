@@ -916,6 +916,7 @@ private:
     bool     m_hl_pending{false};
     void     request_feature_highlight();
     void     update_feature_highlight();
+    bool     deselect_rows();       // Esc / a click on nothing: drop the tree and Bodies rows
     // Bodies list under the feature tree: one row per body (parallel to m_doc.bodies). Selecting
     // one highlights that body and makes it the target for the next op.
     DesignRowList*            m_parts{nullptr};

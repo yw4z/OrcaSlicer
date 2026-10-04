@@ -3813,6 +3813,7 @@ void DesignSketchTool::pick_bodies_in_rectangle()
     dp_pick_trace("rubber band -> body=%d (%d samples)", best, best_n);
     if (on_solid_selection_changed)
         on_solid_selection_changed(int(m_solid_sel), m_sel_body, m_sel_face, m_sel_edge);
+    if (best < 0 && on_empty_pick) on_empty_pick();
 }
 
 // Resolve what a pick at (mx,my) would take. CONST, and it writes only into `out`: the hover
@@ -10782,6 +10783,7 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
                 return true;
             }
         }
+        if (on_empty_pick) on_empty_pick();
         return false;                                     // let the stock canvas orbit / deselect
     }
 

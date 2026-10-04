@@ -134,7 +134,7 @@ contract between them is stated in code rather than spread across handlers.
 | `Transient` | a value field or a popup menu | closes it; the tool stays armed |
 | `Gesture` | an uncommitted delta — an entity being drawn, a body being dragged | reverts it; committed work is untouched |
 | `Tool` | a feature card, an armed sketch tool, a constrain session | exits it; drawn entities survive |
-| `Idle` | nothing transient | clears the selection; leaves a sketch session only if it is empty |
+| `Idle` | nothing transient | clears the selection, a Feature tree or Bodies row included; leaves a sketch session only if it is empty |
 
 `cad_escape_level()` is a `constexpr` free function over a POD of four booleans rather than a
 method on the panel, so the ordering that is the entire contract is checkable without a window,
@@ -211,7 +211,8 @@ that makes no face of its own, such as a Boolean union, answers with the bodies 
 replay costs up to a recompute, so the panel finds the faces once per row and topology
 generation, off the UI thread, and only while no feature card is open. One selection is live at
 a time: a viewport pick clears the feature row and a feature row clears the viewport pick, as the
-Feature tree and Bodies list do between themselves.
+Feature tree and Bodies list do between themselves. `Esc`, a click on empty space and an
+empty rubber band all let go of it, whichever list or pick made it.
 
 ## Following the app
 

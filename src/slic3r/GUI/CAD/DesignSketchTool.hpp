@@ -235,6 +235,9 @@ public:
     std::function<void(int body, const Transform3d& xform)> on_body_move_changed;
     // Fired on each cycle change: (level 0=None/1=Whole/2=Face/3=Edge, body index, face id, edge id).
     std::function<void(int level, int body, int face, int edge)> on_solid_selection_changed;
+    // A click or rubber band (no live session) that took nothing, so the host can drop the
+    // selections the tool does not hold, such as the panel's list rows.
+    std::function<void()> on_empty_pick;
     // Click a committed sketch overlay (no live session) -> select that loop: the Sketch
     // feature index + the clicked closed-region index within it (-1 = no specific loop).
     // entity = the sketch entity index under the cursor when the click landed on a loop
