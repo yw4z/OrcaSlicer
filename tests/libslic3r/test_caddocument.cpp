@@ -8801,6 +8801,29 @@ TEST_CASE("Hiding a body-making feature keeps later features on their body", "[C
     CHECK(doc.features[lift].target_body == 1);
 }
 
+TEST_CASE("A hidden feature can be shown again once the feature that made its body is shown",
+          "[CadDocument][history]")
+{
+    CadDocument doc;
+    const int sk = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 10, 10, 0, "S");
+    const int ex = doc.add_extrude(sk, 5, false, BooleanMode::New, "E");
+    const int ch = doc.add_chamfer(1.0, FaceGroup::All, "C");
+    doc.features[ch].target_body = 0;   // as the Design tab sets it from picked edges; -1 has no body to follow
+    REQUIRE(doc.recompute());
+    const double chamfered = double(doc.display_mesh.volume());
+
+    REQUIRE(doc.set_feature_enabled(ch, false));
+    REQUIRE(doc.set_feature_enabled(ex, false));
+    // The chamfer has no body while the extrude is hidden...
+    CHECK_FALSE(doc.set_feature_enabled(ch, true));
+    CHECK_FALSE(doc.features[ch].enabled);
+    // ...and gets it back once the extrude is shown.
+    REQUIRE(doc.set_feature_enabled(ex, true));
+    REQUIRE(doc.set_feature_enabled(ch, true));
+    CHECK(doc.features[ch].target_body == 0);
+    CHECK_THAT(double(doc.display_mesh.volume()), Catch::Matchers::WithinRel(chamfered, 1e-6));
+}
+
 TEST_CASE("Datum-plane references follow their plane when an earlier plane is deleted",
           "[CadDocument][history]")
 {

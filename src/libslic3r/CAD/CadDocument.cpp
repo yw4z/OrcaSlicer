@@ -2197,11 +2197,16 @@ static void stage_history_change(std::vector<CadFeature>& features,
             ref = nn >= 0 ? 3 + nn : 3 + int(after.size()) + 1000;
         });
         if (f.body_ref_ids.size() != size_t(kBodyRefCount)) continue;   // never resolved: nothing to follow
+        // A feature hidden after the change is not replayed, so a hidden source is no reason to
+        // drop its body: it keeps following it and re-points when shown. Shown while the source
+        // is still hidden, it is staged as replayed and loses the body then. Only deleting the
+        // source drops a hidden feature's body.
+        const bool replayed = enabled_after(j);
         int k = 0;
         for_each_body_ref(f, [&](int& ref, bool) {
             CadFeature::BodyId& id = f.body_ref_ids[k++];
             if (ref < 0 || id.src < 0) return;
-            if (!alive(id.src)) { ref = kBodyGone; id = {}; return; }
+            if (replayed ? !alive(id.src) : map_feature(id.src) < 0) { ref = kBodyGone; id = {}; return; }
             id.src = map_feature(id.src);
         });
         f.body_refs_pending = true;
