@@ -16,6 +16,7 @@
 #include "libslic3r/Config.hpp"
 #include <boost/algorithm/string/predicate.hpp>
 #include <algorithm>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 
@@ -331,33 +332,25 @@ void DesignCanvas::reload(bool keep_view)
     for (int i = 0; i < (int)m_model.objects.size(); ++i)
         m_canvas->load_object(m_model, i);
 
-    const ColorRGBA sel_gold = design_selection_color();   // same colour as every other selection
     const ColorRGBA ghost(0.26f, 0.66f, 1.0f, 0.45f);
 
     const auto& volumes = m_canvas->get_volumes().volumes;
     for (auto* v : volumes) {
         int obj_idx = v->object_idx();
         if (obj_idx == 0) {
-            // Object 0 holds one volume per body — colour each by its body index so
-            // multiple coexisting solids are visually distinct (Onshape per-part colour).
-            const int b = v->volume_idx();
+            // Object 0 holds the bodies (rebuild_bodies): each volume in its body's colour, so
+            // coexisting solids read as distinct parts (Onshape per-part colour), or in the
+            // selection colour when it holds the body's selected faces.
+            const int  vi  = v->volume_idx();
+            const int  b   = vi < int(m_volumes.size()) ? m_volumes[vi].body : vi;
+            const bool lit = vi < int(m_volumes.size()) && m_volumes[vi].lit;
             bool hidden = (b >= 0 && b < int(m_body_visible.size())) && !m_body_visible[b];
             // Preview-only mode (fillet/chamfer/draft, once a valid target is picked): hide
             // every base body so only the result ghost is on screen until Confirm.
             if (m_body_hidden) hidden = true;
             v->is_active = !hidden;   // per-body visibility toggle
             if (!hidden) {
-                // An EXPLICIT colour outranks the selection tint. m_body_selected is a
-                // document-wide flag raised whenever a non-Sketch feature row is selected —
-                // the normal resting state after any modelling operation — so painting every
-                // body gold on it made the Color tool look broken: the override was written,
-                // carried across recompute and read back correctly, and then overpainted here
-                // every single frame. A body the user deliberately coloured keeps its colour;
-                // the rest still tint, which is all the tint was ever for.
-                const bool overridden = m_color_bodies != nullptr && b >= 0
-                                        && b < int(m_color_bodies->size())
-                                        && (*m_color_bodies)[b].has_color;
-                ColorRGBA c = (m_body_selected && !overridden) ? sel_gold : body_color(b);
+                ColorRGBA c = lit ? design_selection_color() : body_color(b);
                 if (b == m_hl_body_target)    c = ColorRGBA(0.30f, 0.90f, 0.70f, 1.0f); // target = teal-green
                 else if (b == m_hl_body_tool) c = ColorRGBA(1.00f, 0.55f, 0.15f, 1.0f); // tool = orange
                 if (m_body_translucent) c.a(0.30f);
@@ -385,45 +378,23 @@ void DesignCanvas::reload(bool keep_view)
         m_canvas_widget->Refresh();
 }
 
-void DesignCanvas::set_mesh(const TriangleMesh& mesh)
-{
-    if (m_model.objects.empty()) {
-        auto* obj = m_model.add_object();
-        obj->add_volume(mesh);
-        obj->add_instance();
-    } else {
-        ModelObject* obj = m_model.objects.front();
-        obj->clear_volumes();
-        obj->add_volume(mesh);
-        if (obj->instances.empty())
-            obj->add_instance();
-    }
-
-    reload(!m_first_frame);
-}
-
-void DesignCanvas::set_bodies(const std::vector<TriangleMesh>& body_meshes,
+void DesignCanvas::set_bodies(const std::vector<TriangleMesh>* body_meshes,
                               const std::vector<bool>& visible)
 {
-    // Object 0 carries one GLVolume per body so reload() can colour each distinctly.
-    // Falls back to a single-volume object when there's only one body (identical look
-    // to the old set_mesh path). Picking still uses the combined mesh via set_solid_pick.
+    // Object 0 is built by rebuild_bodies; picking uses the combined mesh from set_solid_pick.
     m_body_visible = visible;   // empty => all visible; reload() reads this per volume
-    if (body_meshes.empty()) { clear_mesh(); return; }
+    if (body_meshes == nullptr || body_meshes->empty()) { clear_mesh(); return; }
 
-    ModelObject* obj = m_model.objects.empty() ? m_model.add_object()
-                                               : m_model.objects.front();
-    obj->clear_volumes();
-    for (const TriangleMesh& m : body_meshes)
-        obj->add_volume(m);
-    if (obj->instances.empty())
-        obj->add_instance();
-
+    m_body_meshes = body_meshes;
+    m_lit_faces   = m_sketch_tool.selected_faces();
+    rebuild_bodies();
     reload(!m_first_frame);
 }
 
 void DesignCanvas::clear_mesh()
 {
+    m_body_meshes = nullptr;
+    m_volumes.clear();
     if (!m_model.objects.empty()) {
         m_model.delete_object((size_t)0);
         reload(true);
@@ -682,6 +653,7 @@ void DesignCanvas::clear_loop_pick()
 void DesignCanvas::clear_solid_pick()
 {
     m_sketch_tool.clear_solid_selection();
+    sync_selected_faces();
 }
 
 void DesignCanvas::set_loop_pick(int feature, int region)
@@ -711,7 +683,9 @@ void DesignCanvas::set_solid_pick(const std::vector<CadBody>* bodies, const Tria
                                   const std::vector<Transform3d>* xform)
 {
     m_color_bodies = bodies;   // stable address (m_doc.bodies); reload() reads colour overrides
+    m_tri_face     = tri_face;
     m_sketch_tool.set_solid_pick(bodies, mesh, tri_face, tri_body, visible, xform);
+    sync_selected_faces();     // the tool just reset its pick
 }
 
 // Effective display colour for a body: per-body override (Color tool) when set, else the
@@ -914,12 +888,19 @@ std::vector<int> DesignCanvas::selected_solid_edges() const
 
 void DesignCanvas::set_on_solid_selection_changed(std::function<void(int, int, int, int)> cb)
 {
-    m_sketch_tool.on_solid_selection_changed = std::move(cb);
+    // Wrapped so every pick change in the tool also re-splits the filled faces.
+    m_on_solid_selection_changed = std::move(cb);
+    m_sketch_tool.on_solid_selection_changed = [this](int level, int body, int face, int edge) {
+        sync_selected_faces();
+        if (m_on_solid_selection_changed)
+            m_on_solid_selection_changed(level, body, face, edge);
+    };
 }
 
 void DesignCanvas::select_body(int body)
 {
     m_sketch_tool.select_body(body);
+    sync_selected_faces();
     request_repaint();
 }
 
@@ -1211,11 +1192,75 @@ void DesignCanvas::render_hud()
         chip("##design_readout", m_hud_last, ds.x - margin, 1.f, 0.f, &ImGuiWrapper::COL_ORCA);
 }
 
-void DesignCanvas::set_body_highlight(bool on)
+void DesignCanvas::set_highlight_faces(const std::vector<std::pair<int, int>>& faces)
 {
-    if (m_body_selected == on) return;
-    m_body_selected = on;
-    reload(true);   // recolours the body volume (selected = cyan tint)
+    m_sketch_tool.set_highlight_faces(faces);
+    sync_selected_faces();
+    request_repaint();
+}
+
+void DesignCanvas::sync_selected_faces()
+{
+    // Deferred to the end of the current event, which may change the selection several times:
+    // every re-split reloads all the bodies. A set_bodies in between splits by the current
+    // selection itself and leaves this nothing to do.
+    if (m_split_pending)
+        return;
+    m_split_pending = true;
+    CallAfter([this] {
+        m_split_pending = false;
+        std::vector<std::pair<int, int>> want = m_sketch_tool.selected_faces();
+        if (want == m_lit_faces)
+            return;
+        m_lit_faces = std::move(want);
+        if (m_body_meshes == nullptr || m_model.objects.empty())
+            return;
+        rebuild_bodies();
+        reload(true);
+    });
+}
+
+// Object 0: one volume per body, with its selected faces split off into a volume of their own.
+// The per-triangle face ids (all bodies, in order) match triangles to faces; when their count
+// does not match the meshes, nothing is split.
+void DesignCanvas::rebuild_bodies()
+{
+    ModelObject* obj = m_model.objects.empty() ? m_model.add_object() : m_model.objects.front();
+    obj->clear_volumes();
+    m_volumes.clear();
+    const std::vector<TriangleMesh>& meshes = *m_body_meshes;
+    size_t ntri = 0;
+    for (const TriangleMesh& m : meshes)
+        ntri += m.its.indices.size();
+    const bool mapped = m_tri_face != nullptr && m_tri_face->size() == ntri;
+    size_t off = 0;
+    for (int b = 0; b < int(meshes.size()); ++b) {
+        const TriangleMesh& mesh = meshes[b];
+        const auto first = std::lower_bound(m_lit_faces.begin(), m_lit_faces.end(), std::make_pair(b, INT_MIN));
+        const auto last  = std::lower_bound(first, m_lit_faces.end(), std::make_pair(b + 1, INT_MIN));
+        if (!mapped || first == last) {
+            obj->add_volume(mesh);
+            m_volumes.push_back({ b, false });
+        } else {
+            indexed_triangle_set parts[2];   // [0] the rest of the body, [1] its selected faces
+            for (size_t i = 0; i < mesh.its.indices.size(); ++i) {
+                const int  f   = (*m_tri_face)[off + i];
+                const bool lit = std::binary_search(first, last, std::make_pair(b, f));
+                parts[lit].indices.push_back(mesh.its.indices[i]);
+            }
+            for (int lit = 0; lit < 2; ++lit) {
+                if (parts[lit].indices.empty())
+                    continue;
+                parts[lit].vertices = mesh.its.vertices;
+                its_compactify_vertices(parts[lit]);
+                obj->add_volume(TriangleMesh(std::move(parts[lit])));
+                m_volumes.push_back({ b, lit == 1 });
+            }
+        }
+        off += mesh.its.indices.size();
+    }
+    if (obj->instances.empty())
+        obj->add_instance();
 }
 
 void DesignCanvas::set_operand_bodies(int target_body, int tool_body)
@@ -1223,7 +1268,7 @@ void DesignCanvas::set_operand_bodies(int target_body, int tool_body)
     if (m_hl_body_target == target_body && m_hl_body_tool == tool_body) return;
     m_hl_body_target = target_body;
     m_hl_body_tool   = tool_body;
-    reload(true);      // recolours the body volumes (same idiom set_body_highlight uses)
+    reload(true);      // recolours the body volumes
 }
 
 void DesignCanvas::set_highlight_sketches(std::vector<std::pair<int, ColorRGBA>> hl)

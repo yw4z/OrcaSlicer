@@ -41,10 +41,10 @@ public:
     explicit DesignCanvas(wxWindow* parent);
     ~DesignCanvas() override;
 
-    void set_mesh(const TriangleMesh& mesh);
     // Multi-body display: one GLVolume per body, each coloured distinctly (per-body colour).
-    // `visible` (optional, indexed by body) hides bodies whose flag is false.
-    void set_bodies(const std::vector<TriangleMesh>& body_meshes,
+    // `visible` (optional, indexed by body) hides bodies whose flag is false. `body_meshes` is kept
+    // by address (a stable panel member) and read again whenever the selection changes.
+    void set_bodies(const std::vector<TriangleMesh>* body_meshes,
                     const std::vector<bool>& visible = {});
     void clear_mesh();
 
@@ -239,7 +239,9 @@ public:
     // Mate connectors, drawn as frames so their verse and polarity are visible (wgsc).
     void set_mate_connectors(std::vector<DesignSketchTool::MateConnectorGlyph> g);
     void set_mate_links(std::vector<std::pair<Vec3d, Vec3d>> l);
-    void set_body_highlight(bool on);   // tint the solid when its feature is tree-selected
+    // Draw these (body, face id) faces as selected: the faces the Feature tree's selected feature
+    // made (CadDocument::faces_made_by). Empty clears them.
+    void set_highlight_faces(const std::vector<std::pair<int, int>>& faces);
     // The status line, shown along the BASE OF THE VIEWPORT rather than in the side panel:
     // the panel clips it at ~73 characters with no warning (8cc), the viewport's
     // bottom margin has the whole window width to spare. Empty text hides it.
@@ -375,6 +377,20 @@ private:
     void reload(bool keep_view);
     void swap_camera();   // enter_viewport / leave_viewport, in the one direction they share
 
+    // Selected faces are filled by the canvas: each body's selected faces become a volume of their
+    // own, drawn opaque in the selection colour with the body's shader and lighting, so a selection
+    // is the same colour on every body. The faces are the sketch tool's selected_faces() (the
+    // Feature tree row's and the committed face or body pick), which the tool outlines.
+    void rebuild_bodies();          // object 0 from m_body_meshes, split by m_lit_faces
+    void sync_selected_faces();     // re-split and reload, once queued, if the selection changed
+    struct BodyVolume { int body; bool lit; };   // an object 0 volume: its body, and whether it holds selected faces
+    const std::vector<TriangleMesh>* m_body_meshes{nullptr};  // set_bodies
+    const std::vector<int>*          m_tri_face{nullptr};     // per-triangle face id, all bodies in order
+    std::vector<std::pair<int, int>> m_lit_faces;             // what object 0 is split by now
+    std::vector<BodyVolume>          m_volumes;               // object 0's volumes, in order
+    bool                             m_split_pending{false};
+    std::function<void(int, int, int, int)> m_on_solid_selection_changed;
+
     wxGLCanvas* m_canvas_widget{nullptr};
     GLCanvas3D* m_canvas{nullptr};
     int         m_sw_gl{-1};   // -1 unknown, 0 hardware GL, 1 software GL
@@ -394,7 +410,6 @@ private:
     bool        m_camera_swapped{false};   // guards a leave without an enter, and the reverse
     Model       m_model;
     bool        m_first_frame{true};
-    bool        m_body_selected{false};   // tree selected a body feature → tint the solid
     int         m_hl_body_target{-1};
     int         m_hl_body_tool{-1};
     bool        m_body_translucent{false};// fillet/chamfer preview → render the body see-through

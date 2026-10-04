@@ -215,6 +215,12 @@ public:
     // Select a whole body by index (from the Parts list) — Whole-level highlight, no face/edge.
     // body < 0 or out of range clears the selection.
     void select_body(int body);
+    // Outline these (body, face id) faces as selected: the faces the Feature tree's selected
+    // feature made. A body whose shape changes later drops out, its face ids being stale. The
+    // canvas fills them (DesignCanvas::rebuild_bodies).
+    void set_highlight_faces(const std::vector<std::pair<int, int>>& faces);
+    // Every face drawn as selected, sorted: the committed pick's and the still-valid ones above.
+    std::vector<std::pair<int, int>> selected_faces() const;
 
     // Move-body gizmo (M5): translate a whole body with three world-axis drag arrows
     // (X red / Y green / Z blue) anchored at the body centroid. Display-only — the host
@@ -1219,9 +1225,13 @@ private:
     // whose shape changed (keyed by the TShape), since set_solid_pick runs on every recompute.
     std::vector<std::vector<std::vector<Vec3d>>> m_body_edges;
     std::vector<const void*>                     m_body_edges_key;
+    std::vector<double>                          m_body_edges_tol;   // the chord tolerance they were sampled at
     bool                                         m_body_edges_hidden{false};
     void refresh_body_edges();
     void render_body_edges();
+    const void* body_key(int body) const;   // the body's TShape, nullptr when there is none
+    void append_ribbons(GLModel::Geometry& g, int body, const std::vector<std::vector<Vec3d>>& polylines,
+                        const Vec3d& vd, const Vec3d& pull, double hw) const;
     bool body_pickable(int b) const;                    // false when the body is explicitly hidden
     SolidSel                m_solid_sel{SolidSel::None};
     int                     m_sel_body{-1};   // which body the face/edge selection is on
@@ -1264,10 +1274,28 @@ private:
     bool m_right_consumed{false};          // last RightDown was a gesture terminator, not a menu
     bool m_escalate_repick{true};          // re-picking the same sub-element takes the whole body
     void render_solid_highlight();
-    // The shared body of the above: one highlight from explicit arguments, so the committed
-    // selection and the hover pre-highlight cannot drift apart in how they look.
-    void render_solid_sel(SolidSel kind, int body, int face, const std::vector<Vec3d>& edge_pts,
-                          const Vec3d& vertex_pt, const ColorRGBA& rgb, float alpha_mul);
+    // The above's edge and vertex highlight, from explicit arguments, so the committed selection
+    // and the hover pre-highlight cannot drift apart in how they look.
+    void render_solid_sel(SolidSel kind, const std::vector<Vec3d>& edge_pts, const Vec3d& vertex_pt,
+                          const ColorRGBA& rgb);
+    // A set of selected faces of one body, with their edges sampled once, keyed by the body's
+    // TShape so a recompute that rebuilt the body retires it.
+    struct FaceHighlight {
+        int                             body{-1};
+        std::vector<int>                faces;   // sorted
+        const void*                     key{nullptr};
+        std::vector<std::vector<Vec3d>> edges;   // in the body's shape coordinates
+    };
+    FaceHighlight make_face_highlight(int body, std::vector<int> faces) const;
+    // The faces the committed pick names: the one face of a face pick, every face of a picked
+    // body. Empty for an edge or vertex pick.
+    std::vector<std::pair<int, int>> picked_faces() const;
+    // `cache`, rebuilt only when it no longer holds these faces of this body's current shape.
+    const FaceHighlight& cached_face_highlight(FaceHighlight& cache, int body, std::vector<int> faces) const;
+    void          render_face_outline(const FaceHighlight& h, bool quiet);
+    std::vector<FaceHighlight> m_hl_faces;   // set_highlight_faces, one entry per body
+    FaceHighlight              m_sel_hl;     // the committed Face/Whole pick
+    FaceHighlight              m_pre_hl;     // the face under the pointer
     void render_datum_planes();           // translucent rectangles for datum/reference planes
     void render_view_helpers();           // world origin planes + axis triad (P / A toggles)
     bool m_show_planes{false};
@@ -1284,7 +1312,6 @@ private:
     std::vector<std::pair<Vec3d, Vec3d>> m_mate_links;
     GLModel m_mc_stroke_model;
     GLModel m_mc_fill_model;      // the face treatment's shaded facets
-    GLModel m_solid_face_model;
     GLModel m_solid_edge_model;
     GLModel m_body_edges_model;
     GLModel m_solid_vertex_model;

@@ -84,6 +84,7 @@
 #include <initializer_list>
 #include <math.h>
 #include <map>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <algorithm>
@@ -92,6 +93,11 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/array.hpp>
 #include <BRepTools.hxx>
+#include <BRepClass_FaceClassifier.hxx>   // faces_made_by: is a point on a face
+#include <BRepLProp_SLProps.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <Poly_Triangulation.hxx>
+#include <Precision.hxx>
 #include <string>
 #include <vector>
 #include <utility>
@@ -4017,6 +4023,39 @@ void CadDocument::route_feature(std::vector<CadBody>& bodies, const CadFeature& 
     }
 }
 
+void CadDocument::bind_expressions()
+{
+    std::map<std::string, double> varvals = evaluate_variables(variables);
+    for (CadFeature& f : features)
+        for (const auto& [field, e] : f.expr)
+            assign_field(f, field, eval_expr(e, varvals));
+}
+
+void CadDocument::replay_feature(size_t fi, std::vector<CadBody>& built)
+{
+    CadFeature& f = features[fi];
+    if (!f.enabled) return;
+    if (f.type == CadFeatureType::Sketch) return; // consumed by an extrude
+    if (f.type == CadFeatureType::Helix)  return; // consumed by Sweep as a path
+    if (f.type == CadFeatureType::Plane)   return; // datum: no solid, derived on demand
+    if (f.type == CadFeatureType::Axis)    return; // datum axis
+    if (f.type == CadFeatureType::CoordSys) return; // datum coordinate system
+    settle_body_refs(f, built, true);
+    if (f.type == CadFeatureType::Project) { apply_project(built, f); }
+    else                                   { route_feature(built, f); }
+    // Record which feature made each body. "Still unset?" is the whole rule, and it is
+    // sufficient because of an invariant worth stating: NO feature ever replaces a whole
+    // CadBody. Every in-place op writes only `.shape` (boolean, cut, mirror-fuse,
+    // transform, dress-up — checked, all 8 sites), so an existing body keeps the stamp it
+    // was born with; a consumed body is erased outright, taking its stamp with it; and
+    // the only bodies still at -1 here are the ones THIS feature just pushed. That also
+    // means a feature type added later needs no change here, as long as it keeps to the
+    // same invariant.
+    for (CadBody& b : built)
+        if (b.source_feature < 0)
+            b.source_feature = int(fi);
+}
+
 bool CadDocument::recompute()
 {
     error.clear();
@@ -4030,39 +4069,13 @@ bool CadDocument::recompute()
     // the 3MF recipe only "on success", so nothing was written, and deserialize_recipe ends with
     // `return recompute()`, so a project that did carry a recipe was refused on load with
     // "Could not restore the CAD model" while its features sat correctly in the list. mtav.
-    bool any_solid_feature = false;
+    const bool any_solid_feature = std::any_of(features.begin(), features.end(), [](const CadFeature& f) {
+        return f.enabled && produces_body(f.type);
+    });
     try {
-        // Parametric pass: evaluate document variables, then each feature's expression bindings,
-        // writing the results into the feature's numeric fields before geometry runs.
-        std::map<std::string, double> varvals = evaluate_variables(variables);
-        for (CadFeature& f : features)
-            for (const auto& [field, e] : f.expr)
-                assign_field(f, field, eval_expr(e, varvals));
-        for (size_t fi = 0; fi < features.size(); ++fi) {
-            CadFeature& f = features[fi];
-            if (!f.enabled) continue;
-            if (f.type == CadFeatureType::Sketch) continue; // consumed by an extrude
-            if (f.type == CadFeatureType::Helix)  continue; // consumed by Sweep as a path
-            if (f.type == CadFeatureType::Plane)   continue; // datum: no solid, derived on demand
-            if (f.type == CadFeatureType::Axis)    continue; // datum axis
-            if (f.type == CadFeatureType::CoordSys) continue; // datum coordinate system
-            // Past the skips. Project runs here too but leaves no body of its own.
-            if (produces_body(f.type)) any_solid_feature = true;
-            settle_body_refs(f, built, true);
-            if (f.type == CadFeatureType::Project) { apply_project(built, f); }
-            else                                   { route_feature(built, f); }
-            // Record which feature made each body. "Still unset?" is the whole rule, and it is
-            // sufficient because of an invariant worth stating: NO feature ever replaces a whole
-            // CadBody. Every in-place op writes only `.shape` (boolean, cut, mirror-fuse,
-            // transform, dress-up — checked, all 8 sites), so an existing body keeps the stamp it
-            // was born with; a consumed body is erased outright, taking its stamp with it; and
-            // the only bodies still at -1 here are the ones THIS feature just pushed. That also
-            // means a feature type added later needs no change here, as long as it keeps to the
-            // same invariant.
-            for (CadBody& b : built)
-                if (b.source_feature < 0)
-                    b.source_feature = int(fi);
-        }
+        bind_expressions();
+        for (size_t fi = 0; fi < features.size(); ++fi)
+            replay_feature(fi, built);
     } catch (const Standard_Failure& e) {
         // OCCT raises Standard_Failure (NOT a std::exception) — must be caught
         // here or it escapes the event handler and terminates the app.
@@ -4215,6 +4228,175 @@ bool CadDocument::preview(const CadFeature& candidate, TriangleMesh& out_mesh, s
 {
     std::vector<TriangleMesh> ignore;
     return preview(candidate, out_mesh, ignore, err);
+}
+
+namespace {
+
+// A face of a replayed body and what the boundary test needs from it. The projector is built on
+// first use: few probes pass the box test, and building one on a freeform surface samples the
+// whole surface.
+struct FaceProbe {
+    TopoDS_Face          face;
+    Handle(Geom_Surface) surface;
+    Bnd_Box              box;
+    mutable std::unique_ptr<GeomAPI_ProjectPointOnSurf> proj;
+};
+
+// How close a point must be to lie on a face: a face rebuilt on the same surface is within
+// 1e-7 mm of it, a new face nowhere near.
+constexpr double kOnFaceTol = 1e-4;
+
+std::vector<FaceProbe> face_probes(const std::vector<CadBody>& bodies)
+{
+    std::vector<FaceProbe> out;
+    for (const CadBody& b : bodies)
+        for (TopExp_Explorer e(b.shape, TopAbs_FACE); e.More(); e.Next()) {
+            FaceProbe p;
+            p.face    = TopoDS::Face(e.Current());
+            p.surface = BRep_Tool::Surface(p.face);
+            if (p.surface.IsNull()) continue;
+            BRepBndLib::Add(p.face, p.box);
+            p.box.Enlarge(kOnFaceTol);
+            out.push_back(std::move(p));
+        }
+    return out;
+}
+
+bool outward_normal(const TopoDS_Face& face, double u, double v, gp_Dir& n)
+{
+    BRepAdaptor_Surface surf(face);
+    BRepLProp_SLProps props(surf, u, v, 1, Precision::Confusion());
+    if (!props.IsNormalDefined()) return false;
+    n = props.Normal();
+    if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+    return true;
+}
+
+// A point inside `face` and its outward normal there: the UV centroid of the largest triangle of
+// the face's triangulation, which lies inside the trimmed face even where the centre of its UV
+// bounds falls in a hole. Without a triangulation, that centre, if it is inside.
+bool interior_point(const TopoDS_Face& face, gp_Pnt& p, gp_Dir& n)
+{
+    TopLoc_Location loc;
+    const Handle(Poly_Triangulation) tri = BRep_Tool::Triangulation(face, loc);
+    double u = 0., v = 0., best = -1.;
+    if (!tri.IsNull() && tri->HasUVNodes())
+        for (int i = 1; i <= tri->NbTriangles(); ++i) {
+            int a, b, c;
+            tri->Triangle(i).Get(a, b, c);
+            const gp_Pnt pa = tri->Node(a);
+            const double area = gp_Vec(pa, tri->Node(b)).Crossed(gp_Vec(pa, tri->Node(c))).SquareMagnitude();
+            if (area <= best) continue;
+            best = area;
+            const gp_XY uv = (tri->UVNode(a).XY() + tri->UVNode(b).XY() + tri->UVNode(c).XY()) / 3.;
+            u = uv.X();
+            v = uv.Y();
+        }
+    if (best < 0.) {
+        double u0, u1, v0, v1;
+        BRepTools::UVBounds(face, u0, u1, v0, v1);
+        u = 0.5 * (u0 + u1);
+        v = 0.5 * (v0 + v1);
+        if (BRepClass_FaceClassifier(face, gp_Pnt2d(u, v), Precision::Confusion()).State() != TopAbs_IN)
+            return false;
+    }
+    p = BRepAdaptor_Surface(face).Value(u, v);
+    return outward_normal(face, u, v, n);
+}
+
+// Does `p` lie on one of `probes`, on a face turned the same way as `n`? The facing tells apart
+// coincident faces of different bodies: a block stacked on a base has its bottom in the base's
+// top face, turned the other way.
+bool on_boundary(const std::vector<FaceProbe>& probes, const gp_Pnt& p, const gp_Dir& n)
+{
+    for (const FaceProbe& fp : probes) {
+        if (fp.box.IsOut(p)) continue;
+        try {
+            if (!fp.proj) {
+                // The setup GeomAPI_ProjectPointOnSurf(p, surface) repeats for every point, done once.
+                double u0, u1, v0, v1;
+                fp.surface->Bounds(u0, u1, v0, v1);
+                fp.proj = std::make_unique<GeomAPI_ProjectPointOnSurf>();
+                fp.proj->Init(fp.surface, u0, u1, v0, v1, Precision::Confusion());
+            }
+            GeomAPI_ProjectPointOnSurf& proj = *fp.proj;
+            proj.Perform(p);
+            if (proj.NbPoints() == 0 || proj.LowerDistance() > kOnFaceTol) continue;
+            double u, v;
+            proj.LowerDistanceParameters(u, v);
+            if (BRepClass_FaceClassifier(fp.face, gp_Pnt2d(u, v), kOnFaceTol).State() == TopAbs_OUT) continue;
+            gp_Dir m;
+            if (outward_normal(fp.face, u, v, m) && m.Dot(n) > 0.) return true;
+        } catch (const Standard_Failure&) {
+            // A surface the projection cannot handle says nothing about the point.
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+std::vector<std::pair<int, int>> CadDocument::faces_made_by(int index) const
+{
+    std::vector<std::pair<int, int>> out;
+    if (index < 0 || index >= int(features.size()) || !features[index].enabled
+        || !produces_body(features[index].type) || bodies.empty())
+        return out;
+
+    // Replay up to the feature, then the feature alone on a copy, so a body it left alone is the
+    // same shape on both sides. On a scratch document, as a replay settles references in the
+    // features it runs; it reads only the features, the variables and the process-wide weld rule.
+    CadDocument tmp;
+    tmp.features  = features;
+    tmp.variables = variables;
+    std::vector<CadBody> before, after;
+    try {
+        set_sketch_auto_close(auto_close_loops);
+        tmp.bind_expressions();
+        for (size_t fi = 0; fi < size_t(index); ++fi)
+            tmp.replay_feature(fi, before);
+        after = before;
+        tmp.replay_feature(size_t(index), after);
+    } catch (...) {   // OCCT's Standard_Failure as well as std::exception
+        return out;
+    }
+
+    // The bodies the step made or replaced. A face on any other body was on the boundary before
+    // the step too, so only these are probed after it.
+    std::vector<int>     changed;
+    std::vector<CadBody> changed_bodies;
+    for (int j = 0; j < int(after.size()); ++j)
+        if (std::none_of(before.begin(), before.end(), [&](const CadBody& w) { return w.shape.IsSame(after[j].shape); })) {
+            changed.push_back(j);
+            changed_bodies.push_back(after[j]);
+        }
+    const std::vector<FaceProbe> was = face_probes(before), now = face_probes(changed_bodies);
+    for (int b = 0; b < int(bodies.size()); ++b) {
+        int id = 0;
+        for (TopExp_Explorer e(bodies[b].shape, TopAbs_FACE); e.More(); e.Next(), ++id) {
+            gp_Pnt p;
+            gp_Dir n;
+            try {
+                if (interior_point(TopoDS::Face(e.Current()), p, n) && on_boundary(now, p, n) && !on_boundary(was, p, n))
+                    out.emplace_back(b, id);
+            } catch (const Standard_Failure&) {
+                // A face that cannot be sampled is left out, not the whole answer.
+            }
+        }
+    }
+    if (!out.empty())
+        return out;
+
+    // No face of its own: answer with every face of each body the step changed, found again in
+    // the finished model by the id a body keeps across the rest of the history.
+    for (int j : changed) {
+        const int b = find_body(bodies, body_id_of(after, j));
+        if (b < 0) continue;
+        const int n = GeometryEngine::face_count(bodies[b].shape);
+        for (int id = 0; id < n; ++id)
+            out.emplace_back(b, id);
+    }
+    return out;
 }
 
 std::string brep_to_string(const TopoDS_Shape& s)

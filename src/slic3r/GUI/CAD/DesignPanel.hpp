@@ -294,6 +294,7 @@ private:
     void on_edit_feature();            // reopen the selected feature's dialog populated
     void after_tree_edit(bool ok);     // shared post-op refresh of tree/viewport/status
     void drop_selection();             // forget the selection (solid, hit face, sketch loop): the feature list was replaced or renumbered
+    void drop_solid_pick();            // the solid and hit-face part of drop_selection
     bool begin_renumber();             // before delete/reorder: refuse while an index is held, else close the card, checkpoint, drop picks
     void load_feature_into_dialog(const CadFeature& f);
     void reset_edit_state();           // back to add-mode (m_edit_index = -1)
@@ -905,6 +906,16 @@ private:
     // own Edit / Show-hide / Delete icons. Callers use row indices via
     // tree_selection()/set_tree_selection(); refresh_tree() rebuilds the rows.
     DesignRowList*            m_tree{nullptr};
+    // The faces the selected feature row made (CadDocument::faces_made_by), drawn as selected.
+    // Finding them replays the history, so they are kept per row and topology generation.
+    // request_feature_highlight() refreshes them after the current event; every change of row,
+    // card or topology calls it.
+    int      m_hl_feature{-1};      // the row m_hl_faces were found for...
+    uint64_t m_hl_generation{0};    // ...on this topology
+    std::vector<std::pair<int, int>> m_hl_faces;
+    bool     m_hl_pending{false};
+    void     request_feature_highlight();
+    void     update_feature_highlight();
     // Bodies list under the feature tree: one row per body (parallel to m_doc.bodies). Selecting
     // one highlights that body and makes it the target for the next op.
     DesignRowList*            m_parts{nullptr};

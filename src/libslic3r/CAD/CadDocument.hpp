@@ -848,6 +848,16 @@ public:
     bool preview(const CadFeature& candidate, TriangleMesh& out_mesh,
                  std::vector<TriangleMesh>& out_body_meshes, std::string& err) const;
 
+    // The faces of the current bodies that features[index] made, as (body, face id) pairs: what
+    // the Design tab highlights when that feature is selected. A face counts when it lies on the
+    // model's boundary, facing the same way, right after the feature and not right before it, so
+    // a face a later feature trimmed still belongs to the one that made it. Positions are
+    // compared, no history is kept: a face a later feature rebuilt in place stays the earlier
+    // feature's. A feature with no face left of its own (a Boolean union, or one whose faces a
+    // later feature removed) answers with every face of each body it changed. Empty for a feature
+    // that leaves no body, a hidden one, or a history that no longer rebuilds up to it.
+    std::vector<std::pair<int, int>> faces_made_by(int index) const;
+
 private:
     TopoDS_Wire build_sketch_wire(const CadFeature& sketch, bool closed_only = false) const;
     // The planar region an Extrude sweeps: the sketch's outer loop with its inner loops as
@@ -864,6 +874,13 @@ private:
     // starts a new body (empty list, or an Extrude with mode New) vs mutates an existing
     // one, then apply_feature. Shared by recompute() (replay all) and preview() (candidate).
     void route_feature(std::vector<CadBody>& bodies, const CadFeature& f) const;
+    // The parametric pass every replay starts with: evaluate the variables and write each
+    // feature's expression bindings into its numeric fields.
+    void bind_expressions();
+    // One step of the replay: route features[fi] into `built` and stamp the bodies it created
+    // with fi. A hidden feature, a sketch, a helix or a datum leaves `built` alone. Throws on
+    // failure.
+    void replay_feature(size_t fi, std::vector<CadBody>& built);
     // Boolean between two existing bodies: resolve target + tool, optionally snap the tool so
     // the picked faces mate, run the OCCT op (with fuzzy tolerance), write the result back to the
     // target and erase the consumed tool. Mutates the bodies vector directly (unlike apply_feature,

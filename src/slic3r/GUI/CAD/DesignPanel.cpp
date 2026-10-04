@@ -3093,9 +3093,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
     m_tree->SetBackgroundColour(dp_panel_bg());
     tree_inner->Add(m_tree, 0, wxEXPAND | wxALL, 12);
 
-    // Selecting a body-producing feature (Extrude/Fillet/Chamfer/Hole/Thread) in the
-    // tree highlights the solid in the viewport; a Sketch row clears the highlight
-    // (its face is already shown via the persistent sketch overlay).
+    // Selecting a feature that leaves a body (Extrude, Fillet, Chamfer, Hole, ...) lights the
+    // faces it made in the viewport — the fillet's round, not the whole part it sits on.
     m_tree->on_select = [this] {
         if (!m_viewport) return;
         // Picking a feature drops any body selection, so the two lists never both claim to be
@@ -3104,10 +3103,11 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // THIS handler, which would otherwise clear the body row the user had just clicked.
         if (m_parts && tree_selection() != wxNOT_FOUND) m_parts->unselect();
         const int sel = tree_selection();
-        const bool body = (sel >= 0 && sel < int(m_doc.features.size()) &&
-                           m_doc.features[sel].type != CadFeatureType::Sketch &&
-                           !m_doc.body.IsNull());
-        m_viewport->set_body_highlight(body);
+        // Likewise a viewport pick, which would be drawn just like the feature's faces. Not while
+        // a card is open: the card reads that pick.
+        if (sel != wxNOT_FOUND && m_active == Tool::None)
+            drop_solid_pick();   // not the loop pick: clicking a sketch loop selects its row
+        request_feature_highlight();
         // A conflicting mate says WHY on selection, and names the one action that resolves it.
         // Suppress is the generic per-feature enable toggle (the eye), so the answer is already
         // one click away on a row the user has just selected — the message points at it instead
@@ -3268,7 +3268,6 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // One selection at a time: a body row and a feature row mean different things to the
         // op bar, so clear the feature tree's highlight when a body takes over.
         if (m_tree) m_tree->unselect();
-        m_viewport->set_body_highlight(false);   // the per-body overlay does the tint
         m_viewport->select_body(b);              // also drops the vertex/edge marker
         m_sel_solid_body   = b;
         m_sel_solid_face   = m_sel_solid_edge = -1;
@@ -3623,9 +3622,12 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // has focus; we lay the selected body face on the bed. Returns false when no face is
     // selected so the key can fall through to the default handler.
 
-    // Clicking a solid cycles whole -> face -> edge. The tool draws the cyan overlay for ALL
-    // levels now (per-body, so other bodies stay untinted) — no whole-compound set_body_highlight.
+    // Clicking a solid cycles whole -> face -> edge. The tool draws the selection for every
+    // level, per body, so other bodies keep their own look.
     m_viewport->set_on_solid_selection_changed([this](int level, int body, int face, int edge) {
+        // One selection at a time: a pick replaces the Feature tree row. Not while a card is open:
+        // the feature being edited keeps its row while the card's picks are made.
+        if (level >= 1 && m_active == Tool::None && m_tree) m_tree->unselect();
         // A pick that fell through the move gizmo (clicked off the arrows) exits move mode.
         if (m_viewport->moving_body()) m_viewport->clear_move_gizmo();
         // Remember which body + face/edge so Extrude / dress-up target the RIGHT body.
@@ -7462,6 +7464,7 @@ void DesignPanel::refresh_tree()
     m_tree->set_rows(std::move(rows));
     refresh_parts();   // bodies live in their own list below the tree, never clipped by history
     m_tree->select(keep);
+    request_feature_highlight();   // set_rows and select() say nothing when `keep` is gone
     if (m_form && m_form->GetSizer()) { update_cards_frame(); m_form->Layout(); m_form->FitInside(); }
 }
 
@@ -7610,7 +7613,50 @@ void DesignPanel::feed_bodies()
     // place), so it needs no re-call here — the whole/face/edge selection survives a move drag.
     if (m_viewport == nullptr) return;
     rebuild_disp_meshes();
-    m_viewport->set_bodies(m_disp_body_meshes, m_body_visible);
+    m_viewport->set_bodies(&m_disp_body_meshes, m_body_visible);
+    // A new topology may renumber faces, so the feature's faces are found again; until then the
+    // viewport drops those on a body whose shape has changed.
+    if (m_hl_generation != m_doc.topo_generation)
+        request_feature_highlight();
+}
+
+void DesignPanel::request_feature_highlight()
+{
+    if (m_hl_pending) return;
+    m_hl_pending = true;
+    // Not on the stack of the click or the rebuild that asked: finding the faces may put up the
+    // busy dialog, and the document must have settled.
+    CallAfter([this] { update_feature_highlight(); });
+}
+
+void DesignPanel::update_feature_highlight()
+{
+    m_hl_pending = false;
+    if (m_viewport == nullptr) return;
+    // A rebuild's busy loop runs queued events while its worker owns the document. Skipped, not
+    // re-queued (the loop would run it again at once and spin): the rebuild's own refresh
+    // (feed_bodies, refresh_tree) asks again when it is done.
+    if (s_doc_worker_busy.load() > 0) return;
+    const int  sel    = tree_selection();
+    // Hidden while a feature card is open: the card's ghost and picks are what the view is about.
+    const bool wanted = sel >= 0 && sel < int(m_doc.features.size()) && m_active == Tool::None;
+    if (wanted && (sel != m_hl_feature || m_hl_generation != m_doc.topo_generation)) {
+        std::vector<std::pair<int, int>> faces;
+        const CadFeature& f = m_doc.features[sel];
+        if (f.enabled && CadDocument::produces_body(f.type))   // the rest make no faces
+            run_off_ui_thread(this, _L("Finding the feature's faces…"), [this, sel, &faces] {
+                try {
+                    faces = m_doc.faces_made_by(sel);
+                } catch (...) {
+                    faces.clear();   // a highlight is not worth an escaped exception
+                }
+            });
+        m_hl_faces      = std::move(faces);
+        m_hl_feature    = sel;
+        m_hl_generation = m_doc.topo_generation;
+    }
+    // Re-sending the same faces is cheap: the viewport reuses what it has.
+    m_viewport->set_highlight_faces(wanted ? m_hl_faces : std::vector<std::pair<int, int>>{});
 }
 
 // Boolean (combine bodies) — one gate for every door onto the tool. A body-body operation
@@ -7775,14 +7821,19 @@ void DesignPanel::set_tree_selection(int row)
 // that leaves no body never reaches set_solid_pick. The callers repaint.
 void DesignPanel::drop_selection()
 {
+    if (m_viewport != nullptr)
+        m_viewport->clear_loop_pick();
+    drop_solid_pick();
+}
+
+void DesignPanel::drop_solid_pick()
+{
     m_sel_solid_body = m_sel_solid_face = m_sel_solid_edge = -1;
     m_sel_solid_edges.clear();
     m_sel_solid_vertex = false;
     m_pick_face = m_pick_face_body = -1;
-    if (m_viewport != nullptr) {
-        m_viewport->clear_loop_pick();
+    if (m_viewport != nullptr)
         m_viewport->clear_solid_pick();
-    }
 }
 
 // The shared front of delete and reorder, which renumber the feature list. A sketch or constrain
@@ -11417,6 +11468,7 @@ void DesignPanel::open_tool(Tool t)
     // the card appears always means "keep this one" regardless of what the last session did.
     if (t == Tool::Boolean)
         m_bool_next_slot = 0;
+    request_feature_highlight();   // the card's ghost and picks take the view over
 }
 
 void DesignPanel::close_tool()
@@ -11486,6 +11538,7 @@ void DesignPanel::close_tool()
     update_cards_frame(); m_form->Layout();
     m_form->FitInside();
     update_action_bar();   // no feature tool active -> hide the bar (unless a mode keeps it)
+    request_feature_highlight();   // the selected row's faces come back with the card gone
 }
 
 void DesignPanel::confirm_tool()

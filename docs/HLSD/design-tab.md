@@ -187,6 +187,30 @@ degenerate edges are left out (`GeometryEngine::display_edges`), and the polylin
 once per shape, keyed by its `TShape`, because a recompute that leaves a body unchanged is the
 common case.
 
+## Showing what is selected
+
+A selection is drawn on the faces it names, never as a tint over the body: a translucent
+selection colour blended into the body's own colour turns a different hue on every body and
+vanishes on one close to it. Selected faces are split out of their body into a volume of their
+own, which the canvas draws opaque in the selection colour through the same shader and lighting
+as the body (`DesignCanvas::rebuild_bodies`); the sketch overlay outlines them with a cased line
+— a dark band under a selection-coloured one — so the outline still reads on a body that wears
+the selection colour itself. A body picked whole, a face picked in the viewport and the faces of
+the Feature tree's selected feature all draw this way. The hover pre-highlight is the outline
+alone, uncased: it promises a click, it is not one.
+
+Selecting a feature row lights the faces that feature made, not the whole body it sits on, so a
+fillet row shows its round and the extrude under it keeps the faces the fillet trimmed.
+`CadDocument::faces_made_by` answers it without per-feature history: it replays the recipe to
+just before the feature and then the feature alone, and a face of the finished model belongs to
+the feature when an interior point of it lies on the boundary afterwards and not before, facing
+the same way — the facing keeps a block stacked on a base the owner of its bottom face. A feature
+that makes no face of its own, such as a Boolean union, answers with the bodies it changed. The
+replay costs up to a recompute, so the panel finds the faces once per row and topology
+generation, off the UI thread, and only while no feature card is open. One selection is live at
+a time: a viewport pick clears the feature row and a feature row clears the viewport pick, as the
+Feature tree and Bodies list do between themselves.
+
 ## Following the app
 
 The tab is a page of Orca's main window and answers to the same settings as Prepare.

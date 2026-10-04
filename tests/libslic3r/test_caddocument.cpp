@@ -46,6 +46,7 @@
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepAdaptor_Curve.hxx>
+#include <BRepAdaptor_Surface.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <BRepGProp.hxx>
@@ -9082,4 +9083,168 @@ TEST_CASE("revolve about a line of the sketch", "[CadDocument][revolve]")
         CHECK(loaded.features[1].revolve_axis_entity == 4);
         CHECK(loaded.features[1].revolve_angle == Approx(270.));
     }
+}
+
+// faces_made_by is what the Design tab highlights when a feature row is selected: the faces of
+// the finished model that this feature made, not the whole body it belongs to.
+static GeomAbs_SurfaceType made_face_type(const CadDocument& doc, const std::pair<int, int>& bf)
+{
+    return BRepAdaptor_Surface(GeometryEngine::face_by_index(doc.bodies[bf.first].shape, bf.second)).GetType();
+}
+
+TEST_CASE("A fillet owns its round face, and the extrude keeps the faces it trimmed", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 20, 20, 10, "Sketch");
+    const int ex = doc.add_extrude(sk, 10.0, false, BooleanMode::New, "Extrude");
+    REQUIRE(doc.recompute());
+    const int fi = doc.add_fillet(2.0, 0, "Fillet");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 1);
+    REQUIRE(GeometryEngine::faces_of(doc.bodies[0].shape).size() == 7);
+
+    const auto fillet = doc.faces_made_by(fi);
+    REQUIRE(fillet.size() == 1);
+    CHECK(fillet[0].first == 0);
+    CHECK(made_face_type(doc, fillet[0]) == GeomAbs_Cylinder);
+
+    const auto extrude = doc.faces_made_by(ex);
+    CHECK(extrude.size() == 6);
+    for (const auto& bf : extrude)
+        CHECK(made_face_type(doc, bf) == GeomAbs_Plane);
+
+    CHECK(doc.faces_made_by(sk).empty());   // a sketch leaves no face behind
+
+    // A hidden feature made nothing in the model on screen.
+    REQUIRE(doc.set_feature_enabled(fi, false));
+    CHECK(doc.faces_made_by(fi).empty());
+}
+
+TEST_CASE("A chamfer owns its bevel", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 20, 20, 10, "Sketch");
+    const int ex = doc.add_extrude(sk, 10.0, false, BooleanMode::New, "Extrude");
+    REQUIRE(doc.recompute());
+    const int ch = doc.add_chamfer(2.0, 0, "Chamfer");
+    REQUIRE(doc.recompute());
+    REQUIRE(GeometryEngine::faces_of(doc.bodies[0].shape).size() == 7);
+
+    const auto bevel = doc.faces_made_by(ch);
+    REQUIRE(bevel.size() == 1);
+    CHECK(made_face_type(doc, bevel[0]) == GeomAbs_Plane);
+    const auto extrude = doc.faces_made_by(ex);
+    CHECK(extrude.size() == 6);
+    CHECK(std::find(extrude.begin(), extrude.end(), bevel[0]) == extrude.end());
+}
+
+TEST_CASE("A boss owns its wall and cap, not the face it stands on", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 30, 20, 10, "Sketch");
+    const int ex = doc.add_extrude(sk, 10.0, false, BooleanMode::New, "Extrude");
+    REQUIRE(doc.recompute());
+    SketchPlane top = SketchPlane::XY();
+    top.origin = Vec3d(0, 0, 10);
+    const int sk2  = doc.add_sketch_entities({circle_entity({0, 0}, 5.0)}, top, "Sketch2");
+    const int boss = doc.add_extrude(sk2, 8.0, false, BooleanMode::Add, "Boss");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 1);
+
+    const auto made = doc.faces_made_by(boss);
+    REQUIRE_FALSE(made.empty());
+    int walls = 0, caps = 0;
+    for (const auto& bf : made) {
+        const GeomAbs_SurfaceType t = made_face_type(doc, bf);
+        walls += t == GeomAbs_Cylinder;
+        // The cap is the plane at the boss's top, not the box's top face it stands on.
+        if (t == GeomAbs_Plane) {
+            ++caps;
+            Bnd_Box bb;
+            BRepBndLib::Add(GeometryEngine::face_by_index(doc.bodies[0].shape, bf.second), bb);
+            double x0, y0, z0, x1, y1, z1;
+            bb.Get(x0, y0, z0, x1, y1, z1);
+            CHECK(z0 > 17.9);
+        }
+    }
+    CHECK(walls >= 1);
+    CHECK(caps == 1);
+    CHECK(doc.faces_made_by(ex).size() == 6);   // the box keeps its top face, hole and all
+}
+
+TEST_CASE("A body stacked on another still owns the face they share", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk0 = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 20, 20, 10, "Sketch0");
+    doc.add_extrude(sk0, 10.0, false, BooleanMode::New, "Base");
+    SketchPlane top = SketchPlane::XY();
+    top.origin = Vec3d(0, 0, 10);
+    const int sk1 = doc.add_sketch(SketchShape::Rectangle, top, 10, 10, 5, "Sketch1");
+    const int ex1 = doc.add_extrude(sk1, 5.0, false, BooleanMode::New, "Block");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 2);
+
+    // The block's bottom lies in the base's top face, facing the other way: it is the block's.
+    const auto made = doc.faces_made_by(ex1);
+    CHECK(made.size() == 6);
+    for (const auto& bf : made)
+        CHECK(bf.first == 1);
+}
+
+TEST_CASE("A Boolean union, which makes no face of its own, answers with the body it changed", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk0 = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 20, 20, 10, "Sketch0");
+    doc.add_extrude(sk0, 10.0, false, BooleanMode::New, "Box0");
+    SketchPlane beside = SketchPlane::XY();
+    beside.origin = Vec3d(10, 5, 0);
+    const int sk1 = doc.add_sketch(SketchShape::Rectangle, beside, 20, 20, 10, "Sketch1");
+    doc.add_extrude(sk1, 10.0, false, BooleanMode::New, "Box1");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 2);
+    const int fuse = doc.add_boolean(BooleanMode::Add, 0, 1, false, 0.0, -1, -1, "Fuse");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 1);
+
+    const auto made = doc.faces_made_by(fuse);
+    CHECK(made.size() == GeometryEngine::faces_of(doc.bodies[0].shape).size());
+}
+
+TEST_CASE("A Boolean subtract owns the walls its tool cut", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk0 = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 20, 20, 10, "Sketch0");
+    doc.add_extrude(sk0, 10.0, false, BooleanMode::New, "Box0");
+    SketchPlane beside = SketchPlane::XY();
+    beside.origin = Vec3d(10, 5, 0);
+    const int sk1 = doc.add_sketch(SketchShape::Rectangle, beside, 20, 20, 10, "Sketch1");
+    doc.add_extrude(sk1, 10.0, false, BooleanMode::New, "Box1");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 2);
+    const int cut = doc.add_boolean(BooleanMode::Cut, 0, 1, false, 0.0, -1, -1, "Cut");
+    REQUIRE(doc.recompute());
+    REQUIRE(doc.bodies.size() == 1);
+
+    // The tool notches a corner out of the box: the two walls of the notch, the tool's faces
+    // turned inside out, are the subtract's; what is left of the box's own faces is not.
+    const auto made = doc.faces_made_by(cut);
+    CHECK(made.size() == 2);
+    for (const auto& bf : made)
+        CHECK(made_face_type(doc, bf) == GeomAbs_Plane);
+}
+
+TEST_CASE("A hole owns its bore", "[CadDocument][highlight]")
+{
+    CadDocument doc;
+    const int sk = doc.add_sketch(SketchShape::Rectangle, SketchPlane::XY(), 20, 20, 10, "Sketch");
+    const int ex = doc.add_extrude(sk, 10.0, false, BooleanMode::New, "Extrude");
+    REQUIRE(doc.recompute());
+    const int hole = doc.add_hole(6.0, 20.0, true, 0.0, 0.0, SketchPlane::XY(), "Hole");
+    REQUIRE(doc.recompute());
+
+    const auto bore = doc.faces_made_by(hole);
+    REQUIRE_FALSE(bore.empty());
+    for (const auto& bf : bore)
+        CHECK(made_face_type(doc, bf) == GeomAbs_Cylinder);
+    CHECK(doc.faces_made_by(ex).size() == 6);
 }

@@ -21,8 +21,11 @@
 #include "libslic3r/CAD/GeometryEngine.hpp"
 
 #include <BRepBndLib.hxx>
+#include <BRep_Builder.hxx>
 #include <Bnd_Box.hxx>
 #include <Standard_Failure.hxx>
+#include <TopoDS_Compound.hxx>
+#include <map>
 #include "libslic3r/TriangleMesh.hpp"
 
 #include <GL/glew.h>
@@ -3450,50 +3453,105 @@ void DesignSketchTool::set_solid_pick(const std::vector<CadBody>* bodies, const 
     clear_solid_selection();
 }
 
+// The chord tolerance body edges are sampled at: a thousandth of the body's size, so round edges
+// stay round at any zoom that shows the whole body, without sampling a large import into millions
+// of segments.
+static double display_edge_tol(const TopoDS_Shape& shape)
+{
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box);
+    return std::max(1e-3 * (box.IsVoid() ? 1.0 : std::sqrt(box.SquareExtent())), 0.005);
+}
+
 void DesignSketchTool::refresh_body_edges()
 {
     const size_t n = m_solid_bodies != nullptr ? m_solid_bodies->size() : 0;
     m_body_edges.resize(n);
     m_body_edges_key.resize(n, nullptr);
+    m_body_edges_tol.resize(n, 0.0);
     for (size_t b = 0; b < n; ++b) {
-        const TopoDS_Shape& shape = (*m_solid_bodies)[b].shape;
-        const void* key = shape.IsNull() ? nullptr : shape.TShape().get();
+        const void* key = body_key(int(b));
         if (key == m_body_edges_key[b] && key != nullptr)
             continue;
         m_body_edges_key[b] = key;
         m_body_edges[b].clear();
         if (key == nullptr)
             continue;
-        // A thousandth of the body's size: round edges stay round at any zoom that shows the
-        // whole body, without sampling a large import into millions of segments.
-        Bnd_Box box;
-        BRepBndLib::Add(shape, box);
-        const double diag = box.IsVoid() ? 1.0 : std::sqrt(box.SquareExtent());
+        const TopoDS_Shape& shape = (*m_solid_bodies)[b].shape;
+        m_body_edges_tol[b] = display_edge_tol(shape);
         try {
-            m_body_edges[b] = GeometryEngine::display_edges(shape, std::max(1e-3 * diag, 0.005));
+            m_body_edges[b] = GeometryEngine::display_edges(shape, m_body_edges_tol[b]);
         } catch (const Standard_Failure&) {
             m_body_edges[b].clear();   // an unsampleable edge costs its body the lines, nothing else
         }
     }
 }
 
+// The identity of a body's current shape. Face ids and sampled edges hold while it does.
+const void* DesignSketchTool::body_key(int body) const
+{
+    if (m_solid_bodies == nullptr || body < 0 || body >= int(m_solid_bodies->size()))
+        return nullptr;
+    const TopoDS_Shape& shape = (*m_solid_bodies)[body].shape;
+    return shape.IsNull() ? nullptr : shape.TShape().get();
+}
+
+// View-facing ribbons along a body's polylines (shape coordinates), `hw` either side of the line
+// and moved by `pull` toward the eye, so a line wins the depth test against the faces meeting at
+// it while a face in front of it still hides it.
+void DesignSketchTool::append_ribbons(GLModel::Geometry& g, int body, const std::vector<std::vector<Vec3d>>& polylines,
+                                      const Vec3d& vd, const Vec3d& pull, double hw) const
+{
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    unsigned int base = unsigned(g.vertices_count());
+    for (const std::vector<Vec3d>& pl : polylines)
+        for (size_t s = 1; s < pl.size(); ++s) {
+            const Vec3d a = body_xform_pt(body, pl[s - 1]) + pull, c = body_xform_pt(body, pl[s]) + pull;
+            Vec3d dir = c - a; if (dir.norm() < 1e-9) continue; dir.normalize();
+            Vec3d off = dir.cross(vd);
+            if (off.norm() < 1e-9) continue;   // edge seen end-on: a point, nothing to draw
+            off = off.normalized() * hw;
+            g.add_vertex((Vec3f)(a + off).cast<float>());
+            g.add_vertex((Vec3f)(c + off).cast<float>());
+            g.add_vertex((Vec3f)(c - off).cast<float>());
+            g.add_vertex((Vec3f)(a - off).cast<float>());
+            g.add_triangle(base, base + 1, base + 2);
+            g.add_triangle(base, base + 2, base + 3); base += 4;
+        }
+}
+
+// Ribbons tested against the scene's depth without writing it, and blended.
+static void render_ribbons(GLModel& model, GLModel::Geometry&& g, const ColorRGBA& colour)
+{
+    if (g.is_empty())
+        return;
+    glsafe(::glEnable(GL_DEPTH_TEST));
+    glsafe(::glDepthFunc(GL_LEQUAL));
+    glsafe(::glDepthMask(GL_FALSE));
+    glsafe(::glEnable(GL_BLEND));
+    glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+    model.reset();
+    model.init_from(std::move(g));
+    model.set_color(colour);
+    model.render();
+    glsafe(::glDepthMask(GL_TRUE));
+    glsafe(::glDepthFunc(GL_LESS));
+    glsafe(::glDisable(GL_BLEND));
+    glsafe(::glDisable(GL_DEPTH_TEST));
+}
+
 void DesignSketchTool::render_body_edges()
 {
     if (m_body_edges_hidden || m_solid_bodies == nullptr)
         return;
-    using EPT = GLModel::Geometry::EPrimitiveType;
-    using EVL = GLModel::Geometry::EVertexLayout;
     const Camera& cam = wxGetApp().plater()->get_camera();
     const Vec3d vd = cam.get_dir_forward();
     const double px = 1.0 / std::max(cam.get_zoom(), 1e-6);
     const double hw = 1.0 * px;      // ~2 px wide: at 1.5 the lines read as hairlines
-    // Pulled toward the eye by a few pixels, so the line wins the depth test against the two
-    // faces meeting at the edge while a face in front of it still hides it.
     const Vec3d pull = -vd * (3.0 * px);
     // Two passes: the edges of a body faded by body focus are fainter, like the body itself.
     for (int pass = 0; pass < 2; ++pass) {
-        GLModel::Geometry g; g.format = { EPT::Triangles, EVL::P3 };
-        unsigned int base = 0;
+        GLModel::Geometry g;
         for (int b = 0; b < int(m_body_edges.size()); ++b) {
             if (m_solid_visible != nullptr && b < int(m_solid_visible->size()) && !(*m_solid_visible)[b])
                 continue;
@@ -3501,36 +3559,9 @@ void DesignSketchTool::render_body_edges()
                                && b != m_pick_only_body;
             if (faded != (pass == 1))
                 continue;
-            for (const std::vector<Vec3d>& pl : m_body_edges[b])
-                for (size_t s = 1; s < pl.size(); ++s) {
-                    const Vec3d a = body_xform_pt(b, pl[s - 1]) + pull, c = body_xform_pt(b, pl[s]) + pull;
-                    Vec3d dir = c - a; if (dir.norm() < 1e-9) continue; dir.normalize();
-                    Vec3d off = dir.cross(vd);
-                    if (off.norm() < 1e-9) continue;   // edge seen end-on: a point, nothing to draw
-                    off = off.normalized() * hw;
-                    g.add_vertex((Vec3f)(a + off).cast<float>());
-                    g.add_vertex((Vec3f)(c + off).cast<float>());
-                    g.add_vertex((Vec3f)(c - off).cast<float>());
-                    g.add_vertex((Vec3f)(a - off).cast<float>());
-                    g.add_triangle(base, base + 1, base + 2);
-                    g.add_triangle(base, base + 2, base + 3); base += 4;
-                }
+            append_ribbons(g, b, m_body_edges[b], vd, pull, hw);
         }
-        if (base == 0)
-            continue;
-        glsafe(::glEnable(GL_DEPTH_TEST));
-        glsafe(::glDepthFunc(GL_LEQUAL));
-        glsafe(::glDepthMask(GL_FALSE));
-        glsafe(::glEnable(GL_BLEND));
-        glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-        m_body_edges_model.reset();
-        m_body_edges_model.init_from(std::move(g));
-        m_body_edges_model.set_color(ColorRGBA(0.08f, 0.09f, 0.11f, pass == 0 ? 0.85f : 0.25f));
-        m_body_edges_model.render();
-        glsafe(::glDepthMask(GL_TRUE));
-        glsafe(::glDepthFunc(GL_LESS));
-        glsafe(::glDisable(GL_BLEND));
-        glsafe(::glDisable(GL_DEPTH_TEST));
+        render_ribbons(m_body_edges_model, std::move(g), ColorRGBA(0.08f, 0.09f, 0.11f, pass == 0 ? 0.85f : 0.25f));
     }
 }
 
@@ -3596,7 +3627,121 @@ void DesignSketchTool::select_body(int body)
     m_sel_edge_pts.clear();
     m_sel_edges_more.clear();
     m_sel_edges_more_pts.clear();
-    m_solid_sel = SolidSel::Whole;   // render_solid_highlight tints just this body
+    m_solid_sel = SolidSel::Whole;   // the canvas fills just this body, render_solid_highlight outlines it
+}
+
+void DesignSketchTool::set_highlight_faces(const std::vector<std::pair<int, int>>& faces)
+{
+    std::map<int, std::vector<int>> by_body;
+    for (const auto& [b, f] : faces)
+        if (body_key(b) != nullptr)
+            by_body[b].push_back(f);
+    // Reuse each body's entry, so re-sending the same faces resamples nothing.
+    std::vector<FaceHighlight> next;
+    for (auto& [b, fs] : by_body) {
+        FaceHighlight h;
+        for (FaceHighlight& old : m_hl_faces)
+            if (old.body == b)
+                h = std::move(old);
+        cached_face_highlight(h, b, std::move(fs));
+        next.push_back(std::move(h));
+    }
+    m_hl_faces = std::move(next);
+}
+
+DesignSketchTool::FaceHighlight DesignSketchTool::make_face_highlight(int body, std::vector<int> faces) const
+{
+    FaceHighlight h;
+    h.body = body;
+    std::sort(faces.begin(), faces.end());
+    faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+    h.faces = std::move(faces);
+    h.key   = body_key(body);
+    if (h.key == nullptr || h.faces.empty())
+        return h;
+    // Sampled at the body edges' tolerance; a whole body reuses its body edges.
+    const TopoDS_Shape&            shape  = (*m_solid_bodies)[body].shape;
+    const std::vector<TopoDS_Face> all    = GeometryEngine::faces_of(shape);
+    const bool                     cached = body < int(m_body_edges_key.size()) && m_body_edges_key[body] == h.key;
+    if (cached && h.faces.size() == all.size() && h.faces.front() == 0 && h.faces.back() == int(all.size()) - 1) {
+        h.edges = m_body_edges[body];
+        return h;
+    }
+    TopoDS_Compound picked;
+    BRep_Builder    builder;
+    builder.MakeCompound(picked);
+    for (int f : h.faces)
+        if (f >= 0 && f < int(all.size()))
+            builder.Add(picked, all[f]);
+    try {
+        h.edges = GeometryEngine::display_edges(picked, cached ? m_body_edges_tol[body] : display_edge_tol(shape));
+    } catch (const Standard_Failure&) {
+        h.edges.clear();   // an edge that cannot be sampled costs the outline, never the fill
+    }
+    return h;
+}
+
+std::vector<std::pair<int, int>> DesignSketchTool::picked_faces() const
+{
+    std::vector<std::pair<int, int>> out;
+    if (body_key(m_sel_body) == nullptr)
+        return out;
+    if (m_solid_sel == SolidSel::Face && m_sel_face >= 0)
+        out.emplace_back(m_sel_body, m_sel_face);
+    else if (m_solid_sel == SolidSel::Whole)
+        for (int f = 0, n = GeometryEngine::face_count((*m_solid_bodies)[m_sel_body].shape); f < n; ++f)
+            out.emplace_back(m_sel_body, f);
+    return out;
+}
+
+std::vector<std::pair<int, int>> DesignSketchTool::selected_faces() const
+{
+    std::vector<std::pair<int, int>> out = picked_faces();
+    for (const FaceHighlight& h : m_hl_faces)
+        if (h.key != nullptr && h.key == body_key(h.body))
+            for (int f : h.faces)
+                out.emplace_back(h.body, f);
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+const DesignSketchTool::FaceHighlight& DesignSketchTool::cached_face_highlight(FaceHighlight& cache, int body,
+                                                                               std::vector<int> faces) const
+{
+    std::sort(faces.begin(), faces.end());
+    faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+    if (cache.body != body || cache.faces != faces || cache.key != body_key(body))
+        cache = make_face_highlight(body, std::move(faces));
+    return cache;
+}
+
+// The edges of selected faces, cased: a dark band under a selection-coloured line, so the
+// selection's outline reads on a body of any colour, the selection colour included. The faces
+// themselves are filled by the canvas (DesignCanvas::rebuild_bodies). `quiet` is the hover's
+// version: the line alone, thinner and fainter.
+void DesignSketchTool::render_face_outline(const FaceHighlight& h, bool quiet)
+{
+    if (m_body_edges_hidden || h.key == nullptr || h.key != body_key(h.body) || !body_pickable(h.body))
+        return;   // hidden, or the body was rebuilt and these face ids are stale
+
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    // View-facing ribbons like the body edges, pulled a pixel further toward the eye so they win
+    // over the dark body edges along the same curves.
+    const Vec3d  vd   = cam.get_dir_forward();
+    const double px   = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d  pull = -vd * (4.0 * px);
+    auto draw = [&](double hw_px, const ColorRGBA& colour) {
+        GLModel::Geometry g;
+        append_ribbons(g, h.body, h.edges, vd, pull, hw_px * px);
+        render_ribbons(m_solid_edge_model, std::move(g), colour);
+    };
+    if (quiet) {
+        draw(1.0, design_selection_color(0.8f));
+    } else {
+        draw(2.25, ColorRGBA(0.05f, 0.06f, 0.08f, 1.0f));
+        draw(1.25, design_selection_color());
+    }
 }
 
 // Pick tracing. Selection failures on a real desktop have repeatedly turned out to be an
@@ -3918,53 +4063,19 @@ bool DesignSketchTool::update_solid_hover(GLCanvas3D& canvas, const wxMouseEvent
     return true;
 }
 
-// One highlight, drawn from explicit arguments rather than from the selection members, so the
-// committed selection and the hover pre-highlight cannot drift apart in how they look. alpha_mul
-// scales every layer at once: the pre-highlight is the same shape in the same place, quieter.
-void DesignSketchTool::render_solid_sel(SolidSel kind, int body, int face,
-                                        const std::vector<Vec3d>& edge_pts,
-                                        const Vec3d& vertex_pt,
-                                        const ColorRGBA& rgb, float alpha_mul)
+// An edge or vertex highlight, drawn from explicit arguments rather than from the selection
+// members, so the committed selection and the hover pre-highlight cannot drift apart in how they
+// look. Faces and bodies are filled by the canvas and outlined by render_face_outline.
+void DesignSketchTool::render_solid_sel(SolidSel kind, const std::vector<Vec3d>& edge_pts,
+                                        const Vec3d& vertex_pt, const ColorRGBA& rgb)
 {
     using EPT = GLModel::Geometry::EPrimitiveType;
     using EVL = GLModel::Geometry::EVertexLayout;
     // Opaque: the edge ribbon and the vertex square render with GL_BLEND OFF, so an alpha below 1
-    // here would be silently ignored. Those two are quietened by a MUTED rgb from the caller
-    // instead; alpha_mul only reaches the face fill, which is the one layer that is blended.
+    // here would be silently ignored.
     const ColorRGBA cyan(rgb.r(), rgb.g(), rgb.b(), 1.0f);
 
-    // Whole tints the picked BODY (all its triangles, lighter alpha); Face tints just the
-    // picked face on that body. Both filter by `body` so other bodies stay untinted.
-    if ((kind == SolidSel::Face || kind == SolidSel::Whole)
-        && m_solid_mesh != nullptr && m_solid_tri_body != nullptr && body >= 0) {
-        const bool face_only = (kind == SolidSel::Face);
-        const indexed_triangle_set& its = m_solid_mesh->its;
-        GLModel::Geometry g; g.format = { EPT::Triangles, EVL::P3 };
-        unsigned int base = 0;
-        for (size_t i = 0; i < its.indices.size(); ++i) {
-            if (i >= m_solid_tri_body->size() || (*m_solid_tri_body)[i] != body) continue;
-            if (face_only && (m_solid_tri_face == nullptr || i >= m_solid_tri_face->size()
-                              || (*m_solid_tri_face)[i] != face)) continue;
-            const auto& idx = its.indices[i];
-            for (int j = 0; j < 3; ++j) g.add_vertex(its.vertices[idx(j)]);
-            g.add_triangle(base, base + 1, base + 2); base += 3;
-        }
-        if (base > 0) {
-            glsafe(::glEnable(GL_DEPTH_TEST));
-            glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
-            glsafe(::glPolygonOffset(-2.0f, -2.0f));
-            glsafe(::glEnable(GL_BLEND));
-            glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-            m_solid_face_model.reset();
-            m_solid_face_model.init_from(std::move(g));
-            m_solid_face_model.set_color(ColorRGBA(rgb.r(), rgb.g(), rgb.b(),
-                                                  (face_only ? 0.40f : 0.22f) * alpha_mul));
-            m_solid_face_model.render();
-            glsafe(::glDisable(GL_BLEND));
-            glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
-            glsafe(::glDisable(GL_DEPTH_TEST));
-        }
-    } else if (kind == SolidSel::Edge && edge_pts.size() >= 2) {
+    if (kind == SolidSel::Edge && edge_pts.size() >= 2) {
         const Camera& cam = wxGetApp().plater()->get_camera();
         const Vec3d vd = cam.get_dir_forward();
         const double hw = 2.0 / std::max(cam.get_zoom(), 1e-6);   // ~2 px ribbon half-width
@@ -4016,12 +4127,15 @@ void DesignSketchTool::render_solid_sel(SolidSel kind, int body, int face,
     }
 }
 
-// Cyan overlay for the picked face / edge / vertex, plus the quieter pre-highlight of whatever
-// the pointer is currently over. Whole-solid tint is the panel's job (set_body_highlight).
+// The faces of the Feature tree's selected feature, the picked body / face / edge / vertex, and
+// the quieter pre-highlight of whatever the pointer is currently over.
 // Called from render() while no sketch session is active.
 void DesignSketchTool::render_solid_highlight()
 {
     const ColorRGBA sel_cyan = design_selection_color();
+
+    for (const FaceHighlight& h : m_hl_faces)
+        render_face_outline(h, false);
 
     // The pre-highlight goes FIRST so the committed selection paints over it where the two
     // overlap — what you HAVE outranks what you would get. Suppressed entirely when they are the
@@ -4032,17 +4146,27 @@ void DesignSketchTool::render_solid_highlight()
           : m_pre.kind == SolidSel::Edge   ? m_pre.edge == m_sel_edge
           : m_pre.kind == SolidSel::Face   ? m_pre.face == m_sel_face
                                            : true);
-    if (m_pre.kind != SolidSel::None && !pre_is_sel)
-        // Desaturated toward white rather than a second hue: a distinct colour would read as a
-        // distinct KIND of selection, when it is the same selection one moment earlier.
-        render_solid_sel(m_pre.kind, m_pre.body, m_pre.face, m_pre.edge_pts, m_pre.vertex_pt,
-                         design_selection_color(), 0.45f);   // hover = the same colour, quieter
+    if (m_pre.kind == SolidSel::Face && !pre_is_sel)
+        // A hovered face gets its outline alone: a promise, not a selection.
+        render_face_outline(cached_face_highlight(m_pre_hl, m_pre.body, { m_pre.face }), true);
+    else if (m_pre.kind != SolidSel::None && !pre_is_sel)
+        // The selection's own colour: a second hue would read as a distinct KIND of selection,
+        // when it is the same selection one moment earlier.
+        render_solid_sel(m_pre.kind, m_pre.edge_pts, m_pre.vertex_pt, sel_cyan);
 
-    render_solid_sel(m_solid_sel, m_sel_body, m_sel_face, m_sel_edge_pts, m_sel_vertex_pt,
-                     sel_cyan, 1.0f);
+    // A picked body or face looks like the Feature tree's faces: the canvas fills it, this
+    // outlines it.
+    if (const std::vector<std::pair<int, int>> picked = picked_faces(); !picked.empty()) {
+        std::vector<int> faces;
+        for (const auto& bf : picked)
+            faces.push_back(bf.second);
+        render_face_outline(cached_face_highlight(m_sel_hl, m_sel_body, std::move(faces)), false);
+        return;
+    }
+    render_solid_sel(m_solid_sel, m_sel_edge_pts, m_sel_vertex_pt, sel_cyan);
     if (m_solid_sel == SolidSel::Edge)
         for (const std::vector<Vec3d>& pts : m_sel_edges_more_pts)
-            render_solid_sel(SolidSel::Edge, m_sel_body, -1, pts, Vec3d::Zero(), sel_cyan, 1.0f);
+            render_solid_sel(SolidSel::Edge, pts, Vec3d::Zero(), sel_cyan);
 }
 
 // Datum/reference planes (Plane feature) have no solid; draw each as a translucent indigo
@@ -9133,7 +9257,7 @@ void DesignSketchTool::render(GLCanvas3D& canvas)
     }
 
     // Nothing else to draw when no live sketch session is active — except the solid
-    // face/edge highlight overlay (whole-solid tint is handled by set_body_highlight).
+    // selection and the Feature tree's faces (render_solid_highlight).
     if (!m_active) {
         render_datum_planes();
         render_mate_connectors();
