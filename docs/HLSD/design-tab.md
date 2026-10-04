@@ -197,7 +197,9 @@ as the body (`DesignCanvas::rebuild_bodies`); the sketch overlay outlines them w
 — a dark band under a selection-coloured one — so the outline still reads on a body that wears
 the selection colour itself. A body picked whole, a face picked in the viewport and the faces of
 the Feature tree's selected feature all draw this way. The hover pre-highlight is the outline
-alone, uncased: it promises a click, it is not one.
+alone, uncased: it promises a click, it is not one. The automatic body colours keep clear of the
+selection colour's blues and teals, so no body looks selected before anything is picked; a colour
+the user sets on a body is theirs, and the cased outline keeps its selection readable.
 
 Selecting a feature row lights the faces that feature made, not the whole body it sits on, so a
 fillet row shows its round and the extrude under it keeps the faces the fillet trimmed.

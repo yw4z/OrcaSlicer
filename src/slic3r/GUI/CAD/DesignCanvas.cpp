@@ -227,12 +227,14 @@ DesignCanvas::~DesignCanvas()
 }
 
 // Distinct per-body colours (Onshape-style). Body 0 keeps the familiar gold; the rest
-// cycle through a small saturated palette so coexisting solids read as separate parts.
+// cycle through a small saturated palette so coexisting solids read as separate parts. No entry
+// may sit near the selection cyan (design_selection_color): a blue or teal body would look
+// selected, and its selected faces would barely stand out.
 static ColorRGBA body_palette(int body_idx)
 {
     static const ColorRGBA kPalette[] = {
         ColorRGBA(0.86f, 0.66f, 0.20f, 1.0f),  // gold
-        ColorRGBA(0.30f, 0.62f, 0.90f, 1.0f),  // blue
+        ColorRGBA(0.84f, 0.42f, 0.66f, 1.0f),  // rose
         ColorRGBA(0.45f, 0.78f, 0.42f, 1.0f),  // green
         ColorRGBA(0.86f, 0.45f, 0.40f, 1.0f),  // coral
         ColorRGBA(0.70f, 0.52f, 0.86f, 1.0f),  // violet
