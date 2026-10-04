@@ -98,7 +98,7 @@ std::vector<wxString> make_shaper_type_labels()
 }
 
 // ORCA-Belt: PA Line / PA Pattern have belt plumbing in place (drawn on the
-// belt surface via BeltGCodeWriter world-coordinates mode) but are not
+// belt surface via BeltKinematics world-coordinates mode) but are not
 // validated yet — belt printers are restricted to the PA Tower for now.
 bool is_belt_printer_selected()
 {

@@ -2776,10 +2776,10 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     };
 
     // Belt-printer post-gcode shear/scale/post_remap is applied as the final
-    // step of BeltGCodeWriter::to_machine_coords, so MoveVertex.position is
-    // in the printer's machine frame.  Undo it here so XY area and Z height
-    // checks operate in the build-volume frame that printable_area /
-    // printable_height are defined in.  For non-belt printers
+    // step of BeltKinematics::to_machine, so MoveVertex.position is
+    // in the printer's machine frame.  Undo it here so the XY area check
+    // operates in the build-volume frame that printable_area is defined in
+    // (the height checks below are skipped on belt printers).  For non-belt printers
     // (is_active() == false) apply_inverse is identity and behaviour is
     // unchanged from before.
     const bool machine_frame_active = m_machine_frame_transform.is_active();
@@ -2860,7 +2860,12 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
                     valid = false;
                 }
             }
-            if ( iter->second.max_print_z > plate_printable_height ) { //over height
+            // Belt printers: the Z recorded here grows with belt travel (machine Z with the
+            // frame transform, the slicing-frame Z without it), while printable_height is the
+            // clearance above the belt; the two are not comparable, so the over-height check
+            // is skipped, as the preview's ToolHeightOutside warning already is.
+            // Print::validate() checks the object's height against the clearance.
+            if ( !m_belt_printer && iter->second.max_print_z > plate_printable_height ) { //over height
                 m_result.gcode_check_result.error_code |= (1 << 3);
                 std::pair<int, int> filament_to_object_id;
                 filament_to_object_id.first  = iter->first;
@@ -2901,7 +2906,7 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
                     }
 
                 // check printable height
-                if ((extruder_id < printable_heights.size()) && (iter->second.max_print_z > printable_heights[extruder_id])) {
+                if (!m_belt_printer && (extruder_id < printable_heights.size()) && (iter->second.max_print_z > printable_heights[extruder_id])) {
                     m_result.gcode_check_result.error_code |= (1 << 1);
                     std::pair<int, int> filament_to_object_id;
                     filament_to_object_id.first  = iter->first;
@@ -3072,6 +3077,7 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     // bounds rather than machine-frame positions.
     m_machine_frame_transform.init_from_config(config);
     m_result.machine_frame_transform_active = m_machine_frame_transform.is_active();
+    m_belt_printer = config.belt_printer.value;
 
     auto filament_maps = config.option<ConfigOptionInts>("filament_map");
     if (filament_maps != nullptr) {
@@ -3586,6 +3592,7 @@ void GCodeProcessor::reset()
     m_zero_layer_height = 0.0f;
     m_first_layer_height = 0.0f;
     m_processing_start_custom_gcode = false;
+    m_in_config_block = false;
     m_g1_line_id = 0;
     m_layer_id = 0;
     m_cp_color.reset();
@@ -4191,9 +4198,20 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
+    if (boost::starts_with(comment, " CONFIG_BLOCK_START")) {
+        m_in_config_block = true;
+        return;
+    }
+    if (boost::starts_with(comment, " CONFIG_BLOCK_END")) {
+        m_in_config_block = false;
+        return;
+    }
+
     // Belt printer: derive the physical tilt magnitude from the slicing-rotation
-    // angle header comment (used to enable the preview's belt view).
-    if (boost::starts_with(comment, " belt_slice_rotation_angle = ")) {
+    // angle header comment (used to enable the preview's belt view). Only the belt
+    // header carries it outside the config block; the config block lists the key
+    // for every printer, belt or not.
+    if (!m_in_config_block && boost::starts_with(comment, " belt_slice_rotation_angle = ")) {
         try {
             m_result.belt_tilt_angle = std::abs(std::stof(std::string(comment.substr(29))));
         } catch (...) {}
@@ -4220,13 +4238,13 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             return RemapAxis::PosX;
         };
         if (boost::starts_with(comment, " preslice_remap_x = ")) {
-            m_result.preslice_remap_x = parse_remap_axis(trim(std::string(comment.substr(25)))); return;
+            m_result.preslice_remap_x = parse_remap_axis(trim(std::string(comment.substr(20)))); return;
         }
         if (boost::starts_with(comment, " preslice_remap_y = ")) {
-            m_result.preslice_remap_y = parse_remap_axis(trim(std::string(comment.substr(25)))); return;
+            m_result.preslice_remap_y = parse_remap_axis(trim(std::string(comment.substr(20)))); return;
         }
         if (boost::starts_with(comment, " preslice_remap_z = ")) {
-            m_result.preslice_remap_z = parse_remap_axis(trim(std::string(comment.substr(25)))); return;
+            m_result.preslice_remap_z = parse_remap_axis(trim(std::string(comment.substr(20)))); return;
         }
     }
     // wipe start tag
@@ -7113,7 +7131,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     // During the start G-code "prepare" stage the toolhead Z is not yet a real
     // print height on a normal printer, so it is pinned to the first-layer height
     // to keep the preview tidy. Belt printers are the exception: there the Z is
-    // written explicitly by BeltGCodeWriter and the designed-view back-transform
+    // written explicitly by the belt kinematics and the designed-view back-transform
     // couples machine Z into the rendered model Y (the belt tilt mixes the height
     // and belt-feed axes). Overriding Z therefore back-transforms the last
     // prepare-stage move (the unretract before the first extrusion) to model

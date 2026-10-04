@@ -6993,7 +6993,7 @@ struct Plater::priv
     // config and plate contents (thin wrapper over GUI::ensure_belt_purge_tower
     // in BeltPurgeTower.cpp). Returns true when the model was mutated.
     bool ensure_belt_purge_tower();
-    BeltPurgeSignature m_belt_purge_sig;
+    std::vector<BeltPurgeSignature> m_belt_purge_sigs;
     void delete_all_objects_from_model();
     void reset(bool apply_presets_change = false);
     void center_selection();
@@ -10633,7 +10633,7 @@ void Plater::priv::process_validation_warnings(const std::vector<StringObjectExc
 // wrapper that hands it the model, plates, object list, and cached signature.
 bool Plater::priv::ensure_belt_purge_tower()
 {
-    return GUI::ensure_belt_purge_tower(model, partplate_list, sidebar->obj_list(), m_belt_purge_sig);
+    return GUI::ensure_belt_purge_tower(model, partplate_list, sidebar->obj_list(), m_belt_purge_sigs);
 }
 
 
@@ -14145,37 +14145,6 @@ void Plater::priv::set_bed_shape(const Pointfs       &shape,
     Vec2d shape_position = partplate_list.get_current_shape_position();
     bool new_shape = bed.set_shape(shape, printable_height, extruder_areas, extruder_heights, custom_model, force_as_custom, shape_position);
 
-    // Belt printer: configure build volume and bed rendering for belt mode.
-    {
-        const auto *belt_opt = config->option<ConfigOptionBool>("belt_printer");
-        bool is_belt = belt_opt && belt_opt->value;
-        if (is_belt) {
-            // The slicing rotation is the single source of truth for the belt tilt:
-            // its magnitude is the physical tilt angle and its axis is the tilt axis.
-            auto rot_axis = config->option<ConfigOptionEnum<BeltRotationAxis>>("belt_slice_rotation")->value;
-            double rot_angle = config->opt_float("belt_slice_rotation_angle");
-            double belt_angle = std::abs(rot_angle);              // physical tilt magnitude
-            int    tilt_axis  = (rot_axis == BeltRotationAxis::Y) ? 1 : 0;
-            bool infinite_y = config->opt_bool("belt_printer_infinite_y");
-            bed.build_volume().set_belt_printer(true, belt_angle, infinite_y);
-            bed.set_belt_printer(true, static_cast<float>(belt_angle), tilt_axis);
-            if (preview)
-                preview->get_canvas3d()->get_gcode_viewer().set_belt_printer(true, static_cast<float>(belt_angle));
-            // The belt "designed view" back-transform is rebuilt from the print config at
-            // G-code load time (GCodeViewer::compute_belt_back_transform), so no mesh-side
-            // inverse needs to be pushed to the viewer here.
-        } else {
-            // Reset the BuildVolume belt state too: Bed3D::set_shape early-returns when
-            // the bed params are unchanged, so a belt->normal switch (or toggling belt off
-            // on the same printer) would otherwise leave the BuildVolume with
-            // m_is_belt_printer=true and an inflated Y bbox, wrongly treating out-of-bounds
-            // objects as printable. Idempotent for a printer that was never belt.
-            bed.build_volume().set_belt_printer(false, 0., false);
-            bed.set_belt_printer(false, 0.f);
-            if (preview)
-                preview->get_canvas3d()->get_gcode_viewer().set_belt_printer(false, 0.f);
-        }
-    }
 
     float prev_height_lid, prev_height_rod;
     partplate_list.get_height_limits(prev_height_lid, prev_height_rod);
@@ -15893,20 +15862,6 @@ void Plater::_calib_apply_belt_mode()
         inst->rotate(cancel_rotation);
         obj->invalidate_bounding_box();
         obj->ensure_on_bed();
-
-        {
-            const BoundingBoxf3 rb = obj->raw_bounding_box();
-            const Vec3d         io = inst->get_offset();
-            const Vec3d         ir = inst->get_rotation();
-            BOOST_LOG_TRIVIAL(debug) << "[BELT-CALIB] helper exit: obj=" << obj->name
-                << " inst_offset=(" << io.x() << "," << io.y() << "," << io.z() << ")"
-                << " inst_rot=(" << ir.x() << "," << ir.y() << "," << ir.z() << ")"
-                << " vol0_offset=(" << obj->volumes.front()->get_offset().x() << ","
-                << obj->volumes.front()->get_offset().y() << "," << obj->volumes.front()->get_offset().z() << ")"
-                << " raw_bbox=(" << rb.min.x() << "," << rb.min.y() << "," << rb.min.z()
-                << ")..(" << rb.max.x() << "," << rb.max.y() << "," << rb.max.z() << ")"
-                << " min_z=" << obj->min_z();
-        }
     }
 
     // Each object's support wedge extends upstream of it by roughly its own
@@ -15961,7 +15916,7 @@ void Plater::_calib_apply_belt_mode()
 void Plater::calib_pa(const Calib_Params& params)
 {
     // ORCA-Belt: PA Line / PA Pattern have the belt plumbing in place
-    // (BeltGCodeWriter::set_world_coordinates draws them on the belt surface)
+    // (belt kinematics in world-coordinates mode draws them on the belt surface)
     // but are not validated yet — keep them gated to the PA Tower for now.
     {
         double angle_rad = 0.;
@@ -16556,7 +16511,8 @@ void Plater::calib_temp(const Calib_Params& params) {
                                            << ", falling back to 230_190 (embossed numbers will not match)";
                 asset = calib_dir + "belt_temp_tower_230_190.stl";
             }
-            add_model(false, asset);
+            if (!add_model(false, asset) || model().objects.empty())
+                return;
 
             // Place keel-first asset at the belt entry (designed Y = 0) so Z_gcode
             // starts at 0, centered laterally on the bed, resting on the conveyor.

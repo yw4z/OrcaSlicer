@@ -2,9 +2,10 @@
 #define slic3r_GCode_hpp_
 
 #include "libslic3r.h"
+#include <limits>
 #include "ExPolygon.hpp"
 #include "GCodeWriter.hpp"
-#include "BeltGCodeWriter.hpp"
+#include "GCode/BeltKinematics.hpp"
 #include "FirstLayerPlane.hpp"
 #include "Layer.hpp"
 #include "Point.hpp"
@@ -228,7 +229,7 @@ public:
     void            do_export(Print* print, const char* path, GCodeProcessorResult* result = nullptr, ThumbnailsGeneratorCallback thumbnail_cb = nullptr);
     void            export_layer_filaments(GCodeProcessorResult* result);
     //BBS: set offset for gcode writer
-    void set_gcode_offset(double x, double y) { m_writer->set_xy_offset(x, y); m_processor.set_xy_offset(x, y);}
+    void set_gcode_offset(double x, double y) { m_gcode_offset = Vec2d(x, y); m_writer->set_xy_offset(x, y); m_processor.set_xy_offset(x, y);}
 
     // Exported for the helper classes (OozePrevention, Wipe) and for the Perl binding for unit tests.
     const Vec2d&    origin() const { return m_origin; }
@@ -376,10 +377,14 @@ protected:
 
     // Virtual hooks for belt printer subclass (BeltGCode).
     // No-ops in base GCode; overridden in BeltGCode.
-    virtual void init_belt_writer(Print &print, bool is_bbl_printers) {}
+    virtual void init_belt_writer(Print &print) {}
     virtual void write_belt_header(GCodeOutputStream &file, const Print &print) {}
     virtual void on_set_origin(const PrintObject *obj, const Point &inst_shift) {}
-    virtual bool should_disable_arc_fitting() const { return false; }
+    // Arc fitting is suppressed whenever the writer's machine mapping cannot
+    // represent a G2/G3 arc. Belt printers get this through BeltKinematics
+    // rather than through an override of their own.
+    virtual bool should_disable_arc_fitting() const
+        { return ! m_writer->kinematics().supports_arc_moves(); }
 
     void            _do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb);
 
@@ -418,13 +423,14 @@ protected:
         const bool                       last_layer,
         const size_t                     single_object_instance_idx);
 
-    // Emit the apron bands carried by these layers.  Called from both the brim-only
-    // branch and the ordinary path, since a band's print_z can coincide with another
-    // object's layer on a multi-object belt.
+    // Emit the apron bands carried by these layers whose brim filament is extruder_id
+    // (0-based).  Called from both the brim-only branch and the ordinary path, since a
+    // band's print_z can coincide with another object's layer on a multi-object belt.
     std::string emit_belt_brim_bands(
         const Print                     &print,
         const std::vector<LayerToPrint> &layers,
-        const size_t                     single_object_instance_idx);
+        const size_t                     single_object_instance_idx,
+        const unsigned int               extruder_id);
 
     LayerResult process_layer(
         const Print                     &print,
@@ -627,9 +633,21 @@ protected:
     };
 
     // Cache the per-filament island tour to avoid recomputing while the layer's island layout is
-    // unchanged. Key: filament_id. Value: {nodes the tour was computed from, resulting visits}.
-    std::map<unsigned int, std::pair<std::vector<IslandOrderNode>, std::vector<InstanceVisit>>>
-                                        m_ordering_cache;
+    // unchanged. Key: filament_id. Value: the nodes the tour was computed from, the per-instance
+    // island layout (count and whether the trailing catch-all island has anything to print), and
+    // the resulting visits.
+    // The layout is part of the key. Nodes only cover the chainable islands, so two
+    // layers with the same centroids but a different number of islands (thin walls, negative
+    // volumes come and go) matched the cache and the visit's catch-all index -- islands.size() - 1
+    // of the OLD layer -- ran past the new layer's islands (found by fuzzing: segfault in
+    // extrude_perimeters on multi-part objects).
+    struct IslandOrderCacheEntry
+    {
+        std::vector<IslandOrderNode>         nodes;
+        std::vector<std::pair<size_t, bool>> layout;
+        std::vector<InstanceVisit>           visits;
+    };
+    std::map<unsigned int, IslandOrderCacheEntry> m_ordering_cache;
 
     ExtrusionQualityEstimator m_extrusion_quality_estimator;
 
@@ -767,6 +785,8 @@ protected:
     // printers without a Z-axis shear; in that case all per-path plane
     // checks short-circuit to the legacy Layer::id() == 0 path.
     std::unique_ptr<FirstLayerPlane>    m_first_layer_plane;
+    // Plate origin, kept so a writer replaced during export can be given it again.
+    Vec2d                               m_gcode_offset{ Vec2d::Zero() };
 
     std::unique_ptr<PressureEqualizer>  m_pressure_equalizer;
     
@@ -824,8 +844,20 @@ protected:
     // _extrude() needs for the first-layer-plane probe is published here instead.
     // Scoped by BeltBrimZGuard in process_belt_brim_layer(), never left set.
     std::optional<coordf_t> m_belt_brim_z;
-    // Counter standing in for Layer::id() on apron layers, which precede layer 0.
-    size_t m_belt_brim_layer_idx{0};
+    // Belt brim only.  Brim and coincident apron bands are emitted before m_layer
+    // is switched to their object, so belt_height_above_floor() would otherwise
+    // read the previously visited object's belt description -- making a brim's
+    // classification depend on plate visiting order.  Those paths publish the
+    // owner here for the duration of the emission.  Never left set.
+    const PrintObject *m_belt_floor_object{nullptr};
+    struct BeltFloorObjectGuard {
+        const PrintObject *&slot;
+        BeltFloorObjectGuard(const PrintObject *&s, const PrintObject *o) : slot(s) { slot = o; }
+        ~BeltFloorObjectGuard() { slot = nullptr; }
+    };
+
+    // The last extrusion segment was inside the belt's first-layer fan band (see _extrude()).
+    bool m_belt_in_band{false};
 
     std::set<unsigned int>                  m_initial_layer_extruders;
     std::vector<std::vector<unsigned int>>  m_sorted_layer_filaments;
@@ -849,6 +881,12 @@ protected:
     // otherwise we delegate to the legacy per-layer test.  This is the
     // entry point used by per-path call sites in _extrude.
     bool on_first_layer(const Vec3d &point_slicing_mm) const {
+        // Belt printers: measure height above the belt surface itself, in the
+        // slicing frame. See belt_height_above_floor() for why this does not go
+        // through FirstLayerPlane.
+        double h;
+        if (this->belt_height_above_floor(point_slicing_mm, h))
+            return h <= m_config.initial_layer_print_height.value + EPSILON;
         if (m_first_layer_plane && m_first_layer_plane->is_active())
             return m_first_layer_plane->is_first_layer(
                 point_slicing_mm, m_config.initial_layer_print_height.value);
@@ -859,10 +897,40 @@ protected:
     // perpendicular distance to the plane in band_thickness_mm units;
     // otherwise it returns the legacy slicing layer index.
     int effective_layer_index_for_point(const Vec3d &point_slicing_mm) const {
+        double h;
+        if (this->belt_height_above_floor(point_slicing_mm, h)) {
+            const double lh = this->first_layer_band_mm();
+            return h <= 0. ? 0 : int(std::floor(h / lh));
+        }
         if (m_first_layer_plane && m_first_layer_plane->is_active())
             return m_first_layer_plane->effective_layer_index(point_slicing_mm);
         return on_first_layer() ? 0 : layer_id();
     }
+
+    // Band thickness for the *effective layer index* only.  FirstLayerPlane keeps
+    // two separate thresholds and so must this path: is_first_layer() tests
+    // against initial_layer_print_height, while effective_layer_index() counts
+    // bands of first_layer_plane_thickness.  Conflating them would apply
+    // first-layer treatment through a whole 1mm band on a 0.2mm first layer.
+    double first_layer_band_mm() const {
+        double band = m_config.first_layer_plane_thickness.value;
+        if (band <= 0.) band = m_config.initial_layer_print_height.value;
+        return band > 0. ? band : 0.2;
+    }
+
+    // Height of a slicing-frame point above the belt surface, or false when this
+    // is not a belt print.
+    //
+    // The belt surface is known exactly in the slicing frame from the slicing
+    // parameters (belt_floor_shear_factor / _from_axis / _z_shift) -- the same
+    // description the support generator uses. FirstLayerPlane instead derives its
+    // plane by composing gcode_remap_* with the g-code back-transform, so its
+    // answer changes with the machine's *output* axis convention: on a printer
+    // with a non-identity remap it reported ~86mm of clearance for geometry
+    // sitting directly on the belt, and no extrusion was ever classified as
+    // first-layer. Measuring against the belt itself is independent of every
+    // remap and back-transform.
+    bool belt_height_above_floor(const Vec3d &point_slicing_mm, double &height_mm) const;
     int layer_id() const {
         if (m_layer == nullptr)
             return -1;

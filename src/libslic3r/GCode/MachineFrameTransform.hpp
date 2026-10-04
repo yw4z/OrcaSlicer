@@ -9,7 +9,7 @@ namespace Slic3r {
 
 // Post-stage machine-frame transform for belt printers.
 //
-// Applied in BeltGCodeWriter::to_machine_coords AFTER the back-transform and
+// Applied in BeltKinematics::to_machine AFTER the back-transform and
 // the gcode_remap_* axis remap.  Maps Cartesian (axis-permuted) G-code
 // coordinates into the printer's physical machine frame.
 //

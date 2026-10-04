@@ -56,7 +56,7 @@ MachineZAffine compute_machine_z_affine(const PrintConfig &config)
     out.constant = trans;
 
     if (config.gcode_back_transform.value && config.belt_printer.value) {
-        // BeltGCodeWriter applies F^-1 before R when back-transform is on.
+        // BeltKinematics applies F^-1 before R when back-transform is on.
         // So machine_Z(slicing) = r_row · (F^-1 · slicing) + trans
         //                       = (r_row^T · F^-1) · slicing + trans
         // We need to compose r_row with F^-1 from the LEFT (treating r_row as

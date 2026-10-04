@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 // ORCA-Belt: auto-managed purge prism for belt printers.
 //
 // Kept in its own translation unit (not buried in Plater.cpp) so it stays out
@@ -22,24 +24,25 @@ struct BeltPurgeSignature
 {
     bool valid          = false;
     int  filament_count = 0;
-    long key[12]        = {0}; // rounded geometry and plate inputs (0.1 mm units)
+    long key[14]        = {0}; // rounded geometry, plate and bed inputs (0.1 mm units)
     bool operator==(const BeltPurgeSignature &o) const
     {
         if (valid != o.valid || filament_count != o.filament_count)
             return false;
-        for (int i = 0; i < 12; ++i)
+        for (int i = 0; i < 14; ++i)
             if (key[i] != o.key[i])
                 return false;
         return true;
     }
 };
 
-// Keep the auto-generated belt purge prism in sync with the current config and
-// plate contents. Creates / updates / removes the marked prism ModelObject.
+// Keep the auto-generated belt purge prisms, one per plate, in sync with the
+// current config and plate contents. Creates / updates / removes the marked prism
+// ModelObjects; `sigs` holds the last inputs per plate index.
 // Returns true when the model was mutated (caller should refresh the scene).
 // Runs on every background-process update, so it is idempotent: it only mutates
 // the model when the desired prism differs from the cached signature in `sig`.
-bool ensure_belt_purge_tower(Model &model, PartPlateList &partplate_list, ObjectList *obj_list, BeltPurgeSignature &sig);
+bool ensure_belt_purge_tower(Model &model, PartPlateList &partplate_list, ObjectList *obj_list, std::vector<BeltPurgeSignature> &sigs);
 
 } // namespace GUI
 } // namespace Slic3r

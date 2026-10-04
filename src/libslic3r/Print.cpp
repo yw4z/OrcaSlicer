@@ -20,7 +20,6 @@
 #include "GCode.hpp"
 #include "BeltGCode.hpp"
 #include "BeltTransform.hpp"
-#include "GCode/MachineFrameTransform.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/WipeTower2.hpp"
 #include "GCode/WipeTowerEstimate.hpp"
@@ -121,6 +120,10 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "gcode_remap_z",
         // Machine-frame transform (derived from belt tilt; only affects G-code output).
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
+        "gcode_back_transform",
+        "first_layer_plane", "first_layer_plane_offset", "first_layer_plane_thickness",
+        // Only inflates the GUI bed volume, like printable_area.
+        "belt_printer_infinite_y",
         //BBS
         "additional_cooling_fan_speed",
         "reduce_crossing_wall",
@@ -1417,11 +1420,10 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
             return { L("Draft shield is not compatible with belt printer mode.") };
 
         // Belt brim spans many layers and owns the layers below the object, which
-        // neither the prime tower nor spiral vase can share.
+        // spiral vase cannot share. The prime tower setting is no obstacle: belt
+        // printers never print the classic tower, and the belt purge prism is an
+        // ordinary object that never takes a brim.
         if (this->has_belt_brim()) {
-            if (m_config.enable_prime_tower.value)
-                return { L("Brim is not compatible with the prime tower on a belt printer. "
-                           "Disable one of them.") };
             if (m_config.spiral_mode.value)
                 return { L("Brim is not compatible with spiral vase mode on a belt printer. "
                            "Disable one of them.") };
@@ -1551,6 +1553,21 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         add_warning(warningtemp);
     }
 
+    // The purge tower is a model object the GUI creates and sizes; libslic3r only purges
+    // into one that exists. A project sliced without it (the CLI on a project saved before
+    // the tower was generated) changes filament with nowhere to purge.
+    if (m_config.belt_printer.value && m_config.enable_belt_purge_tower.value
+        && m_config.print_sequence != PrintSequence::ByObject
+        && ! m_config.spiral_mode.value && this->object_extruders().size() > 1 && ! this->has_belt_purge_tower()) {
+        StringObjectException warningtemp;
+        warningtemp.string     = L("The belt purge tower is enabled but the project has no purge tower object; "
+                                   "filament changes will not be purged. Open the project in the application "
+                                   "to generate the tower.");
+        warningtemp.opt_key    = "enable_belt_purge_tower";
+        warningtemp.is_warning = true;
+        add_warning(warningtemp);
+    }
+
     if (m_config.belt_printer.value && m_config.enable_belt_purge_tower.value) {
         const size_t prism_count = std::count_if(m_objects.begin(), m_objects.end(), [](const PrintObject *object) {
             return object->config().belt_purge_tower_object.value;
@@ -1617,17 +1634,11 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     // is not comparable to printable_height (which is gantry clearance in the
     // build-volume frame).  Compare against the model's pre-shear Z instead,
     // mirroring the bbox computed in PrintObject::update_slicing_parameters.
-    // When the post-gcode MachineFrameTransform is active the printer's
-    // physical Z mapping is non-trivial — skip the check entirely.
+    // The machine-frame transform only changes how that height is written to
+    // G-code, not how much room there is under the gantry.
     const bool belt_printer = this->config().belt_printer.value;
-    bool skip_max_height_check = false;
-    if (belt_printer) {
-        MachineFrameTransform machine_frame;
-        machine_frame.init_from_config(this->config());
-        skip_max_height_check = machine_frame.is_active();
-    }
     const double shrinkage_compensation_z = this->shrinkage_compensation().z();
-    for (size_t print_object_idx = 0; !skip_max_height_check && print_object_idx < m_objects.size(); ++ print_object_idx) {
+    for (size_t print_object_idx = 0; print_object_idx < m_objects.size(); ++ print_object_idx) {
         const PrintObject &print_object = *m_objects[print_object_idx];
 
         double effective_max_z       = 0;
@@ -2514,6 +2525,19 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": this=%1%, enter, use_cache=%2%, object size=%3%")%this%use_cache%m_objects.size();
     if (m_objects.empty())
         return;
+
+    // Belt purge prism: _plan_belt_purge() (psWipeTower) truncates the prism's
+    // layers and drops its unclaimed fills, stashing both so a replan can undo
+    // them. The object steps below regenerate per-layer content over m_layers
+    // ONLY, so if any of them is about to rerun the stashes must go back first;
+    // otherwise truncated layers keep stale perimeters/fills and dropped fills
+    // are re-inserted next to freshly generated ones. Every object-step
+    // invalidation also invalidates psWipeTower, so "psWipeTower not done" is
+    // exactly "some object step may rerun" -- and when it IS done nothing below
+    // regenerates, and the plan's edits have to stay.
+    if (!this->is_step_done(psWipeTower))
+        for (PrintObject *obj : m_objects)
+            obj->belt_undo_purge_plan();
 
     for (PrintObject *obj : m_objects)
         obj->clear_shared_object();

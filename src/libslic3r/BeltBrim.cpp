@@ -1,3 +1,4 @@
+#include <limits>
 #include "BeltBrim.hpp"
 
 #include "ClipperUtils.hpp"
@@ -252,7 +253,10 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
     std::vector<coord_t> us;
     double uniform_clearance = 0.;   // 0 => derive per line from its own position
     double line_pitch        = bc.in_plane_pitch;
-    if (band_in_plane <= bc.in_plane_pitch + EPSILON) {
+    // One line also serves a band up to half a bead wider than the nominal pitch (a 0.3 mm
+    // first layer at 45 degrees): its flow is matched to the band, so the bead is that much
+    // wider. Two lattice lines in such a band would land almost on top of each other.
+    if (band_in_plane <= 1.5 * bc.in_plane_pitch + EPSILON) {
         // Steep belt, which is the normal case: the band is narrower than one bead, so
         // exactly one line fits.  Place it at a FIXED fraction of the band rather than
         // on a nominal-spacing lattice.  On a lattice each line lands at an arbitrary
@@ -284,7 +288,34 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
     // must not be pooled before the flow is resolved.
     // Overshoot the region so the clip, not the line's ends, decides the extent.
     const coord_t margin = coord_t(SCALED_EPSILON) + 1;
-    for (const coord_t u : us) {
+    coord_t       u_prev = std::numeric_limits<coord_t>::min();
+    for (coord_t u : us) {
+        // Nozzle-to-belt clearance for this line.  Constant along the line, because the
+        // belt height depends only on the shear-axis coordinate.  Band-anchored lines
+        // share one clearance by construction; lattice lines (shallow belts, or a first
+        // layer thick enough that the band is wider than a bead) each get their own.
+        //
+        // A lattice line can fall where the belt is only a hair below the band's print_z.
+        // The bead there would be laid scraping the belt while its flow is sized for a
+        // taller cell, so it is moved uphill to the same fraction of the band the
+        // single-line case uses.  (The clearance is along slice Z; the real gap under the
+        // nozzle is clearance x cos(tilt), 0.53 h at 45 degrees for the 0.75 fraction.)
+        double clearance = uniform_clearance;
+        if (clearance <= 0.) {
+            const Point probe = bc.frame.from_axis == 0 ? Point(u, 0) : Point(0, u);
+            clearance = print_z - bc.ctx.floor_print_z(probe);
+            if (clearance < BAND_CLEARANCE_FRACTION * height) {
+                clearance = BAND_CLEARANCE_FRACTION * height;
+                u         = scale_(bc.ctx.cutoff_u(print_z - clearance));
+            }
+            clearance = std::min(clearance, height);
+        }
+        // A line moved uphill can land on, or almost on, its neighbour; two beads closer
+        // than half a pitch would be laid into the same cell.
+        if (u_prev != std::numeric_limits<coord_t>::min() && std::abs(u - u_prev) < bc.pitch_u / 2)
+            continue;
+        u_prev = u;
+
         Polyline line;
         if (bc.frame.from_axis == 0)
             line.points = { Point(u, coord_t(bc.region_bbox.min.y() - margin)),
@@ -298,17 +329,6 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
             pieces = diff_pl(pieces, obstacles);
         if (pieces.empty())
             continue;
-
-        // Nozzle-to-belt clearance for this line.  Constant along the line, because the
-        // belt height depends only on the shear-axis coordinate.  Band-anchored lines
-        // share one clearance by construction; lattice lines (shallow belts) each get
-        // their own, clamped so neither end of a band yields an unprintable bead.
-        double clearance = uniform_clearance;
-        if (clearance <= 0.) {
-            const Point probe = bc.frame.from_axis == 0 ? Point(u, 0) : Point(0, u);
-            clearance = print_z - bc.ctx.floor_print_z(probe);
-            clearance = std::min(std::max(clearance, 0.5 * height), height);
-        }
 
         // with_cross_section, not with_height: it reaches the prescribed volume while
         // KEEPING the extrusion spacing, so the bead is sized to fill exactly one

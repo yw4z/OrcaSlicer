@@ -1164,7 +1164,7 @@ std::vector<int> GCodeViewer::get_plater_extruder()
 
 // Belt printers: compute the full machine->model back-transform from the print
 // config, so the "designed" (upright) G-code preview maps each toolpath vertex
-// back to Cartesian space. The G-code forward pipeline is (BeltGCodeWriter::
+// back to Cartesian space. The G-code forward pipeline is (BeltKinematics::
 // to_machine_coords):  gcode = MachineFrame( AxisRemap( X ) ), with X = model if
 // gcode_back_transform (write already un-rotated to Cartesian) else BeltForward(
 // model). So the inverse is:
@@ -1223,10 +1223,8 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     m_loaded_as_preview = false;
 
     // Belt printers: drive the designed/raw view UI (legend checkbox, hotkey B, canvas-toolbar
-    // menu item) from the loaded print here. Plater::set_bed_shape also calls set_belt_printer(),
-    // but only on bed-shape changes — not reliably on every slice/preview load — so the UI was
-    // staying hidden even though the (config-driven) designed view rendered. The tilt magnitude
-    // comes from the G-code header (gcode_result.belt_tilt_angle, abs of the slicing rotation).
+    // menu item) from the loaded print. The tilt magnitude comes from the G-code header
+    // (gcode_result.belt_tilt_angle, abs of the slicing rotation).
     m_belt_view_enabled = print.config().belt_printer.value;
     m_belt_angle_deg    = gcode_result.belt_tilt_angle;
 
@@ -1387,8 +1385,6 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
             // translation, which this min-corner step recovers.
             const Vec3d d = model_bb.min - tp_bb.min;
             belt_inv = Transform3d(Eigen::Translation3d(d)) * belt_inv;
-            BOOST_LOG_TRIVIAL(debug) << "[BELT-PREVIEW] anchor d=[" << d.x() << "," << d.y() << "," << d.z()
-                << "] (clip kept " << n_clip << "/" << n_filtered << " moves)";
         }
     }
     libvgcode::GCodeInputData data = libvgcode::convert(gcode_result, str_tool_colors, str_color_print_colors, m_viewer,
@@ -1522,8 +1518,18 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
             });
     m_paths_bounding_box = BoundingBoxf3(libvgcode::convert(bbox[0]).cast<double>(), libvgcode::convert(bbox[1]).cast<double>());
 
-    if (wxGetApp().is_editor())
-        m_contained_in_bed = wxGetApp().plater()->build_volume().all_paths_inside(gcode_result, m_paths_bounding_box);
+    if (wxGetApp().is_editor()) {
+        if (is_belt) {
+            // The moves are machine-frame coordinates (Z is belt travel), so the per-move
+            // test inside all_paths_inside() can never pass on a belt. Judge the
+            // back-transformed box instead, with room for the designed view's min-corner
+            // anchor, which is only accurate to a fraction of a millimetre.
+            BoundingBoxf3 bed = wxGetApp().plater()->build_volume().bounding_volume();
+            bed.offset(1.);
+            m_contained_in_bed = !m_paths_bounding_box.defined || (bed.contains(m_paths_bounding_box.min) && bed.contains(m_paths_bounding_box.max));
+        } else
+            m_contained_in_bed = wxGetApp().plater()->build_volume().all_paths_inside(gcode_result, m_paths_bounding_box);
+    }
 
     m_extruders_count = gcode_result.filaments_count;
 
@@ -4923,7 +4929,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         ImGui::Spacing();
         ImGui::Dummy({ window_padding, 0 });
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.f, 0.59f, 0.53f, 1.f), "%s", _u8L("Belt Printer").c_str());
+        ImGui::TextColored(ImVec4(0.f, 0.59f, 0.53f, 1.f), "%s", _u8L("Belt printer").c_str());
         ImGui::Dummy({ window_padding, 0 });
         ImGui::SameLine();
         // Checked = show the raw machine-frame G-code (designed/upright view off). Worded to

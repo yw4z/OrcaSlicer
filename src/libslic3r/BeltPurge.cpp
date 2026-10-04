@@ -128,10 +128,6 @@ void Print::_align_belt_purge_layers()
             delta += h;
         po->belt_shift_layer_grid(delta); // no-op for the reference object (delta ~ 0)
     }
-
-    BOOST_LOG_TRIVIAL(debug) << "[BELT-DEBUG] purge grid align: snapped " << m_objects.size()
-        << " objects onto ref grid offset=" << ref_offset
-        << " (ref=" << ref->model_object()->name << ")";
 }
 
 // Belt mode replacement for _make_wipe_tower(): plan filament-change purging
@@ -149,7 +145,7 @@ void Print::_plan_belt_purge()
     // previous plan so a newly higher toolchange can use its original layers.
     for (PrintObject *po : m_objects)
         if (po->config().belt_purge_tower_object.value)
-            po->belt_restore_truncated_layers();
+            po->belt_undo_purge_plan();
 
     // Must run before ToolOrdering is built: LayerTools merge per-object layer
     // print_z values, and the prism only absorbs purge where its (snapped)
@@ -165,9 +161,18 @@ void Print::_plan_belt_purge()
     if (m_wipe_tower_data.tool_ordering.empty() || m_wipe_tower_data.tool_ordering.last_extruder() == unsigned(-1))
         throw Slic3r::SlicingError("The print is empty. The model is not printable with current print settings.");
 
-    if (!m_wipe_tower_data.tool_ordering.has_wipe_tower())
-        // No toolchanges anywhere, nothing to purge.
-        return;
+    // Is there any filament change at all? Not ToolOrdering::has_wipe_tower(): that reads the
+    // FIRST layer's flag, and on a belt the first layer may be a brim apron band, which carries
+    // neither object nor support and so never gets the flag even when the print changes filament.
+    {
+        bool         any_change = false;
+        unsigned int cur        = m_wipe_tower_data.tool_ordering.first_extruder();
+        for (const auto &lt : m_wipe_tower_data.tool_ordering.layer_tools())
+            for (const unsigned int e : lt.extruders)
+                if (e != cur) { any_change = true; cur = e; }
+        if (! any_change)
+            return;
+    }
 
     this->throw_if_canceled();
 
@@ -191,11 +196,44 @@ void Print::_plan_belt_purge()
     // flush object), so truncating afterwards would leave dangling overrides
     // pointing into deleted layers.
     {
+        // The tool ordering covers the WHOLE print, and the prism is a printed
+        // object in it. Left unbounded, the scan below sees the prism's own
+        // toolchanges on layers above every model object -- the prism runs past
+        // them by design (ramp/height compensation at the tilted ends) -- so
+        // last_tc_z lands at the prism's own top and the truncation cancels
+        // nothing. The tower ends up justifying its own existence.
+        //
+        // Nothing above the tallest printed object can require a color change,
+        // so bound the scan there. On MCTEST5 that is 197 toolchanges spanning
+        // z=154.00..193.20 with the tallest object topping out at 153.80, i.e.
+        // 39.4 mm of tower that no swap ever needed.
+        // Support layers count too: on a belt they can extend above the object's
+        // own top, and a toolchange there is a real one.
+        double obj_top_z = -1.;
+        for (const PrintObject *po : m_objects) {
+            if (po->config().belt_purge_tower_object.value)
+                continue;
+            if (!po->layers().empty())
+                obj_top_z = std::max(obj_top_z, po->layers().back()->print_z);
+            if (!po->support_layers().empty())
+                obj_top_z = std::max(obj_top_z, po->support_layers().back()->print_z);
+        }
+
         double       last_tc_z   = -1.;
         unsigned int cur_ext     = m_wipe_tower_data.tool_ordering.first_extruder();
-        for (const auto &lt : m_wipe_tower_data.tool_ordering.layer_tools())
+        for (const auto &lt : m_wipe_tower_data.tool_ordering.layer_tools()) {
+            // layer_tools() is ordered by print_z ascending.
+            if (obj_top_z >= 0. && lt.print_z > obj_top_z + EPSILON)
+                break;
             for (const unsigned int e : lt.extruders)
                 if (e != cur_ext) { last_tc_z = lt.print_z; cur_ext = e; }
+        }
+        // Deliberately NOT cancelling the prism outright when no object toolchange
+        // exists: belt_truncate_layers_above(0.) empties m_layers, and an object
+        // with zero layers is not something the rest of the pipeline expects. The
+        // GUI already declines to create a prism unless more than one filament is
+        // in use, so this case is a stale prism, not a hot path -- leave it whole
+        // rather than risk a zero-layer object.
         if (last_tc_z >= 0.)
             for (PrintObject *po : m_objects)
                 if (po->config().belt_purge_tower_object.value && !po->layers().empty()) {
@@ -204,21 +242,11 @@ void Print::_plan_belt_purge()
                 }
     }
 
-    // Diagnostic: the prism only absorbs purge at toolchange layers whose
-    // print_z coincides with one of its own layers. Compare the prism's layer
-    // print_z range to the toolchange print_z range and count how many
-    // toolchange layers actually land on a prism layer. This distinguishes a
-    // range/grid-alignment failure (no coverage) from a capacity shortfall
-    // (covered but not enough cross-section).
+    // The prism only absorbs purge at toolchange layers whose print_z coincides
+    // with one of its own layers.
     PrintObject *prism_po = nullptr;
     for (PrintObject *po : m_objects)
         if (po->config().belt_purge_tower_object.value && !po->layers().empty()) { prism_po = po; break; }
-    const PrintObject *diag_prism = prism_po;
-    if (diag_prism != nullptr)
-        BOOST_LOG_TRIVIAL(warning) << "[BELT-DEBUG] purge prism layer range print_z=["
-            << diag_prism->layers().front()->print_z << ", " << diag_prism->layers().back()->print_z
-            << "] nlayers=" << diag_prism->layers().size();
-    int tc_layers = 0, tc_layers_covered = 0;
 
     float  total_leftover      = 0.f;
     float  worst_layer_leftover = 0.f;
@@ -227,33 +255,37 @@ void Print::_plan_belt_purge()
     unsigned int current_extruder_id = m_wipe_tower_data.tool_ordering.first_extruder();
     for (auto &layer_tools : m_wipe_tower_data.tool_ordering.layer_tools()) {
         float layer_leftover = 0.f;
-        bool  layer_has_tc   = false;
         for (const unsigned int extruder_id : layer_tools.extruders) {
             if (extruder_id == current_extruder_id)
                 continue;
-            if (!layer_has_tc) {
-                layer_has_tc = true;
-                ++tc_layers;
-                if (diag_prism != nullptr && diag_prism->get_layer_at_printz(layer_tools.print_z, EPSILON) != nullptr)
-                    ++tc_layers_covered;
-            }
             float volume_to_wipe = use_flush_matrix ?
                 wipe_volumes[current_extruder_id][extruder_id] * flush_multiplier :
                 (float) m_config.prime_volume;
             float leftover = layer_tools.wiping_extrusions().mark_wiping_extrusions(*this, current_extruder_id, extruder_id,
                                                                                     volume_to_wipe);
-            BOOST_LOG_TRIVIAL(trace) << "[BELT-DEBUG] purge toolchange print_z=" << layer_tools.print_z
-                << " filament " << current_extruder_id << "->" << extruder_id
-                << " requested=" << volume_to_wipe
-                << " absorbed=" << volume_to_wipe - leftover
-                << " leftover=" << leftover;
             layer_leftover += leftover;
             current_extruder_id = extruder_id;
         }
 
-        // Do not destructively remove unclaimed fill entities here. psWipeTower
-        // can rerun without regenerating infill, and a later tool ordering may
-        // need entities that were unclaimed by the previous plan.
+        // Plastic saving: drop the prism's fills that no toolchange on this layer
+        // claimed. At this point the prism's OVERRIDDEN fills are exactly the
+        // purge; the rest would print as solid infill in the prism's own filament
+        // for nothing -- which is the whole prism on a layer with no toolchange
+        // (141 of 692 layers on MCTEST5 before the truncation fix). Perimeters are
+        // left alone so the bar keeps a continuous wall along the belt.
+        //
+        // Non-destructive: the entities are stashed with their positions and put
+        // back by belt_restore_dropped_fills() at the top of the next plan. An
+        // earlier version deleted them outright, which broke replanning when a
+        // later tool ordering needed what this one had not claimed -- that is why
+        // it was removed rather than kept.
+        if (prism_po != nullptr) {
+            const auto &we = layer_tools.wiping_extrusions();
+            prism_po->belt_drop_unclaimed_fills(
+                prism_po->get_layer_at_printz(layer_tools.print_z, EPSILON),
+                [&we, prism_po](const ExtrusionEntity *e) { return we.is_entity_overridden(e, prism_po, 0); });
+        }
+
         layer_tools.wiping_extrusions().ensure_perimeters_infills_order(*this);
         if (layer_leftover > 0.f) {
             total_leftover += layer_leftover;
@@ -265,11 +297,6 @@ void Print::_plan_belt_purge()
         this->throw_if_canceled();
     }
 
-    BOOST_LOG_TRIVIAL(warning) << "[BELT-DEBUG] purge coverage: " << tc_layers_covered << "/" << tc_layers
-        << " toolchange layers land on a prism layer"
-        << (tc_layers > 0 && tc_layers_covered == 0 ? " (RANGE/GRID MISALIGNMENT — prism absorbs nothing)" :
-            tc_layers_covered < tc_layers ? " (partial coverage)" : " (full coverage)");
-
     if (total_leftover > 1.f) {
         this->active_step_add_warning(
             PrintStateBase::WarningLevel::CRITICAL,
@@ -278,8 +305,6 @@ void Print::_plan_belt_purge()
                                 "Increase the belt purge tower width, or reduce flushing volumes."),
                            int(std::ceil(total_leftover)), int(std::ceil(worst_layer_leftover)),
                            Slic3r::float_to_string_decimal_point(worst_layer_z, 2)));
-        BOOST_LOG_TRIVIAL(warning) << "[BELT-DEBUG] purge planning leftover total=" << total_leftover
-            << " worst_layer=" << worst_layer_leftover << " at print_z=" << worst_layer_z;
     }
 }
 
@@ -297,11 +322,10 @@ void PrintObject::belt_shift_layer_grid(double delta)
         layer->print_z += delta;
     for (SupportLayer *layer : m_support_layers)
         layer->print_z += delta;
+    // The brim's apron bands below the first layer carry their own print_z.
+    for (BeltBrimBand &band : m_belt_brim_prologue)
+        band.print_z += delta;
     m_slicing_params.belt_floor_z_shift += delta;
-    BOOST_LOG_TRIVIAL(trace) << "[BELT-DEBUG] belt_shift_layer_grid"
-        << " obj=" << this->model_object()->name
-        << " delta=" << delta
-        << " first_layer.print_z=" << (m_layers.empty() ? 0. : m_layers.front()->print_z);
 }
 
 // Belt mode: drop layers strictly above z (used to cancel the purge prism early
@@ -324,10 +348,57 @@ size_t PrintObject::belt_truncate_layers_above(coordf_t z)
     m_layers.resize(keep);
     if (!m_layers.empty())
         m_layers.back()->upper_layer = nullptr;
-    BOOST_LOG_TRIVIAL(debug) << "[BELT-DEBUG] truncate purge prism above print_z=" << z
-        << " kept=" << keep << " removed=" << removed
-        << " new_top=" << (m_layers.empty() ? 0. : m_layers.back()->print_z);
     return removed;
+}
+
+// Plastic saving on the purge prism: keep only the fills a toolchange claimed.
+//
+// Called per layer from _plan_belt_purge(), after the real-purge marking and
+// BEFORE ensure_perimeters_infills_order() -- that pass force-overrides every
+// remaining fill on the prism (it is a dedicated flush object), so afterwards
+// everything looks claimed and nothing could be distinguished.
+size_t PrintObject::belt_drop_unclaimed_fills(Layer *layer, const std::function<bool(const ExtrusionEntity*)> &claimed)
+{
+    if (layer == nullptr)
+        return 0;
+    size_t dropped = 0;
+    for (size_t ri = 0; ri < layer->regions().size(); ++ri) {
+        LayerRegion *lr = layer->get_region(ri);
+        auto        &ents = lr->fills.entities;
+        ExtrusionEntitiesPtr keep;
+        keep.reserve(ents.size());
+        for (size_t i = 0; i < ents.size(); ++i) {
+            if (claimed(ents[i])) {
+                keep.emplace_back(ents[i]);
+            } else {
+                // Stash with its original index so the restore is exact.
+                m_belt_dropped_fills.push_back(BeltDroppedFill{ layer, ri, i, ents[i] });
+                ++dropped;
+            }
+        }
+        ents = std::move(keep);
+    }
+    return dropped;
+}
+
+void PrintObject::belt_restore_dropped_fills()
+{
+    if (m_belt_dropped_fills.empty())
+        return;
+    // Ascending index per (layer, region): inserting in that order lands every
+    // entity back at its original position, because each insertion shifts only
+    // the entries after it, which are themselves still to be inserted.
+    std::stable_sort(m_belt_dropped_fills.begin(), m_belt_dropped_fills.end(),
+                     [](const BeltDroppedFill &a, const BeltDroppedFill &b) {
+                         if (a.layer != b.layer)           return a.layer < b.layer;
+                         if (a.region_idx != b.region_idx) return a.region_idx < b.region_idx;
+                         return a.index < b.index;
+                     });
+    for (const BeltDroppedFill &d : m_belt_dropped_fills) {
+        auto &ents = d.layer->get_region(d.region_idx)->fills.entities;
+        ents.insert(ents.begin() + std::min(d.index, ents.size()), d.entity);
+    }
+    m_belt_dropped_fills.clear();
 }
 
 void PrintObject::belt_restore_truncated_layers()

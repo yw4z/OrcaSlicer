@@ -74,12 +74,16 @@ public:
 
     void set_layer_tools_ptr(const LayerTools* lt) { m_layer_tools = lt; }
 
-private:
-    // Returns true if entity is not printed with its usual extruder for a given copy.
+    // Returns true if entity is not printed with its usual extruder for a given
+    // copy -- i.e. it was claimed as a wiping/purge extrusion. Public because the
+    // belt purge prism uses it to tell which of its fills actually carry purge
+    // from the ones that are unclaimed waste (Print::_plan_belt_purge()).
     bool is_entity_overridden(const ExtrusionEntity* entity, const PrintObject *object, size_t copy_id) const {
         auto it = entity_map.find(std::make_tuple(entity, object));
         return it != entity_map.end() && copy_id < it->second.size() && it->second[copy_id] != -1;
     }
+
+private:
 
     int first_nonsoluble_extruder_on_layer(const PrintConfig& print_config) const;
     int last_nonsoluble_extruder_on_layer(const PrintConfig& print_config) const;

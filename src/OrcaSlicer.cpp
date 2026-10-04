@@ -1809,7 +1809,10 @@ int CLI::run(int argc, char **argv)
                         old_printable_width = static_cast<int>(old_printable_bbox.size().x());
                         old_printable_depth = static_cast<int>(old_printable_bbox.size().y());
                     }
-                    old_printable_height = (int)(config.opt_float("printable_height"));
+                    // A BBS-style 3mf without Metadata/project_settings.config has no
+                    // printable_height (found by fuzzing: this was a silent segfault).
+                    if (const auto *ph = config.option<ConfigOptionFloat>("printable_height"))
+                        old_printable_height = (int) ph->value;
 
                     if (config.option<ConfigOptionFloat>("extruder_clearance_height_to_rod"))
                         old_height_to_rod = config.opt_float("extruder_clearance_height_to_rod");
@@ -3341,9 +3344,14 @@ int CLI::run(int argc, char **argv)
                 max_self_index = std::max(max_self_index, v);
                 min_self_index = std::min(min_self_index, v);
             }
-            if (max_self_index > filament_count || min_self_index < 1) {
-                BOOST_LOG_TRIVIAL(warning) << boost::format("filament_self_index range [%1%, %2%] is invalid for filament_count %3%, regenerating")
-                        % min_self_index % max_self_index % filament_count;
+            // And a project saved with FEWER filaments than are now loaded (a
+            // one-filament project sliced with two --load-filaments) leaves the tables half filled:
+            // the variant matching below then reads past filament_extruder_variant and
+            // set_with_restore_2 throws an uncaught size error. Regenerate in that case too.
+            if (max_self_index > filament_count || min_self_index < 1 || max_self_index < filament_count
+                || (int) filament_self_index_opt->values.size() < filament_count) {
+                BOOST_LOG_TRIVIAL(warning) << boost::format("filament_self_index range [%1%, %2%] (size %4%) is invalid for filament_count %3%, regenerating")
+                        % min_self_index % max_self_index % filament_count % filament_self_index_opt->values.size();
                 need_regenerate_self_index = true;
             }
         }
@@ -3424,6 +3432,10 @@ int CLI::run(int argc, char **argv)
                 std::vector<string>& filament_variants = curr_variant_opt->values;
                 filament_variants.resize(filament_count, get_extruder_variant_string(etDirectDrive, nvtStandard));
             }
+            // See the filament_self_index note above: one variant per filament for
+            // the filaments the project did not know about.
+            if ((int) curr_variant_opt->values.size() < filament_count)
+                curr_variant_opt->values.resize(filament_count, get_extruder_variant_string(etDirectDrive, nvtStandard));
             const ConfigOptionStrings *new_variant_opt = dynamic_cast<const ConfigOptionStrings*>(config.option("filament_extruder_variant", true));
 
             std::vector<int> new_variant_indice;
@@ -3432,7 +3444,7 @@ int CLI::run(int argc, char **argv)
 
             for (int i = 0; i < new_variant_count; i++)
             {
-                for (int j = old_start_indice[filament_index - 1]; j < old_start_indice[filament_index - 1] + old_variant_count; j++)
+                for (int j = old_start_indice[filament_index - 1]; j < old_start_indice[filament_index - 1] + old_variant_count && j < (int) curr_variant_opt->values.size(); j++)
                 {
                     if (curr_variant_opt->values[j] == new_variant_opt->values[i]) {
                         new_variant_indice[i] = j;
@@ -3484,7 +3496,18 @@ int CLI::run(int argc, char **argv)
                                 ConfigOptionVectorBase* opt_vec_dst = static_cast<ConfigOptionVectorBase*>(opt);
                                 const ConfigOptionVectorBase* opt_vec_src = static_cast<const ConfigOptionVectorBase*>(source_opt);
                                 //set with index
-                                opt_vec_dst->set_with_restore_2(opt_vec_src, new_variant_indice, old_start_indice[filament_index - 1], old_variant_count);
+                                try {
+                                    // A project with fewer filaments than are loaded: grow the
+                                    // destination to the filament's slot first (set_with_restore_2 only restores).
+                                    if (opt_vec_src->size() > 0 && opt_vec_dst->size() < size_t(old_start_indice[filament_index - 1] + old_variant_count))
+                                        opt_vec_dst->resize(size_t(old_start_indice[filament_index - 1] + old_variant_count), opt_vec_src);
+                                    opt_vec_dst->set_with_restore_2(opt_vec_src, new_variant_indice, old_start_indice[filament_index - 1], old_variant_count);
+                                } catch (const std::exception &ex) {   // Was an uncaught abort
+                                    BOOST_LOG_TRIVIAL(error) << boost::format("filament %1%: option %2% could not be applied: %3%") % filament_index % opt_key % ex.what();
+                                    boost::nowide::cerr << "filament " << filament_index << ": option " << opt_key << " could not be applied: " << ex.what() << std::endl;
+                                    record_exit_reson(outfile_dir, CLI_CONFIG_FILE_ERROR, 0, cli_errors[CLI_CONFIG_FILE_ERROR], sliced_info);
+                                    flush_and_exit(CLI_CONFIG_FILE_ERROR);
+                                }
                             }
 
                             continue;
@@ -3530,7 +3553,16 @@ int CLI::run(int argc, char **argv)
                     if (filament_options_with_variant.find(opt_key) != filament_options_with_variant.end()) {
                         std::vector<int> temp_variant_indice;
                         temp_variant_indice.resize(new_variant_count, -1);
-                        opt_vec_dst->set_with_restore_2(opt_vec_src, temp_variant_indice, old_start_indice[filament_index - 1], old_variant_count, true);
+                        try {
+                            if (opt_vec_src->size() > 0 && opt_vec_dst->size() < size_t(old_start_indice[filament_index - 1] + old_variant_count))   // See above
+                                opt_vec_dst->resize(size_t(old_start_indice[filament_index - 1] + old_variant_count), opt_vec_src);
+                            opt_vec_dst->set_with_restore_2(opt_vec_src, temp_variant_indice, old_start_indice[filament_index - 1], old_variant_count, true);
+                        } catch (const std::exception &ex) {   // Was an uncaught abort
+                            BOOST_LOG_TRIVIAL(error) << boost::format("filament %1%: option %2% could not be applied: %3%") % filament_index % opt_key % ex.what();
+                            boost::nowide::cerr << "filament " << filament_index << ": option " << opt_key << " could not be applied: " << ex.what() << std::endl;
+                            record_exit_reson(outfile_dir, CLI_CONFIG_FILE_ERROR, 0, cli_errors[CLI_CONFIG_FILE_ERROR], sliced_info);
+                            flush_and_exit(CLI_CONFIG_FILE_ERROR);
+                        }
 
                         if (opt_key == "filament_extruder_variant")
                             new_variant_counts[filament_index - 1] = opt_vec_src->size();
@@ -4014,6 +4046,10 @@ int CLI::run(int argc, char **argv)
         BOOST_LOG_TRIVIAL(info) << boost::format("%1%, set disable_wipe_tower_after_mapping back to false due to wrapping detect")%__LINE__;
     }
 
+    // Belt printers never get the classic wipe tower (see Print::has_wipe_tower()), so reserve no space for it.
+    const ConfigOptionBool* belt_printer_opt = m_print_config.option<ConfigOptionBool>("belt_printer");
+    const bool is_belt_printer = belt_printer_opt && belt_printer_opt->value;
+
     auto timelapse_type_opt = m_print_config.option("timelapse_type");
     bool is_smooth_timelapse = false;
     if (enable_timelapse && timelapse_type_opt && (timelapse_type_opt->getInt() == TimelapseType::tlSmooth))
@@ -4251,11 +4287,11 @@ int CLI::run(int argc, char **argv)
         }
     };
 
-    auto check_plate_wipe_tower = [get_print_sequence, is_smooth_timelapse](Slic3r::GUI::PartPlate* plate, int plate_index, DynamicPrintConfig& print_config, plate_obj_size_info_t &plate_obj_size_info) {
+    auto check_plate_wipe_tower = [get_print_sequence, is_smooth_timelapse, is_belt_printer](Slic3r::GUI::PartPlate* plate, int plate_index, DynamicPrintConfig& print_config, plate_obj_size_info_t &plate_obj_size_info) {
         plate_obj_size_info.obj_bbox= plate->get_objects_bounding_box();
         BOOST_LOG_TRIVIAL(info) << boost::format("plate %1%, object bbox: min {%2%, %3%, %4%} - max {%5%, %6%, %7%}")
                     %(plate_index+1) %plate_obj_size_info.obj_bbox.min.x() % plate_obj_size_info.obj_bbox.min.y() % plate_obj_size_info.obj_bbox.min.z() %plate_obj_size_info.obj_bbox.max.x() % plate_obj_size_info.obj_bbox.max.y() % plate_obj_size_info.obj_bbox.max.z();
-        if (!print_config.has("wipe_tower_x")) {
+        if (is_belt_printer || !print_config.has("wipe_tower_x")) {
             plate_obj_size_info.has_wipe_tower = false;
             BOOST_LOG_TRIVIAL(info) << boost::format("can not found wipe_tower_x in config, set to no wipe tower");
             return;
@@ -5062,7 +5098,7 @@ int CLI::run(int argc, char **argv)
                     }
                 }
 
-                if ((!arrange_cfg.is_seq_print && (assemble_plate.filaments_count > 1))||(enable_wrapping_detect && !current_wrapping_exclude_area.empty()))
+                if (!is_belt_printer && ((!arrange_cfg.is_seq_print && (assemble_plate.filaments_count > 1)) || (enable_wrapping_detect && !current_wrapping_exclude_area.empty())))
                 {
                     //prepare the wipe tower
                     int plate_count = partplate_list.get_plate_count();
@@ -5212,7 +5248,7 @@ int CLI::run(int argc, char **argv)
                 bool is_seq_print = false;
                 get_print_sequence(cur_plate, m_print_config, is_seq_print);
 
-                if (!is_seq_print && (assemble_plate.filaments_count > 1) && !has_wipe_tower_position)
+                if (!is_belt_printer && !is_seq_print && (assemble_plate.filaments_count > 1) && !has_wipe_tower_position)
                 {
                     //prepare the wipe tower
                     auto printer_structure_opt = m_print_config.option<ConfigOptionEnum<PrinterStructure>>("printer_structure");
@@ -5361,7 +5397,7 @@ int CLI::run(int argc, char **argv)
                     //add the virtual object into unselect list if has
                     partplate_list.preprocess_exclude_areas(unselected, enable_wrapping_detect);
 
-                    if (used_filament_set.size() > 0)
+                    if (!is_belt_printer && used_filament_set.size() > 0)
                     {
                         //prepare the wipe tower
                         int plate_count = partplate_list.get_plate_count();
@@ -5467,7 +5503,7 @@ int CLI::run(int argc, char **argv)
                         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": found single object mode");
                     }
 
-                    if (m_print_config.has("wipe_tower_x") && (is_smooth_timelapse || !arrange_cfg.is_seq_print || (selected.size() <= 1))) {
+                    if (!is_belt_printer && m_print_config.has("wipe_tower_x") && (is_smooth_timelapse || !arrange_cfg.is_seq_print || (selected.size() <= 1))) {
                         float x;
                         float y;
                         if (duplicate_count > 0) {
@@ -6037,7 +6073,7 @@ int CLI::run(int argc, char **argv)
                 // The stored (or default) tower position may not fit the tower these plates
                 // need, and no CLI placement site runs on a plain slice - mirror the GUI's
                 // reload clamp and fit every plate's tower into the printable area first.
-                if (m_print_config.option<ConfigOptionBool>("enable_prime_tower", true)->value) {
+                if (!is_belt_printer && m_print_config.option<ConfigOptionBool>("enable_prime_tower", true)->value) {
                     for (int index = 0; index < partplate_list.get_plate_count(); index++) {
                         if ((plate_to_slice != 0) && (plate_to_slice != (index + 1)))
                             continue;
