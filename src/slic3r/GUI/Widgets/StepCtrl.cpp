@@ -1,6 +1,7 @@
 #include "StepCtrl.hpp"
 #include "Label.hpp"
 
+#include <wx/anybutton.h>
 #include <wx/checklst.h>
 #include "slic3r/GUI/Widgets/StaticBox.hpp"
 #include <utility>
@@ -11,6 +12,11 @@
 #include <wx/gdicmn.h>
 #include <wx/pen.h>
 #include <wx/string.h>
+#include "slic3r/GUI/Widgets/StateColor.hpp"
+#include "slic3r/GUI/Widgets/StateHandler.hpp"
+#include "slic3r/GUI/wxExtensions.hpp"
+
+class wxWindow;
 
 wxDEFINE_EVENT( EVT_STEP_CHANGING, wxCommandEvent );
 wxDEFINE_EVENT( EVT_STEP_CHANGED, wxCommandEvent );

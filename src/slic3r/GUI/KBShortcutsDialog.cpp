@@ -1,9 +1,6 @@
-#include "libslic3r/libslic3r.h"
 #include "KBShortcutsDialog.hpp"
 #include "I18N.hpp"
-#include "libslic3r/Utils.hpp"
 #include "GUI.hpp"
-#include "Notebook.hpp"
 #include <vector>
 #include "slic3r/GUI/Shortcuts.hpp"
 #include <wx/colour.h>
@@ -34,6 +31,7 @@
 #include "Widgets/StaticLine.hpp"
 #include "Widgets/TabCtrl.hpp"
 #include <wx/notebook.h>
+#include <wx/string.h>
 #include <wx/wx.h>
 #include <wx/treebase.h>
 #include <wx/simplebook.h>

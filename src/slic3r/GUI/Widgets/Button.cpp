@@ -3,6 +3,7 @@
 
 #include "slic3r/GUI/Widgets/StaticBox.hpp"
 #include <utility>
+#include <wx/anybutton.h>
 #include <wx/checklst.h>
 #include <vector>
 #include <wx/colour.h>
@@ -15,6 +16,8 @@
 #include <wx/gdicmn.h>
 #include <wx/event.h>
 #include <wx/tipwin.h>
+#include "slic3r/GUI/Widgets/StateColor.hpp"
+#include "slic3r/GUI/wxExtensions.hpp"
 #ifdef __APPLE__
 #include "libslic3r/MacUtils.hpp"
 #endif
