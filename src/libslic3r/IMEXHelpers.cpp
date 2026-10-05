@@ -1,16 +1,28 @@
 #include "libslic3r/IMEXHelpers.hpp"
 
+#include <Eigen/Core>
 #include <algorithm>
+#include <cstddef>
+#include <map>
 #include <numeric>
 #include <cassert>
 #include <cctype>
+#include <optional>
 #include <set>
 #include <sstream>
+#include <string>
 #include <unordered_set>
 
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
+#include <vector>
+#include <utility>
 
+#include "Config.hpp"
+#include "libslic3r.h"
+#include "Point.hpp"
+#include "BoundingBox.hpp"
+#include "Polygon.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/PresetBundle.hpp"

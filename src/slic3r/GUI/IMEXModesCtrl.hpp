@@ -1,6 +1,9 @@
 #ifndef slic3r_IMEXModesCtrl_hpp_
 #define slic3r_IMEXModesCtrl_hpp_
 
+#include <libslic3r/PrintConfig.hpp>
+#include <utility>
+#include <wx/colour.h>
 #include <wx/panel.h>
 #include <wx/string.h>
 #include <wx/sizer.h>

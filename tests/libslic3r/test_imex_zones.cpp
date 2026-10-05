@@ -1,8 +1,13 @@
 #include <catch2/catch_all.hpp>
 
+#include <libslic3r/BoundingBox.hpp>
+#include <libslic3r/Config.hpp>
 #include <string>
 #include <vector>
 
+#include "catch2/matchers/catch_matchers_floating_point.hpp"
+#include "catch2/matchers/catch_matchers.hpp"
+#include "catch2/catch_test_macros.hpp"
 #include "libslic3r/IMEXHelpers.hpp"
 #include "libslic3r/IMEXZones.hpp"
 #include "libslic3r/PrintConfig.hpp"

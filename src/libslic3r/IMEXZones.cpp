@@ -1,9 +1,15 @@
 #include "libslic3r/IMEXZones.hpp"
 
 #include <algorithm>
+#include <map>
 #include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "PrintConfig.hpp"
+#include "BoundingBox.hpp"
+#include "Config.hpp"
 #include "libslic3r/IMEXHelpers.hpp"
 
 namespace Slic3r {

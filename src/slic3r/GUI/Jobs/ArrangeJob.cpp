@@ -17,6 +17,7 @@
 
 #include "libnest2d/common.hpp"
 #include "libslic3r/Arrange.hpp"
+#include <libslic3r/BoundingBox.hpp>
 #include <utility>
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"

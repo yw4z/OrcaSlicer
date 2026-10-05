@@ -1,6 +1,7 @@
 #ifndef slic3r_IMEXFilamentPickerPopover_hpp_
 #define slic3r_IMEXFilamentPickerPopover_hpp_
 
+#include <libslic3r/Config.hpp>
 #include <wx/popupwin.h>
 #include <wx/panel.h>
 #include <wx/sizer.h>

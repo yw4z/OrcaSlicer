@@ -1,11 +1,25 @@
 #include <catch2/catch_all.hpp>
 
+#include "catch2/matchers/catch_matchers_floating_point.hpp"
+#include "catch2/catch_test_macros.hpp"
+#include "catch2/matchers/catch_matchers.hpp"
+#include "catch2/matchers/catch_matchers_string.hpp"
+#include "catch2/catch_message.hpp"
+#include "catch2/generators/catch_generators.hpp"
 #include "libslic3r/IMEXHelpers.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Point.hpp"
 
+#include <cstddef>
 #include <iterator>
+#include <libslic3r/Config.hpp>
+#include <map>
+#include <optional>
+#include <libslic3r/Polygon.hpp>
+#include <libslic3r/BoundingBox.hpp>
 #include <set>
+#include <vector>
+#include <utility>
 
 using namespace Slic3r;
 using Catch::Matchers::WithinAbs;

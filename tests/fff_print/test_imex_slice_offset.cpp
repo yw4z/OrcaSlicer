@@ -1,5 +1,8 @@
 #include <catch2/catch_all.hpp>
 
+#include "catch2/matchers/catch_matchers_floating_point.hpp"
+#include "catch2/catch_test_macros.hpp"
+#include "catch2/matchers/catch_matchers.hpp"
 #include "libslic3r/GCodeReader.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Point.hpp"
@@ -10,7 +13,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <exception>
+#include <libslic3r/PrintConfig.hpp>
 #include <limits>
 #include <sstream>
 #include <string>

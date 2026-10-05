@@ -14,6 +14,7 @@
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/ExPolygon.hpp"
+#include <functional>
 #include <iterator>
 #include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/GCode/WipeTower.hpp"
@@ -39,6 +40,8 @@
 #include <mutex>
 #include <numeric>
 #include "slic3r/GUI/ImGuiWrapper.hpp"
+#include <optional>
+#include <tuple>
 #include <utility>
 #include "slic3r/GUI/MeshUtils.hpp"
 #include "slic3r/GUI/GLTexture.hpp"

@@ -1,8 +1,19 @@
 #include "slic3r/GUI/IMEXFilamentPickerPopover.hpp"
 
+#include <libslic3r/Config.hpp>
+#include <wx/popupwin.h>
+#include <utility>
+#include <wx/sizer.h>
+#include <vector>
+#include <cstddef>
+#include <wx/gdicmn.h>
+#include <algorithm>
+#include <wx/event.h>
 #include <wx/stattext.h>
 #include <wx/dcmemory.h>
 #include <wx/image.h>
+#include <wx/window.h>
+#include <wx/string.h>
 
 #include "libslic3r/IMEXHelpers.hpp"
 #include "libslic3r/PresetBundle.hpp"

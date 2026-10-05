@@ -1,12 +1,28 @@
 #include "slic3r/GUI/IMEXModesCtrl.hpp"
 
+#include <wx/anybutton.h>
+#include <libslic3r/IMEXHelpers.hpp>
+#include <cstddef>
+#include <vector>
+#include <tuple>
+#include <libslic3r/Config.hpp>
+#include <map>
+#include <string>
+#include <optional>
+#include <functional>
 #include <wx/app.h>
+#include <wx/event.h>
+#include <wx/colour.h>
 #include <wx/font.h>
+#include <wx/panel.h>
+#include <wx/sizer.h>
+#include <wx/gdicmn.h>
 #include <wx/stattext.h>
 
 #include <algorithm>
 #include <boost/algorithm/string/predicate.hpp>
 #include <utility>
+#include <wx/string.h>
 
 #include "slic3r/GUI/EditGCodeDialog.hpp"
 #include "slic3r/GUI/GUI.hpp"

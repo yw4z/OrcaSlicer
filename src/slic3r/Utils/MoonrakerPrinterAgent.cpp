@@ -41,6 +41,7 @@
 #include <ios>
 #include <functional>
 #include <exception>
+#include <libslic3r/Config.hpp>
 #include <map>
 #include <string>
 #include <mutex>
@@ -50,6 +51,7 @@
 #include <thread>
 #include <vector>
 #include <utility>
+#include <wx/app.h>
 
 namespace {
 

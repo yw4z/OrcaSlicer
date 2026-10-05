@@ -25,6 +25,7 @@
 #include "MsgDialog.hpp"
 #include <boost/container_hash/hash.hpp>
 #include "slic3r/GUI/MeshUtils.hpp"
+#include <set>
 #include <string>
 #include "libvgcode/include/Types.hpp"
 #include <vector>

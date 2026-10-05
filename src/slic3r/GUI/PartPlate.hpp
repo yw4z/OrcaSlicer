@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include "libslic3r/Config.hpp"
+#include <memory>
 #include <utility>
 #include "libslic3r/Point.hpp"
 #include <string>
