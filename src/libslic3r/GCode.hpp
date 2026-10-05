@@ -218,8 +218,7 @@ public:
         m_last_obj_copy(nullptr, Point(std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max())),
         // BBS
         m_toolchange_count(0),
-        m_nominal_z(0.),
-        m_writer(std::make_unique<GCodeWriter>())
+        m_nominal_z(0.)
         {}
     virtual ~GCode() = default;
 
@@ -229,7 +228,7 @@ public:
     void            do_export(Print* print, const char* path, GCodeProcessorResult* result = nullptr, ThumbnailsGeneratorCallback thumbnail_cb = nullptr);
     void            export_layer_filaments(GCodeProcessorResult* result);
     //BBS: set offset for gcode writer
-    void set_gcode_offset(double x, double y) { m_gcode_offset = Vec2d(x, y); m_writer->set_xy_offset(x, y); m_processor.set_xy_offset(x, y);}
+    void set_gcode_offset(double x, double y) { m_writer.set_xy_offset(x, y); m_processor.set_xy_offset(x, y);}
 
     // Exported for the helper classes (OozePrevention, Wipe) and for the Perl binding for unit tests.
     const Vec2d&    origin() const { return m_origin; }
@@ -243,8 +242,8 @@ public:
     Vec3d                    point_to_gcode_quantized(const Point3& point) const;
     const FullPrintConfig &config() const { return m_config; }
     const Layer*    layer() const { return m_layer; }
-    GCodeWriter&    writer() { return *m_writer; }
-    const GCodeWriter& writer() const { return *m_writer; }
+    GCodeWriter&    writer() { return m_writer; }
+    const GCodeWriter& writer() const { return m_writer; }
     PlaceholderParser& placeholder_parser() { return m_placeholder_parser_integration.parser; }
     const PlaceholderParser& placeholder_parser() const { return m_placeholder_parser_integration.parser; }
     // Process a template through the placeholder parser, collect error messages to be reported
@@ -267,7 +266,7 @@ public:
     bool            needs_retraction(const Polyline& travel, ExtrusionRole role, LiftType& lift_type);
     std::string     retract(bool toolchange = false, bool is_last_retraction = false, LiftType lift_type = LiftType::NormalLift, bool apply_instantly = false, ExtrusionRole role = erNone);
     // extra_retract forwards a PETG pre-extrusion over-extrusion; default 0 -> identical to the plain deretract.
-    std::string     unretract(float extra_retract = 0.f) { return m_writer->unlift() + m_writer->unretract(extra_retract); }
+    std::string     unretract(float extra_retract = 0.f) { return m_writer.unlift() + m_writer.unretract(extra_retract); }
     std::string     set_extruder(unsigned int extruder_id, double print_z, bool by_object=false, int toolchange_temp_override = -1, bool defer_temp_wait = false);
     bool is_BBL_Printer();
     WipeTowerType wipe_tower_type();
@@ -384,7 +383,7 @@ protected:
     // represent a G2/G3 arc. Belt printers get this through BeltKinematics
     // rather than through an override of their own.
     virtual bool should_disable_arc_fitting() const
-        { return ! m_writer->kinematics().supports_arc_moves(); }
+        { return ! m_writer.kinematics().supports_arc_moves(); }
 
     void            _do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb);
 
@@ -660,7 +659,7 @@ protected:
     DynamicConfig                       m_calib_config;
     // scaled G-code resolution
     double                              m_scaled_resolution;
-    std::unique_ptr<GCodeWriter>         m_writer;
+    GCodeWriter                         m_writer;
 
     struct PlaceholderParserIntegration {
         void reset();
@@ -786,7 +785,6 @@ protected:
     // checks short-circuit to the legacy Layer::id() == 0 path.
     std::unique_ptr<FirstLayerPlane>    m_first_layer_plane;
     // Plate origin, kept so a writer replaced during export can be given it again.
-    Vec2d                               m_gcode_offset{ Vec2d::Zero() };
 
     std::unique_ptr<PressureEqualizer>  m_pressure_equalizer;
     

@@ -17,7 +17,6 @@ class FirstLayerPlane;
 
 class GCodeWriter {
 public:
-    virtual ~GCodeWriter() = default;
     GCodeConfig config;
     bool multiple_extruders;
 
@@ -84,27 +83,27 @@ public:
     std::string set_speed(double F, const std::string &comment = std::string(), const std::string &cooling_marker = std::string());
     // SoftFever NOTE: the returned speed is mm/minute
     double      get_current_speed() const { return m_current_speed;}
-    virtual std::string travel_to_xy(const Vec2d &point, const std::string &comment = std::string());
-    virtual std::string travel_to_xyz(const Vec3d &point, const std::string &comment = std::string(), bool force_z = false);
+    std::string travel_to_xy(const Vec2d &point, const std::string &comment = std::string());
+    std::string travel_to_xyz(const Vec3d &point, const std::string &comment = std::string(), bool force_z = false);
     std::string travel_to_z(double z, const std::string &comment = std::string(), bool force = false);
     bool        will_move_z(double z) const;
-    virtual std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
+    std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     //BBS: generate G2 or G3 extrude which moves by arc
     std::string extrude_arc_to_xy(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
     // Linear approximation of an arc, used when the machine mapping cannot
     // express a G2/G3. Must be called before m_pos is updated: center_offset is
     // relative to the current position.
     std::string extrude_arc_as_polyline(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
-    virtual std::string extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
+    std::string extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     std::string retract(bool before_wipe = false, double retract_length = 0);
     std::string retract_for_toolchange(bool before_wipe = false, double retract_length = 0);
     // extra_retract adds a small over-extrusion to the deretract move (PETG pre-extrusion).
     // Default 0 -> byte-identical to the plain deretract.
     std::string unretract(float extra_retract = 0.f);
     // do lift instantly
-    virtual std::string eager_lift(const LiftType type);
+    std::string eager_lift(const LiftType type);
     // record a lift request, do realy lift in next travel
-    virtual std::string lazy_lift(LiftType lift_type = LiftType::NormalLift, bool spiral_vase = false);
+    std::string lazy_lift(LiftType lift_type = LiftType::NormalLift, bool spiral_vase = false);
     std::string unlift();
     const Vec3d& get_position() const { return m_pos; }
     Vec3d&       get_position() { return m_pos; }
@@ -184,7 +183,7 @@ protected:
     bool            m_is_current_pos_clear = false;
     double          m_current_speed;
 
-    virtual std::string _travel_to_z(double z, const std::string &comment);
+    std::string _travel_to_z(double z, const std::string &comment);
 
     // Whether a destination gets first-layer treatment.  With an active plane
     // evaluator, distance from the plane decides; otherwise the layer-coarse
