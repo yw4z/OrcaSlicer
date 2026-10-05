@@ -189,6 +189,15 @@ degenerate edges are left out (`GeometryEngine::display_edges`), and the polylin
 once per shape, keyed by its `TShape`, because a recompute that leaves a body unchanged is the
 common case.
 
+While a feature card is open, its preview ghost is the whole model the candidate would produce,
+drawn translucent over the bodies, so every face the feature leaves alone is in both at the same
+depth. The ghost is drawn with a depth bias that pushes it back (`GLVolume::depth_bias`), so on a shared face
+the body always wins instead of the two copies z-fighting, and the ghost shows only where the
+result reaches past the bodies. Material a feature removes lies inside the old solid and would not
+show at all, so the tools whose result mostly coincides with the body — Fillet/Chamfer, Draft,
+Hole and the Mate hover — hide the bodies once the preview is valid and draw the result alone,
+opaque.
+
 ## Showing what is selected
 
 A selection is drawn on the faces it names, never as a tint over the body: a translucent

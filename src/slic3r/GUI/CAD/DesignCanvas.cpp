@@ -378,10 +378,14 @@ void DesignCanvas::reload(bool keep_view)
                 v->set_color(c);
             }
         } else if (obj_idx == 1) {
-            // The ghost is normally a faint blue overlay on the visible body. In preview-only
-            // mode it IS the result (base bodies hidden), so render it opaque so it reads as a
-            // finished solid rather than a see-through hint.
+            // The ghost is the whole resulting model, normally drawn as a faint blue overlay on
+            // the visible bodies. Every face the feature leaves alone is in both, at the same
+            // depth, so the ghost is drawn with a depth bias: the bodies win on those faces instead
+            // of the two copies z-fighting, and the ghost shows only where the result reaches past
+            // the bodies. In preview-only mode it IS the result (base bodies hidden), so render it
+            // opaque so it reads as a finished solid rather than a see-through hint.
             v->set_color(m_body_hidden ? ColorRGBA(0.40f, 0.82f, 1.0f, 1.0f) : ghost);
+            v->depth_bias = true;
         }
     }
 

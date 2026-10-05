@@ -11185,10 +11185,12 @@ void DesignPanel::refresh_preview()
     // Confirm so the user sees the gate before clicking; the red status says why.
     m_candidate_ok = ok;
     update_confirm_button();
-    // Fillet/Chamfer/Draft: once the target edge/face yields a valid result, show ONLY the
+    // Fillet/Chamfer/Draft/Hole: once the target edge/face yields a valid result, show ONLY the
     // preview (hide the base bodies) so the user sees the finished shape, not the old solid
-    // doubled with the ghost. Before a valid pick the body stays visible so it can be picked.
-    m_viewport->set_body_hidden((m_active == Tool::Dressup || m_active == Tool::Draft) && ok);
+    // doubled with the ghost. A hole's cut lies inside the old solid, so without this the body
+    // would hide it entirely. Before a valid pick the body stays visible so it can be picked.
+    m_viewport->set_body_hidden((m_active == Tool::Dressup || m_active == Tool::Draft ||
+                                 m_active == Tool::Hole) && ok);
     m_status->Refresh();
 
     // Refresh the in-canvas Extrude depth arrow (self-gates: only while the Extrude card is open).
