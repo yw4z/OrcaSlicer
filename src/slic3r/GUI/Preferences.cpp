@@ -10,7 +10,6 @@
 #include "I18N.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Format/DRC.hpp"
-#include "libslic3r/CAD/SketchEngine.hpp"
 #include <wx/gdicmn.h>
 #include <wx/arrstr.h>
 #include "slic3r/GUI/Widgets/Label.hpp"
@@ -1815,13 +1814,6 @@ void PreferencesDialog::create_items()
            "parametrically. This feature is experimental and still under development."),
         "enable_cad_feature", _L("(Requires restart)"));
     g_sizer->Add(item_cad_feature);
-
-    auto item_auto_close_sketch_loops = create_item_checkbox(_L("Auto-close sketch loops"),
-        _L("Treat sketch endpoints within 0.001 mm as one joint and weld the loop shut. "
-           "Off: only exactly coincident endpoints join, so a loop with a tiny gap is "
-           "shown as open instead of being closed for you."),
-        "auto_close_sketch_loops");
-    g_sizer->Add(item_auto_close_sketch_loops);
 #endif
 
 #if 0
@@ -1911,11 +1903,18 @@ void PreferencesDialog::create_items()
                "disc with a roll quadrant. A face's orientation is read without being learned. "
                "Turn this off for the conventional CAD representation."), "design_connector_face_glyph");
         g_sizer->Add(item_connector_face_glyph);
-    }
 
-    // Push the weld preference into the kernel now so toggling it takes effect without
-    // a restart (the sketch tool also re-pushes on activation, see DesignSketchTool::begin).
-    Slic3r::set_sketch_auto_close(wxGetApp().is_auto_close_sketch_loops());
+        // Saved WITH each design (it decides which loops are closed, i.e. what solid a project
+        // rebuilds into), so it applies to designs started from now on; an open design keeps
+        // the rule it was made with.
+        auto item_auto_close_sketch_loops = create_item_checkbox(_L("Auto-close sketch loops"),
+            _L("Treat sketch endpoints within 0.001 mm as one joint and weld the loop shut. "
+               "Off: only exactly coincident endpoints join, so a loop with a tiny gap is "
+               "shown as open instead of being closed for you. Saved with each design; "
+               "applies to designs started after the change."),
+            "auto_close_sketch_loops");
+        g_sizer->Add(item_auto_close_sketch_loops);
+    }
 #endif
 
     std::vector<wxString> ButtonDragActions = {_L("None"), _L("Pan"), _L("Rotate")};
@@ -2306,17 +2305,17 @@ void PreferencesDialog::create_items()
     auto item_show_unsupported = create_item_checkbox(_L("Show unsupported presets"), _L("Show incompatible/unsupported presets in the printer and filament dropdown lists. These presets cannot be selected."), "show_unsupported_presets");
     g_sizer->Add(item_show_unsupported);
 
-    auto item_plugin_printer_agents = create_item_checkbox(
-        _L("(Experimental) Use printer agents instead of print hosts"), _L(
-            "Route print jobs for non-Bambu printers through printer plug-in agents instead of the classic print-host upload flow.\nWhen disabled, OrcaSlicer uses the legacy print-host behavior."),
-        "use_printer_agents");
-    g_sizer->Add(item_plugin_printer_agents);
-
     //// DEVELOPER > Experimental Features
     g_sizer->Add(create_item_title(_L("Experimental Features")), 1, wxEXPAND);
 
     auto item_keep_painting    = create_item_checkbox(_L("Keep painted feature after mesh change"), _L("Attempt to keep painted features (color/seam/support/fuzzy etc.) after changing the object mesh (such as cut/reload from disk/simplify/fix etc.)\nHighly experimental! Slow and may create artifact."), "keep_painting");
     g_sizer->Add(item_keep_painting);
+
+    auto item_plugin_printer_agents = create_item_checkbox(
+        _L("Use printer agents instead of print hosts"), _L(
+            "Route print jobs for non-Bambu printers through printer plug-in agents instead of the classic print-host upload flow.\nWhen disabled, OrcaSlicer uses the legacy print-host behavior."),
+        "use_printer_agents");
+    g_sizer->Add(item_plugin_printer_agents);
 
     //// DEVELOPER > Storage
 

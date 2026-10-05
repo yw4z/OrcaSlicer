@@ -5,14 +5,23 @@
 #include "wx/progdlg.h"
 #include "wx/weakref.h"
 #include "wx/simplebook.h"
-#include "Button.hpp"
-#include "../wxExtensions.hpp"
 #include <wx/dlimpexp.h>
 #include <wx/string.h>
 #include <cstddef>
 #include <wx/event.h>
 #include <wx/panel.h>
 #include <wx/translation.h>
+
+class Button;
+class wxCloseEvent;
+class wxCommandEvent;
+class wxPaintEvent;
+class wxPanel;
+class wxScrolledWindow;
+class wxSimplebook;
+class wxSizer;
+class wxWindow;
+namespace Slic3r::GUI { class ProgressDialog; }
 
 class WXDLLIMPEXP_FWD_CORE wxButton;
 class WXDLLIMPEXP_FWD_CORE wxEventLoop;
@@ -21,7 +30,7 @@ class WXDLLIMPEXP_FWD_CORE wxStaticText;
 class WXDLLIMPEXP_FWD_CORE wxWindowDisabler;
 
 #define PROGRESSDIALOG_SIMPLEBOOK_SIZE wxSize(FromDIP(320),FromDIP(38))
-#define PROGRESSDIALOG_GAUGE_SIZE wxSize(FromDIP(320), FromDIP(6))
+#define PROGRESSDIALOG_GAUGE_SIZE wxSize(FromDIP(320), FromDIP(8))
 #define PROGRESSDIALOG_CANCEL_BUTTON_SIZE wxSize(FromDIP(60), FromDIP(24))
 #define PROGRESSDIALOG_DEF_BK wxColour(255,255,255)
 #define PROGRESSDIALOG_GREY_700 wxColour(54,54,54) // #363636 label color

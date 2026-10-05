@@ -19,7 +19,6 @@
 #include <wx/gdicmn.h>
 #include <wx/panel.h>
 #include "slic3r/GUI/PresetComboBoxes.hpp"
-#include "libslic3r/PrintConfig.hpp"
 #include "slic3r/GUI/wxExtensions.hpp"
 #include <wx/anybutton.h>
 #include <wx/utils.h>
@@ -29,6 +28,8 @@
 #include "slic3r/GUI/BBLStatusBarSend.hpp"
 #include <memory>
 #include <wx/scrolwin.h>
+
+namespace Slic3r { class DynamicPrintConfig; }
 
 namespace Slic3r { namespace GUI {
 
