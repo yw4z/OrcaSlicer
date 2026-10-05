@@ -267,6 +267,15 @@ static ::Button* sidebar_icon_btn(wxWindow* parent, const char* icon, const wxSt
     return b;
 }
 
+// Commit to Plate's faces: Prepare's add-plate glyph, drawn for its light GL toolbar, and the same
+// glyph with a body on the plate for "as bodies". Each ships a "_dark" twin for the dark ribbon,
+// picked the way GLToolbar picks it.
+static std::string commit_icon(bool bodies)
+{
+    const std::string name = bodies ? "toolbar_add_plate_bodies" : "toolbar_add_plate";
+    return dp_dark() ? name + "_dark" : name;
+}
+
 // The icons on each Feature tree and Bodies row (DesignRowList::Action::id).
 enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete };
 
@@ -1606,11 +1615,12 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // Some Orca glyphs (toolbar_flatten) are drawn for Prepare's light GL toolbar and come out
         // the same tone as a dark ribbon. Those ship a "_dark" twin, picked per theme here (and
         // again on a theme switch) the way GLToolbar picks it.
-        auto doc_btn = [this](const char* icon, const wxString& tip, bool has_dark_twin = false) {
+        auto doc_btn = [this](const char* icon, const wxString& tip, bool has_dark_twin = false,
+                              int cell_w = 40, int icon_px = 34) {
             const std::string name(icon);
             auto themed = [name, has_dark_twin] { return has_dark_twin && dp_dark() ? name + "_dark" : name; };
-            auto* b = new ScalableButton(m_toolbar, wxID_ANY, themed(), "", FromDIP(wxSize(40, 40)),
-                                         wxDefaultPosition, wxBU_EXACTFIT | wxBORDER_NONE, false, 34);
+            auto* b = new ScalableButton(m_toolbar, wxID_ANY, themed(), "", FromDIP(wxSize(cell_w, 40)),
+                                         wxDefaultPosition, wxBU_EXACTFIT | wxBORDER_NONE, false, icon_px);
             if (has_dark_twin)
                 m_icon_refresh.push_back([b, themed] { b->SetBitmap_(themed()); });
             b->SetToolTip(tip);
@@ -1668,12 +1678,73 @@ DesignPanel::DesignPanel(wxWindow* parent)
         m_section_flip_btn->Enable(false);   // only usable while a section view is active
         tb_slot["flip"].push_back(m_section_flip_btn);
 
-        // Commit is the tab's primary action and sits far right, next to Confirm/Cancel.
+        // Commit is the tab's primary action and sits far right, next to Confirm/Cancel. A split
+        // button like Prepare's Slice: the face commits in the current mode, the chevron's
+        // dropdown only switches the mode.
         m_tb_commit = new wxBoxSizer(wxHORIZONTAL);
-        auto* b_commit = doc_btn("toolbar_add_plate", _L("Commit to Plate — send the solid to Prepare"),
-                                 true);
-        b_commit->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_commit(); });
-        m_tb_commit->Add(b_commit, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+        m_commit_btn = doc_btn("toolbar_add_plate", wxEmptyString);   // face and tip: set_commit_mode
+        m_commit_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_commit(); });
+        auto* b_mode = doc_btn("drop_down", _L("Choose how Commit to Plate sends the bodies"), false, 16, 16);
+        m_tb_commit->Add(m_commit_btn, 0, wxALIGN_CENTER_VERTICAL);
+        m_tb_commit->Add(b_mode, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+
+        // Same themed-DropDown shape as the FEATURE flyouts; row index == int(CommitMode).
+        struct CommitFlyout {
+            std::vector<DropDown::Item> items;
+            wxLongLong closed_ms;          // when the list last closed (wxGetLocalTimeMillis)
+            DropDown drop;                 // declared LAST: destroyed before the vector it references
+            CommitFlyout() : drop(items) {}
+        };
+        auto cf = std::make_shared<CommitFlyout>();
+        cf->items.resize(2);
+        cf->items[int(CommitMode::Assembly)].text = _L("Commit to Plate");
+        cf->items[int(CommitMode::Assembly)].tip  = _L("All bodies become one object with a part per body, "
+                                                       "keeping their relative positions");
+        cf->items[int(CommitMode::Bodies)].text   = _L("Commit to Plate (as bodies)");
+        cf->items[int(CommitMode::Bodies)].tip    = _L("Each body becomes its own object, placed on its own");
+        CommitFlyout* cp = cf.get();
+        auto refresh_rows = [this, cp] {
+            for (size_t i = 0; i < cp->items.size(); ++i)
+                cp->items[i].icon = create_scaled_bitmap(commit_icon(i == size_t(CommitMode::Bodies)), m_toolbar, 18);
+        };
+        refresh_rows();
+        cp->drop.Create(m_commit_btn);
+        cp->drop.SetUseContentWidth(true, false);
+        cp->drop.Invalidate(true);
+        m_commit_drop = &cp->drop;
+        cp->drop.Bind(wxEVT_COMBOBOX, [this](wxCommandEvent& e) {
+            const bool bodies = e.GetInt() == int(CommitMode::Bodies);
+            set_commit_mode(bodies ? CommitMode::Bodies : CommitMode::Assembly);
+            wxGetApp().app_config->set("design_commit_mode", bodies ? "bodies" : "assembly");
+        });
+        cp->drop.Bind(EVT_DISMISS, [cp](wxCommandEvent&) { cp->closed_ms = wxGetLocalTimeMillis(); });
+        b_mode->Bind(wxEVT_BUTTON, [this, b_mode, cp](wxCommandEvent&) {
+            // A click on ▾ while the list is open closes it, and that same click reaches this
+            // button too (on MSW the list's deferred dismissal runs before the button's mouse-up):
+            // it must not reopen the list.
+            if (cp->drop.IsShown() || wxGetLocalTimeMillis() - cp->closed_ms < 300)
+                return;
+            // A fresh content measure before Popup(), as the FEATURE flyouts do. Invalidate(true)
+            // also clears the selection, which is the check on the current mode: put it back.
+            m_commit_drop->Invalidate(true);
+            m_commit_drop->SetUseContentWidth(false, false);
+            m_commit_drop->SetUseContentWidth(true, false);
+            m_commit_drop->SetSelection(int(m_commit_mode));
+            // Right-aligned under the split button, which sits at the ribbon's far right.
+            wxPoint pos = b_mode->ClientToScreen(wxPoint(b_mode->GetSize().x, -6));
+            pos.x -= m_commit_drop->GetSize().x;
+            m_commit_drop->Position(pos, wxSize(0, b_mode->GetSize().y + b_mode->FromDIP(12)));
+            m_commit_drop->Popup();
+        });
+        m_icon_refresh.push_back([this, refresh_rows] {
+            refresh_rows();
+            m_commit_drop->Invalidate(true);
+            set_commit_mode(m_commit_mode);   // the face's theme twin, and the check Invalidate cleared
+        });
+        m_flyout_keepalive.push_back(cf);
+        // Assembly unless the user picked "as bodies": it is the mode that keeps the design as drawn.
+        set_commit_mode(wxGetApp().app_config->get("design_commit_mode") == "bodies" ? CommitMode::Bodies
+                                                                                     : CommitMode::Assembly);
     }
 
     // Feature-group layout, in the requested left-to-right order.
@@ -9898,6 +9969,19 @@ void DesignPanel::on_export_step()
     m_status->Refresh();
 }
 
+void DesignPanel::set_commit_mode(CommitMode mode)
+{
+    m_commit_mode = mode;
+    const bool bodies = mode == CommitMode::Bodies;
+    if (m_commit_btn) {
+        m_commit_btn->SetBitmap_(commit_icon(bodies));
+        m_commit_btn->SetToolTip(bodies ? _L("Commit to Plate (as bodies) — send each body to Prepare as its own object")
+                                        : _L("Commit to Plate — send the solid to Prepare"));
+    }
+    if (m_commit_drop)
+        m_commit_drop->SetSelection(int(mode));   // the check on the current row
+}
+
 void DesignPanel::on_commit()
 {
     // A feature tool open with a live preview ghost (e.g. a fillet being previewed) is
@@ -9914,24 +9998,28 @@ void DesignPanel::on_commit()
     if (obj_list == nullptr)
         return;
 
-    // Multi-body: ship each (visible) body as its own plate object so they arrive on the
-    // slicer plate as independent, separately-arrangeable parts (Onshape "Commit all parts").
+    // Multi-body: ship the (visible) bodies as the parts of one assembly object that keeps
+    // their placement (the default), or each as its own plate object so they arrive as
+    // independent, separately-arrangeable parts (Onshape "Commit all parts").
     // Hidden bodies are skipped — what you see on the Design plate is what gets committed.
     sync_body_visible();
     rebuild_disp_meshes();   // ship moved bodies at their Move-gizmo positions
     if (m_disp_body_meshes.size() > 1) {
-        int committed = 0;
+        std::vector<std::pair<const TriangleMesh*, wxString>> parts;
         for (size_t b = 0; b < m_disp_body_meshes.size(); ++b) {
             if (b < m_body_visible.size() && !m_body_visible[b]) continue;   // skip hidden
             if (m_disp_body_meshes[b].its.indices.empty()) continue;
-            obj_list->load_mesh_object(m_disp_body_meshes[b],
-                                       "Design Body " + std::to_string(b + 1));
-            ++committed;
+            parts.emplace_back(&m_disp_body_meshes[b], wxString::FromUTF8("Design Body " + std::to_string(b + 1)));
         }
-        if (committed == 0) {   // every body hidden — nothing to ship
+        if (parts.empty()) {   // every body hidden — nothing to ship
             set_status(_L("All bodies hidden — show one before committing"));
             return;
         }
+        if (m_commit_mode == CommitMode::Assembly && parts.size() > 1)
+            obj_list->load_mesh_object(parts, "Design Assembly");
+        else
+            for (const auto& [mesh, name] : parts)
+                obj_list->load_mesh_object(*mesh, name);
     } else {
         obj_list->load_mesh_object(m_disp_pick_mesh, "Design Body");
     }

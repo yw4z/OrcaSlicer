@@ -33,6 +33,7 @@ class wxStaticText;
 class wxStaticLine;
 class Button;      // Orca-styled button (Widgets/Button.hpp)
 class CheckBox;    // Orca teal checkbox (Widgets/CheckBox.hpp)
+class DropDown;    // Orca themed popup list (Widgets/DropDown.hpp)
 class wxSizer;
 // wxBoxSizer, wxTextCtrl and wxListCtrl are used here as pointers only, so a forward
 // declaration is enough — but they must be declared. Every ordinary build happened to pull
@@ -237,6 +238,11 @@ private:
     // a modal dialog editing the feature's placement transform in place.
     void on_transform_imported(int feat_idx);
     void on_commit();
+    // What Commit to Plate sends: one object with a part per body (an assembly, which keeps the
+    // bodies' relative placement), or, "as bodies", one Prepare object per body. The split
+    // button's dropdown switches it, like Prepare's Slice button, without committing.
+    enum class CommitMode { Assembly, Bodies };
+    void set_commit_mode(CommitMode mode);
     void on_export_step();   // write all bodies to a .step file (native B-rep)
     // Rehydrate the parametric model from a project's saved recipe (3MF
     // Metadata/orca_cad.bin): deserialize -> recompute -> refresh viewport + tree.
@@ -400,7 +406,10 @@ private:
     void      show_move_card(bool show);
     void      apply_move_card();       // numeric move/rotate -> same xform the gizmo builds
     void      push_polygon_params();
-    wxSizer*  m_tb_commit{nullptr};   // far-right Commit to Plate, beside Confirm/Cancel
+    wxSizer*  m_tb_commit{nullptr};   // far-right Commit to Plate split button, beside Confirm/Cancel
+    CommitMode      m_commit_mode{CommitMode::Assembly};
+    ScalableButton* m_commit_btn{nullptr};   // main face: runs the current commit mode
+    DropDown*       m_commit_drop{nullptr};  // commit-mode choices, owned via m_flyout_keepalive
     wxSizer*  m_tb_doc{nullptr};      // toolbar document/view actions (new, commit, export, section, place)
     CheckBox* m_show_bed{nullptr};    // view option: draw the printer bed + plate grid, or not
     wxSizer*  m_box_move{nullptr};      // Move/Rotate numeric options (distance, axis, angle)

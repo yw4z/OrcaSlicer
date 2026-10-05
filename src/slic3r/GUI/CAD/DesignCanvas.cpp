@@ -45,6 +45,11 @@
 #include <wx/toplevel.h>
 #include <wx/window.h>
 
+#if defined(__WXMSW__) && wxUSE_POPUPWIN
+#include <wx/popupwin.h>
+extern wxPopupWindow* wxCurrentPopupWindow;
+#endif
+
 namespace Slic3r {
 namespace GUI {
 
@@ -198,7 +203,14 @@ DesignCanvas::DesignCanvas(wxWindow* parent)
         // …but NOT while an inline value field is open: the field floats over the canvas, so
         // the smallest pointer jiggle re-enters the viewport and would yank focus off the
         // field (the "no cursor focus on the number, click to focus" bug).
-        if (m_canvas_widget && !m_sketch_tool.inline_busy()) m_canvas_widget->SetFocus();
+        bool take_focus = m_canvas_widget && !m_sketch_tool.inline_busy();
+#if defined(__WXMSW__) && wxUSE_POPUPWIN
+        // …nor while a popup is open. A ribbon dropdown opens over the viewport, and the pointer
+        // crosses the viewport on its way to it: taking focus then reactivates the frame, which
+        // on MSW dismisses the popup under the pointer. GLCanvas3D::on_mouse has the same guard.
+        take_focus = take_focus && !wxCurrentPopupWindow;
+#endif
+        if (take_focus) m_canvas_widget->SetFocus();
         e.Skip();
     });
 

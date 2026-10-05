@@ -13,8 +13,9 @@ known.
 Its coupling to the rest of the application is deliberately narrow. It adds no stage to the
 slicing pipeline and touches neither the preset system nor `Tab`. It reaches the rest of Orca
 in two places: **Commit to Plate**, which hands finished solids to Prepare as ordinary model
-objects, and one optional 3MF archive entry that carries the recipe. Everything else is
-contained in `src/libslic3r/CAD/` and `src/slic3r/GUI/CAD/`.
+objects (by default one assembly object with a part per body, which keeps the bodies' relative
+placement, or one object per body), and one optional 3MF archive entry that carries the recipe.
+Everything else is contained in `src/libslic3r/CAD/` and `src/slic3r/GUI/CAD/`.
 
 The user-facing manual lives in the wiki
 ([Design Tab](https://www.orcaslicer.com/wiki/design_tab)), not here. This document covers the
