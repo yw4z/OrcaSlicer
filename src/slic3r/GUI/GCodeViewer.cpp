@@ -1390,11 +1390,11 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     m_viewer.set_dim_previous_layers_brightness(0.01f * std::stoi(get_app_config()->get("preview_dim_previous_layers_brightness")));
 
     // avoid processing if called with the same gcode_result.
-    // Belt printers are exempt: the toolpath geometry fed to libvgcode depends on
-    // the current designed/raw view state (back-transform applied in convert), so
-    // re-running the conversion is required for the upright view and for toggling
-    // it (hotkey B) to take effect even when the G-code itself is unchanged.
-    if (m_last_result_id == gcode_result.id && wxGetApp().is_editor() && !print.config().belt_printer.value) {
+    // On a belt printer the toolpath geometry fed to libvgcode also depends on the
+    // designed/raw view state (the back-transform is applied in convert), so the
+    // same result is converted again only when that view has been toggled.
+    const bool same_belt_view = !print.config().belt_printer.value || m_last_belt_show_designed == m_belt_show_designed;
+    if (m_last_result_id == gcode_result.id && wxGetApp().is_editor() && same_belt_view) {
         //BBS: add logs
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": the same id %1%, return directly, result %2% ") % m_last_result_id % (&gcode_result);
 
@@ -1688,6 +1688,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
 
     //BBS: move the id to the end of reset
     m_last_result_id = gcode_result.id;
+    m_last_belt_show_designed = m_belt_show_designed;
     m_gcode_result = &gcode_result;
     m_move_type_counts.fill(0);
     for (auto& move_type_times : m_move_type_times)

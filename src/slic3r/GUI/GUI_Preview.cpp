@@ -373,7 +373,7 @@ void Preview::refresh_belt_view()
 {
     // Re-run the G-code preview conversion so the belt "designed view" toggle takes effect
     // (the back-transform is baked into the toolpath geometry in GCodeViewer::load_as_gcode,
-    // and belt printers are exempt from the same-result-id load cache so the re-convert runs).
+    // whose same-result cache also keys on the view state, so the re-convert runs).
     // Reset m_loaded_print to bypass the "already loaded" guard the way reload_print does, but
     // keep the current layer (Z) range and only-gcode mode so the view doesn't jump on toggle.
     m_loaded_print = nullptr;
