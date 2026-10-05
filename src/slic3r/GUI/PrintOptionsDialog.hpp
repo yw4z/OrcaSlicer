@@ -24,6 +24,7 @@
 #include "Widgets/ComboBox.hpp"
 
 // Previous definitions
+class Button;
 class SwitchBoard;
 class MultiSwitchButton;
 

@@ -3,6 +3,7 @@
 #include "GLGizmosManager.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
+#include "slic3r/GUI/I18N.hpp"
 #include <vector>
 #include <utility>
 #include <imgui.h>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <cstddef>
 #include <wx/app.h>
+#include <wx/utils.h>
 #include <boost/algorithm/string.hpp>
 
 #ifdef WIN32

@@ -95,6 +95,7 @@
 #include "NetworkTestDialog.hpp"
 
 #include "Widgets/StaticLine.hpp"
+#include "Widgets/HyperLink.hpp"
 #include "Widgets/Button.hpp"
 
 namespace Slic3r {

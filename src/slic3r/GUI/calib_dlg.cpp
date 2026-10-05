@@ -12,6 +12,7 @@
 #include <cstddef>
 #include "slic3r/GUI/GUI_Utils.hpp"
 #include <wx/colour.h>
+#include "slic3r/GUI/Widgets/Button.hpp"
 #include "slic3r/GUI/Widgets/Label.hpp"
 #include "slic3r/GUI/Widgets/LabeledStaticBox.hpp"
 #include "slic3r/GUI/Widgets/RadioGroup.hpp"
@@ -34,6 +35,7 @@
 #include <wx/dialog.h>
 #include <wx/valtext.h>
 #include <wx/tglbtn.h>
+#include <wx/utils.h>
 #include <wx/event.h>
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Flow.hpp"

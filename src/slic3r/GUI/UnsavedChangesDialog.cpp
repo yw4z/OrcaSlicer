@@ -42,6 +42,7 @@
 #include <wx/textctrl.h>
 #include <wx/settings.h>
 #include <wx/tokenzr.h>
+#include <wx/utils.h>
 #include <wx/variant.h>
 #include <wx/window.h>
 #include <wx/toplevel.h>

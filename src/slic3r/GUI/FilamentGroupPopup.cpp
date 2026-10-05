@@ -26,6 +26,7 @@
 #include "slic3r/GUI/Widgets/StaticBox.hpp"
 #include <utility>
 #include "slic3r/GUI/Widgets/SwitchButton.hpp"
+#include "slic3r/GUI/Widgets/Button.hpp"
 #include <wx/tglbtn.h>
 
 namespace Slic3r { namespace GUI {

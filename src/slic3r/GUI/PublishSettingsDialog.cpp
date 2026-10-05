@@ -8,6 +8,7 @@
 #include "ConfigValueFormatter.hpp"
 #include "FilamentBitmapUtils.hpp"
 #include "Widgets/Label.hpp"
+#include "Widgets/Button.hpp"
 #include "Widgets/CheckBox.hpp"
 #include "Widgets/TextInput.hpp"
 #include "Widgets/DialogButtons.hpp"

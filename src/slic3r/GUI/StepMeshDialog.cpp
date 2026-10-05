@@ -25,6 +25,7 @@
 #include <chrono>
 #include <wx/string.h>
 #include <wx/textctrl.h>
+#include <wx/utils.h>
 #include <wx/valtext.h>
 
 using namespace Slic3r;

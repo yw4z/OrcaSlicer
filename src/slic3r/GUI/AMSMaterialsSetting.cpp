@@ -47,6 +47,7 @@
 #include <wx/panel.h>
 #include <wx/textctrl.h>
 #include <wx/string.h>
+#include <wx/utils.h>
 #include <wx/valtext.h>
 #include <wx/sizer.h>
 #include <wx/peninfobase.h>
