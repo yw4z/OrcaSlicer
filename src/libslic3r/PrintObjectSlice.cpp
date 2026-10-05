@@ -1832,10 +1832,11 @@ std::vector<ExPolygons> PrintObject::slice_single_volume_regions(const ModelVolu
 {
     if (volume == nullptr)
         return {};
-    // Match the existing slicing heights and centered transform without flattening holes.
+    // Match the existing slicing heights and the frame the layers were sliced in (belt
+    // pre-slice transforms included) without flattening holes.
     const std::vector<float> zs = zs_from_layers(this->layers());
     MeshSlicingParamsEx params;
-    params.trafo = this->trafo_centered();
+    params.trafo = this->trafo_sliced();
     const Print *print = this->print();
     return slice_volume(*volume, zs, params, [print]() { print->throw_if_canceled(); });
 }
