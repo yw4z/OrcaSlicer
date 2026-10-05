@@ -27,10 +27,10 @@
 #include <TopoDS_Edge.hxx>
 #include <TopExp.hxx>
 #include <TopTools.hxx>
-#include <TopTools_IndexedMapOfShape.hxx>
-#include <TopTools_ListOfShape.hxx>
-#include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
-#include <TopTools_ListIteratorOfListOfShape.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
+#include <NCollection_IndexedDataMap.hxx>
+#include <NCollection_IndexedMap.hxx>
+#include <NCollection_List.hxx>
 #include <Poly_Triangulation.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Dir.hxx>
@@ -63,6 +63,8 @@
 
 namespace Slic3r {
 
+using ShapeIndexMap = NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>;
+
 // ---- STEP import (B-rep, not mesh) ----
 std::vector<TopoDS_Shape> GeometryEngine::read_step_solids(const std::string& path, std::string& err)
 {
@@ -83,7 +85,7 @@ std::vector<TopoDS_Shape> GeometryEngine::read_step_solids(const std::string& pa
         if (out.empty())
             out.push_back(shape);
     } catch (const Standard_Failure& e) {
-        err = e.GetMessageString() ? e.GetMessageString() : "OCCT failed to read STEP";
+        err = *e.what() ? e.what() : "OCCT failed to read STEP";
         out.clear();
     }
     return out;
@@ -296,7 +298,7 @@ std::vector<TopoDS_Edge> GeometryEngine::collect_edges(const TopoDS_Shape& solid
     // handed every edge to the fillet twice; the de-duplicated map is also what edge_by_index
     // numbers edges by.
     std::vector<TopoDS_Edge> result;
-    TopTools_IndexedDataMapOfShapeListOfShape edgeFaceMap;
+    NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaceMap;
     TopExp::MapShapesAndAncestors(solid, TopAbs_EDGE, TopAbs_FACE, edgeFaceMap);
     if (target == FaceGroup::All) {
         for (int i = 1; i <= edgeFaceMap.Extent(); ++i)
@@ -306,7 +308,7 @@ std::vector<TopoDS_Edge> GeometryEngine::collect_edges(const TopoDS_Shape& solid
 
     for (int ei = 1; ei <= edgeFaceMap.Extent(); ++ei) {
         const TopoDS_Edge& edge = TopoDS::Edge(edgeFaceMap.FindKey(ei));
-        const TopTools_ListOfShape& faces = edgeFaceMap.FindFromIndex(ei);
+        const NCollection_List<TopoDS_Shape>& faces = edgeFaceMap.FindFromIndex(ei);
 
         bool include = false;
         for (auto it = faces.begin(); it != faces.end(); ++it) {
@@ -586,7 +588,7 @@ std::vector<TopoDS_Face> GeometryEngine::faces_of(const TopoDS_Shape& shape)
 
 std::vector<TopoDS_Edge> GeometryEngine::edges_of(const TopoDS_Shape& shape)
 {
-    TopTools_IndexedMapOfShape map;
+    ShapeIndexMap map;
     TopExp::MapShapes(shape, TopAbs_EDGE, map);     // same order as edge_by_index
     std::vector<TopoDS_Edge> out;
     out.reserve(map.Extent());
@@ -598,7 +600,7 @@ std::vector<TopoDS_Edge> GeometryEngine::edges_of(const TopoDS_Shape& shape)
 std::vector<TopoDS_Edge> GeometryEngine::edges_of_face(const TopoDS_Face& face)
 {
     std::vector<TopoDS_Edge> result;
-    TopTools_IndexedMapOfShape map;
+    ShapeIndexMap map;
     TopExp::MapShapes(face, TopAbs_EDGE, map);
     for (int i = 1; i <= map.Extent(); ++i)
         result.push_back(TopoDS::Edge(map(i)));
@@ -630,7 +632,7 @@ std::vector<Vec3d> GeometryEngine::sample_edge_world(const TopoDS_Edge& edge, do
 
 std::vector<std::vector<Vec3d>> GeometryEngine::display_edges(const TopoDS_Shape& shape, double chord_tol)
 {
-    TopTools_IndexedDataMapOfShapeListOfShape faces_of_edge;
+    NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> faces_of_edge;
     TopExp::MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, faces_of_edge);
     std::vector<std::vector<Vec3d>> out;
     for (int i = 1; i <= faces_of_edge.Extent(); ++i) {
@@ -638,7 +640,7 @@ std::vector<std::vector<Vec3d>> GeometryEngine::display_edges(const TopoDS_Shape
         if (BRep_Tool::Degenerated(edge))
             continue;
         bool seam = false;
-        for (TopTools_ListIteratorOfListOfShape it(faces_of_edge.FindFromIndex(i)); it.More() && !seam; it.Next())
+        for (NCollection_List<TopoDS_Shape>::Iterator it(faces_of_edge.FindFromIndex(i)); it.More() && !seam; it.Next())
             seam = BRep_Tool::IsClosed(edge, TopoDS::Face(it.Value()));
         if (seam)
             continue;
@@ -742,14 +744,14 @@ bool GeometryEngine::face_plane_bounds(const TopoDS_Face& face, const Vec3d& ori
 
 int GeometryEngine::edge_count(const TopoDS_Shape& shape)
 {
-    TopTools_IndexedMapOfShape map;
+    ShapeIndexMap map;
     TopExp::MapShapes(shape, TopAbs_EDGE, map);
     return map.Extent();
 }
 
 TopoDS_Edge GeometryEngine::edge_by_index(const TopoDS_Shape& shape, int index)
 {
-    TopTools_IndexedMapOfShape map;
+    ShapeIndexMap map;
     TopExp::MapShapes(shape, TopAbs_EDGE, map);
     if (index < 0 || index >= map.Extent())
         return TopoDS_Edge();
@@ -758,7 +760,7 @@ TopoDS_Edge GeometryEngine::edge_by_index(const TopoDS_Shape& shape, int index)
 
 int GeometryEngine::edge_index_of(const TopoDS_Shape& shape, const TopoDS_Edge& edge)
 {
-    TopTools_IndexedMapOfShape map;
+    ShapeIndexMap map;
     TopExp::MapShapes(shape, TopAbs_EDGE, map);
     int idx = map.FindIndex(edge);
     return (idx > 0) ? (idx - 1) : -1;
