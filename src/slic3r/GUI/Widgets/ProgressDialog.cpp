@@ -1,4 +1,14 @@
 #include "wx/wxprec.h"
+#include <cstddef>
+#include <wx/time.h>
+#include <wx/dialog.h>
+#include <wx/string.h>
+#include <wx/gdicmn.h>
+#include <wx/progdlg.h>
+#include <wx/panel.h>
+#include "slic3r/GUI/Widgets/Button.hpp"
+#include <wx/translation.h>
+#include <wx/debug.h>
 
 #ifndef WX_PRECOMP
 #include "wx/utils.h"
@@ -21,6 +31,11 @@
 #include "ProgressDialog.hpp"
 #include "wx/evtloop.h"
 #include "Label.hpp"
+
+#ifdef __WXGTK__
+#include "slic3r/GUI/Widgets/StateColor.hpp"
+#include "slic3r/GUI/GUI_Utils.hpp"
+#endif
 
 // ----------------------------------------------------------------------------
 // constants
@@ -199,7 +214,7 @@ bool ProgressDialog::Create(const wxString &title, const wxString &message, int 
         m_sizer_main->Add(m_simplebook, 1, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(28));
     } else {
         m_msg_scrolledWindow = new wxScrolledWindow( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL );
-        m_msg_scrolledWindow->SetScrollRate(0,5);
+        m_msg_scrolledWindow->SetScrollRate(0, FromDIP(20));
         wxBoxSizer* m_msg_sizer= new wxBoxSizer(wxVERTICAL);
 
         m_msg = new wxStaticText(m_msg_scrolledWindow, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(PROGRESSDIALOG_SIMPLEBOOK_SIZE.x, -1), 0);
@@ -227,10 +242,19 @@ bool ProgressDialog::Create(const wxString &title, const wxString &message, int 
 
     if (!HasPDFlag(wxPD_NO_PROGRESS)) {
         m_gauge = new wxGauge(this, wxID_ANY, maximum, wxDefaultPosition, PROGRESSDIALOG_GAUGE_SIZE, gauge_style);
+#ifdef __WXGTK__
+        SetGaugeColor(m_gauge, 
+            StateColor::darkModeColorFor(wxColour("#009688")).GetAsString(), 
+            StateColor::darkModeColorFor(wxColour("#D9D9D9")).GetAsString()
+        );
+        m_gauge->SetValue(0);
+#else
+        m_gauge->Pulse(); // colors not applied without this. probably it switches to a dc painted version of progressbar
         m_gauge->SetValue(0);
         m_gauge->SetForegroundColour(wxColour("#009688"));
         m_gauge->SetBackgroundColour(wxColour("#D9D9D9"));
         wxGetApp().UpdateDarkUI(m_gauge);
+#endif
         m_sizer_main->Add(m_gauge, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(28));
     }
 
@@ -827,7 +851,7 @@ ProgressDialog::~ProgressDialog()
 
 void ProgressDialog::DoSetSize(int x, int y, int width, int height, int sizeFlags /*= wxSIZE_AUTO*/)
 {
-    if (m_button_cancel != nullptr) { m_button_cancel->SetMinSize(PROGRESSDIALOG_CANCEL_BUTTON_SIZE); }
+    //if (m_button_cancel != nullptr) { m_button_cancel->SetMinSize(PROGRESSDIALOG_CANCEL_BUTTON_SIZE); }
 
 #ifdef __WXMSW__
     //if (m_block_left != nullptr && m_block_right != nullptr) {

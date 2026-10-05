@@ -3,6 +3,11 @@
 
 #include "GUI_ObjectSettings.hpp"
 #include "wxExtensions.hpp"
+#include <utility>
+#include <wx/string.h>
+#include <functional>
+#include <wx/sizer.h>
+#include <wx/event.h>
 
 #include <slic3r/GUI/Widgets/TextInput.hpp>
 

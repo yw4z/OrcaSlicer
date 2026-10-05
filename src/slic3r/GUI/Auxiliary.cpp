@@ -4,17 +4,52 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
 
+#include <vector>
+#include <string>
+#include <memory>
+#include <boost/filesystem/path.hpp>
+#include "slic3r/GUI/Project.hpp"
+#include "slic3r/GUI/Widgets/StateColor.hpp"
+#include "slic3r/GUI/Field.hpp"
+#include "slic3r/GUI/Widgets/TextInput.hpp"
+#include "libslic3r/Preset.hpp"
+#include <cstddef>
+#include <cstring>
+#include "slic3r/GUI/GUI.hpp"
+#include <boost/filesystem/operations.hpp>
+#include "slic3r/GUI/GUI_Utils.hpp"
+#include <utility>
+#include "slic3r/GUI/Widgets/AMSItem.hpp"
+#include <iterator>
+#include "slic3r/GUI/Widgets/Button.hpp"
+#include <wx/anybutton.h>
+#include "slic3r/GUI/Tabbook.hpp"
+#include <ctime>
+#include <map>
+#include "slic3r/GUI/Widgets/ComboBox.hpp"
 #include <wx/app.h>
+#include <wx/bookctrl.h>
 #include <wx/button.h>
+#include <wx/event.h>
+#include <wx/gdicmn.h>
+#include <wx/panel.h>
+#include <wx/image.h>
+#include <wx/dcclient.h>
+#include <wx/notebook.h>
+#include <wx/chartype.h>
 #include <wx/scrolwin.h>
 #include <wx/sizer.h>
 
 #include <wx/bmpcbox.h>
 #include <wx/bmpbuttn.h>
+#include <wx/string.h>
+#include <wx/stattext.h>
+#include <wx/textctrl.h>
 #include <wx/treectrl.h>
 #include <wx/imaglist.h>
 #include <wx/settings.h>
 #include <wx/filedlg.h>
+#include <wx/wrapsizer.h>
 #include <wx/wupdlock.h>
 #include <wx/dataview.h>
 #include <wx/tokenzr.h>
@@ -28,6 +63,10 @@
 #include "GUI_ObjectList.hpp"
 #include "MainFrame.hpp"
 #include "Widgets/Label.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/Plater.hpp"
+
+namespace fs = boost::filesystem;
 
 namespace Slic3r { namespace GUI {
 
@@ -428,7 +467,7 @@ void AuFile::on_dclick(wxMouseEvent &evt)
     if (m_type == AddFileButton)
         return;
     else
-        wxLaunchDefaultApplication(m_file_path.wstring(), 0);
+        desktop_open_project_attachment(this, m_file_path);
 }
 
 void AuFile::on_mouse_left_up(wxMouseEvent &evt)
@@ -606,7 +645,7 @@ AuFolderPanel::AuFolderPanel(wxWindow *parent, AuxiliaryFolderType type, wxWindo
     wxBoxSizer *sizer_main = new wxBoxSizer(wxVERTICAL);
 
     m_scrolledWindow = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxHSCROLL | wxVSCROLL);
-    m_scrolledWindow->SetScrollRate(5, 5);
+    m_scrolledWindow->SetScrollRate(5, FromDIP(20));
     wxBoxSizer *sizer_body = new wxBoxSizer(wxVERTICAL);
     wxBoxSizer *sizer_top  = new wxBoxSizer(wxHORIZONTAL);
 
@@ -1113,6 +1152,7 @@ void AuxiliaryPanel::update_all_cover()
      m_sizer_description->Add(m_text_description, 0, wxALIGN_TOP | wxRIGHT, FromDIP(10));
      m_input_description = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, 
                                           wxSize(FromDIP(450), FromDIP(300)), wxTE_MULTILINE | wxTE_PROCESS_ENTER);
+     m_input_description->SetBackgroundColour(*wxWHITE);
      m_input_description->SetFont(::Label::Body_14);
      m_sizer_description->Add(m_input_description, 0, wxALIGN_CENTER, 0);
 
