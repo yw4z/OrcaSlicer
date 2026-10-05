@@ -3804,6 +3804,16 @@ bool GLCanvas3D::handle_shortcut(const KeyChord& chord)
         m_dirty = true;
         request_extra_frame();
         break;
+    case Shortcut::ToggleBeltRawGcode:
+        // Same state as the legend checkbox and the canvas-toolbar menu item. The designed-view
+        // back-transform is baked into the toolpaths at load time, so the preview is re-converted.
+        if (m_gcode_viewer.is_belt_view()) {
+            m_gcode_viewer.toggle_belt_show_designed();
+            if (Plater* plater = wxGetApp().plater())
+                plater->refresh_belt_view();
+            m_dirty = true;
+        }
+        break;
     case Shortcut::ToggleOneLayerMode:
         get_gcode_viewer().get_layers_slider()->switch_one_layer_mode();
         m_dirty = true;
@@ -10196,7 +10206,7 @@ void GLCanvas3D::_render_canvas_toolbar()
         };
 
         // Belt printers, G-code preview only: toggle the designed (upright) view vs the raw
-        // machine-frame G-code. Same state as hotkey B and the legend checkbox; the reload is
+        // machine-frame G-code. Same state as the shortcut and the legend checkbox; the reload is
         // deferred (CallAfter) so the preview is not rebuilt mid-render.
         if (m_canvas_type == ECanvasType::CanvasPreview && m_gcode_viewer.is_belt_view()) {
             create_menu_item( _utf8(L("Show raw G-code (belt only)")),

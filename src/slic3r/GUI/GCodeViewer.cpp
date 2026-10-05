@@ -13,6 +13,7 @@
 #include "libslic3r/Geometry/ConvexHull.hpp"
 
 #include "GUI_App.hpp"
+#include "Shortcuts.hpp"
 #include "MainFrame.hpp"
 #include "Plater.hpp"
 #include "Camera.hpp"
@@ -5148,8 +5149,10 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         // Checked = show the raw machine-frame G-code (designed/upright view off). Worded to
         // match the canvas-toolbar menu item "Show raw G-code (belt only)". m_belt_show_designed
         // is the inverse of this checkbox, so bind a temporary and flip it on change.
-        bool show_raw = !m_belt_show_designed;
-        if (ImGui::Checkbox(_u8L("Show raw G-code (belt only) [B]").c_str(), &show_raw)) {
+        bool              show_raw = !m_belt_show_designed;
+        const std::string key      = wxGetApp().shortcuts().display(Shortcut::ToggleBeltRawGcode);
+        const std::string label    = _u8L("Show raw G-code (belt only)") + (key.empty() ? std::string() : " [" + key + "]");
+        if (ImGui::Checkbox(label.c_str(), &show_raw)) {
             m_belt_show_designed = !show_raw;
             // The designed-view back-transform is baked into the toolpath geometry at load
             // time, so the toggle only takes effect once the preview is re-converted. Defer
