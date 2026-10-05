@@ -1,12 +1,28 @@
 #include "Layer.hpp"
 #include "ClipperUtils.hpp"
+#include "Polygon.hpp"
+#include "Point.hpp"
+#include "ExPolygon.hpp"
+#include "ExtrusionEntity.hpp"
+#include "Exception.hpp"
+#include "Flow.hpp"
 #include "Print.hpp"
 #include "Fill/Fill.hpp"
+#include "PrintConfig.hpp"
 #include "ShortestPath.hpp"
 #include "SVG.hpp"
 #include "BoundingBox.hpp"
+#include "Surface.hpp"
+#include "libslic3r.h"
+#include "Utils.hpp"
 
+#include <algorithm>
 #include <boost/log/trivial.hpp>
+#include <vector>
+#include <cstddef>
+#include <utility>
+#include <cassert>
+#include <map>
 
 namespace Slic3r {
 
@@ -153,6 +169,7 @@ bool Layer::is_perimeter_compatible(const Print& print, const PrintRegion& a, co
         && config.gap_infill_speed.get_at(print.get_extruder_id(config.outer_wall_filament_id)) == other_config.gap_infill_speed.get_at(print.get_extruder_id(config.outer_wall_filament_id))
         && config.filter_out_gap_fill.value == other_config.filter_out_gap_fill.value
 		&& config.detect_overhang_wall                   == other_config.detect_overhang_wall
+		&& config.unsupported_wall_last                  == other_config.unsupported_wall_last
 		&& config.overhang_reverse                       == other_config.overhang_reverse
 		&& config.overhang_reverse_threshold             == other_config.overhang_reverse_threshold
 		&& config.wall_direction                         == other_config.wall_direction

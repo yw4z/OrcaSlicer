@@ -1,18 +1,39 @@
 #include "GCodeWriter.hpp"
 #include "FirstLayerPlane.hpp"
+#include "Config.hpp"
 #include "CustomGCode.hpp"
+#include "Extruder.hpp"
 #include "Geometry.hpp"
 #include "I18N.hpp"
+#include "Point.hpp"
+#include "Polygon.hpp"
 #include "PrintConfig.hpp"
 #include "ClipperUtils.hpp"
 #include "Geometry/ArcWelder.hpp"
 #include "Line.hpp"
+#include "LocalesUtils.hpp"
+#include "libslic3r.h"
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <array>
+#include <cstdint>
+#include <charconv>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
+#include <limits>
 #include <map>
 #include <assert.h>
 #include <GCode/GCodeProcessor.hpp>
+#include <string>
+#include <vector>
+#include <utility>
+#include <sstream>
+#include <stdexcept>
+#include <math.h>
 
 #ifdef __APPLE__
     #include <boost/spirit/include/karma.hpp>
@@ -413,26 +434,35 @@ std::string GCodeWriter::set_acceleration_internal(Acceleration type, unsigned i
 
     last_value = acceleration;
 
-    std::ostringstream gcode;
-    if (FLAVOR_IS(gcfRepetier))
-        gcode << (separate_travel ? "M202 X" : "M201 X") << acceleration << " Y" << acceleration;
-    else if (FLAVOR_IS(gcfRepRapFirmware) || FLAVOR_IS(gcfMarlinFirmware))
-        gcode << (separate_travel ? "M204 T" : "M204 P") << acceleration;
-    else if (FLAVOR_IS(gcfKlipper)) {
-        gcode << "SET_VELOCITY_LIMIT ACCEL=" << acceleration;
+    const std::string value = std::to_string(acceleration);
+    std::string       gcode;
+    if (FLAVOR_IS(gcfRepetier)) {
+        gcode += separate_travel ? "M202 X" : "M201 X";
+        gcode += value;
+        gcode += " Y";
+        gcode += value;
+    } else if (FLAVOR_IS(gcfRepRapFirmware) || FLAVOR_IS(gcfMarlinFirmware)) {
+        gcode += separate_travel ? "M204 T" : "M204 P";
+        gcode += value;
+    } else if (FLAVOR_IS(gcfKlipper)) {
+        gcode.reserve(96);
+        gcode += "SET_VELOCITY_LIMIT ACCEL=";
+        gcode += value;
         if (this->config.accel_to_decel_enable) {
-            gcode << " ACCEL_TO_DECEL=" << acceleration * this->config.accel_to_decel_factor / 100;
+            gcode += " ACCEL_TO_DECEL=";
+            gcode += float_to_string_decimal_point(acceleration * this->config.accel_to_decel_factor / 100);
             if (GCodeWriter::full_gcode_comment)
-                gcode << " ; adjust ACCEL_TO_DECEL";
+                gcode += " ; adjust ACCEL_TO_DECEL";
         }
+    } else {
+        gcode += "M204 S";
+        gcode += value;
     }
-    else
-        gcode << "M204 S" << acceleration;
 
-    if (GCodeWriter::full_gcode_comment) gcode << " ; adjust acceleration";
-    gcode << "\n";
+    if (GCodeWriter::full_gcode_comment) gcode += " ; adjust acceleration";
+    gcode += "\n";
 
-    return gcode.str();
+    return gcode;
 }
 
 std::string GCodeWriter::set_jerk_xy(double jerk)
@@ -498,37 +528,40 @@ std::string GCodeWriter::set_accel_and_jerk(unsigned int acceleration, double je
     if (EXTRUDER_LIMIT(m_max_acceleration) > 0 && acceleration > EXTRUDER_LIMIT(m_max_acceleration))
         acceleration = EXTRUDER_LIMIT(m_max_acceleration);
     
-    bool is_empty = true;
-    std::ostringstream gcode;
-    gcode << "SET_VELOCITY_LIMIT";
-    if (acceleration != 0 && acceleration != m_last_acceleration) {
-        gcode << " ACCEL=" << acceleration;
-        if (this->config.accel_to_decel_enable) {
-            gcode << " ACCEL_TO_DECEL=" << acceleration * this->config.accel_to_decel_factor / 100;
-        }
-        m_last_acceleration = acceleration;
-        is_empty = false;
-    }
     // Clamp the jerk to the allowed maximum.
     if (EXTRUDER_LIMIT(m_max_jerk_x) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_x))
         jerk = EXTRUDER_LIMIT(m_max_jerk_x);
     if (EXTRUDER_LIMIT(m_max_jerk_y) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_y))
         jerk = EXTRUDER_LIMIT(m_max_jerk_y);
 
-    if (jerk > 0.01 && !is_approx(jerk, m_last_jerk)) {
-        gcode << " SQUARE_CORNER_VELOCITY=" << jerk;
-        m_last_jerk = jerk;
-        is_empty = false;
-    }
-
-    if(is_empty)
+    const bool set_acceleration = acceleration != 0 && acceleration != m_last_acceleration;
+    const bool set_jerk         = jerk > 0.01 && !is_approx(jerk, m_last_jerk);
+    if (!set_acceleration && !set_jerk)
         return std::string();
 
-    if (GCodeWriter::full_gcode_comment)
-        gcode << " ; adjust VELOCITY_LIMIT(accel/jerk)";
-    gcode << "\n";
+    std::string gcode;
+    gcode.reserve(96);
+    gcode += "SET_VELOCITY_LIMIT";
+    if (set_acceleration) {
+        gcode += " ACCEL=";
+        gcode += std::to_string(acceleration);
+        if (this->config.accel_to_decel_enable) {
+            gcode += " ACCEL_TO_DECEL=";
+            gcode += float_to_string_decimal_point(acceleration * this->config.accel_to_decel_factor / 100);
+        }
+        m_last_acceleration = acceleration;
+    }
+    if (set_jerk) {
+        gcode += " SQUARE_CORNER_VELOCITY=";
+        gcode += float_to_string_decimal_point(jerk);
+        m_last_jerk = jerk;
+    }
 
-    return gcode.str();
+    if (GCodeWriter::full_gcode_comment)
+        gcode += " ; adjust VELOCITY_LIMIT(accel/jerk)";
+    gcode += "\n";
+
+    return gcode;
 
 }
 
@@ -788,6 +821,13 @@ double GCodeWriter::get_extruder_retracted_length(const int filament_id)
 
 std::string GCodeWriter::set_speed(double F, const std::string &comment, const std::string &cooling_marker)
 {
+    std::string gcode;
+    this->set_speed(gcode, F, comment, cooling_marker);
+    return gcode;
+}
+
+void GCodeWriter::set_speed(std::string &out, double F, const std::string &comment, const std::string &cooling_marker)
+{
     assert(F > 0.);
     assert(F < 100000.);
     
@@ -797,7 +837,7 @@ std::string GCodeWriter::set_speed(double F, const std::string &comment, const s
     //BBS
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.emit_string(cooling_marker);
-    return w.string();
+    w.append_to(out);
 }
 
 std::string GCodeWriter::travel_to_xy(const Vec2d &point, const std::string &comment)
@@ -1211,6 +1251,13 @@ bool GCodeWriter::will_move_z(double z) const
 
 std::string GCodeWriter::extrude_to_xy(const Vec2d &point, double dE, const std::string &comment, bool force_no_extrusion)
 {
+    std::string gcode;
+    this->extrude_to_xy(gcode, point, dE, comment, force_no_extrusion);
+    return gcode;
+}
+
+void GCodeWriter::extrude_to_xy(std::string &out, const Vec2d &point, double dE, const std::string &comment, bool force_no_extrusion)
+{
     m_pos(0) = point(0);
     m_pos(1) = point(1);
     if(std::abs(dE) <= std::numeric_limits<double>::epsilon())
@@ -1233,23 +1280,25 @@ std::string GCodeWriter::extrude_to_xy(const Vec2d &point, double dE, const std:
         w.emit_e(filament()->E());
     //BBS
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
-    return w.string();
+    w.append_to(out);
 }
 
 // Approximate an arc with linear extrusions, for machine mappings that cannot
 // express a G2/G3 (see extrude_arc_to_xy). center_offset is I/J: the centre
 // relative to the CURRENT position, which is why this must run before m_pos is
 // updated.
-std::string GCodeWriter::extrude_arc_as_polyline(const Vec2d &point, const Vec2d &center_offset,
-                                                 double dE, const bool is_ccw,
-                                                 const std::string &comment, bool force_no_extrusion)
+void GCodeWriter::extrude_arc_as_polyline(std::string &out, const Vec2d &point, const Vec2d &center_offset,
+                                          double dE, const bool is_ccw,
+                                          const std::string &comment, bool force_no_extrusion)
 {
     const Vec2d start  = Vec2d(m_pos.x(), m_pos.y());
     const Vec2d centre = start + center_offset;
     const double r     = (start - centre).norm();
-    if (r < EPSILON)
+    if (r < EPSILON) {
         // Degenerate: no arc to speak of, so a single move is exact.
-        return this->extrude_to_xy(point, dE, comment, force_no_extrusion);
+        this->extrude_to_xy(out, point, dE, comment, force_no_extrusion);
+        return;
+    }
 
     double a0 = std::atan2(start.y() - centre.y(), start.x() - centre.x());
     double a1 = std::atan2(point.y() - centre.y(), point.x() - centre.x());
@@ -1262,20 +1311,25 @@ std::string GCodeWriter::extrude_arc_as_polyline(const Vec2d &point, const Vec2d
     const double dmax = (tol >= r) ? PI : 2. * std::acos(1. - tol / r);
     const int    n    = std::max(2, int(std::ceil(std::abs(sweep) / std::max(dmax, EPSILON))));
 
-    std::string out;
     for (int i = 1; i <= n; ++ i) {
         const double a = a0 + sweep * (double(i) / double(n));
         const Vec2d  p = (i == n) ? point
                                   : Vec2d(centre.x() + r * std::cos(a), centre.y() + r * std::sin(a));
-        out += this->extrude_to_xy(p, dE / double(n), i == n ? comment : std::string(), force_no_extrusion);
+        this->extrude_to_xy(out, p, dE / double(n), i == n ? comment : std::string(), force_no_extrusion);
     }
-    return out;
 }
 
 //BBS: generate G2 or G3 extrude which moves by arc
 //point is end point which means X and Y axis
 //center_offset is I and J axis
 std::string GCodeWriter::extrude_arc_to_xy(const Vec2d& point, const Vec2d& center_offset, double dE, const bool is_ccw, const std::string& comment, bool force_no_extrusion)
+{
+    std::string gcode;
+    this->extrude_arc_to_xy(gcode, point, center_offset, dE, is_ccw, comment, force_no_extrusion);
+    return gcode;
+}
+
+void GCodeWriter::extrude_arc_to_xy(std::string &out, const Vec2d& point, const Vec2d& center_offset, double dE, const bool is_ccw, const std::string& comment, bool force_no_extrusion)
 {
     // Arcs emit only X/Y/I/J, so a mapping that moves logical X or Y cannot be
     // expressed as a G2/G3. GCode::should_disable_arc_fitting() normally stops
@@ -1289,8 +1343,10 @@ std::string GCodeWriter::extrude_arc_to_xy(const Vec2d& point, const Vec2d& cent
     // its diameter and a full circle a stationary blob -- so approximate the arc
     // with linear segments bounded by a chord tolerance, splitting dE between
     // them in proportion to arc length.
-    if (! m_kinematics->supports_arc_moves())
-        return this->extrude_arc_as_polyline(point, center_offset, dE, is_ccw, comment, force_no_extrusion);
+    if (! m_kinematics->supports_arc_moves()) {
+        this->extrude_arc_as_polyline(out, point, center_offset, dE, is_ccw, comment, force_no_extrusion);
+        return;
+    }
 
     m_pos(0) = point(0);
     m_pos(1) = point(1);
@@ -1306,10 +1362,17 @@ std::string GCodeWriter::extrude_arc_to_xy(const Vec2d& point, const Vec2d& cent
         w.emit_e(filament()->E());
     //BBS
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
-    return w.string();
+    w.append_to(out);
 }
 
 std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion)
+{
+    std::string gcode;
+    this->extrude_to_xyz(gcode, point, dE, comment, force_no_extrusion);
+    return gcode;
+}
+
+void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion)
 {
     // Check if Z actually changes (at export precision) before emitting it.
     // ZAA sloped extrusions call this for every segment, but many consecutive
@@ -1341,7 +1404,7 @@ std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std
         w.emit_e(filament()->E());
     //BBS
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
-    return w.string();
+    w.append_to(out);
 }
 
 std::string GCodeWriter::retract(bool before_wipe, double retract_length)
