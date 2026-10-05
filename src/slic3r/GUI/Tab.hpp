@@ -331,6 +331,10 @@ public:
     MultiSwitchButton *  m_variant_combo   = nullptr;
     ScalableButton *m_extruder_sync   = nullptr;
 	wxPanel *       m_extruder_sync_box  = nullptr;
+    // Orca: whether m_extruder_switch switches nozzle variants (it is then shown on the variant pages).
+    // The printer tab also enables the switch for printers without variants, to choose the extruder
+    // its single "Extruder" page edits.
+    bool            m_extruder_switch_variants = false;
     std::vector<NozzleVolumeType> m_actual_nozzle_volumes;
 
 public:
@@ -387,6 +391,10 @@ public:
     void        update_changed_tree_ui();
 	void		update_undo_buttons();
     void        update_extruder_switch_colors();
+    // Whether the variant switch (m_extruder_switch / m_variant_combo) switches nozzle variants.
+    bool        variant_switch_active() const;
+    // Shows the variant switch row on variant pages, and on the printer tab's "Extruder" page.
+    void        update_variant_sizer_visibility();
     void        update_all_extruder_options_status();
     void        check_extruder_options_status(int index, bool &sys_extruder, bool &modified_extruder, const std::vector<PageShp>& pages_to_check);
 
@@ -710,6 +718,24 @@ public:
 	void		cache_extruder_cnt(const DynamicPrintConfig* config = nullptr);
 	bool		apply_extruder_cnt_from_cache();
 	void		refresh_printer_agent_dropdown() const;
+
+	// Orca: a single "Extruder" page for all extruders. Its controls are created once (index 0) and
+	// switch_excluder() re-targets them to the extruder selected on m_extruder_switch.
+	Page*		extruder_page() const;
+	// Config index an "Extruder" page field (e.g. "retraction_length#0") currently edits, -1 if not on that page.
+	int			extruder_page_data_index(const std::string& field_id) const;
+	// After the user changed the extruder count: rebuild every tab's variant switch.
+	void		refresh_extruder_switches();
+	// After the config was restored (roll back): follow its extruder count, if it differs.
+	void		sync_extruders_count();
+	// Search jump to "Extruder N" / "key#N": selects extruder N on the switch, and rewrites the
+	// option to the page's own field id and the category to the page title.
+	void		prepare_extruder_option_jump(std::string& opt_key, wxString& category);
+
+protected:
+	// Orca: values of extruders added by raising the extruder count have no saved / system value to
+	// revert to; the change is shown on "extruders_count", not on each of their parameters.
+	void		update_custom_dirty(std::vector<std::string> &dirty_options, std::vector<std::string> &nonsys_options) override;
 };
 
 class TabSLAMaterial : public Tab
