@@ -519,11 +519,16 @@ int slice_all_printers(const std::string &vendor, const std::string &outdir)
         const std::string filament_name = bundle.filaments.get_selected_preset_name();
         const std::string what          = "Printer \"" + printer + "\"";
         const std::string file_base     = sanitize_filename(vendor_name) + "__" + sanitize_filename(printer);
+        // A belt printer has no wipe tower (it purges into a prism object on the belt), so its
+        // filament change is the plain tool change set_extruder() emits rather than the tower's block.
+        const bool        belt   = bundle.printers.get_selected_preset().config.opt_bool("belt_printer");
+        const std::string marker = belt ? "\nT1\n" : "CP TOOLCHANGE START";
         if (const std::string out = slice_selection(bundle, what, false, outdir, file_base); out.empty())
             ++failures;
-        else if (out.find("CP TOOLCHANGE START") == std::string::npos) {
-            // The filament change never rode the tower, so change_filament_gcode was not exercised.
-            BOOST_LOG_TRIVIAL(error) << what << " sliced but the filament change never fired (no CP TOOLCHANGE START)";
+        else if (out.find(marker) == std::string::npos) {
+            // The filament change never fired, so change_filament_gcode was not exercised.
+            BOOST_LOG_TRIVIAL(error) << what << " sliced but the filament change never fired (no "
+                                     << (belt ? "T1" : "CP TOOLCHANGE START") << ")";
             ++failures;
         }
         cover(bundle.prints.get_selected_preset());
