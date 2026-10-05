@@ -604,9 +604,11 @@ private:
     GLToolbar*                    m_collapse_toolbar{nullptr};
     std::function<CollapseSide()> m_collapse_side;
     bool m_plate_chrome_enabled{true};
-    // Design tab: render the world-axis triad at the bed centre (= modeling origin) instead of
-    // the bed corner. Default false preserves the main editor's corner triad.
-    bool m_axes_at_bed_center{false};
+    // This canvas is the Design tab's. Its bed stays at the printer bed's home whichever plate is
+    // current, with the world-axis triad and a CAD grid at the bed centre (= modeling origin) in
+    // place of the corner triad and the plate grid, and the plate data it reads (exclude areas,
+    // the current plate's box) moved onto that bed. Default false leaves the editor tabs untouched.
+    bool m_design_canvas{false};
     // Design tab: draw the printer bed and its plate grid at all. Default true, so the
     // main editor is untouched; the Design tab lets the user hide it to model without a bed.
     bool m_show_bed{true};
@@ -1025,7 +1027,7 @@ public:
     // initialized, which loads the toolbar's background.
     void set_collapse_toolbar(GLToolbar* toolbar, std::function<CollapseSide()> side);
     void enable_plate_chrome(bool enable);
-    void set_axes_at_bed_center(bool b) { m_axes_at_bed_center = b; }
+    void set_design_canvas(bool b) { m_design_canvas = b; }
     void set_show_bed(bool b) { m_show_bed = b; }
     bool get_show_bed() const { return m_show_bed; }
     void enable_sinking_contours(bool enable) { m_sinking_contours_enabled = enable; }
@@ -1444,8 +1446,8 @@ private:
     // The current plate's box (XY, at z = 0); in the Design tab, its own bed's.
     BoundingBoxf3 _current_plate_box() const;
     // Design tab: draw the CAD grid (minor 10 mm + major 50 mm) in place of the plate's
-    // corner-origin grid when the axes sit at the bed centre (modeling origin). Rebuilds its
-    // GLModels lazily, only when the bed shape changed.
+    // corner-origin grid, centred on the modeling origin. Rebuilds its GLModels lazily, only
+    // when the bed shape changed.
     void _render_cad_grid(const Transform3d& view_matrix, const Transform3d& projection_matrix);
     //BBS: add outline drawing logic
     void _render_objects(GLVolumeCollection::ERenderType type, bool with_outline = true);

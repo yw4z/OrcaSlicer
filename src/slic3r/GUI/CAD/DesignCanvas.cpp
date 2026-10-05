@@ -92,7 +92,7 @@ DesignCanvas::DesignCanvas(wxWindow* parent)
     m_canvas->enable_plate_chrome(false);
     m_canvas->enable_labels(false);
     m_canvas->enable_sinking_contours(false); // they would be sliced from the plater's meshes
-    m_canvas->set_axes_at_bed_center(true);   // triad at bed centre = modeling origin
+    m_canvas->set_design_canvas(true);   // home-position bed, triad and CAD grid at the modeling origin
 
     m_canvas->set_design_sketch_tool(&m_sketch_tool);
     m_sketch_tool.on_commit = [this](const SketchProfile& prof, const SketchPlane& pl) {

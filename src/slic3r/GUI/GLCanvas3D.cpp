@@ -2395,7 +2395,7 @@ void GLCanvas3D::_render_scene(const Camera& camera, const Size& cnv_size)
     }
     else if (gizmo_type == GLGizmosManager::BrimEars && !camera.is_looking_downward())
         show_grid = false;
-    if (m_axes_at_bed_center)
+    if (m_design_canvas)
         // Design tab: the plate grid is generated from the plate's front-left corner, so it
         // floats mid-cell under the modeling-origin triad. Suppress it here; a CAD grid centred
         // on the origin is rendered in its place (see _render_cad_grid).
@@ -2411,7 +2411,7 @@ void GLCanvas3D::_render_scene(const Camera& camera, const Size& cnv_size)
         m_frame_profiler.mark("bed");
         if (show_bed) //BBS: add outline logic
             _render_platelist(camera.get_view_matrix(), camera.get_projection_matrix(), !camera.is_looking_downward(), only_current, only_body, hover_id, true, show_grid);
-        if (m_axes_at_bed_center && show_bed)
+        if (m_design_canvas && show_bed)
             // Design tab: replace the plate's corner-origin grid with the origin-centred CAD grid.
             _render_cad_grid(camera.get_view_matrix(), camera.get_projection_matrix());
         m_frame_profiler.mark("plates");
@@ -8254,7 +8254,7 @@ void GLCanvas3D::_render_bed(const Transform3d& view_matrix, const Transform3d& 
     */
     //bool show_texture = true;
     //BBS set axes mode
-    if (m_axes_at_bed_center) {
+    if (m_design_canvas) {
         // Design tab: triad at the bed centre = modeling origin (set every frame because
         // set_shape/set_axes_mode otherwise reset it to the bed corner).
         const Vec2d bc = m_bed.build_volume().bed_center();
@@ -8271,7 +8271,7 @@ void GLCanvas3D::_render_platelist(const Transform3d& view_matrix, const Transfo
     // Design tab: its bed stays at the printer bed's home whichever plate is current, so the
     // current plate's exclude areas are moved from that plate onto it.
     PartPlate* curr_plate = plate_list.get_curr_plate();
-    const Transform3d plate_view_matrix = m_axes_at_bed_center && curr_plate != nullptr ?
+    const Transform3d plate_view_matrix = m_design_canvas && curr_plate != nullptr ?
         Transform3d(view_matrix * Geometry::translation_transform(-curr_plate->get_origin())) : view_matrix;
     plate_list.render(plate_view_matrix, projection_matrix, bottom, only_current, only_body, hover_id, render_cali, show_grid, !m_plate_chrome_enabled);
 }
@@ -8280,7 +8280,7 @@ BoundingBoxf3 GLCanvas3D::_current_plate_box() const
 {
     // Design tab: its own bed stands in for the current plate (see _render_platelist).
     const BuildVolume& build_volume = m_bed.build_volume();
-    if (m_axes_at_bed_center && build_volume.valid()) {
+    if (m_design_canvas && build_volume.valid()) {
         // Flat at z = 0 like the plate's own box. Merged, as PartPlate builds it: the min/max
         // constructor leaves a flat box undefined.
         const BoundingBoxf bb = build_volume.bounding_volume2d();
