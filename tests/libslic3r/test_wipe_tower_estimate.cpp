@@ -22,6 +22,7 @@
 #include <numeric>
 #include <string>
 #include <vector>
+#include "libslic3r/clonable_ptr.hpp"
 
 using namespace Slic3r;
 using Catch::Matchers::WithinAbs;

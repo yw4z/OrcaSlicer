@@ -104,7 +104,6 @@
 #include "Widgets/MultiNozzleSync.hpp"
 #include "Widgets/SwitchButton.hpp"
 #include "Widgets/TabCtrl.hpp"
-#include "Widgets/ComboBox.hpp"
 #include "Widgets/CheckBox.hpp"
 #include "MarkdownTip.hpp"
 #include "Search.hpp"
@@ -112,7 +111,6 @@
 #include "libslic3r/GCode/Thumbnails.hpp"
 #include "WipeTowerDialog.hpp"
 
-#include "DeviceCore/DevManager.h"
 
 #ifdef WIN32
 	#include <commctrl.h>
