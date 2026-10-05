@@ -1,7 +1,9 @@
 #ifndef slic3r_DesignPanel_hpp_
 #define slic3r_DesignPanel_hpp_
 
+#include <cstdint>
 #include <string>
+#include <utility>
 #include "libslic3r/Point.hpp"
 #include "libslic3r/CAD/SketchEngine.hpp"
 #include "libslic3r/TriangleMesh.hpp"

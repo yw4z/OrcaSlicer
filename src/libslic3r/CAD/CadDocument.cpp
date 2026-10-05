@@ -9,6 +9,7 @@
 #include <Standard_Handle.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 #include <Standard_TypeDef.hxx>
+#include <TopAbs_State.hxx>
 #include <array>
 
 #include <Standard_Failure.hxx>
@@ -37,6 +38,7 @@
 #include <exception>
 #include <cstdint>
 #include <cereal/cereal.hpp>
+#include <cereal/details/helpers.hpp>
 #include <gp_Pln.hxx>
 #include <NCollection_List.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -80,6 +82,7 @@
 #include <cctype>
 #include <cstdio>
 #include <functional>
+#include <gp_XY.hxx>
 #include <initializer_list>
 #include <math.h>
 #include <map>

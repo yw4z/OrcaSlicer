@@ -5,6 +5,7 @@
 #include "libslic3r/CAD/SketchImport.hpp"
 
 #include <wx/font.h>
+#include <wx/string.h>
 
 #include <functional>
 #include <memory>

@@ -6,12 +6,14 @@
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "libslic3r/format.hpp"
+#include "libslic3r/Utils.hpp"
 
 #include <Eigen/Core>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
 #include <Eigen/Geometry>
+#include <functional>
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include "libslic3r/BuildVolume.hpp"

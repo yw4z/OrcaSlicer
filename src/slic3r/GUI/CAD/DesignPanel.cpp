@@ -5,6 +5,9 @@
 #include "slic3r/GUI/CAD/DesignTextDialog.hpp"           // Text: font, height, live outline
 #include "slic3r/GUI/CAD/DesignRowList.hpp"              // Feature tree and Bodies rows with their own actions
 #include "slic3r/GUI/CAD/DesignOffer.hpp"                // generated offer table — see scripts/CAD/tool_atlas.json
+#include "slic3r/GUI/GLToolbar.hpp"
+#include "slic3r/GUI/GUI_Utils.hpp"
+#include "slic3r/GUI/Widgets/Button.hpp"
 #include "libslic3r/CAD/GeometryEngine.hpp"   // face_by_index for face-extrude gizmo anchor
 #include "libslic3r/TriangleMesh.hpp"     // mesh import: STL/OBJ -> indexed_triangle_set
 #include "libslic3r/Format/OBJ.hpp"
@@ -18,6 +21,8 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/log/trivial.hpp>          // the offer/atlas join check reports on the log
+#include <wx/aui/framemanager.h>
+#include <wx/longlong.h>
 #include <wx/stopwatch.h>
 
 #include <cassert>
@@ -60,6 +65,8 @@
 #include <wx/string.h>
 #include <wx/tglbtn.h>
 #include <wx/textctrl.h>
+#include <wx/time.h>
+#include <wx/toplevel.h>
 #include <wx/translation.h>
 #include <wx/statline.h>
 #include <wx/statbmp.h>

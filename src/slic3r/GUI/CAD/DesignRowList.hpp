@@ -2,7 +2,14 @@
 #define slic3r_DesignRowList_hpp_
 
 #include <wx/vlbox.h>
+#include <wx/colour.h>
+#include <wx/dc.h>
+#include <wx/event.h>
+#include <wx/gdicmn.h>
+#include <wx/string.h>
+#include <wx/types.h>
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <string>

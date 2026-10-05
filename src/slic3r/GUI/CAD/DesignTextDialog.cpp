@@ -10,16 +10,31 @@
 #include "slic3r/Utils/WxFontUtils.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Emboss.hpp"
+#include "libslic3r/CAD/SketchImport.hpp"
+#include "libslic3r/Point.hpp"
+#include "slic3r/GUI/GUI_Utils.hpp"
 
+#include <wx/arrstr.h>
 #include <wx/dcbuffer.h>
+#include <wx/event.h>
+#include <wx/font.h>
+#include <wx/fontenc.h>
 #include <wx/fontenum.h>
+#include <wx/gdicmn.h>
 #include <wx/graphics.h>
+#include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
+#include <wx/string.h>
 #include <wx/textctrl.h>
+#include <wx/tglbtn.h>
+#include <wx/toplevel.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
+#include <memory>
+#include <string>
 
 namespace Slic3r { namespace GUI {
 

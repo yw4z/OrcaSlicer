@@ -1,15 +1,25 @@
 #include "slic3r/GUI/CAD/DesignRowList.hpp"
 
 #include "slic3r/GUI/Widgets/StateColor.hpp"
+#include "slic3r/GUI/wxExtensions.hpp"
 
 #include <wx/control.h>
 #include <wx/dc.h>
+#include <wx/event.h>
+#include <wx/gdicmn.h>
 #include <wx/graphics.h>
 #include <wx/scrolwin.h>
+#include <wx/string.h>
 #include <wx/textctrl.h>
+#include <wx/types.h>
+#include <wx/vlbox.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace Slic3r { namespace GUI {
 

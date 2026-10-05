@@ -7,6 +7,10 @@
 
 #include <wx/aui/dockart.h>
 #include <wx/aui/floatpane.h>
+#include <wx/aui/framemanager.h>
+#include <wx/colour.h>
+#include <wx/event.h>
+#include <wx/gdicmn.h>
 
 namespace Slic3r { namespace GUI {
 

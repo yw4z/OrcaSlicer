@@ -8,6 +8,7 @@
 #include "slic3r/GUI/GLModel.hpp"
 #include "slic3r/GUI/GLSelectionRectangle.hpp"   // left-drag rubber band over the committed bodies
 #include <Eigen/Core>
+#include <cstddef>
 #include <functional>
 #include "libslic3r/Color.hpp"
 #include <math.h>

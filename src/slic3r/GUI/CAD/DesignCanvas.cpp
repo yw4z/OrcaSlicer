@@ -9,6 +9,8 @@
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/ImGuiWrapper.hpp"
+#include "slic3r/GUI/GLToolbar.hpp"
+#include "slic3r/GUI/Event.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "slic3r/GUI/3DScene.hpp"
@@ -20,6 +22,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <imgui.h>
 #include <wx/colour.h>
 #include <wx/event.h>
 #include <wx/gdicmn.h>
@@ -36,6 +39,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include <wx/glcanvas.h>
 #include <wx/panel.h>
+#include <wx/setup.h>
 #include <wx/stopwatch.h>   // wxGetLocalTimeMillis: the right-click vs right-hold budget
 #include <wx/sizer.h>
 #include <wx/frame.h>

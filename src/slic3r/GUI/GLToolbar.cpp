@@ -13,6 +13,7 @@
 #include "libslic3r/Utils.hpp"
 #include <cassert>
 #include <cstddef>
+#include <functional>
 #include <vector>
 #include <utility>
 #include <wx/event.h>
