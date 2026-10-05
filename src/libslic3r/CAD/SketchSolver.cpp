@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 #include <utility>
+#include "libslic3r/Point.hpp"
 
 namespace Slic3r {
 
