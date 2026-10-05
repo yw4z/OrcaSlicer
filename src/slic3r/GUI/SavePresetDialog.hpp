@@ -4,6 +4,7 @@
 //#include <wx/gdicmn.h>
 
 #include "libslic3r/Preset.hpp"
+#include "slic3r/GUI/Widgets/Button.hpp"
 #include "GUI_Utils.hpp"
 #include <string>
 #include <wx/anybutton.h>

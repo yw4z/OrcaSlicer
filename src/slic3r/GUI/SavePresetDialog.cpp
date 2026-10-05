@@ -18,7 +18,9 @@
 #include "slic3r/GUI/OptionsGroup.hpp"
 #include <vector>
 #include <string>
+#include <set>
 #include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/log/trivial.hpp>
 
 #include <wx/anybutton.h>
