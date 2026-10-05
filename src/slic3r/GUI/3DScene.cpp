@@ -193,7 +193,9 @@ ColorRGBA GLVolume::SUPPORT_BLOCKER_COL  = {1.0f, 0.3f, 0.3f, 0.4f};
 
 ColorRGBA GLVolume::MODEL_HIDDEN_COL  = {0.f, 0.f, 0.f, 0.3f};
 
-// Precise Seam modifier colors
+// Precise Seam modifier colors. Center, Left and Right are deliberately close shades of one orange:
+// all three are strong modifiers, and distinct hues per mode would turn the scene into a rainbow.
+// The object list icons tell the modes apart.
 ColorRGBA GLVolume::PRECISE_SEAM_CENTER_COL   = {1.0f,   0.627f, 0.082f, 0.6f};  // FFA015 - orange
 ColorRGBA GLVolume::PRECISE_SEAM_LEFT_COL     = {1.0f,   0.753f, 0.0f,   0.6f};  // FFC000 - golden
 ColorRGBA GLVolume::PRECISE_SEAM_RIGHT_COL    = {1.0f,   0.514f, 0.0f,   0.6f};  // FF8300 - dark orange
@@ -1127,8 +1129,17 @@ GLVolumeWithIdAndZList volumes_to_render(const GLVolumePtrs& volumes, GLVolumeCo
         );
     }
     else if (type == GLVolumeCollection::ERenderType::Opaque && list.size() > 1) {
+        // Orca: nearest first after the selected ones, so the depth test skips shading hidden surfaces.
+        for (GLVolumeWithIdAndZ& volume : list) {
+            volume.second.second = volume.first->transformed_bounding_box().transformed(view_matrix).max(2);
+        }
+
         std::sort(list.begin(), list.end(),
-            [](const GLVolumeWithIdAndZ& v1, const GLVolumeWithIdAndZ& v2) -> bool { return v1.first->selected && !v2.first->selected; }
+            [](const GLVolumeWithIdAndZ& v1, const GLVolumeWithIdAndZ& v2) -> bool {
+                if (v1.first->selected != v2.first->selected)
+                    return v1.first->selected;
+                return v1.second.second > v2.second.second;
+            }
         );
     }
 

@@ -1,5 +1,10 @@
 #include <catch2/catch_all.hpp>
 
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_message.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/PrintConfigConstants.hpp"
 #include "libslic3r/LocalesUtils.hpp"
@@ -13,9 +18,21 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/nowide/fstream.hpp>
+#include "libslic3r/Config.hpp"
+#include <cstddef>
+#include <initializer_list>
+#include <memory>
+#include <map>
+#include <iterator>
 #include <nlohmann/json.hpp>
 
+#include <set>
 #include <sstream>
+#include <vector>
+#include <utility>
+#include <catch2/matchers/catch_matchers_vector.hpp>
+
+namespace fs = boost::filesystem;
 
 using namespace Slic3r;
 
@@ -1461,4 +1478,22 @@ TEST_CASE("A static config applied onto a config of another type falls back to a
     REQUIRE_FALSE(region.apply_to(dynamic));
     dynamic.apply(region);
     CHECK(dynamic.opt_serialize("sparse_infill_pattern") == "gyroid");
+}
+
+TEST_CASE("Default options of enum lists get their definition's keys map", "[Config]")
+{
+    size_t enum_lists = 0;
+    for (const auto &[key, def] : print_config_def.options) {
+        if (def.type != coEnums || !def.default_value)
+            continue;
+        INFO(key);
+        const std::unique_ptr<ConfigOption> opt(def.create_default_option());
+        CHECK(*opt == *def.default_value);
+        const auto *nullable_enums = dynamic_cast<const ConfigOptionEnumsGenericNullable *>(opt.get());
+        const auto *enums          = dynamic_cast<const ConfigOptionEnumsGeneric *>(opt.get());
+        REQUIRE((nullable_enums != nullptr) != (enums != nullptr));
+        CHECK((nullable_enums != nullptr ? nullable_enums->keys_map : enums->keys_map) == def.enum_keys_map);
+        ++enum_lists;
+    }
+    CHECK(enum_lists > 0);
 }

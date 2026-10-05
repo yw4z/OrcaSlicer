@@ -1,6 +1,5 @@
 #include "AMSControl.hpp"
 #include "Label.hpp"
-#include "../BitmapCache.hpp"
 #include "../I18N.hpp"
 #include "../GUI_App.hpp"
 
@@ -11,6 +10,7 @@
 #include "slic3r/GUI/DeviceCore/DevFilaSystem.h"
 #include "slic3r/GUI/DeviceCore/DevFilaSwitch.h"
 
+#include <wx/anybutton.h>
 #include <wx/checklst.h>
 #include <wx/gdicmn.h>
 #include "slic3r/GUI/AmsMappingPopup.hpp"
@@ -41,8 +41,12 @@
 
 #include <boost/log/trivial.hpp>
 #include <wx/string.h>
+#include "slic3r/GUI/DeviceCore/DevUtil.h"
+#include "libslic3r/AppConfig.hpp"
+#include "slic3r/GUI/DeviceManager.hpp"
+#include "slic3r/GUI/Widgets/StepCtrl.hpp"
+#include "slic3r/GUI/wxExtensions.hpp"
 
-#include "CalibUtils.hpp"
 
 namespace Slic3r { namespace GUI {
 

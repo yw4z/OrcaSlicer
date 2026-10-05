@@ -40,8 +40,16 @@
 #include "slic3r/GUI/3DScene.hpp"
 #include <vector>
 #include <utility>
-#include "slic3r/GUI/ImGuiWrapper.hpp"
 #include <queue>
+#include "libslic3r/Color.hpp"
+#include "libslic3r/ObjectID.hpp"
+#include "libslic3r/Preset.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/MeshUtils.hpp"
+#include "slic3r/GUI/Selection.hpp"
+
+namespace Slic3r::GUI { class ImGuiWrapper; }
+namespace cereal { class BinaryInputArchive; }
 
 namespace Slic3r::GUI {
 
@@ -750,20 +758,6 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d& mous
                 return true;
             }
         }
-        else if (alt_down) {
-            // BBS
-            double pos = m_c->object_clipper()->get_position();
-            pos = action == SLAGizmoEventType::MouseWheelDown
-                      ? std::max(0., pos - 0.01)
-                      : std::min(1., pos + 0.01);
-            m_c->object_clipper()->set_position_by_ratio(pos, true);
-            return true;
-        }
-    }
-
-    if (action == SLAGizmoEventType::ResetClippingPlane) {
-        m_c->object_clipper()->set_position_by_ratio(-1., false);
-        return true;
     }
 
     if (action == SLAGizmoEventType::LeftDown
