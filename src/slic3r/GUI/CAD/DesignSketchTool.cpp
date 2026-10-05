@@ -10315,14 +10315,14 @@ std::vector<int> DesignSketchTool::connected_loop(int seed) const
 // the offer was excluded in sketch mode wholesale so a right-click could end a polyline chain,
 // abandon an anchor or exit a tool. That made every sketch row in the atlas unreachable.
 // The honest test is not "which mode are we in" but "did the tool actually USE this right-click",
-// and only the tool knows. Wrapping on_mouse records that once, for every terminator, instead of
-// threading a flag through the twenty-odd sites that consume a RightDown.
+// and only the tool knows: take_right_click returns it for every terminator, from the
+// twenty-odd sites that consume a RightDown.
 // Right-click abandons the anchor a draw tool has down. With NOTHING down there is nothing to
 // abandon — and consuming the click anyway made the offer unreachable from every armed draw tool:
-// on_mouse records the consumption in m_right_consumed and DesignCanvas's RIGHT_UP handler
-// suppresses the menu whenever it is set, so right-click became a no-op that also hid the one door
-// to half the vocabulary (47 of 86 verbs have no shortcut). Measured on the rig: with Line armed,
-// two right-clicks in a row produced no menu and no tool change; only Escape freed it.
+// DesignCanvas's RIGHT_UP handler suppresses the menu whenever the tool used the click, so
+// right-click became a no-op that also hid the one door to half the vocabulary (47 of 86 verbs
+// have no shortcut). Measured on the rig: with Line armed, two right-clicks in a row produced no
+// menu and no tool change; only Escape freed it.
 // Same rule as xmh6, which said it for the selection: clearing nothing is not a gesture
 // terminator. ghcz.
 bool DesignSketchTool::right_abandon()
@@ -10334,12 +10334,24 @@ bool DesignSketchTool::right_abandon()
     return true;
 }
 
+// The camera follows Preferences > Control here as in Prepare, so no tool may take a gesture the
+// camera owns. A right press may start whatever drag action the right button is given, and
+// whether it did is known only at the release: ending a chain on the press made every pan or
+// orbit started there end the chain too. The press goes to the camera and is kept;
+// DesignCanvas's RIGHT_UP handler replays it through take_right_click when it was a click.
 bool DesignSketchTool::on_mouse(wxMouseEvent& evt, GLCanvas3D& canvas)
 {
-    const bool consumed = on_mouse_impl(evt, canvas);
-    if (evt.RightDown())
-        m_right_consumed = consumed;
-    return consumed;
+    if (evt.RightDown()) {
+        m_right_press = evt;
+        return false;
+    }
+    return on_mouse_impl(evt, canvas);
+}
+
+bool DesignSketchTool::take_right_click(GLCanvas3D& canvas)
+{
+    auto press = std::exchange(m_right_press, {});
+    return press && on_mouse_impl(*press, canvas);
 }
 
 bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
@@ -11288,9 +11300,9 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
             return true;
         }
         if (evt.RightDown()) {
-            // Hand the click back (return false) so the offer opens: the m_right_consumed flag
-            // this return value feeds means "the tool USED this right-click", and a plain
-            // right-click in Select mode is not a gesture terminator.
+            // Hand the click back (return false) so the offer opens: take_right_click returns
+            // this value as "the tool USED this right-click", and a plain right-click in Select
+            // mode is not a gesture terminator.
             //
             // But do NOT drop the selection on the way out. The offer menu describes WHAT IS
             // SELECTED, so clearing first guaranteed it could only ever describe nothing: select

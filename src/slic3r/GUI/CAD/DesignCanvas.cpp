@@ -1051,15 +1051,18 @@ void DesignCanvas::set_on_context_menu(std::function<void(const wxPoint&)> cb)
         return;
     m_ctx_bound = true;
     // Bound AFTER GLCanvas3D's own handlers, so this runs first and can consume the event.
-    // It only consumes when it actually opens the offer; every other right-click still falls
-    // through to the polyline-chain end and the move gizmo, which were there first.
-    // Right-drag pans. Without remembering where the press landed, every pan ended by popping
-    // the offer over wherever the camera stopped — the menu appearing as the reward for moving
-    // the view. The offer is the release of a STATIONARY right-click (kCadRightClickDriftPx).
+    // It only consumes when it actually opens the offer.
+    // Right-drag may pan or orbit (Preferences > Control). Without remembering where the press
+    // landed, every such drag ended by popping the offer over wherever the camera stopped — the
+    // menu appearing as the reward for moving the view. A right-click is the release of a
+    // STATIONARY press (kCadRightClickDriftPx); only that reaches the sketch tool or the offer.
     m_canvas_widget->Bind(wxEVT_RIGHT_DOWN, [this](wxMouseEvent& e) {
         m_ctx_press     = e.GetPosition();
         m_ctx_travelled = false;
-        e.Skip();     // the canvas still needs the press to seed the orbit
+        // Drop any press the tool still keeps (only a click's release takes it, so a pan's stays)
+        // before the canvas offers it this one, which ImGui may take instead.
+        m_sketch_tool.drop_right_click();
+        e.Skip();     // the canvas still needs the press to seed a pan or an orbit
     });
     m_canvas_widget->Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
         if (e.RightIsDown()) {
@@ -1070,12 +1073,13 @@ void DesignCanvas::set_on_context_menu(std::function<void(const wxPoint&)> cb)
     });
     m_canvas_widget->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent& e) {
         const wxPoint d  = e.GetPosition() - m_ctx_press;
-        // Always read-and-clear, even when another guard already rules the offer out, or a
-        // terminator recorded under one condition would still be pending under the next.
-        const bool terminated = m_sketch_tool.take_right_consumed();
-        // Click, or navigation? A press that travelled orbited; one that did not, did not.
+        // Click, or navigation? A press that travelled panned or orbited; one that did not, did not.
         const bool is_click = !m_ctx_travelled && std::max(std::abs(d.x), std::abs(d.y)) <= kCadRightClickDriftPx;
-        if (m_on_context_menu && !terminated && !inline_busy() && is_click) {
+        // Ending a chain or abandoning an anchor uses the click up.
+        const bool terminated = is_click && m_canvas && m_sketch_tool.take_right_click(*m_canvas);
+        if (terminated)
+            m_canvas->set_as_dirty();   // drawn by the canvas's own RightUp (e.Skip below) or at idle
+        else if (m_on_context_menu && !inline_busy() && is_click) {
             // The menu belongs to what you POINTED AT — and pointing happened at the PRESS, not
             // at the release, so the raycast uses the press position. Within a 3 px budget the
             // two are the same pixel in practice; using the press is what makes that a

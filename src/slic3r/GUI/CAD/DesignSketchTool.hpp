@@ -9,14 +9,15 @@
 #include "slic3r/GUI/GLSelectionRectangle.hpp"   // left-drag rubber band over the committed bodies
 #include <Eigen/Core>
 #include <cstddef>
+#include <wx/event.h>
 #include <functional>
+#include <optional>
 #include "libslic3r/Color.hpp"
 #include <math.h>
 #include <vector>
 #include <string>
 #include <utility>
 
-class wxMouseEvent;
 class wxPoint;
 
 namespace Slic3r {
@@ -149,10 +150,10 @@ public:
     // Right-click on a draw tool: true when an in-progress anchor was abandoned, false when
     // there was nothing to abandon — and false is what lets the offer menu open. ghcz.
     bool right_abandon();
-    // True if the LAST right-press was consumed as a gesture terminator (end a polyline chain,
-    // abandon an anchor, exit a tool). Read-and-clear: the canvas asks on the matching release to
-    // decide whether that right-click was the user's, in which case it opens the offer.
-    bool take_right_consumed() { const bool b = m_right_consumed; m_right_consumed = false; return b; }
+    // Replays and clears the right press on_mouse kept for the camera: true if the tool used it as
+    // a gesture terminator (end a polyline chain, abandon an anchor), so no offer opens.
+    bool take_right_click(GLCanvas3D& canvas);
+    void drop_right_click() { m_right_press.reset(); }
     void render(GLCanvas3D& canvas);
     // The in-canvas value field, drawn by render() before any early return. Owned by
     // DesignCanvas; null until it sets it. Not a window — see SketchInlineEditor.hpp.
@@ -1274,7 +1275,7 @@ private:
     void hit_display_sketch(const DisplaySketch& d, const Vec2d& p, double tol,
                             int& edge_feat, int& edge_reg, int& edge_ent,
                             double& edge_d, int& face_feat, int& face_reg) const;
-    bool m_right_consumed{false};          // last RightDown was a gesture terminator, not a menu
+    std::optional<wxMouseEvent> m_right_press;   // right press not yet known to be a click
     bool m_escalate_repick{true};          // re-picking the same sub-element takes the whole body
     void render_solid_highlight();
     // The above's edge and vertex highlight, from explicit arguments, so the committed selection

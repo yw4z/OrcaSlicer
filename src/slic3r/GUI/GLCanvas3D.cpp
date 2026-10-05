@@ -4311,7 +4311,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         }
         if (evt.LeftDown() && m_canvas != nullptr)
             m_canvas->SetFocus();   // grab keyboard focus so Delete/keys reach this canvas
-        if (m_design_sketch_tool->on_mouse(evt, *this)) {
+        // A Touchpad-style orbit or pan (a plain move with Alt or Shift held) is the camera's,
+        // whatever the tool would make of the move. Only a drag consults the button mappings.
+        const bool camera_move = evt.Moving() && (is_camera_rotate(evt, {}) || is_camera_pan(evt, {}));
+        if (!camera_move && m_design_sketch_tool->on_mouse(evt, *this)) {
             m_dirty = true;
             render();   // force an immediate redraw so the sketch overlay updates live
             return;

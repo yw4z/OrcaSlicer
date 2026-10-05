@@ -154,15 +154,18 @@ rather than to its end points: a press that wandered past the budget at any mome
 navigation, even if it comes back to where it started, which is what stops a slow, careful
 orbit from ending in a menu. There is no time budget — a gesture that means something different
 when it is slow is exactly what the interaction charter rules out. The raycast uses the press
-position, not the release. An armed sketch tool that already consumed the right
-button (to terminate a chain, say) declines to also open a menu, through a read-and-clear flag.
-Past either budget the event is navigation, and navigation does not transition the state
-machine.
+position, not the release. The sketch tool sees a right press only once the release has shown it
+was a click: the press itself goes to the camera, which may pan or orbit with that button, and the
+canvas replays it to the tool on a stationary release. A tool that uses the click (to terminate a
+chain, say) keeps the menu closed. Past either budget the event is navigation, and navigation
+does not transition the state machine.
 
 Navigation itself is Prepare's: the camera reads the drag actions set in Preferences > Control
-for each button. The left button is shared with picking, so a whole body is swept with a
-rectangle on plain left-drag only while no camera action is assigned to it, and with
-Shift+left-drag otherwise — Prepare's own rectangle selection.
+for each button, and in the Touchpad camera style a move with Alt held orbits and one with Shift
+held pans, whatever tool is armed. The left button is shared with picking and drawing, so a tool
+handle or a press that draws takes it first, as a gizmo does in Prepare; a whole body is swept
+with a rectangle on plain left-drag only while no camera action is assigned to the left button,
+and with Shift+left-drag otherwise — Prepare's own rectangle selection.
 
 Entering a sketch changes three things at once so the mode is legible: a banner above the
 canvas (a sibling of the canvas, not a child over it — on GTK a child window over a
