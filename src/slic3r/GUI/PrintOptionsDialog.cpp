@@ -20,6 +20,7 @@
 #include "slic3r/GUI/DeviceCore/DevConfigUtil.h"
 #include "slic3r/GUI/DeviceManager.hpp"
 #include <wx/sizer.h>
+#include "slic3r/GUI/Widgets/Button.hpp"
 #include "libslic3r/CommonDefs.hpp"
 #include "slic3r/GUI/DeviceCore/DevDefs.h"
 #include <wx/utils.h>
