@@ -606,6 +606,9 @@ private:
     // Design tab: draw the printer bed and its plate grid at all. Default true, so the
     // main editor is untouched; the Design tab lets the user hide it to model without a bed.
     bool m_show_bed{true};
+    // Design tab: draw the outline where a volume crosses the bed. GLVolume::SinkingContours slices
+    // the plater model's mesh by the volume's ids, so a canvas over its own Model must turn it off.
+    bool m_sinking_contours_enabled{true};
     // Design tab: CAD grid drawn on the bed plane in place of the plate's corner-origin grid.
     // Two GLModels (10 mm minor / 50 mm major) generated from the bed centre so a line passes
     // exactly through the modeling origin; built once and rebuilt only when the bed shape changes.
@@ -1021,6 +1024,7 @@ public:
     void set_axes_at_bed_center(bool b) { m_axes_at_bed_center = b; }
     void set_show_bed(bool b) { m_show_bed = b; }
     bool get_show_bed() const { return m_show_bed; }
+    void enable_sinking_contours(bool enable) { m_sinking_contours_enabled = enable; }
 #ifdef SLIC3R_CAD
     void set_design_sketch_tool(DesignSketchTool* tool) { m_design_sketch_tool = tool; }
     DesignSketchTool* get_design_sketch_tool() const { return m_design_sketch_tool; }
