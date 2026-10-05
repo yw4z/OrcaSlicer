@@ -12,7 +12,6 @@
 
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
-#include "ElephantFootCompensation.hpp"
 #include "Geometry.hpp"
 #include "I18N.hpp"
 #include "Layer.hpp"
@@ -28,12 +27,10 @@
 #include "Slicing.hpp"
 #include "Tesselate.hpp"
 #include "TriangleMeshSlicer.hpp"
-#include "TriangleSelector.hpp"
 #include "Utils.hpp"
 #include "Fill/FillAdaptive.hpp"
 #include "Fill/Fill.hpp"
 #include "Fill/FillLightning.hpp"
-#include "Format/STL.hpp"
 #include "format.hpp"
 #include "AABBTreeIndirect.hpp"
 #include "AABBTreeLines.hpp"
@@ -80,6 +77,14 @@
 
 #include <Shiny/Shiny.h>
 #include <vector>
+#include <tbb/concurrent_unordered_map.h>
+#include "ExtrusionEntityCollection.hpp"
+#include "Fill/FillBase.hpp"
+#include "Fill/Lightning/Generator.hpp"
+#include "SurfaceCollection.hpp"
+#include "TriangleMesh.hpp"
+
+namespace Slic3r { enum class EnforcerBlockerType : int8_t; }
 
 using namespace std::literals;
 

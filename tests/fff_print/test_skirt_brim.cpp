@@ -9,7 +9,6 @@
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/GCodeReader.hpp"
 #include "libslic3r/Layer.hpp"
-#include "libslic3r/Config.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Geometry/ConvexHull.hpp"
 
@@ -33,6 +32,12 @@
 #include <sstream>
 
 #include "test_helpers.hpp" // get access to init_print, etc
+#include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/BrimEarsPoint.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/ObjectID.hpp"
+#include "libslic3r/Print.hpp"
 
 using namespace Slic3r::Test;
 using namespace Slic3r;

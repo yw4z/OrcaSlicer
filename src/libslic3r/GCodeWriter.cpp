@@ -1,7 +1,6 @@
 #include "GCodeWriter.hpp"
 #include "FirstLayerPlane.hpp"
 #include "Config.hpp"
-#include "CustomGCode.hpp"
 #include "Extruder.hpp"
 #include "Geometry.hpp"
 #include "I18N.hpp"

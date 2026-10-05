@@ -4,10 +4,8 @@
 #include "ExtrusionEntity.hpp"
 #include "Polygon.hpp"
 #include "Config.hpp"
-#include "ExtrusionEntityCollection.hpp"
 #include "Print.hpp"
 #include "libslic3r.h"
-#include "ExPolygon.hpp"
 #include "GCodeWriter.hpp"
 #include "GCode/BeltKinematics.hpp"
 #include "FirstLayerPlane.hpp"
@@ -24,7 +22,6 @@
 #include "GCode/WipeTower.hpp"
 #include "GCode/SeamPlacer.hpp"
 #include "GCode/GCodeProcessor.hpp"
-#include "EdgeGrid.hpp"
 #include "GCode/ThumbnailData.hpp"
 #include "libslic3r/ObjectID.hpp"
 #include "GCode/ExtrusionProcessor.hpp"
@@ -51,6 +48,10 @@
 #include <cfloat>
 #include <vector>
 #include <utility>
+#include "BoundingBox.hpp"
+#include "Polyline.hpp"
+
+namespace Slic3r { class ExtrusionEntityCollection; }
 
 namespace Slic3r {
 

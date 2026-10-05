@@ -44,6 +44,7 @@
 #include "libslic3r/BeltTransform.hpp"
 #include "libslic3r/GCodeReader.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Arrange.hpp"
 
 using namespace Slic3r;
 using namespace Slic3r::Test;

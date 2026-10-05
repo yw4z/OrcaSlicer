@@ -14,9 +14,10 @@
 #include "Point.hpp"
 #include "Polygon.hpp"
 #include "PrintConfig.hpp"
-#include "GCode/CoolingBuffer.hpp"
+#include "Config.hpp"
 #include "GCode/MachineKinematics.hpp"
 #include <memory>
+
 namespace Slic3r {
 
 class FirstLayerPlane;
