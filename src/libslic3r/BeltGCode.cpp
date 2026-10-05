@@ -8,14 +8,10 @@ namespace Slic3r {
 
 void BeltGCode::init_belt_writer(Print &print)
 {
-    auto belt_writer = std::make_unique<GCodeWriter>();
     // Axis remap and build volume max are set by base GCode after init_belt_writer
     // returns; set_kinematics() replays them, so install order does not matter.
-    install_belt_kinematics(*belt_writer, print.config());
-    belt_writer->set_force_normal_lift(true);
-    // The plate origin was stored on the writer this one replaces.
-    belt_writer->set_xy_offset(m_gcode_offset.x(), m_gcode_offset.y());
-    m_writer = std::move(belt_writer);
+    install_belt_kinematics(m_writer, print.config());
+    m_writer.set_force_normal_lift(true);
 }
 
 void BeltGCode::write_belt_header(GCodeOutputStream &file, const Print &print)
