@@ -8,6 +8,7 @@
 #include "slic3r/GUI/Camera.hpp"   // N: look down the sketch plane normal
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/PartPlate.hpp"   // the current plate's origin: the first view's offset
 #include "slic3r/GUI/ImGuiWrapper.hpp"
 #include "slic3r/GUI/GLToolbar.hpp"
 #include "slic3r/GUI/Event.hpp"
@@ -190,8 +191,11 @@ DesignCanvas::DesignCanvas(wxWindow* parent)
     refresh_bed();
 
     // The view this canvas opens on. Built lazily, on the way into the Design tab, so this
-    // is the view the user is looking at right now.
+    // is the view the user is looking at right now — moved off the current plate onto the
+    // Design bed, which stays at the printer bed's home whichever plate is current.
     m_parked_camera = wxGetApp().plater()->get_camera();
+    if (PartPlate* plate = wxGetApp().plater()->get_partplate_list().get_curr_plate())
+        m_parked_camera.translate_world(-plate->get_origin());
 
     // Before any of this class's own Binds below: wx calls dynamically bound handlers in
     // reverse order of binding, and GLCanvas3D swallows several events without skipping them —
@@ -554,6 +558,7 @@ void DesignCanvas::refresh_bed()
     double printable_height = 100.0;
     const auto* ph_opt = config->opt<ConfigOptionFloat>("printable_height");
     if (ph_opt) printable_height = ph_opt->value;
+    // No position: the Design bed stays at the printer bed's home, whichever plate is current.
     m_bed.set_shape(bed_shape_opt->values, printable_height, {}, {}, "", false);  // mainline added extruder_areas/heights params
 }
 

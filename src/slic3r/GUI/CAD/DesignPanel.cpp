@@ -104,7 +104,6 @@
 #include "libslic3r/Model.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
-#include "libslic3r/BuildVolume.hpp"
 #include "slic3r/GUI/MainFrame.hpp"
 #include "slic3r/GUI/GUI_ObjectList.hpp"
 #include "slic3r/GUI/Shortcuts.hpp"
@@ -7345,8 +7344,12 @@ void DesignPanel::hydrate_from_model()
     // that has none yet. A design in progress keeps its origin: its sketches have it baked into
     // their planes, so moving it under them (a printer change between visits) would slide the
     // datum planes off the geometry. A loaded project brings its own (load_recipe).
+    // The centre of the Design bed, not the plater's: the plater moves its bed onto the current
+    // plate, so on plate 2+ the origin would land one plate stride away from the bed drawn here.
+    // Re-synced first because the control socket calls this without on_tab_shown().
     if (!m_doc.origin_from_recipe) {
-        const Vec2d bc = plater->build_volume().bed_center();
+        m_viewport->refresh_bed();
+        const Vec2d bc = m_viewport->bed_center();
         m_doc.modeling_origin = Vec3d(bc.x(), bc.y(), 0.0);
         // A document started here takes the weld rule from the preference; a loaded one
         // brings its own (load_recipe).

@@ -246,6 +246,15 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
   `DesignRowList` rather than a `wxTreeCtrl`, so each row carries its own actions — Edit,
   Show/hide and Delete on a feature, Move, Show/hide and Delete on a body — and the eye shows
   whether that row is hidden.
+- **Plates.** This is the one thing the tab does not follow. The canvas has a bed of its own at
+  the printer bed's home position, whichever plate Prepare has current, and a new document's
+  modeling origin is that bed's centre. A bed that followed the current plate would slide out
+  from under a design: the origin is fixed once per document, baked into every sketch plane and
+  saved in the recipe, while the current plate can change between visits. Commit to Plate does
+  not need it either, since the committed object is placed on an empty spot of the current
+  plate. What the canvas does read from the plate is moved onto its bed: the exclude areas, the
+  plate box the camera orbits about when nothing is picked (`GLCanvas3D::_current_plate_box`),
+  and the first view, which starts as a copy of Prepare's camera.
 - **Viewport text.** The status line and the active tool's values are drawn by the canvas in
   its ImGui pass, so they go with the canvas: a top-level window over GL does not follow its
   frame and was left floating over other applications.

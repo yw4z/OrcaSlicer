@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "libslic3r/Point.hpp"
+#include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/Color.hpp"
 #include <utility>
 #include <wx/colour.h>
@@ -83,6 +84,8 @@ public:
     void finish_sketch();
     bool is_sketching() const;
     void refresh_bed();   // re-sync the bed to the current printer (call on tab activation)
+    // Centre of the Design bed: the printer bed at its home position, whichever plate is current.
+    Vec2d bed_center() const { return m_bed.build_volume().bed_center(); }
     // The Camera is Plater-owned and shared with Prepare/Preview/Assemble; GLCanvas3D has no
     // per-canvas camera, so every orbit here would otherwise overwrite what the editor tabs
     // show. Exactly one of the two views is live at a time, so entering and leaving are the

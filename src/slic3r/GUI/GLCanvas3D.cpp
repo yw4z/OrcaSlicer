@@ -1875,7 +1875,7 @@ BoundingBoxf3 GLCanvas3D::volumes_bounding_box(bool current_plate_only) const
     bool          is_limit = m_canvas_type != ECanvasType::CanvasAssembleView;
     if (is_limit) {
         if (current_plate_only) {
-            expand_part_plate_list_box = wxGetApp().plater()->get_partplate_list().get_curr_plate()->get_bounding_box();
+            expand_part_plate_list_box = _current_plate_box();
         } else {
             auto        plate_list_box = wxGetApp().plater()->get_partplate_list().get_bounding_box();
             auto        horizontal_radius = 0.5 * sqrt(std::pow(plate_list_box.min[0] - plate_list_box.max[0], 2) + std::pow(plate_list_box.min[1] - plate_list_box.max[1], 2));
@@ -8267,7 +8267,30 @@ void GLCanvas3D::_render_bed(const Transform3d& view_matrix, const Transform3d& 
 
 void GLCanvas3D::_render_platelist(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_current, bool only_body, int hover_id, bool render_cali, bool show_grid)
 {
-    wxGetApp().plater()->get_partplate_list().render(view_matrix, projection_matrix, bottom, only_current, only_body, hover_id, render_cali, show_grid, !m_plate_chrome_enabled);
+    PartPlateList& plate_list = wxGetApp().plater()->get_partplate_list();
+    // Design tab: its bed stays at the printer bed's home whichever plate is current, so the
+    // current plate's exclude areas are moved from that plate onto it.
+    PartPlate* curr_plate = plate_list.get_curr_plate();
+    const Transform3d plate_view_matrix = m_axes_at_bed_center && curr_plate != nullptr ?
+        Transform3d(view_matrix * Geometry::translation_transform(-curr_plate->get_origin())) : view_matrix;
+    plate_list.render(plate_view_matrix, projection_matrix, bottom, only_current, only_body, hover_id, render_cali, show_grid, !m_plate_chrome_enabled);
+}
+
+BoundingBoxf3 GLCanvas3D::_current_plate_box() const
+{
+    // Design tab: its own bed stands in for the current plate (see _render_platelist).
+    const BuildVolume& build_volume = m_bed.build_volume();
+    if (m_axes_at_bed_center && build_volume.valid()) {
+        // Flat at z = 0 like the plate's own box. Merged, as PartPlate builds it: the min/max
+        // constructor leaves a flat box undefined.
+        const BoundingBoxf bb = build_volume.bounding_volume2d();
+        BoundingBoxf3      box;
+        box.merge(Vec3d(bb.min.x(), bb.min.y(), 0.));
+        box.merge(Vec3d(bb.max.x(), bb.max.y(), 0.));
+        return box;
+    }
+    PartPlate* curr_plate = wxGetApp().plater()->get_partplate_list().get_curr_plate();
+    return curr_plate != nullptr ? curr_plate->get_bounding_box() : BoundingBoxf3();
 }
 
 // Design tab: CAD grid on the bed plane, drawn in place of the plate's corner-origin grid.
@@ -11061,10 +11084,9 @@ std::optional<Vec3d> GLCanvas3D::get_camera_orbit_target(ECameraNavigationType n
 {
     // Orca: Centralize the pre-existing pivot rules so orbiting and pan fallback cannot
     // choose different reference depths for the same canvas and active tool.
-    PartPlate* current_plate = wxGetApp().plater()->get_partplate_list().get_curr_plate();
+    const BoundingBoxf3 plate_box = _current_plate_box();
     if (navigation_type == ECameraNavigationType::Gesture)
-        return current_plate == nullptr ? std::nullopt :
-            std::make_optional(current_plate->get_bounding_box().center());
+        return plate_box.defined ? std::make_optional(plate_box.center()) : std::nullopt;
 
     const GLGizmosManager::EType gizmo_type = m_gizmos.get_current_type();
     const bool use_scene_target = m_canvas_type == ECanvasType::CanvasAssembleView ||
@@ -11084,15 +11106,15 @@ std::optional<Vec3d> GLCanvas3D::get_camera_orbit_target(ECameraNavigationType n
 
     Vec3d target = Vec3d::Zero();
     if (m_canvas_type == ECanvasType::CanvasPreview) {
-        if (current_plate != nullptr)
-            target = current_plate->get_bounding_box().center();
+        if (plate_box.defined)
+            target = plate_box.center();
     } else if (!m_selection.is_empty()) {
         target = m_selection.get_bounding_box().center();
     } else {
         // Orca: Match regular mouse orbit: objects on the active plate, then the plate itself.
         BoundingBoxf3 bbox = volumes_bounding_box(true);
-        if (!bbox.defined && current_plate != nullptr)
-            bbox = current_plate->get_bounding_box();
+        if (!bbox.defined)
+            bbox = plate_box;
         if (bbox.defined)
             target = bbox.center();
     }

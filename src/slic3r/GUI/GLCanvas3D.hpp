@@ -1441,6 +1441,8 @@ private:
     void _render_shadows(const Transform3d& view_matrix, const Transform3d& projection_matrix);
     //BBS: add part plate related logic
     void _render_platelist(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_current, bool only_body = false, int hover_id = -1, bool render_cali = false, bool show_grid = true);
+    // The current plate's box (XY, at z = 0); in the Design tab, its own bed's.
+    BoundingBoxf3 _current_plate_box() const;
     // Design tab: draw the CAD grid (minor 10 mm + major 50 mm) in place of the plate's
     // corner-origin grid when the axes sit at the bed centre (modeling origin). Rebuilds its
     // GLModels lazily, only when the bed shape changed.
