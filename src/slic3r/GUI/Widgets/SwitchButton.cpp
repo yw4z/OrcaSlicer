@@ -14,6 +14,7 @@
 #include <wx/image.h>
 #include <cstring>
 #include <wx/dc.h>
+#include <cmath>
 #include <vector>
 #include "slic3r/GUI/Widgets/StateHandler.hpp"
 #include <wx/scrolwin.h>
