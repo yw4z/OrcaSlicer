@@ -238,9 +238,11 @@ DESIGN_TAB = (128, 29 + CHROME_DY)
 RIBBON_DX = -56
 
 # Feature-tree rows, measured on the rig at 1920x1080: the list's first row is centred at y=215,
-# then 23 px apart. The first two rows are the Origin and the Bed, pinned above the features and
-# never deleted, so the first FEATURE row is the third one. Delete and double-click do nothing on
-# a pinned row, and reset_document and the reopening double-click both need a feature.
+# then 23 px apart. The first two rows are the Origin and the Bed, unframed on the card above the
+# features' own framed list, so the first FEATURE row sits two rows and TREE_GAP further down;
+# reset_document and the reopening double-click both need a feature. TREE_GAP is the list's
+# 12 px top margin plus its 1 px frame, derived rather than measured -- re-measure on the rig, like
+# RIBBON_DX.
 # x=300, not the label: a second click ON the label opens the inline rename, and Delete then
 # edits the text instead of removing the feature.
 #
@@ -248,7 +250,8 @@ RIBBON_DX = -56
 # unshifted click lands 26 px BELOW the first row -- just past its 23 px height -- so the row is
 # never selected, Delete does nothing, and reset_document spends 40 rounds on it before dying
 # with "could not empty the feature tree". That names the feature tree, which is not the fault.
-TREE_ROW0 = (300, 215 + 2 * 23 + CHROME_DY)
+TREE_GAP = 12 + 1
+TREE_ROW0 = (300, 215 + 2 * 23 + TREE_GAP + CHROME_DY)
 
 
 def go_design():

@@ -193,16 +193,22 @@ The reference planes — XY, XZ and YZ through the modeling origin, with their h
 drawn on demand, because three translucent squares over every model are noise once they are not
 the thing being picked. Sketch brings them up while it waits for a plane, which is exactly when
 they are picked, and the session the pick opens takes them away; a live session draws none. The
-Feature tree's Origin row, pinned above the features and never removable, keeps them up outside a
-sketch. Its state is a view preference in AppConfig rather than part of the recipe, so it costs
-the project format nothing. The Plane tool keeps its own rule: the planes and the datums as Offset
-bases, and nothing for the other methods, where a click on a plane would rewrite the datum's
-references. The `P` and `A` keys are a separate, unpickable view helper and do not follow the
-Origin row.
+Feature tree's Origin row keeps them up outside a sketch. Its state is a view preference in
+AppConfig rather than part of the recipe, so it costs the project format nothing. The Plane tool
+keeps its own rule: the planes and the datums as Offset bases, and nothing for the other methods,
+where a click on a plane would rewrite the datum's references. The `P` and `A` keys are a
+separate, unpickable view helper and do not follow the Origin row.
 
-The Bed row, pinned under the Origin row, is the printer bed's switch in the same way: it draws or
-hides the bed and its plate grid in every mode, and `Ctrl+Shift+B` flips it from the keyboard. It
-is a view preference in AppConfig too, and the bed is shown until it is turned off.
+The Bed row, under the Origin row, is the printer bed's switch in the same way: it draws or hides
+the bed and its plate grid in every mode. It is a view preference in AppConfig too, and the bed is
+shown until it is turned off.
+
+The two rows are view switches, not history, and the tree says so: they sit unframed on the Feature
+tree's card, above the features' own framed list, and stay put while the features scroll. A click
+never selects either row, since a selected Origin or Bed would have nothing to edit, move or
+delete; the eye and the right-click menu are the only targets, and a row's label dims while its
+thing is hidden, as a hidden body's does. Because the block never takes the focus, `Ctrl+Shift+O`
+and `Ctrl+Shift+B` flip the Origin and the Bed from the keyboard.
 
 ## Rendering the bodies
 
@@ -277,7 +283,8 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
   hover background on macOS. The Feature tree and Bodies lists are a custom-drawn
   `DesignRowList` rather than a `wxTreeCtrl`, so each row carries its own actions — Edit,
   Show/hide and Delete on a feature, Move, Show/hide and Delete on a body, and only Show/hide on
-  the Origin and Bed rows above the features — and the eye shows whether that row is hidden.
+  the Origin and Bed rows, a separate non-selectable list above the features — and the eye shows
+  whether that row is hidden.
 - **Plates.** This is the one thing the tab does not follow. The canvas has a bed of its own at
   the printer bed's home position, whichever plate Prepare has current, and a new document's
   modeling origin is that bed's centre. A bed that followed the current plate would slide out

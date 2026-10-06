@@ -285,11 +285,8 @@ static std::string commit_icon(bool bodies)
 
 // The icons on each Feature tree and Bodies row (DesignRowList::Action::id).
 enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete };
-// The Feature tree's first two rows are the Origin and the Bed, pinned above the features:
-// feature i is row i + kFeatureRow0.
-static constexpr int kOriginRow = 0, kBedRow = 1, kFeatureRow0 = 2;
-// The feature a Feature tree row shows, or wxNOT_FOUND for a pinned row (and for no row).
-static int feature_of_row(int row) { return row >= kFeatureRow0 ? row - kFeatureRow0 : wxNOT_FOUND; }
+// The rows of the Feature tree's pinned block, above the features.
+static constexpr int kOriginRow = 0, kBedRow = 1;
 
 // A row's eye shows the state the row is in; its tip names what a click does.
 static DesignRowList::Action eye_action(bool shown)
@@ -619,14 +616,19 @@ DesignPanel::DesignPanel(wxWindow* parent)
         set_status(_L("Axonometric view, fitted"));
     };
 
-    // Commit to Plate and the bed toggle are mouse targets — a toolbar button and the Feature
-    // tree's Bed row — so without an accelerator neither could be reached from the keyboard, nor
-    // by anything driving the keyboard. Ctrl+Shift+P is Plate, Ctrl+Shift+B is Bed; neither
-    // collides with Orca's own Ctrl+Shift+S (Save as) or Ctrl+Shift+G (Print plate).
+    // Commit to Plate and the bed and origin toggles are mouse targets — a toolbar button and the
+    // Feature tree's Bed and Origin rows, which never take the focus — so without an accelerator
+    // none could be reached from the keyboard, nor by anything driving the keyboard. Ctrl+Shift+P
+    // is Plate, Ctrl+Shift+B is Bed, Ctrl+Shift+O is Origin; none collides with Orca's own
+    // Ctrl+Shift+S (Save as) or Ctrl+Shift+G (Print plate).
     m_keys_feature['P' | SC_SHIFT | SC_CTRL] = [this] { on_commit(); };
     m_keys_feature['B' | SC_SHIFT | SC_CTRL] = [this] {
         toggle_bed();
         set_status(m_show_bed ? _L("Bed shown") : _L("Bed hidden"));
+    };
+    m_keys_feature['O' | SC_SHIFT | SC_CTRL] = [this] {
+        toggle_origin();
+        set_status(m_show_origin ? _L("Reference planes shown") : _L("Reference planes hidden"));
     };
 
     // Flyout rows show the design_* glyphs as they are: drawn in Orca's icon grey (#949494), which
@@ -3130,10 +3132,33 @@ DesignPanel::DesignPanel(wxWindow* parent)
               FromDIP(SidebarProps::ContentMargin()));
     tree_inner->Add(new wxStaticLine(m_tree_box), 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP,
               FromDIP(SidebarProps::TitlebarMargin()));
+    // The Origin and Bed switches sit on the card itself, unframed, above the features' own framed
+    // list: view switches, not history. A list of their own so they stay put while the features
+    // scroll, and a non-selectable one because selecting them would do nothing: only their eyes
+    // answer. 13 = the feature list's margin plus its frame, so the two lists' icons line up.
+    m_pinned = new DesignRowList(m_tree_box, 2, false, wxBORDER_NONE);
+    m_pinned->SetBackgroundColour(dp_panel_bg());
+    tree_inner->Add(m_pinned, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 13);
     // Sized to its rows, so a short history wastes no block, and scrolling past 9 features.
-    m_tree = new DesignRowList(m_tree_box, 9 + kFeatureRow0);
+    m_tree = new DesignRowList(m_tree_box, 9);
     m_tree->SetBackgroundColour(dp_panel_bg());
     tree_inner->Add(m_tree, 0, wxEXPAND | wxALL, 12);
+
+    m_pinned->on_action = [this](int row, int) {
+        if (row == kBedRow)
+            toggle_bed();
+        else if (row == kOriginRow)
+            toggle_origin();
+    };
+    // Exactly what the eye does, named.
+    m_pinned->on_menu = [this](int row, const wxPoint& screen) {
+        const bool bed = (row == kBedRow);
+        wxMenu     menu;
+        const int  id_toggle = wxWindow::NewControlId();
+        menu.Append(id_toggle, bed ? bed_toggle_text(m_show_bed) : origin_toggle_text(m_show_origin));
+        menu.Bind(wxEVT_MENU, [this, bed](wxCommandEvent&) { bed ? toggle_bed() : toggle_origin(); }, id_toggle);
+        m_pinned->PopupMenu(&menu, m_pinned->ScreenToClient(screen));
+    };
 
     // Selecting a feature that leaves a body (Extrude, Fillet, Chamfer, Hole, ...) lights the
     // faces it made in the viewport — the fillet's round, not the whole part it sits on.
@@ -3142,8 +3167,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // Picking a feature drops any body selection, so the two lists never both claim to be
         // "the target" — but ONLY when this tree has a selection. Each list notifies on every
         // change, so clicking a body row runs apply_body_row, whose m_tree->unselect() fires
-        // THIS handler, which would otherwise clear the body row the user had just clicked. The
-        // pinned Origin and Bed rows count: they are selected rows like any other.
+        // THIS handler, which would otherwise clear the body row the user had just clicked.
         if (m_parts && m_tree->selection() != wxNOT_FOUND) m_parts->unselect();
         const int sel = tree_selection();
         // Likewise a viewport pick, which would be drawn just like the feature's faces. Not while
@@ -3166,18 +3190,14 @@ DesignPanel::DesignPanel(wxWindow* parent)
     };
 
     // Double-click a row = Edit, the same gesture that re-opens a committed sketch on the canvas.
-    // The pinned rows have nothing to edit.
     m_tree->on_activate = [this] {
         if (tree_selection() != wxNOT_FOUND) on_edit_feature();
     };
 
     // The row's own Edit / Show-hide / Delete, on the row the click selected. The body list is
     // cleared here too, not left to on_select, which re-clicking the selected row does not run:
-    // a body row still selected would be what on_toggle_visibility acts on. A pinned row's one
-    // icon is its eye.
-    m_tree->on_action = [this](int row, int id) {
-        if (row == kOriginRow) { toggle_origin(); return; }
-        if (row == kBedRow)    { toggle_bed();    return; }
+    // a body row still selected would be what on_toggle_visibility acts on.
+    m_tree->on_action = [this](int, int id) {
         if (m_parts) m_parts->unselect();
         switch (id) {
         case RowEdit:       on_edit_feature();      break;
@@ -3190,22 +3210,11 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // double-click is Edit, and F2 is a function key nothing announces. A user who wants to name
     // a sketch tries the row, and the row answers.
     m_tree->on_menu = [this](int row, const wxPoint& screen) {
-        wxMenu menu;
-        // A pinned row is no feature: it cannot be renamed, edited, moved or deleted, and its
-        // menu holds exactly what its eye does.
-        const int feat = feature_of_row(row);
-        if (feat == wxNOT_FOUND) {
-            const bool bed = (row == kBedRow);
-            const int id_toggle = wxWindow::NewControlId();
-            menu.Append(id_toggle, bed ? bed_toggle_text(m_show_bed) : origin_toggle_text(m_show_origin));
-            menu.Bind(wxEVT_MENU, [this, bed](wxCommandEvent&) { bed ? toggle_bed() : toggle_origin(); }, id_toggle);
-            m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
-            return;
-        }
         // EVERYTHING A ROW CAN DO, in one place. The row's icons are the quick bar, but the menu
         // is the reference: the element you click answers with what applies to it, and a menu
         // grows without spending an icon nobody recognises. Split into what the row IS (name,
         // contents), where it SITS (order, visibility) and what removes it.
+        wxMenu menu;
         const int id_rename = wxWindow::NewControlId();
         const int id_edit   = wxWindow::NewControlId();
         const int id_up     = wxWindow::NewControlId();
@@ -3218,8 +3227,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // Scale artwork acts on THIS feature's imported outline, so it belongs to the row and
         // is offered only where it means something. It used to hide inside the header's Move
         // button, which otherwise moved a body — two different subjects on one icon.
-        const bool art = feat < int(m_doc.features.size()) &&
-                         !m_doc.features[feat].imported_regions.empty();
+        const bool art = row < int(m_doc.features.size()) &&
+                         !m_doc.features[row].imported_regions.empty();
         if (art) menu.Append(id_art, _L("Scale artwork"));
         menu.AppendSeparator();
         menu.Append(id_up,     _L("Move up"));
@@ -3234,7 +3243,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_toggle_visibility(); }, id_vis);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_delete_feature(); },    id_del);
         if (art)
-            menu.Bind(wxEVT_MENU, [this, feat](wxCommandEvent&) { on_transform_imported(feat); }, id_art);
+            menu.Bind(wxEVT_MENU, [this, row](wxCommandEvent&) { on_transform_imported(row); }, id_art);
         m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
     };
 
@@ -3243,9 +3252,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // renaming belongs on the row, not in a side-panel field. The list hands the name over after
     // its editor's events have finished, so rebuilding the rows here is safe.
     m_tree->on_rename = [this](int row, const wxString& name) {
-        const int feat = feature_of_row(row);
-        if (feat == wxNOT_FOUND || feat >= int(m_doc.features.size())) return;
-        m_doc.features[feat].name = std::string(name.ToUTF8().data());
+        if (row < 0 || row >= int(m_doc.features.size())) return;
+        m_doc.features[row].name = std::string(name.ToUTF8().data());
         refresh_tree();   // which syncs the recipe, so the save path persists the name
     };
 
@@ -4424,9 +4432,9 @@ DesignPanel::DesignPanel(wxWindow* parent)
     m_show_bed    = wxGetApp().app_config->get_bool("design_show_bed");
     if (m_viewport) m_viewport->set_show_bed(m_show_bed);
     set_ui_mode(UiMode::Feature);
-    // The pinned rows from the first paint: nothing else builds the rows before the first edit,
-    // project load or theme switch.
-    refresh_tree();
+    // The Origin and Bed rows from the first paint: nothing else builds them before the first
+    // edit, project load or theme switch.
+    refresh_pinned();
     build_phase("wiring");
     BOOST_LOG_TRIVIAL(info) << "Design tab build: total " << build_clock.Time() << " ms";
 }
@@ -7354,6 +7362,7 @@ void DesignPanel::on_sys_color_changed()
     wxGetApp().UpdateDarkUIWin(this);
     refresh_icons();
     refresh_tree();   // the rows carry their own text colours
+    refresh_pinned();
     Refresh();
 }
 
@@ -7524,7 +7533,7 @@ void DesignPanel::refresh_tree()
 
     // Preserve the selected row across the rebuild — set_rows() drops the selection, which made
     // every edit/add feel like it "lost" the selection (and broke Edit/Move/Delete on the
-    // just-touched feature). By row, so a selected pinned row stays selected too.
+    // just-touched feature).
     const int keep = m_tree->selection();
 
     // Datum/reference planes carry no solid; feed them to the viewport so they render as
@@ -7532,16 +7541,7 @@ void DesignPanel::refresh_tree()
     refresh_datum_planes();
     update_reference_planes();
     std::vector<DesignRowList::Row> rows;
-    rows.reserve(m_doc.features.size() + kFeatureRow0);
-    // Always first, in kOriginRow / kBedRow order, and never removable: the reference planes' and
-    // the printer bed's own switches, and nothing else.
-    auto add_pinned = [&rows](const char* icon, const wxString& label, bool shown, const wxString& tip) {
-        DesignRowList::Action eye = eye_action(shown);
-        eye.tip = tip;
-        rows.push_back({ icon, label, {}, dp_item_text(), { eye } });
-    };
-    add_pinned("design_plane", _L("Origin"), m_show_origin, origin_toggle_text(m_show_origin));
-    add_pinned("design_bed",   _L("Bed"),    m_show_bed,    bed_toggle_text(m_show_bed));
+    rows.reserve(m_doc.features.size());
     for (size_t fi = 0; fi < m_doc.features.size(); ++fi) {
         const CadFeature& f = m_doc.features[fi];
         DesignRowList::Row row;
@@ -7963,13 +7963,13 @@ bool DesignPanel::place_on_face()
 
 int DesignPanel::tree_selection() const
 {
-    return feature_of_row(m_tree->selection());
+    return m_tree->selection();
 }
 
-void DesignPanel::set_tree_selection(int feature)
+void DesignPanel::set_tree_selection(int row)
 {
-    if (feature >= 0 && feature + kFeatureRow0 < int(m_tree->GetItemCount()))
-        m_tree->select(feature + kFeatureRow0);
+    if (row >= 0 && row < int(m_tree->GetItemCount()))
+        m_tree->select(row);
 }
 
 // The selection (the solid pick, the hit face and the committed-loop pick) names bodies, faces and
@@ -11122,7 +11122,8 @@ void DesignPanel::toggle_origin()
     // A plane picked while they were up is not a selection once nobody can see it.
     if (!m_show_origin) drop_plane_pick();
     // Not an edit: a plane choice under way stays, and keeps its planes up.
-    refresh_tree();   // the Origin row's eye, and update_reference_planes(), which repaints
+    update_reference_planes();   // repaints
+    refresh_pinned();   // the Origin row's eye
 }
 
 void DesignPanel::toggle_bed()
@@ -11130,7 +11131,24 @@ void DesignPanel::toggle_bed()
     m_show_bed = !m_show_bed;
     wxGetApp().app_config->set_bool("design_show_bed", m_show_bed);
     if (m_viewport) m_viewport->set_show_bed(m_show_bed);   // repaints
-    refresh_tree();   // the Bed row's eye
+    refresh_pinned();   // the Bed row's eye
+}
+
+// View switches, not history: a view toggle rebuilds these two rows and leaves the features
+// alone. The label dims while its thing is hidden, as a hidden body's does.
+void DesignPanel::refresh_pinned()
+{
+    std::vector<DesignRowList::Row> rows;
+    auto add = [&rows](const char* icon, const wxString& label, bool shown, const wxString& tip) {
+        DesignRowList::Action eye = eye_action(shown);
+        eye.tip = tip;
+        // A blank cell under the features' Delete, so the eye sits in the features' eye column.
+        rows.push_back({ icon, label, {}, shown ? dp_item_text() : dp_item_dim(), { eye, {} } });
+    };
+    // In kOriginRow / kBedRow order.
+    add("design_plane", _L("Origin"), m_show_origin, origin_toggle_text(m_show_origin));
+    add("design_bed",   _L("Bed"),    m_show_bed,    bed_toggle_text(m_show_bed));
+    m_pinned->set_rows(std::move(rows));
 }
 
 void DesignPanel::start_sketch()
