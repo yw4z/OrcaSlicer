@@ -641,7 +641,6 @@ static DynamicPrintConfig belt_brim_config()
         { "belt_printer",               1 },
         { "belt_slice_rotation",        "x" },
         { "belt_slice_rotation_angle",  45 },
-        { "belt_slice_rotation_global", 1 },
         { "gcode_remap_x",              "rev_x" },
         { "gcode_remap_y",              "pos_z" },
         { "gcode_remap_z",              "pos_y" },
@@ -667,7 +666,6 @@ static DynamicPrintConfig belt_brim_multifilament_config(unsigned int filaments,
         { "belt_printer",               1 },
         { "belt_slice_rotation",        "x" },
         { "belt_slice_rotation_angle",  45 },
-        { "belt_slice_rotation_global", 1 },
         { "gcode_remap_x",              "rev_x" },
         { "gcode_remap_y",              "pos_z" },
         { "gcode_remap_z",              "pos_y" },
@@ -1246,9 +1244,7 @@ TEST_CASE("Belt brim allows instances placed across the belt", "[SkirtBrim][belt
     auto multi_instance_has_brim = [](double dx, double dy) {
         DynamicPrintConfig config = belt_brim_config();
         config.set_deserialize_strict({
-            { "belt_slice_rotation_global", 0 },
             { "belt_preslice_global",       0 },
-            { "preslice_remap_global",      0 },
             { "brim_type",                  "outer_only" },
             { "brim_width",                 4 },
             { "brim_object_gap",            0 },

@@ -16,50 +16,6 @@ namespace Slic3r {
 
 // ---- Matrix builders ------------------------------------------------------
 
-Transform3d BeltTransformPipeline::build_preslice_remap(const PrintConfig &config)
-{
-    Transform3d pre_remap = Transform3d::Identity();
-    if (!has_preslice_remap(config))
-        return pre_remap;
-
-    int pre_rx = int(config.preslice_remap_x.value);
-    int pre_ry = int(config.preslice_remap_y.value);
-    int pre_rz = int(config.preslice_remap_z.value);
-
-    // Each remap value selects a source axis and sign.
-    auto remap_column = [](int r) -> Vec3d {
-        int axis = r % 3;
-        Vec3d col = Vec3d::Zero();
-        if (r < 3)      col[axis] =  1.0;  // +axis
-        else if (r < 6) col[axis] = -1.0;  // -axis
-        else            col[axis] = -1.0;  // Rev: max - pos = -(pos - max)
-        return col;
-    };
-
-    Matrix3d remap_lin;
-    remap_lin.col(0) = remap_column(pre_rx);
-    remap_lin.col(1) = remap_column(pre_ry);
-    remap_lin.col(2) = remap_column(pre_rz);
-    pre_remap.linear() = remap_lin;
-
-    // Translation for Rev modes (needs build volume extents).
-    if (pre_rx >= 6 || pre_ry >= 6 || pre_rz >= 6) {
-        BoundingBoxf bbox_bed(config.printable_area.values);
-        Vec3d vol_max(bbox_bed.max.x(), bbox_bed.max.y(),
-                      config.printable_height.value);
-        Vec3d remap_trans = Vec3d::Zero();
-        auto add_rev = [&](int r, int out) {
-            if (r >= 6) remap_trans[out] = vol_max[r % 3];
-        };
-        add_rev(pre_rx, 0);
-        add_rev(pre_ry, 1);
-        add_rev(pre_rz, 2);
-        pre_remap.translation() = remap_trans;
-    }
-
-    return pre_remap;
-}
-
 Matrix3d BeltTransformPipeline::build_rotation_matrix(const PrintConfig &config, bool *has_rot_out)
 {
     BeltRotationAxis axis = config.belt_slice_rotation.value;
@@ -81,50 +37,11 @@ Matrix3d BeltTransformPipeline::build_rotation_matrix(const PrintConfig &config,
 
 Transform3d BeltTransformPipeline::build_forward_transform(const PrintConfig &config)
 {
-    // Mesh-side belt transform: rotation applied after the pre-slice axis remap.
-    // (Shear & scale are a g-code-side stage, not part of the mesh transform.)
-    Transform3d pre_remap = build_preslice_remap(config);
-    Matrix3d    rot       = build_rotation_matrix(config);
-
+    // Mesh-side belt transform: the rotation. (Shear & scale are a g-code-side
+    // stage, not part of the mesh transform.)
     Transform3d combined = Transform3d::Identity();
-    combined.linear() = rot;
-    combined = combined * pre_remap;
+    combined.linear() = build_rotation_matrix(config);
     return combined;
-}
-
-// ---- Bounding box remap ---------------------------------------------------
-
-BoundingBoxf3 BeltTransformPipeline::remap_bbox(const BoundingBoxf3 &bb, const PrintConfig &config)
-{
-    if (!has_preslice_remap(config))
-        return bb;  // Identity remap, or belt mode off.
-
-    int pre_rx = int(config.preslice_remap_x.value);
-    int pre_ry = int(config.preslice_remap_y.value);
-    int pre_rz = int(config.preslice_remap_z.value);
-
-    auto remap_coord = [](int r, const Vec3d &v) -> double {
-        int axis = r % 3;
-        if (r < 3) return v[axis];
-        return -v[axis];
-    };
-
-    Vec3d mn = bb.min.cast<double>(), mx = bb.max.cast<double>();
-    BoundingBoxf3 rbb;
-    for (int i = 0; i < 8; ++i) {
-        Vec3d c((i & 1) ? mx.x() : mn.x(),
-                (i & 2) ? mx.y() : mn.y(),
-                (i & 4) ? mx.z() : mn.z());
-        Vec3d rc(remap_coord(pre_rx, c), remap_coord(pre_ry, c), remap_coord(pre_rz, c));
-        if (i == 0) rbb = BoundingBoxf3(rc, rc);
-        else rbb.merge(rc);
-    }
-    return rbb;
-}
-
-BoundingBoxf3 BeltTransformPipeline::remap_bbox(const ModelObject &model_object, const PrintConfig &config)
-{
-    return remap_bbox(model_object.raw_bounding_box(), config);
 }
 
 // ---- Belt floor parameters ------------------------------------------------
@@ -216,15 +133,15 @@ BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
 } // anonymous namespace
 
 BeltTransformPipeline::BeltHeightResult BeltTransformPipeline::compute_belt_height_and_floor(
-    const PrintConfig &config, const BoundingBoxf3 &remapped_bbox, double original_height)
+    const PrintConfig &config, const BoundingBoxf3 &bbox, double original_height)
 {
-    return compute_belt_height_and_floor_impl(config, remapped_bbox, original_height);
+    return compute_belt_height_and_floor_impl(config, bbox, original_height);
 }
 
 BeltTransformPipeline::BeltHeightResult BeltTransformPipeline::compute_belt_height_and_floor(
-    const DynamicPrintConfig &config, const BoundingBoxf3 &remapped_bbox, double original_height)
+    const DynamicPrintConfig &config, const BoundingBoxf3 &bbox, double original_height)
 {
-    return compute_belt_height_and_floor_impl(config, remapped_bbox, original_height);
+    return compute_belt_height_and_floor_impl(config, bbox, original_height);
 }
 
 } // namespace Slic3r

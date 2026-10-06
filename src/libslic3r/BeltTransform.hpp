@@ -16,7 +16,7 @@ class ModelObject;
 // Shared belt-printer transform math.
 //
 // The pre-slice pipeline applied in PrintObjectSlice.cpp is:
-//     trafo_out = z_shift * rotation * pre_remap * trafo_in
+//     trafo_out = z_shift * rotation * trafo_in
 //
 // Rotation is the sole mesh-side belt transform; shear & scale are applied
 // to the g-code instead (see MachineFrameTransform).  This class provides the
@@ -47,39 +47,11 @@ class BeltTransformPipeline
 public:
     // ---- Identity checks --------------------------------------------------
 
-    // Whether the axis remaps (preslice_remap_* and gcode_remap_*) apply at all.
-    // The remap fields are only offered in the belt printer group, so a value
-    // left in a profile must not change a non-belt print: with belt mode off every
-    // belt-only key is a no-op. This is the one place to widen if a non-belt use
-    // ever needs them.
+    // Whether the G-code axis remap applies at all. The remap fields are only
+    // offered in the belt printer group, so a value left in a profile must not
+    // change a non-belt print: with belt mode off every belt-only key is a no-op.
+    // This is the one place to widen if a non-belt use ever needs them.
     static bool axis_remap_enabled(const PrintConfig &config) { return config.belt_printer.value; }
-    static bool axis_remap_enabled(const DynamicPrintConfig &config)
-    {
-        auto *opt = config.option<ConfigOptionBool>("belt_printer");
-        return opt != nullptr && opt->value;
-    }
-
-    static bool has_preslice_remap(const PrintConfig &config)
-    {
-        return axis_remap_enabled(config) &&
-              (int(config.preslice_remap_x.value) != int(RemapAxis::PosX) ||
-               int(config.preslice_remap_y.value) != int(RemapAxis::PosY) ||
-               int(config.preslice_remap_z.value) != int(RemapAxis::PosZ));
-    }
-
-    // Overload accepting DynamicPrintConfig (used in static slicing_parameters).
-    static bool has_preslice_remap(const DynamicPrintConfig &config)
-    {
-        if (! axis_remap_enabled(config))
-            return false;
-        auto get_int = [&](const char *key) -> int {
-            auto *opt = config.option<ConfigOptionEnum<RemapAxis>>(key);
-            return opt ? int(opt->value) : 0;
-        };
-        return get_int("preslice_remap_x") != int(RemapAxis::PosX) ||
-               get_int("preslice_remap_y") != int(RemapAxis::PosY) ||
-               get_int("preslice_remap_z") != int(RemapAxis::PosZ);
-    }
 
     static bool has_rotation(const PrintConfig &config)
     {
@@ -118,25 +90,15 @@ public:
 
     // ---- Matrix builders --------------------------------------------------
 
-    // Build the pre-slice axis remap transform (includes Rev-mode translation).
-    static Transform3d build_preslice_remap(const PrintConfig &config);
-
     // Build the 3x3 rotation matrix from belt_slice_rotation* config.
     // Returns Identity if rotation axis is None or angle is ~0.
     // Also sets has_rot_out if non-null.
     static Matrix3d build_rotation_matrix(const PrintConfig &config, bool *has_rot_out = nullptr);
 
-    // Combined forward transform (rotation * pre_remap) — the mesh-side belt
-    // transform that BeltSliceStrategy applies and BeltBackTransform inverts.
+    // Forward transform (the rotation) — the mesh-side belt transform that
+    // BeltSliceStrategy applies and BeltBackTransform inverts.
     // Does NOT include the per-object Z-shift.
     static Transform3d build_forward_transform(const PrintConfig &config);
-
-    // ---- Bounding box remap -----------------------------------------------
-
-    // Remap a bounding box through the pre-slice axis remap.
-    // Returns the original bbox if remap is identity.
-    static BoundingBoxf3 remap_bbox(const BoundingBoxf3 &bb, const PrintConfig &config);
-    static BoundingBoxf3 remap_bbox(const ModelObject &model_object, const PrintConfig &config);
 
     // ---- Belt floor parameters --------------------------------------------
 
@@ -153,15 +115,15 @@ public:
     };
 
     // Compute effective object height and belt floor parameters from config
-    // and pre-remapped bounding box.  original_height is the input height
+    // and the object's bounding box.  original_height is the input height
     // (bb.size().z() or model_object.max_z()).
     static BeltHeightResult compute_belt_height_and_floor(
-        const PrintConfig &config, const BoundingBoxf3 &remapped_bbox,
+        const PrintConfig &config, const BoundingBoxf3 &bbox,
         double original_height);
 
     // Overload for DynamicPrintConfig (used by static slicing_parameters).
     static BeltHeightResult compute_belt_height_and_floor(
-        const DynamicPrintConfig &config, const BoundingBoxf3 &remapped_bbox,
+        const DynamicPrintConfig &config, const BoundingBoxf3 &bbox,
         double original_height);
 };
 

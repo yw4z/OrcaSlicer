@@ -1438,7 +1438,6 @@ TEST_CASE("Belt printers slice Precise Seam modifiers in the frame the object wa
         { "belt_printer",               1 },
         { "belt_slice_rotation",        "x" },
         { "belt_slice_rotation_angle",  45 },
-        { "belt_slice_rotation_global", 1 },
         { "layer_height",               0.2 },
         { "initial_layer_print_height", 0.2 },
         { "skirt_loops",                0 },

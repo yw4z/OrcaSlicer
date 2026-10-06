@@ -107,7 +107,6 @@
 #include "calib.hpp"
 #include "libslic3r_version.h"
 #include "GCode/BeltKinematics.hpp"
-#include "FirstLayerPlane.hpp"
 // Intel redesigned some TBB interface considerably when merging TBB with their oneAPI set of libraries, see GH #7332.
 // We are using quite an old TBB 2017 U7. Before we update our build servers, let's use the old API, which is deprecated in up to date TBB.
 #if ! defined(TBB_VERSION_MAJOR)
@@ -3153,19 +3152,13 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                                               print.config().printable_height.value));
     }
 
-    // Build the FirstLayerPlane evaluator.  When inactive (non-belt printers
-    // and belt printers without Z shear), all per-path call sites short-
-    // circuit to the legacy Layer::id() == 0 path so g-code stays bit-
-    // identical to the pre-feature behavior.
-    m_first_layer_plane = std::make_unique<FirstLayerPlane>(print.config());
     // Belt writers only: travel-speed selection becomes per-point (see
     // GCodeWriter::uses_pointwise_travel_speed()), which must not change for
     // non-belt printers. The writer gets the same test the extrusions use, so a
     // travel is judged against the belt surface (belt_height_above_floor) exactly
-    // like the path it leads to, and not against the FirstLayerPlane, which
-    // misreports the height under a non-identity gcode_remap_*. Writer points
-    // carry the G-code origin and extruder offset that point_to_gcode() added;
-    // the belt surface is described in the object's own frame.
+    // like the path it leads to. Writer points carry the G-code origin and
+    // extruder offset that point_to_gcode() added; the belt surface is described
+    // in the object's own frame.
     if (print.config().belt_printer.value) {
         m_writer.set_first_layer_point_test([this](const Vec3d &point_logical) {
             const Vec2d extruder_offset = m_writer.filament() != nullptr ? EXTRUDER_CONFIG(extruder_offset) : Vec2d::Zero();
@@ -5540,7 +5533,7 @@ std::string GCode::generate_object_brim(const Print &print, const PrintObject &o
 // apron band has no Layer, and giving it a synthetic one would feed a fabricated
 // Layer::id() into initial-layer temperature selection, the spiral vase probe,
 // gradual interpolation and cooling.  Correct first-layer treatment comes from
-// FirstLayerPlane in BeltAffine mode, which is evaluated per point.
+// the height above the belt, which is evaluated per point.
 LayerResult GCode::process_belt_brim_layer(
     const Print                     &print,
     const std::vector<LayerToPrint> &layers,
@@ -6302,40 +6295,13 @@ LayerResult GCode::process_layer(
         }
     }
 
-    // First-layer plane: defer the temperature/PLR transition until the
-    // entire layer is past the first-layer band.  When the evaluator is
-    // inactive (non-belt printers and belt printers without Z shear) we
-    // fall back to the legacy `!first_layer` predicate so behavior is
-    // bit-identical to the pre-feature path.
+    // Belt printers: defer the temperature/PLR transition until the entire layer
+    // is past the first-layer band above the belt.  Elsewhere (non-belt printers,
+    // support-only layers) the legacy `!first_layer` predicate applies, so
+    // behavior is bit-identical to the pre-feature path.
     bool past_first_layer_band = !first_layer;
-    if (int past = this->belt_layer_past_first_layer_band(object_layer); past >= 0) {
-        // Belt surface known for this object: measured from the belt itself, as the
-        // extrusions and travels are, rather than through FirstLayerPlane.
+    if (int past = this->belt_layer_past_first_layer_band(object_layer); past >= 0)
         past_first_layer_band = past > 0;
-    } else if (m_first_layer_plane && m_first_layer_plane->is_active()) {
-        past_first_layer_band = false;
-        if (object_layer != nullptr) {
-            // Conservatively walk the layer's lslice bboxes; if every bbox's
-            // most-belt-side corner is outside the first-layer band, the
-            // layer is fully past it.
-            const Layer *ol = object_layer;
-            int min_eff = INT_MAX;
-            for (const BoundingBox &bb : ol->lslices_bboxes) {
-                BoundingBoxf bbf(
-                    Vec2d(unscale<double>(bb.min.x()), unscale<double>(bb.min.y())),
-                    Vec2d(unscale<double>(bb.max.x()), unscale<double>(bb.max.y())));
-                int eff = m_first_layer_plane->min_effective_index_for_xy_bbox(
-                    bbf, ol->print_z);
-                if (eff < min_eff) min_eff = eff;
-                if (min_eff <= 0) break;
-            }
-            past_first_layer_band = (min_eff > 0 && min_eff != INT_MAX);
-        } else if (support_layer != nullptr) {
-            // Support-only layers: gate on the support layer's bottom_z
-            // proximity to the plane.  Conservative.
-            past_first_layer_band = !first_layer;
-        }
-    }
 
     if (past_first_layer_band && !m_second_layer_things_done) {
         // Orca: set power loss recovery
@@ -8812,7 +8778,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
 
     if (speed == 0)
         speed = filament_max_volumetric_speed / _mm3_per_mm;
-    // Use the FirstLayerPlane-aware effective layer index when active so
+    // Use the belt-aware effective layer index when on a belt printer so
     // the speed fade tracks perpendicular distance from the plane on
     // belt printers; otherwise this falls back to the slicing layer id.
     const int _layer = this->effective_layer_index_for_point(path_point_mm);
@@ -10637,8 +10603,8 @@ std::string GCode::set_object_info(Print *print) {
 // Whether an object layer lies entirely past the first-layer band above the belt:
 // 1 when its lowest point is at least one band thickness above the belt, 0 when
 // any of it is inside the band, -1 when the belt surface is not known for this
-// layer (not a belt print, an explicit first-layer plane, or no object layer), in
-// which case the caller falls back to FirstLayerPlane / the slicing layer index.
+// layer (not a belt print, or no object layer), in which case the caller falls
+// back to the slicing layer index.
 int GCode::belt_layer_past_first_layer_band(const Layer *object_layer) const
 {
     if (object_layer == nullptr)
@@ -10674,20 +10640,6 @@ bool GCode::belt_height_above_floor(const Vec3d &point_slicing_mm, double &heigh
                               : (m_layer != nullptr ? m_layer->object() : nullptr);
     if (object == nullptr)
         return false;
-    // Respect an explicit first-layer-plane choice: only Auto and BeltAffine mean
-    // "use the belt". A user who selected XY, YZ or XZ has asked for the
-    // FirstLayerPlane evaluator and must keep it.
-    const FirstLayerPlaneMode mode = m_config.first_layer_plane.value;
-    if (mode != FirstLayerPlaneMode::Auto && mode != FirstLayerPlaneMode::BeltAffine)
-        return false;
-    // Likewise for a dialled-in plane offset.  It is expressed as a machine-Z
-    // shift that FirstLayerPlane converts into a perpendicular distance in the
-    // slicing frame; this evaluator measures along slicing Z instead, so there is
-    // no faithful translation of it here.  Honour the user's setting by deferring
-    // to the evaluator that implements it rather than silently dropping it.
-    if (std::abs(m_config.first_layer_plane_offset.value) > EPSILON)
-        return false;
-
     const SlicingParameters &sp = object->slicing_parameters();
     // Deliberately NOT BeltFloorContext: its init() folds in
     // belt_support_floor_offset, a support-generator diagnostic. Letting that

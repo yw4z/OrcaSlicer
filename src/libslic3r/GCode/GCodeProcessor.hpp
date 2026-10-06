@@ -304,9 +304,6 @@ class Print;
         // machine frame and should not be compared against `printable_height`
         // (which lives in the build-volume frame).
         bool machine_frame_transform_active{ false };
-        RemapAxis preslice_remap_x{ RemapAxis::PosX };
-        RemapAxis preslice_remap_y{ RemapAxis::PosY };
-        RemapAxis preslice_remap_z{ RemapAxis::PosZ };
         SettingsIds settings_ids;
         size_t filaments_count;
         bool backtrace_enabled;
@@ -405,9 +402,6 @@ class Print;
             belt_tilt_angle = std::forward<Other>(other).belt_tilt_angle;
             belt_z_origin = std::forward<Other>(other).belt_z_origin;
             machine_frame_transform_active = std::forward<Other>(other).machine_frame_transform_active;
-            preslice_remap_x = std::forward<Other>(other).preslice_remap_x;
-            preslice_remap_y = std::forward<Other>(other).preslice_remap_y;
-            preslice_remap_z = std::forward<Other>(other).preslice_remap_z;
 #if ENABLE_GCODE_VIEWER_STATISTICS
             time = std::forward<Other>(other).time;
 #endif

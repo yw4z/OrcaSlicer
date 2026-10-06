@@ -300,34 +300,6 @@ enum class BeltSupportFloorMode
     GeneratorOnly,  // Only in tree support drop_nodes/contact_points
 };
 
-enum class BeltSupportZOffsetMode
-{
-    None,           // Don't apply global_z_offset to support layers
-    Unconditional,  // Apply to all support layers
-    RaftOnly,       // Only apply to raft layers
-};
-
-// Selects which plane the slicer treats as the "first layer plane" — the
-// reference surface used to decide which extrusions get first-layer settings
-// (no fan, slow speed, initial-layer accel/jerk, deferred temperature drop).
-//
-// Auto resolves to:
-//   - XY (inactive, legacy behavior) for non-belt printers and for belt
-//     printers with no active belt-side transform.
-//   - BeltAffine for belt printers with any active belt-side affine
-//     transform (Z shear, slicing rotation, or both).
-//
-// XY is also used as an explicit "opt out" mode that forces legacy
-// per-layer first-layer detection even on belt printers.
-enum class FirstLayerPlaneMode
-{
-    Auto = 0,
-    XY,
-    YZ,
-    XZ,
-    BeltAffine,   // formerly BeltShear; renamed to reflect rotation support
-};
-
 enum SupportMaterialPattern {
     smpDefault,
     smpRectilinear, smpRectilinearGrid, smpHoneycomb,
@@ -775,8 +747,6 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SlicingMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(BeltRotationAxis)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(RemapAxis)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(BeltSupportFloorMode)
-CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(BeltSupportZOffsetMode)
-CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(FirstLayerPlaneMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialPattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialStyle)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialInterfacePattern)
@@ -1898,26 +1868,18 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     // g-code back-transform inverts the rotation before the machine-frame stage.
     ((ConfigOptionEnum<BeltRotationAxis>, belt_slice_rotation))
     ((ConfigOptionFloat,                  belt_slice_rotation_angle))
-    ((ConfigOptionBool,                   belt_slice_rotation_global))
     // Expert override: decouple the machine-frame tilt angle from the pre-slice
     // rotation angle.  When disabled, the machine frame uses belt_slice_rotation_angle.
     ((ConfigOptionBool,                   belt_frame_tilt_decouple))
     ((ConfigOptionFloat,                  belt_frame_tilt_angle))
-    ((ConfigOptionEnum<RemapAxis>,  preslice_remap_x))
-    ((ConfigOptionEnum<RemapAxis>,  preslice_remap_y))
-    ((ConfigOptionEnum<RemapAxis>,  preslice_remap_z))
-    ((ConfigOptionBool,             preslice_remap_global))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_x))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_y))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_z))
     ((ConfigOptionBool,                 gcode_back_transform))
     ((ConfigOptionBool,                 belt_preslice_global))
-    ((ConfigOptionEnum<FirstLayerPlaneMode>, first_layer_plane))
-    ((ConfigOptionFloat,                first_layer_plane_offset))
     ((ConfigOptionFloat,                first_layer_plane_thickness))
     ((ConfigOptionFloat,                          belt_support_floor_offset))
     ((ConfigOptionEnum<BeltSupportFloorMode>,     belt_support_floor_mode))
-    ((ConfigOptionEnum<BeltSupportZOffsetMode>,   belt_support_z_offset_mode))
     // Width (machine X, across the belt) of the auto-generated belt purge prism.
     ((ConfigOptionFloat,                          belt_purge_tower_width))
     // Belt-printer-only "type" of purge tower: enables the auto-generated belt

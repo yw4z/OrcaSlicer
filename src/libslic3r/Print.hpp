@@ -231,11 +231,10 @@ class ConstSupportLayerPtrsAdaptor : public ConstVectorOfPtrsAdaptor<SupportLaye
     ConstSupportLayerPtrsAdaptor(const SupportLayerPtrs *data) : ConstVectorOfPtrsAdaptor<SupportLayer>(data) {}
 };
 
-// Returns the model's raw bounding box with pre-slice axis remap applied.
-// When no remap is active, returns the unmodified raw_bounding_box().
-inline BoundingBoxf3 belt_remapped_bbox(const ModelObject &model_object, const PrintConfig &config)
+// The model's raw bounding box, in the frame the belt floor parameters refer to.
+inline BoundingBoxf3 belt_remapped_bbox(const ModelObject &model_object, const PrintConfig & /*config*/)
 {
-    return BeltTransformPipeline::remap_bbox(model_object, config);
+    return model_object.raw_bounding_box();
 }
 
 // Single instance of a PrintObject.

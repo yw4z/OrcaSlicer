@@ -14,12 +14,7 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
                                                   const ModelVolumePtrs &model_volumes,
                                                   double                *out_belt_min_z)
 {
-    // 1. Standalone pre-slice axis remap (works without belt mode).
-    const bool has_remap = BeltTransformPipeline::has_preslice_remap(config);
-    if (has_remap)
-        trafo = BeltTransformPipeline::build_preslice_remap(config) * trafo;
-
-    // 2. Belt rotation — the sole mesh-side belt transform (matching
+    // 1. Belt rotation — the sole mesh-side belt transform (matching
     //    BeltTransformPipeline::build_forward_transform).  Only active in
     //    belt-printer mode.
     bool has_rotation = false;
@@ -32,10 +27,10 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
         }
     }
 
-    if (!has_remap && !has_rotation)
+    if (!has_rotation)
         return;
 
-    // 3. Z-shift — detect if the mesh clips below the build plate after the
+    // 2. Z-shift — detect if the mesh clips below the build plate after the
     // transforms and lift it.  Each mesh vertex must be brought into object space
     // via mv->get_matrix() before applying the full trafo (which is in object
     // space).  Missing this on assemblies (where per-volume get_matrix() positions

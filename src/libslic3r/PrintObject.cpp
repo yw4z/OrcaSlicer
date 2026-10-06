@@ -4154,9 +4154,7 @@ void PrintObject::update_slicing_parameters()
           BeltTransformPipeline::BeltFloorParams belt_floor;
           const auto &pcfg = this->print()->config();
           if (pcfg.belt_printer.value) {
-              BoundingBoxf3 bb = BeltTransformPipeline::remap_bbox(*this->model_object(), pcfg);
-              if (BeltTransformPipeline::has_preslice_remap(pcfg))
-                  object_height = bb.size().z();
+              const BoundingBoxf3 bb = this->model_object()->raw_bounding_box();
               auto hr = BeltTransformPipeline::compute_belt_height_and_floor(pcfg, bb, object_height);
               object_height = hr.object_height;
               belt_floor    = hr.floor_params;
@@ -4217,9 +4215,6 @@ SlicingParameters PrintObject::slicing_parameters(const DynamicPrintConfig &full
         BoundingBoxf3 bb = model_object.raw_bounding_box();
         object_max_z = (float)bb.size().z();
         if (print_config.belt_printer.value) {
-            bb = BeltTransformPipeline::remap_bbox(model_object, print_config);
-            if (BeltTransformPipeline::has_preslice_remap(print_config))
-                object_max_z = (float)bb.size().z();
             auto hr = BeltTransformPipeline::compute_belt_height_and_floor(print_config, bb, object_max_z);
             object_max_z = (float)hr.object_height;
             belt_floor   = hr.floor_params;

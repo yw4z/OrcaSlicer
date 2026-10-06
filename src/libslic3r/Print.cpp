@@ -177,7 +177,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         // Machine-frame transform (derived from belt tilt; only affects G-code output).
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
         "gcode_back_transform",
-        "first_layer_plane", "first_layer_plane_offset", "first_layer_plane_thickness",
+        "first_layer_plane_thickness",
         // Only inflates the GUI bed volume, like printable_area.
         "belt_printer_infinite_y",
         //BBS
@@ -389,17 +389,11 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
             || opt_key == "belt_printer"
             || opt_key == "belt_slice_rotation"
             || opt_key == "belt_slice_rotation_angle"
-            || opt_key == "belt_slice_rotation_global"
-            || opt_key == "belt_preslice_global"
-            || opt_key == "preslice_remap_global"
-            || opt_key == "preslice_remap_x"
-            || opt_key == "preslice_remap_y"
-            || opt_key == "preslice_remap_z") {
+            || opt_key == "belt_preslice_global") {
             osteps.emplace_back(posSlice);
         } else if (
                opt_key == "belt_support_floor_offset"
-            || opt_key == "belt_support_floor_mode"
-            || opt_key == "belt_support_z_offset_mode") {
+            || opt_key == "belt_support_floor_mode") {
             osteps.emplace_back(posSupportMaterial);
         } else if (
                opt_key == "print_sequence"
@@ -2107,9 +2101,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         bool   have_height           = false;
 
         if (belt_printer) {
-            double raw_z = print_object.model_object()->max_z();
-            if (BeltTransformPipeline::has_preslice_remap(this->config()))
-                raw_z = BeltTransformPipeline::remap_bbox(*print_object.model_object(), this->config()).size().z();
+            const double raw_z = print_object.model_object()->max_z();
             effective_max_z = raw_z;
             have_height     = raw_z > 0;
         } else {
@@ -3069,11 +3061,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     std::set<PrintObject*> re_slicing_objects;
     // Belt global modes couple each object's bed position into its layer Z values,
     // so sharing layers between "identical" objects is wrong.
-    bool belt_no_share = m_config.belt_printer.value &&
-        ((m_config.belt_slice_rotation_global.value
-              && m_config.belt_slice_rotation.value != BeltRotationAxis::None)
-         || m_config.preslice_remap_global.value
-         || m_config.belt_preslice_global.value);
+    bool belt_no_share = m_config.belt_printer.value && m_config.belt_preslice_global.value;
     if (!use_cache) {
         for (int index = 0; index < object_count; index++)
         {

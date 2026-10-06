@@ -1339,10 +1339,9 @@ static Transform3d compute_belt_back_transform(const PrintConfig& cfg)
     // build-volume offset for Rev axes). This is the matrix form of the per-point
     // GCodeWriter::apply_axis_remap (row convention: each OUTPUT axis selects an input
     // axis + sign) and MUST stay in sync with it. The build-volume max matches what the
-    // writer is fed in GCode.cpp (printable_area max + printable_height). NB: this is the
-    // transpose of the column convention used by BeltTransformPipeline::build_preslice_remap
-    // — the two remaps are not interchangeable. (Follow-up: precompute this matrix once in
-    // GCodeWriter and share it with apply_axis_remap to remove the parallel encoding.)
+    // writer is fed in GCode.cpp (printable_area max + printable_height). (Follow-up:
+    // precompute this matrix once in GCodeWriter and share it with apply_axis_remap to
+    // remove the parallel encoding.)
     Transform3d ar = Transform3d::Identity();
     const int rr[3] = { int(cfg.gcode_remap_x.value), int(cfg.gcode_remap_y.value), int(cfg.gcode_remap_z.value) };
     if (rr[0] != 0 || rr[1] != 1 || rr[2] != 2) {

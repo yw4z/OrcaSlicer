@@ -2641,9 +2641,6 @@ void GCodeProcessorResult::reset() {
     machine_frame_transform_active = false;
     belt_tilt_angle = 0.f;
     belt_z_origin   = 0.f;
-    preslice_remap_x = RemapAxis::PosX;
-    preslice_remap_y = RemapAxis::PosY;
-    preslice_remap_z = RemapAxis::PosZ;
     settings_ids.reset();
     filaments_count = 0;
     backtrace_enabled = false;
@@ -3223,8 +3220,7 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         const auto *belt = config.option<ConfigOptionBool>("belt_printer");
         if (belt != nullptr) {
             static const char *belt_keys[] = {
-                "belt_printer", "belt_slice_rotation", "belt_slice_rotation_angle", "belt_slice_rotation_global",
-                "belt_preslice_global", "preslice_remap_x", "preslice_remap_y", "preslice_remap_z", "preslice_remap_global",
+                "belt_printer", "belt_slice_rotation", "belt_slice_rotation_angle", "belt_preslice_global",
                 "gcode_remap_x", "gcode_remap_y", "gcode_remap_z", "gcode_back_transform",
                 "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
             };
@@ -4349,36 +4345,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             m_result.belt_tilt_angle = std::abs(std::stof(std::string(comment.substr(29))));
         } catch (...) {}
         return;
-    }
-    // Belt printer: parse pre-slice axis remap from header comments.
-    {
-        auto trim = [](const std::string &s) -> std::string {
-            size_t start = s.find_first_not_of(" \t\r\n");
-            size_t end   = s.find_last_not_of(" \t\r\n");
-            return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
-        };
-        // Pre-slice axis remap
-        auto parse_remap_axis = [](const std::string &s) -> RemapAxis {
-            if (s == "pos_x") return RemapAxis::PosX;
-            if (s == "pos_y") return RemapAxis::PosY;
-            if (s == "pos_z") return RemapAxis::PosZ;
-            if (s == "neg_x") return RemapAxis::NegX;
-            if (s == "neg_y") return RemapAxis::NegY;
-            if (s == "neg_z") return RemapAxis::NegZ;
-            if (s == "rev_x") return RemapAxis::RevX;
-            if (s == "rev_y") return RemapAxis::RevY;
-            if (s == "rev_z") return RemapAxis::RevZ;
-            return RemapAxis::PosX;
-        };
-        if (boost::starts_with(comment, " preslice_remap_x = ")) {
-            m_result.preslice_remap_x = parse_remap_axis(trim(std::string(comment.substr(20)))); return;
-        }
-        if (boost::starts_with(comment, " preslice_remap_y = ")) {
-            m_result.preslice_remap_y = parse_remap_axis(trim(std::string(comment.substr(20)))); return;
-        }
-        if (boost::starts_with(comment, " preslice_remap_z = ")) {
-            m_result.preslice_remap_z = parse_remap_axis(trim(std::string(comment.substr(20)))); return;
-        }
     }
     // wipe start tag
     if (boost::starts_with(comment, reserved_tag(ETags::Wipe_Start))) {
