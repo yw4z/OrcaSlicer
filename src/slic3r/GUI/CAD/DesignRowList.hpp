@@ -77,7 +77,8 @@ public:
     // the selected one.
     std::function<void(int row, int id)>              on_action;
     // Context menu on a row, at a screen position; the row under the pointer is selected first,
-    // unless the list is non-selectable.
+    // unless the list is non-selectable. Pop the menu from inside the call: wxGTK sends it on the
+    // right press, and a menu deferred past that event closes on the button's release.
     std::function<void(int row, const wxPoint& screen)> on_menu;
     // The editor committed `name` for `row`, trimmed and never empty (an empty commit cancels).
     // Runs after the editor's own events have finished, so the owner may rebuild the rows here.

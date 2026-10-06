@@ -3363,9 +3363,10 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // been promising this right-click since before it existed.
     m_parts->on_menu = [this, apply_body_row](int row, const wxPoint& screen) {
         apply_body_row(row);   // unconditional — see above
-        // Let the modal menu take the loop after this handler returns — same CallAfter as the
-        // sketch path, which learned it the hard way.
-        CallAfter([this, screen] { show_offer_menu(screen); });
+        // From inside the event, as the feature rows do, never CallAfter'd: wxGTK sends the
+        // context menu on the right PRESS, and a menu GTK pops after that event has finished
+        // has no trigger time, so the button's release closes it the moment it opens.
+        show_offer_menu(screen);
     };
     // Renaming a BODY names the body itself. It does NOT rename the feature that created it:
     // an Extrude, a Cut and a Fillet all land on one body, so source_feature is one operation in
