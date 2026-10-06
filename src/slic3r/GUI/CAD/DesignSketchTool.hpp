@@ -3,6 +3,7 @@
 
 #include "libslic3r/Point.hpp"
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/Line.hpp"
 #include "libslic3r/CAD/SketchEngine.hpp"
 #include "libslic3r/CAD/CadDocument.hpp"   // CadBody for per-body solid picking
 #include <TopoDS_Shape.hxx>
@@ -260,6 +261,9 @@ public:
     void clear_move_gizmo();
     bool moving_body() const { return m_mv_active; }
     int  move_body_index() const { return m_mv_body; }
+    // Press, then drag, translate arrow `axis` (0..2 = X/Y/Z) with the mouse ray under the cursor.
+    void grab_move_arrow(int axis, const Linef3& ray);
+    void drag_move_arrow(const Linef3& ray);
     std::function<void(int body, const Transform3d& xform)> on_body_move_changed;
     // Fired on each cycle change: (level 0=None/1=Whole/2=Face/3=Edge, body index, face id, edge id).
     std::function<void(int level, int body, int face, int edge)> on_solid_selection_changed;
@@ -1432,6 +1436,7 @@ private:
     int         m_mv_drag{-1};                 // 0..2 = X/Y/Z arrow, 3..5 = X/Y/Z ring, -1 none
     double      m_mv_radius{0.0};              // body bounding-sphere radius (mm); 0 = unknown
     int         m_mv_press_x{0}, m_mv_press_y{0};
+    double      m_mv_grab_along{0.0};          // arrow grab point's distance from the anchor; NaN = unknown
     Transform3d compose_move_xform() const;    // T(offset)*T(pivot)*rot*T(-pivot)*base_xform
     void  ring_basis(int axis, Vec3d& e, Vec3d& u, Vec3d& v) const;  // world axis + in-plane basis
     void  render_move_gizmo();
@@ -1439,7 +1444,6 @@ private:
     double move_gizmo_arm(const Camera& cam) const;
     bool  hit_test_move_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt, int& axis) const;
     bool  hit_test_move_arc(GLCanvas3D& canvas, const wxMouseEvent& evt, int& axis) const;
-    void  drag_move_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt, int axis);
     void  drag_move_arc(GLCanvas3D& canvas, const wxMouseEvent& evt, int axis);
     bool  arc_mouse_angle(GLCanvas3D& canvas, const wxMouseEvent& evt, int axis, double& ang) const;
     void  open_move_editor(int axis);

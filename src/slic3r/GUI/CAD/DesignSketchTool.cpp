@@ -78,6 +78,7 @@ static bool   point_in_poly(const Vec2d& q, const std::vector<Vec2d>& poly);
 static bool   ray_triangle(const Vec3d& ro, const Vec3d& rd, const Vec3d& v0, const Vec3d& v1,
                            const Vec3d& v2, double& t);
 static double ray_segment_dist3(const Vec3d& ro, const Vec3d& rd, const Vec3d& a, const Vec3d& b);
+static double ray_axis_proj(const Linef3& ray, const Vec3d& anchor, const Vec3d& dir);
 
 // Project a world-space point to canvas screen pixels (device px, GL viewport units;
 // origin top-left after the GL y-flip). Mirrors GLCanvas3D's world->screen pattern:
@@ -5819,19 +5820,22 @@ bool DesignSketchTool::hit_test_move_arrow(GLCanvas3D& canvas, const wxMouseEven
     axis = best; return true;
 }
 
-// Skew-line closest point of the mouse ray to the axis line through the ORIGINAL centroid
-// -> signed offset along that axis (no clamp; a body can move either way).
-void DesignSketchTool::drag_move_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt, int axis)
+// Record how far along the arrow it was grabbed (NaN while the camera looks down the axis; the
+// first drag sample that projects stands in), so the body's centre does not snap to the grab.
+void DesignSketchTool::grab_move_arrow(int axis, const Linef3& ray)
 {
-    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
-    const Vec3d ro = r.a, rd = r.b - r.a;
-    const Vec3d axes[3] = { Vec3d::UnitX(), Vec3d::UnitY(), Vec3d::UnitZ() };
-    const Vec3d e = axes[axis];
-    const Vec3d w0 = m_mv_base - ro;
-    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
-    const double denom = a * c - b * b;
-    if (std::abs(denom) < 1e-7) return;             // camera ∥ axis: leave offset as-is
-    m_mv_offset[axis] = (b * ee - c * dd) / denom;
+    m_mv_drag       = axis;
+    m_mv_grab_along = ray_axis_proj(ray, m_mv_base + m_mv_offset, Vec3d::Unit(axis));
+}
+
+// Slide the body along the grabbed axis by the cursor's travel (no clamp; it can move either way).
+void DesignSketchTool::drag_move_arrow(const Linef3& ray)
+{
+    if (m_mv_drag < 0 || m_mv_drag > 2) return;
+    const double proj = ray_axis_proj(ray, m_mv_base + m_mv_offset, Vec3d::Unit(m_mv_drag));
+    if (std::isnan(proj)) return;                   // camera ∥ axis: leave offset as-is
+    if (std::isnan(m_mv_grab_along)) { m_mv_grab_along = proj; return; }
+    m_mv_offset[m_mv_drag] += proj - m_mv_grab_along;
     if (on_body_move_changed) on_body_move_changed(m_mv_body, compose_move_xform());
 }
 
@@ -6201,21 +6205,10 @@ int DesignSketchTool::hit_test_hole_handle(GLCanvas3D& canvas, const wxMouseEven
     return best;
 }
 
-// Skew-line closest point of the mouse ray to an axis (anchor + t*dir) -> signed distance along
-// dir. NaN when the camera is ~parallel to the axis (no meaningful projection).
 double DesignSketchTool::hole_axis_proj(GLCanvas3D& canvas, const wxMouseEvent& evt,
                                         const Vec3d& anchor, const Vec3d& dir) const
 {
-    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
-    const Vec3d ro = r.a, rd = r.b - r.a;
-    const Vec3d e = dir;
-    const Vec3d w0 = anchor - ro;
-    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
-    const double denom = a * c - b * b;
-    // Relative near-parallel guard: when the camera ray is ~along the axis (e.g. the depth axis in
-    // top view) denom collapses; a tiny absolute floor lets a huge, unstable projection through.
-    if (std::abs(denom) < 1e-4 * std::max(a * c, 1e-12)) return std::nan("");
-    return (b * ee - c * dd) / denom;
+    return ray_axis_proj(canvas.mouse_ray(Point(evt.GetX(), evt.GetY())), anchor, dir);
 }
 
 void DesignSketchTool::start_hole_drag(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
@@ -10179,6 +10172,21 @@ static double ray_segment_dist3(const Vec3d& ro, const Vec3d& rd, const Vec3d& a
     return (pr - ps).norm();
 }
 
+// Skew-line closest point of the mouse ray to an axis (anchor + t*dir) -> signed distance along
+// dir. NaN when the camera is ~parallel to the axis (no meaningful projection).
+static double ray_axis_proj(const Linef3& ray, const Vec3d& anchor, const Vec3d& dir)
+{
+    const Vec3d ro = ray.a, rd = ray.vector();
+    const Vec3d e = dir;
+    const Vec3d w0 = anchor - ro;
+    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+    const double denom = a * c - b * b;
+    // Relative near-parallel guard: when the camera ray is ~along the axis (e.g. the depth axis in
+    // top view) denom collapses; a tiny absolute floor lets a huge, unstable projection through.
+    if (std::abs(denom) < 1e-4 * std::max(a * c, 1e-12)) return std::nan("");
+    return (b * ee - c * dd) / denom;
+}
+
 // Screen-plane distance from p to a sketch entity, for click picking in Constrain
 // mode. Circles/arcs measure distance to the ring; points to their position.
 static double entity_pick_dist(const Vec2d& p, const SketchEntity& e)
@@ -10687,7 +10695,7 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
         // exits move mode. A LeftDown that misses the arrows falls through to solid re-pick.
         if (m_mv_active) {
             if (m_mv_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
-                if (m_mv_drag < 3) drag_move_arrow(canvas, evt, m_mv_drag);
+                if (m_mv_drag < 3) drag_move_arrow(canvas.mouse_ray(Point(evt.GetX(), evt.GetY())));
                 else               drag_move_arc(canvas, evt, m_mv_drag - 3);
                 return true;
             }
@@ -10705,7 +10713,8 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
             if (evt.LeftDown()) {
                 int axis = -1;
                 if (hit_test_move_arrow(canvas, evt, axis)) {   // translate arrows win over rings
-                    m_mv_drag = axis; m_mv_press_x = evt.GetX(); m_mv_press_y = evt.GetY();
+                    grab_move_arrow(axis, canvas.mouse_ray(Point(evt.GetX(), evt.GetY())));
+                    m_mv_press_x = evt.GetX(); m_mv_press_y = evt.GetY();
                     return true;
                 }
                 if (hit_test_move_arc(canvas, evt, axis)) {

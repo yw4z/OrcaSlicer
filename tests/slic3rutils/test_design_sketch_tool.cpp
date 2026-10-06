@@ -28,6 +28,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/CAD/SketchEngine.hpp"
+#include "libslic3r/Line.hpp"
 #include "libslic3r/Point.hpp"
 #include "slic3r/GUI/3DScene.hpp"
 #include "slic3r/GUI/CAD/DesignSketchTool.hpp"
@@ -304,4 +305,42 @@ TEST_CASE("Cutting the base planes along each other keeps every plane whole", "[
         covered[piece.plane] += area(piece, planes[piece.plane]);
     for (double a : covered)
         CHECK_THAT(a, WithinRel(4. * half * half, 1e-9));
+}
+
+TEST_CASE("A move arrow drag moves the body by the cursor's travel, wherever the arrow is grabbed", "[DesignSketchTool]")
+{
+    DesignSketchTool tool;
+    Transform3d      moved = Transform3d::Identity();
+    tool.on_body_move_changed = [&moved](int, const Transform3d& xform) { moved = xform; };
+    tool.set_move_gizmo(0, Vec3d::Zero(), Transform3d::Identity(), 10.);
+    // Looking straight down onto the X arrow, the cursor over x = `x` on it.
+    const auto ray_at = [](double x) { return Linef3(Vec3d(x, 0., 100.), Vec3d(x, 0., 0.)); };
+
+    // Grabbed 12 mm out from the body centre: a 1 mm move moves the body 1 mm, not 13.
+    tool.grab_move_arrow(0, ray_at(12.));
+    tool.drag_move_arrow(ray_at(13.));
+    CHECK_THAT(moved.translation().x(), WithinAbs(1., 1e-9));
+    tool.drag_move_arrow(ray_at(17.));
+    CHECK_THAT(moved.translation().x(), WithinAbs(5., 1e-9));
+
+    // The next drag carries on from where the body was left: grabbed 3 mm past it, moved 2 mm.
+    tool.grab_move_arrow(0, ray_at(8.));
+    tool.drag_move_arrow(ray_at(10.));
+    CHECK_THAT(moved.translation().x(), WithinAbs(7., 1e-9));
+}
+
+TEST_CASE("A move arrow pressed while looking down its axis does not jump on the first move", "[DesignSketchTool]")
+{
+    DesignSketchTool tool;
+    Transform3d      moved = Transform3d::Identity();
+    tool.on_body_move_changed = [&moved](int, const Transform3d& xform) { moved = xform; };
+    tool.set_move_gizmo(0, Vec3d::Zero(), Transform3d::Identity(), 10.);
+    const auto ray_at = [](double x) { return Linef3(Vec3d(x, 0., 100.), Vec3d(x, 0., 0.)); };
+
+    // The press projects nowhere on the X axis, so the first move only finds where it was grabbed.
+    tool.grab_move_arrow(0, Linef3(Vec3d(100., 0., 0.), Vec3d::Zero()));
+    tool.drag_move_arrow(ray_at(13.));
+    CHECK_THAT(moved.translation().x(), WithinAbs(0., 1e-9));
+    tool.drag_move_arrow(ray_at(15.));
+    CHECK_THAT(moved.translation().x(), WithinAbs(2., 1e-9));
 }
