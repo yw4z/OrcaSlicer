@@ -648,13 +648,12 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // delete 42 verbs from the offer while they still rendered. 7ih records the cleanup
     // that lets the construction go away too.
     // What stays: the view controls, which are chrome_only in the atlas and so have no offer row
-    // to fall back on.
+    // to fall back on, and Sketch, the group's lead. All four are built with the doc buttons.
     static const std::set<std::string> kBarKeep = { "place", "section", "flip" };
     auto fadd = [&tb_slot](const char* id, wxWindow* w) {
         if (kBarKeep.count(id) == 0) { w->Hide(); return; }
         tb_slot[id].push_back(w);
     };
-    m_tb_feature->Add(caption(_L("FEATURES")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
     {
         // Onshape-style FEATURE flyouts: same themed-DropDown pattern as the sketch toolbar
         // (tinted glyphs, Body_14 measure, content-width popup) but each entry runs an
@@ -732,13 +731,10 @@ DesignPanel::DesignPanel(wxWindow* parent)
             fadd(id, chev);
         };
 
-        auto* b_sketch = icon_btn("design_sketch", _L("Sketch"));
         // Sketch opens a sketch on the face or plane already picked, or asks for one first
-        // (start_sketch): sketch mode is never entered without a plane under it.
-        std::function<void()> act_sketch = [this] { start_sketch(); };
-        b_sketch->Bind(wxEVT_BUTTON, [act_sketch](wxCommandEvent&) { act_sketch(); });
-        m_keys_feature[SHIFT('S')] = act_sketch;
-        fadd("sketch", b_sketch);
+        // (start_sketch): sketch mode is never entered without a plane under it. Its button is
+        // built with the doc buttons below.
+        m_keys_feature[SHIFT('S')] = [this] { start_sketch(); };
         // Add material: every feature that grows new solid material — from a profile
         // (extrude/revolve/sweep/loft), from a face (thicken) or from a line (rib).
         feat_dropdown("material", "design_extrude", _L("Add material (extrude / revolve / sweep / loft / thicken / rib)"), {
@@ -1637,6 +1633,12 @@ DesignPanel::DesignPanel(wxWindow* parent)
         auto* b_export = doc_btn("design_export", _L("Export STEP…"));
         b_export->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_export_step(); });
         add_doc(b_export);
+
+        // Sketch leads the feature group. Momentary like the imports: start_sketch() may only ask
+        // for a plane, or refuse, and a teal active-tool state would outlive either.
+        auto* b_sketch = doc_btn("design_new_sketch", _L("Create a new sketch"));
+        b_sketch->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { start_sketch(); });
+        tb_slot["sketch"].push_back(b_sketch);
 
         // These act on bodies / the view, so they ride in the feature group, in the slots
         // the user assigned them (9, 11bis, 16).
