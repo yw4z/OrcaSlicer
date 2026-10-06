@@ -882,15 +882,9 @@ void PublishSettingsDialog::build_option_model()
             for (const PageShp& page : tab->m_pages) {
                 if (page->title() != "Extruder")
                     continue;
-                // Name each extruder as the printer tab's variant switch does ("Left Extruder: SF",
-                // "T1: SF", ...), taking its first (standard) option for a hybrid extruder: values come
-                // from the full config, which holds one value per extruder.
-                const std::vector<wxString> switch_options = printer_tab ? printer_tab->generate_extruder_options() : std::vector<wxString>();
+                // One tab per extruder, named as on the printer tab's switch.
                 for (size_t extruder_idx = 0; extruder_idx < extruders_count; ++extruder_idx) {
-                    const int option = printer_tab ? printer_tab->calculate_selection_index_for_extruder(int(extruder_idx), NozzleVolumeType::nvtStandard) : -1;
-                    const wxString page_title = extruders_count > 1 && option >= 0 && option < int(switch_options.size()) ?
-                        switch_options[option] :
-                        Tab::translate_category(extruders_count > 1 ? wxString::Format("Extruder %d", int(extruder_idx + 1)) : wxString("Extruder"), tab->m_type);
+                    const wxString page_title = Tab::translate_category(extruders_count > 1 ? wxString::Format("Extruder %d", int(extruder_idx + 1)) : wxString("Extruder"), tab->m_type);
                     for (const ConfigOptionsGroupShp& optgroup : page->m_optgroups) {
                         // Allowlist on the untranslated optgroup title; the "Retraction when
                         // switching material" group is intentionally skipped.

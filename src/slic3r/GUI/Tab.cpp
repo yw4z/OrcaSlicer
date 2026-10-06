@@ -8418,6 +8418,13 @@ std::vector<wxString> Tab::generate_extruder_options()
     // Orca: Left/Right only names a Bambu dual-nozzle printer; other printers number their tools.
     const bool toolhead_names = extruder_nums == 2 && m_preset_bundle->is_bbl_vendor();
     for (int i = 0; i < extruder_nums; ++i) {
+        // Orca: the printer tab has one tag per extruder, named as its former "Extruder N" pages were.
+        // parse_extruder_selection() counts a hybrid extruder as two tags; that still lines up because
+        // only the last extruder can be hybrid.
+        if (m_type == Preset::TYPE_PRINTER) {
+            options.push_back(translate_category(wxString::Format("Extruder %d", i + 1), m_type));
+            continue;
+        }
         wxString extruder_name = !toolhead_names ? wxString::Format("T%d", i + 1) :
                                                      _L(DevPrinterConfigUtil::get_toolhead_display_name(
                                                          pt, (i == 0) ? DEPUTY_EXTRUDER_ID : MAIN_EXTRUDER_ID,
