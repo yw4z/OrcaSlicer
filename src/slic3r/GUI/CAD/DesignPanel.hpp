@@ -935,12 +935,14 @@ private:
 
     // Feature tree: the Origin and Bed rows, a fixed block of view switches that never scrolls
     // and selects nothing, then, in a frame of its own below them, one row per feature, in feature
-    // order, with a per-type icon and the row's own Edit / Show-hide / Delete icons. Callers use
-    // row indices via tree_selection()/set_tree_selection(); refresh_tree() rebuilds the rows.
+    // order, with a per-type icon and the row's own Zoom to selection / Edit / Show-hide / Delete
+    // icons. Callers use row indices via tree_selection()/set_tree_selection(); refresh_tree()
+    // rebuilds the rows.
     DesignRowList*            m_pinned{nullptr};
     DesignRowList*            m_tree{nullptr};
-    // The faces the selected feature row made (CadDocument::faces_made_by), drawn as selected.
-    // Finding them replays the history, so they are kept per row and topology generation.
+    // The faces the selected feature row made (CadDocument::faces_made_by), drawn as selected, and
+    // what Zoom to selection frames for a row. Finding them replays the history, so they are kept
+    // per row and topology generation (feature_faces).
     // request_feature_highlight() refreshes them after the current event; every change of row,
     // card or topology calls it.
     int      m_hl_feature{-1};      // the row m_hl_faces were found for...
@@ -949,6 +951,8 @@ private:
     bool     m_hl_pending{false};
     void     request_feature_highlight();
     void     update_feature_highlight();
+    // The faces feature `f` made, found again when the cached ones are another row's or topology's.
+    const std::vector<std::pair<int, int>>& feature_faces(int f);
     bool     deselect_rows();       // Esc / a click on nothing: drop the tree and Bodies rows
     bool     drop_plane_pick();     // ...and a picked reference plane; true if one was picked
     // Bodies list under the feature tree: one row per body (parallel to m_doc.bodies). Selecting
@@ -991,6 +995,13 @@ private:
     void end_body_move(bool keep);        // leave it: keep the dragged pose, or put the body back
     void arm_transform_gizmo();           // arm the move gizmo on the Transform card's body (add mode only)
     void on_set_body_color();             // Color tool: pick a per-body display colour override
+    // Zoom to selection: frame one thing along the current view, as the canvas's Fit button frames
+    // a selection. A body is framed whole, hidden or not; a feature by its sketch or the faces it
+    // made; anything else the offer is opened on, by what the Fit button frames for it.
+    void zoom_to_body(int b);
+    void zoom_to_feature(int f);
+    void zoom_to_selection();
+    bool can_zoom_to_feature(int f) const;   // a sketch, or a shown feature that makes faces
     void on_boolean_tool();               // Boolean (combine bodies): needs two solids, then opens the tool
     int  tree_selection() const;          // selected feature row, or wxNOT_FOUND
     int  tree_body_selection() const;     // selected Parts-list body index, or -1

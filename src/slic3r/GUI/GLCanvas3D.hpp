@@ -1034,6 +1034,8 @@ public:
 #ifdef SLIC3R_CAD
     void set_design_sketch_tool(DesignSketchTool* tool) { m_design_sketch_tool = tool; }
     DesignSketchTool* get_design_sketch_tool() const { return m_design_sketch_tool; }
+    // The Design tab frames what it selects itself (DesignCanvas::zoom_to_box), as the Fit button does.
+    void zoom_to_box(const BoundingBoxf3& box) { _zoom_to_box(box); }
 #endif
     void enable_dynamic_background(bool enable) { m_dynamic_background_enabled = enable; }
     void enable_labels(bool enable) { m_labels.enable(enable); }

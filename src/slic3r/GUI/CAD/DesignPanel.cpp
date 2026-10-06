@@ -36,6 +36,7 @@
 #include "libslic3r/Point.hpp"
 #include <cstdlib>
 #include <exception>
+#include <initializer_list>
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Color.hpp"
 #include "libslic3r/CAD/SketchSolver.hpp"
@@ -284,7 +285,7 @@ static std::string commit_icon(bool bodies)
 }
 
 // The icons on each Feature tree and Bodies row (DesignRowList::Action::id).
-enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete };
+enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete, RowZoom };
 // The rows of the Feature tree's pinned block, above the features.
 static constexpr int kOriginRow = 0, kBedRow = 1;
 
@@ -1078,6 +1079,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         b_color->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_set_body_color(); });
         fadd("color", b_color);
         m_verb_actions["btn:colour"] = [this] { on_set_body_color(); };
+        m_verb_actions["btn:zoom_to"] = [this] { zoom_to_selection(); };
         m_verb_actions["btn:delete"] = [this] { on_delete_feature(); };
         // A row's double-click is Edit, so renaming needs a door of its own. The offer is this
         // tab's only tool vocabulary and the row IS the object, so rename sits in the offer, in
@@ -3194,12 +3196,13 @@ DesignPanel::DesignPanel(wxWindow* parent)
         if (tree_selection() != wxNOT_FOUND) on_edit_feature();
     };
 
-    // The row's own Edit / Show-hide / Delete, on the row the click selected. The body list is
-    // cleared here too, not left to on_select, which re-clicking the selected row does not run:
-    // a body row still selected would be what on_toggle_visibility acts on.
-    m_tree->on_action = [this](int, int id) {
+    // The row's own Zoom to selection / Edit / Show-hide / Delete, on the row the click selected.
+    // The body list is cleared here too, not left to on_select, which re-clicking the selected row
+    // does not run: a body row still selected would be what on_toggle_visibility acts on.
+    m_tree->on_action = [this](int row, int id) {
         if (m_parts) m_parts->unselect();
         switch (id) {
+        case RowZoom:       zoom_to_feature(row);   break;
         case RowEdit:       on_edit_feature();      break;
         case RowVisibility: on_toggle_visibility(); break;
         case RowDelete:     on_delete_feature();    break;
@@ -3220,6 +3223,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         const int id_up     = wxWindow::NewControlId();
         const int id_down   = wxWindow::NewControlId();
         const int id_vis    = wxWindow::NewControlId();
+        const int id_zoom   = wxWindow::NewControlId();
         const int id_art    = wxWindow::NewControlId();
         const int id_del    = wxWindow::NewControlId();
         menu.Append(id_rename, _L("Rename\tF2"));
@@ -3234,6 +3238,9 @@ DesignPanel::DesignPanel(wxWindow* parent)
         menu.Append(id_up,     _L("Move up"));
         menu.Append(id_down,   _L("Move down"));
         menu.Append(id_vis,    _L("Show / hide"));
+        // Offered where the row's own icon is: on a row with something to frame.
+        const bool zoom = can_zoom_to_feature(row);
+        if (zoom) menu.Append(id_zoom, _L("Zoom to selection"));
         menu.AppendSeparator();
         menu.Append(id_del,    _L("Delete"));
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { m_verb_actions["btn:rename"](); }, id_rename);
@@ -3244,6 +3251,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_delete_feature(); },    id_del);
         if (art)
             menu.Bind(wxEVT_MENU, [this, row](wxCommandEvent&) { on_transform_imported(row); }, id_art);
+        if (zoom)
+            menu.Bind(wxEVT_MENU, [this, row](wxCommandEvent&) { zoom_to_feature(row); }, id_zoom);
         m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
     };
 
@@ -3345,12 +3354,14 @@ DesignPanel::DesignPanel(wxWindow* parent)
         set_status(StatusKind::Info, wxString::Format(_L("Body %d selected — right-click for what applies to it"), b + 1));
     };
     m_parts->on_select = [this, apply_body_row] { apply_body_row(tree_body_selection()); };
-    // The row's own Move / Show-hide / Delete. apply_body_row runs unconditionally, as for the
-    // menu below: a face picked in the viewport since the row was selected has moved
-    // m_sel_solid_body, which is the body on_move_body and on_delete_body act on.
+    // The row's own Zoom to selection / Move / Show-hide / Delete. apply_body_row runs
+    // unconditionally, as for the menu below: a face picked in the viewport since the row was
+    // selected has moved m_sel_solid_body, which is the body on_move_body and on_delete_body act
+    // on.
     m_parts->on_action = [this, apply_body_row](int row, int id) {
         apply_body_row(row);
         switch (id) {
+        case RowZoom:       zoom_to_body(row);      break;
         case RowMove:       on_move_body();         break;
         case RowVisibility: on_toggle_visibility(); break;
         case RowDelete:     on_delete_body();       break;
@@ -7561,7 +7572,9 @@ void DesignPanel::refresh_tree()
         row.colour = !f.enabled                            ? dp_item_dim()
                    : mate_conflict_reason(int(fi)) != nullptr ? wxColour(235, 110, 110)
                                                               : dp_item_text();
+        // A row with nothing to frame keeps a blank cell, so the icons stay in their columns.
         row.actions = {
+            { RowZoom, can_zoom_to_feature(int(fi)) ? "design_zoom" : "", _L("Zoom to selection") },
             { RowEdit, "design_edit", _L("Edit") },
             eye_action(f.enabled),
             { RowDelete, "design_delete", _L("Delete") },
@@ -7605,6 +7618,7 @@ void DesignPanel::refresh_parts()
         // Hidden bodies are greyed and their eye is closed, so the state reads at a glance.
         row.colour  = vis ? dp_item_text() : dp_item_dim();
         row.actions = {
+            { RowZoom, "design_zoom", _L("Zoom to selection") },
             { RowMove, "design_move", _L("Move") },
             eye_action(vis),
             { RowDelete, "design_delete", _L("Delete") },
@@ -7767,23 +7781,108 @@ void DesignPanel::update_feature_highlight()
     const int  sel    = tree_selection();
     // Hidden while a feature card is open: the card's ghost and picks are what the view is about.
     const bool wanted = sel >= 0 && sel < int(m_doc.features.size()) && m_active == Tool::None;
-    if (wanted && (sel != m_hl_feature || m_hl_generation != m_doc.topo_generation)) {
+    // Re-sending the same faces is cheap: the viewport reuses what it has.
+    m_viewport->set_highlight_faces(wanted ? feature_faces(sel) : std::vector<std::pair<int, int>>{});
+}
+
+const std::vector<std::pair<int, int>>& DesignPanel::feature_faces(int f)
+{
+    if (f < 0 || f >= int(m_doc.features.size())) {
+        static const std::vector<std::pair<int, int>> none;
+        return none;
+    }
+    if (f != m_hl_feature || m_hl_generation != m_doc.topo_generation) {
         std::vector<std::pair<int, int>> faces;
-        const CadFeature& f = m_doc.features[sel];
-        if (f.enabled && CadDocument::produces_body(f.type))   // the rest make no faces
-            run_off_ui_thread(this, _L("Finding the feature's faces…"), [this, sel, &faces] {
+        const CadFeature& feat = m_doc.features[f];
+        if (feat.enabled && CadDocument::produces_body(feat.type))   // the rest make no faces
+            run_off_ui_thread(this, _L("Finding the feature's faces…"), [this, f, &faces] {
                 try {
-                    faces = m_doc.faces_made_by(sel);
+                    faces = m_doc.faces_made_by(f);
                 } catch (...) {
                     faces.clear();   // a highlight is not worth an escaped exception
                 }
             });
         m_hl_faces      = std::move(faces);
-        m_hl_feature    = sel;
+        m_hl_feature    = f;
         m_hl_generation = m_doc.topo_generation;
     }
-    // Re-sending the same faces is cheap: the viewport reuses what it has.
-    m_viewport->set_highlight_faces(wanted ? m_hl_faces : std::vector<std::pair<int, int>>{});
+    return m_hl_faces;
+}
+
+bool DesignPanel::can_zoom_to_feature(int f) const
+{
+    if (f < 0 || f >= int(m_doc.features.size()))
+        return false;
+    const CadFeature& feat = m_doc.features[f];
+    return feat.type == CadFeatureType::Sketch || (feat.enabled && CadDocument::produces_body(feat.type));
+}
+
+void DesignPanel::zoom_to_feature(int f)
+{
+    // A rebuild's busy loop runs queued clicks while its worker owns the document.
+    if (s_doc_worker_busy.load() > 0) {
+        set_status(StatusKind::Info, _L("The model is being rebuilt — zoom again when it finishes"));
+        return;
+    }
+    if (m_viewport == nullptr || !can_zoom_to_feature(f))
+        return;
+    const CadFeature& feat = m_doc.features[f];
+    const wxString    name = wxString::FromUTF8(feat.name);   // before finding faces runs the event loop
+    BoundingBoxf3     box;
+    if (feat.type == CadFeatureType::Sketch) {
+        // Whichever geometry the sketch keeps, drawn or not: a sketch an Extrude consumed is
+        // still where the Extrude starts.
+        const auto add = [&box, &feat](const Vec2d& p) { box.merge(feat.plane.to_world(p)); };
+        if (!feat.entities.empty()) {
+            box = DesignSketchTool::sketch_box(feat.entities, feat.plane);
+        } else if (!feat.imported_regions.empty()) {
+            for (const auto& region : transform_regions(feat.imported_regions, feat.import_offset,
+                                                        feat.import_scale_x, feat.import_scale_y))
+                for (const auto& contour : region)
+                    for (const Vec2d& p : contour)
+                        add(p);
+        } else if (!feat.profile.points.empty()) {
+            for (const Vec2d& p : feat.profile.points)
+                add(p);
+        } else {
+            // The legacy shape, centred on the plane origin (CadDocument::build_sketch_wire).
+            const Vec2d h = feat.shape == SketchShape::Circle ? Vec2d(feat.radius, feat.radius)
+                                                              : Vec2d(feat.width, feat.height) * 0.5;
+            for (const Vec2d& p : { Vec2d(-h.x(), -h.y()), Vec2d(h.x(), -h.y()), Vec2d(h.x(), h.y()), Vec2d(-h.x(), h.y()) })
+                add(p);
+        }
+    } else {
+        box = m_viewport->faces_box(feature_faces(f));
+    }
+    if (!m_viewport->zoom_to_box(box))
+        set_status(StatusKind::Info, wxString::Format(_L("%s has nothing on show to zoom to"), name));
+}
+
+void DesignPanel::zoom_to_body(int b)
+{
+    if (m_viewport == nullptr)
+        return;
+    // From the body's display mesh, Move applied, rather than the selection: the viewport selects
+    // no hidden body (DesignSketchTool::select_body). An empty mesh's box still reads defined.
+    BoundingBoxf3 box;
+    if (b >= 0 && b < int(m_disp_body_meshes.size()) && !m_disp_body_meshes[b].empty())
+        box = m_disp_body_meshes[b].bounding_box();
+    if (!m_viewport->zoom_to_box(box))
+        set_status(StatusKind::Error, _L("That body has no display mesh yet — recompute first"));
+}
+
+void DesignPanel::zoom_to_selection()
+{
+    if (m_viewport == nullptr)
+        return;
+    // A body, as its row frames it; the kind has checked the index.
+    const OfferSel kind = OfferSel(offer_selection_kind());
+    if (kind == OfferSel::BodySolid || kind == OfferSel::BodySheet) {
+        zoom_to_body(m_sel_solid_body);
+        return;
+    }
+    if (!m_viewport->zoom_to_box(m_viewport->selection_box()))
+        set_status(StatusKind::Info, _L("Select something to zoom to"));
 }
 
 // Boolean (combine bodies) — one gate for every door onto the tool. A body-body operation

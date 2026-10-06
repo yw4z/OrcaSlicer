@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "libslic3r/Point.hpp"
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/Color.hpp"
 #include <utility>
@@ -60,6 +61,15 @@ public:
 
     void fit_view();
     void set_view(const std::string& view_name);
+    // Frame `box` along the current view direction, as the canvas's Fit button frames a selection.
+    // False, the camera left alone, when there is nothing to frame: an undefined box.
+    bool zoom_to_box(BoundingBoxf3 box);
+    // Boxes to hand zoom_to_box: the selection and body faces (see DesignSketchTool).
+    BoundingBoxf3 selection_box() const { return m_sketch_tool.selection_box(); }
+    BoundingBoxf3 faces_box(std::vector<std::pair<int, int>> faces) const
+    {
+        return m_sketch_tool.faces_box(std::move(faces));
+    }
 
     void begin_sketch(const SketchPlane& plane, DesignSketchTool::Mode mode);
     // Re-open a committed entity sketch for full in-canvas editing (load geometry +

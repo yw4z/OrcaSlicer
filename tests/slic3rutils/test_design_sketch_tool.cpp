@@ -30,6 +30,8 @@
 #include "libslic3r/CAD/SketchEngine.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/CAD/CadDocument.hpp"
 #include "slic3r/GUI/3DScene.hpp"
 #include "slic3r/GUI/CAD/DesignSketchTool.hpp"
 
@@ -169,6 +171,9 @@ TEST_CASE("Fit frames the picked sketch region, not the other sketches", "[Desig
     CHECK_THAT(box.max.x(), WithinAbs(60., 0.5));
     CHECK_THAT(box.min.y(), WithinAbs(10., 0.5));
     CHECK_THAT(box.max.y(), WithinAbs(30., 0.5));
+    // Zoom to selection frames the same region, the padding left to the canvas.
+    CHECK_THAT(tool.selection_box().min.x(), WithinAbs(40., 0.5));
+    CHECK_THAT(tool.selection_box().size().z(), WithinAbs(0., 1e-9));
 }
 
 TEST_CASE("Fit frames every sketch when nothing is picked", "[DesignSketchTool]")
@@ -181,6 +186,8 @@ TEST_CASE("Fit frames every sketch when nothing is picked", "[DesignSketchTool]"
     REQUIRE(box.defined);
     CHECK_THAT(box.min.x(), WithinAbs(-65., 0.5));
     CHECK_THAT(box.max.x(), WithinAbs(60., 0.5));
+    // Zoom to selection has no such fallback.
+    CHECK_FALSE(tool.selection_box().defined);
 }
 
 TEST_CASE("Fit frames the sketch being drawn along with the committed ones", "[DesignSketchTool]")
@@ -218,6 +225,72 @@ TEST_CASE("Fit frames nothing when the Design tab shows nothing", "[DesignSketch
     DesignSketchTool   tool;
     GLVolumeCollection no_bodies;
     CHECK_FALSE(tool.fit_box(no_bodies).defined);
+}
+
+TEST_CASE("A sketch's box lies on its own plane", "[DesignSketchTool]")
+{
+    // A 5 mm circle at (10, 20) on XZ, whose y axis is world Z.
+    const BoundingBoxf3 box = DesignSketchTool::sketch_box({ circle({ 10., 20. }, 5.) }, SketchPlane::XZ());
+    REQUIRE(box.defined);
+    CHECK_THAT(box.min.x(), WithinAbs(5., 0.05));
+    CHECK_THAT(box.max.x(), WithinAbs(15., 0.05));
+    CHECK_THAT(box.min.z(), WithinAbs(15., 0.05));
+    CHECK_THAT(box.max.z(), WithinAbs(25., 0.05));
+    CHECK_THAT(box.size().y(), WithinAbs(0., 1e-9));
+    CHECK_FALSE(DesignSketchTool::sketch_box({}, SketchPlane::XY()).defined);
+
+    SketchEntity point;
+    point.type = SketchEntity::Type::Point;
+    point.p0   = { 3., 4. };
+    const BoundingBoxf3 dot = DesignSketchTool::sketch_box({ point }, SketchPlane::XY());
+    REQUIRE(dot.defined);
+    CHECK_THAT(dot.min.x(), WithinAbs(3., 1e-9));
+    CHECK_THAT(dot.min.y(), WithinAbs(4., 1e-9));
+}
+
+TEST_CASE("A face's box comes from the pick mesh, on a hidden body too", "[DesignSketchTool]")
+{
+    // One triangle per body: body 0 near the origin, body 1, hidden, 100 mm along X.
+    indexed_triangle_set its;
+    its.vertices = { { 0.f, 0.f, 0.f }, { 10.f, 0.f, 0.f }, { 0.f, 10.f, 5.f },
+                     { 100.f, 0.f, 0.f }, { 110.f, 0.f, 0.f }, { 100.f, 10.f, 5.f } };
+    its.indices  = { { 0, 1, 2 }, { 3, 4, 5 } };
+    const TriangleMesh          mesh(its);
+    const std::vector<CadBody>  bodies(2);
+    const std::vector<int>      tri_face{ 0, 0 };
+    const std::vector<int>      tri_body{ 0, 1 };
+    const std::vector<bool>     visible{ true, false };
+    DesignSketchTool            tool;
+    tool.set_solid_pick(&bodies, &mesh, &tri_face, &tri_body, &visible);
+
+    const BoundingBoxf3 box = tool.faces_box({ { 1, 0 } });
+    REQUIRE(box.defined);
+    CHECK_THAT(box.min.x(), WithinAbs(100., 1e-6));
+    CHECK_THAT(box.max.x(), WithinAbs(110., 1e-6));
+    CHECK_THAT(box.max.z(), WithinAbs(5., 1e-6));
+    CHECK_FALSE(tool.faces_box({}).defined);
+
+    // CadDocument::faces_made_by may list a body's faces after a later body's.
+    const BoundingBoxf3 both = tool.faces_box({ { 1, 0 }, { 0, 0 } });
+    REQUIRE(both.defined);
+    CHECK_THAT(both.min.x(), WithinAbs(0., 1e-6));
+    CHECK_THAT(both.max.x(), WithinAbs(110., 1e-6));
+}
+
+TEST_CASE("Padding a box to frame gives every axis a small extent and leaves a long one alone", "[DesignSketchTool]")
+{
+    BoundingBoxf3 box;
+    box.merge(Vec3d(0., 0., 3.));
+    box.merge(Vec3d(100., 4., 3.));
+    DesignSketchTool::pad_box(box);
+    CHECK_THAT(box.size().x(), WithinAbs(100., 1e-9));
+    CHECK_THAT(box.size().y(), WithinAbs(10., 1e-9));
+    CHECK_THAT(box.size().z(), WithinAbs(10., 1e-9));
+    CHECK_THAT(box.center().z(), WithinAbs(3., 1e-9));
+
+    BoundingBoxf3 none;
+    DesignSketchTool::pad_box(none);
+    CHECK_FALSE(none.defined);
 }
 
 TEST_CASE("Crossing base planes are drawn back to front from any viewpoint", "[DesignSketchTool]")

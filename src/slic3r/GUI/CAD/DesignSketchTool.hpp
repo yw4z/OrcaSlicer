@@ -264,6 +264,15 @@ public:
     // on show: the visible bodies, the preview of the feature being edited and every sketch.
     // Undefined when the tab shows none of it. `volumes` are the canvas's: bodies and preview.
     BoundingBoxf3 fit_box(const GLVolumeCollection& volumes) const;
+    // The selection fit_box frames, with no fallback: undefined when nothing is selected.
+    BoundingBoxf3 selection_box() const;
+    // World box of (body, face id) faces on the pick mesh, hidden bodies included.
+    BoundingBoxf3 faces_box(std::vector<std::pair<int, int>> faces) const;
+    // World box of sketch entities drawn on `plane`.
+    static BoundingBoxf3 sketch_box(const std::vector<SketchEntity>& entities, const SketchPlane& plane);
+    // Grow a box the camera is to frame to at least a small extent on every axis: a vertex has no
+    // size, nor has a sketch along its normal.
+    static void pad_box(BoundingBoxf3& box);
 
     // Move-body gizmo (M5): translate a whole body with three world-axis drag arrows
     // (X red / Y green / Z blue) anchored at the body centroid. Display-only — the host
@@ -1022,7 +1031,7 @@ private:
     bool op_ready() const;                      // required entities picked -> arrow/ghost live
 
     // Sample an entity into a 2D polyline for the overlay renderer.
-    std::vector<Vec2d> entity_polyline(const SketchEntity& e, bool& closed) const;
+    static std::vector<Vec2d> entity_polyline(const SketchEntity& e, bool& closed);
 
     // Closed regions formed by the current (non-construction) entities: each a CCW-
     // ordered boundary polygon on the plane. A circle is its own region; line/arc

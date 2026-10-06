@@ -1114,6 +1114,32 @@
       "hint": "Set the selected body's display color"
     },
     {
+      "id": "zoom_to",
+      "name": "Zoom to selection",
+      "slot": "top",
+      "key": null,
+      "feature": null,
+      "mcp": null,
+      "mode": "model",
+      "accepts": [
+        "body_solid",
+        "body_sheet",
+        "face_planar",
+        "face_cyl",
+        "face_other",
+        "edge_str",
+        "edge_circ",
+        "vertex",
+        "sk_loop"
+      ],
+      "needs": {},
+      "refusal": null,
+      "gui": true,
+      "action": "btn:zoom_to",
+      "icon": "design_zoom",
+      "hint": "Frame the selection in the view, keeping the view direction"
+    },
+    {
       "id": "delete",
       "name": "Delete",
       "slot": "modify",

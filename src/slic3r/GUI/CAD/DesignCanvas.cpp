@@ -463,6 +463,16 @@ void DesignCanvas::fit_view()
     }
 }
 
+bool DesignCanvas::zoom_to_box(BoundingBoxf3 box)
+{
+    if (m_canvas == nullptr || !box.defined)
+        return false;
+    DesignSketchTool::pad_box(box);
+    m_canvas->zoom_to_box(box);
+    request_repaint();
+    return true;
+}
+
 void DesignCanvas::set_view(const std::string& view_name)
 {
     if (m_canvas) {

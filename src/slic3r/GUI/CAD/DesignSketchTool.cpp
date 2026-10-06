@@ -3288,7 +3288,7 @@ std::vector<SketchEntity> DesignSketchTool::make_bspline(const std::vector<Vec2d
     return { e };
 }
 
-std::vector<Vec2d> DesignSketchTool::entity_polyline(const SketchEntity& e, bool& closed) const
+std::vector<Vec2d> DesignSketchTool::entity_polyline(const SketchEntity& e, bool& closed)
 {
     closed = false;
     switch (e.type) {
@@ -3743,30 +3743,37 @@ std::vector<std::pair<int, int>> DesignSketchTool::selected_faces() const
     return out;
 }
 
-BoundingBoxf3 DesignSketchTool::fit_box(const GLVolumeCollection& volumes) const
+BoundingBoxf3 DesignSketchTool::faces_box(std::vector<std::pair<int, int>> faces) const
+{
+    // From the pick mesh: it is in world coordinates already, moved bodies and all.
+    BoundingBoxf3 box;
+    if (faces.empty() || m_solid_mesh == nullptr || m_solid_tri_face == nullptr || m_solid_tri_body == nullptr)
+        return box;
+    std::sort(faces.begin(), faces.end());
+    const indexed_triangle_set& its = m_solid_mesh->its;
+    const size_t n = std::min({ its.indices.size(), m_solid_tri_face->size(), m_solid_tri_body->size() });
+    for (size_t t = 0; t < n; ++t)
+        if (std::binary_search(faces.begin(), faces.end(), std::make_pair((*m_solid_tri_body)[t], (*m_solid_tri_face)[t])))
+            for (int i = 0; i < 3; ++i)
+                box.merge(its.vertices[its.indices[t][i]].cast<double>());
+    return box;
+}
+
+BoundingBoxf3 DesignSketchTool::sketch_box(const std::vector<SketchEntity>& entities, const SketchPlane& plane)
 {
     BoundingBoxf3 box;
-    const auto add_entity = [&box, this](const SketchEntity& e, const SketchPlane& plane) {
+    for (const SketchEntity& e : entities) {
         bool closed = false;
         for (const Vec2d& p : entity_polyline(e, closed))
             box.merge(plane.to_world(p));
-    };
-    const auto add_entities = [&add_entity](const std::vector<SketchEntity>& ents, const SketchPlane& plane) {
-        for (const SketchEntity& e : ents)
-            add_entity(e, plane);
-    };
-
-    // The selected faces, a whole body's included, from the pick mesh: it is in world
-    // coordinates already, moved bodies and all.
-    const std::vector<std::pair<int, int>> faces = selected_faces();
-    if (!faces.empty() && m_solid_mesh != nullptr && m_solid_tri_face != nullptr && m_solid_tri_body != nullptr) {
-        const indexed_triangle_set& its = m_solid_mesh->its;
-        const size_t n = std::min({ its.indices.size(), m_solid_tri_face->size(), m_solid_tri_body->size() });
-        for (size_t t = 0; t < n; ++t)
-            if (std::binary_search(faces.begin(), faces.end(), std::make_pair((*m_solid_tri_body)[t], (*m_solid_tri_face)[t])))
-                for (int i = 0; i < 3; ++i)
-                    box.merge(its.vertices[its.indices[t][i]].cast<double>());
     }
+    return box;
+}
+
+BoundingBoxf3 DesignSketchTool::selection_box() const
+{
+    // The selected faces, a whole body's included.
+    BoundingBoxf3 box = faces_box(selected_faces());
     if (m_solid_sel == SolidSel::Edge) {
         for (const Vec3d& p : m_sel_edge_pts)
             box.merge(p);
@@ -3779,11 +3786,11 @@ BoundingBoxf3 DesignSketchTool::fit_box(const GLVolumeCollection& volumes) const
     if (m_display_pick >= 0)
         for (const DisplaySketch& d : m_display_sketches)
             if (d.feature == m_display_pick)
-                add_entities(m_display_pick_region >= 0 ? selected_loop_entities() : d.entities, d.plane);
+                box.merge(sketch_box(m_display_pick_region >= 0 ? selected_loop_entities() : d.entities, d.plane));
     if (m_active) {
         for (int i : m_selection)
             if (i >= 0 && i < int(m_entities.size()))
-                add_entity(m_entities[i], m_plane);
+                box.merge(sketch_box({ m_entities[i] }, m_plane));
         for (const auto& [i, role] : m_point_sel)
             if (i >= 0 && i < int(m_entities.size())) {
                 const SketchEntity& e = m_entities[i];
@@ -3791,27 +3798,36 @@ BoundingBoxf3 DesignSketchTool::fit_box(const GLVolumeCollection& volumes) const
                                            role == SketchPointRole::P1     ? e.p1 : e.p0));
             }
     }
+    return box;
+}
 
+BoundingBoxf3 DesignSketchTool::fit_box(const GLVolumeCollection& volumes) const
+{
+    BoundingBoxf3 box = selection_box();
     // Nothing selected: everything on show. A hidden body's volume is inactive.
     if (!box.defined) {
         for (const GLVolume* v : volumes.volumes)
             if (v->is_active)
                 box.merge(v->transformed_bounding_box());
         for (const DisplaySketch& d : m_display_sketches)
-            add_entities(d.entities, d.plane);
+            box.merge(sketch_box(d.entities, d.plane));
         if (m_active)
-            add_entities(m_entities, m_plane);
+            box.merge(sketch_box(m_entities, m_plane));
     }
+    pad_box(box);
+    return box;
+}
 
+void DesignSketchTool::pad_box(BoundingBoxf3& box)
+{
     // A vertex has no size, nor has a sketch along its normal, and the camera cannot frame an
     // extent it does not see. Every axis gets at least a small neighbourhood.
-    if (box.defined) {
-        constexpr double min_extent = 10.;   // mm
-        const Vec3d grow = (Vec3d::Constant(min_extent) - box.size()).cwiseMax(0.) * 0.5;
-        box.min -= grow;
-        box.max += grow;
-    }
-    return box;
+    if (!box.defined)
+        return;
+    constexpr double min_extent = 10.;   // mm
+    const Vec3d grow = (Vec3d::Constant(min_extent) - box.size()).cwiseMax(0.) * 0.5;
+    box.min -= grow;
+    box.max += grow;
 }
 
 const DesignSketchTool::FaceHighlight& DesignSketchTool::cached_face_highlight(FaceHighlight& cache, int body,

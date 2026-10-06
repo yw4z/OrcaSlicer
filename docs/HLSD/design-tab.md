@@ -266,6 +266,15 @@ Feature tree and Bodies list do between themselves. `Esc`, a click on empty spac
 empty rubber band all let go of it, whichever list or pick made it — except while a body Move is
 open, which holds the selection until it ends (see the interaction contract).
 
+Zoom to selection, on a Feature tree or Bodies row and in its right-click menu, frames one thing
+along the current view direction, as the canvas's Fit button frames the selection. On a body it
+frames the body whole, hidden or not, from its display mesh: the viewport never selects a hidden
+body, so the selection cannot stand in for it. On a sketch it frames the sketch's own geometry,
+drawn, consumed or suppressed; on any other feature, the faces the feature made, found as the row
+highlight finds them and from the same cache. From the offer it frames whatever the selection is,
+a body again included. A feature that is not a sketch and makes no faces, such as a datum plane
+or a suppressed Extrude, has no Zoom to selection.
+
 ## Following the app
 
 The tab is a page of Orca's main window and answers to the same settings as Prepare.
@@ -281,10 +290,11 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
 - **Sidebar icons.** Every clickable icon in the sidebar shows a hover chip. The card-header and
   constraint-row buttons are Orca's self-painted `Button`, because a native button cannot take a
   hover background on macOS. The Feature tree and Bodies lists are a custom-drawn
-  `DesignRowList` rather than a `wxTreeCtrl`, so each row carries its own actions — Edit,
-  Show/hide and Delete on a feature, Move, Show/hide and Delete on a body, and only Show/hide on
-  the Origin and Bed rows, a separate non-selectable list above the features — and the eye shows
-  whether that row is hidden.
+  `DesignRowList` rather than a `wxTreeCtrl`, so each row carries its own actions — Zoom to
+  selection, Edit, Show/hide and Delete on a feature, Zoom to selection, Move, Show/hide and
+  Delete on a body, and only Show/hide on the Origin and Bed rows, a separate non-selectable list
+  above the features — and the eye shows whether that row is hidden. A feature with nothing to
+  frame keeps a blank cell where Zoom to selection would be, so every icon stays in its column.
 - **Plates.** This is the one thing the tab does not follow. The canvas has a bed of its own at
   the printer bed's home position, whichever plate Prepare has current, and a new document's
   modeling origin is that bed's centre. A bed that followed the current plate would slide out
@@ -316,12 +326,12 @@ permanent row index, verbs that do not apply shown disabled **in place with thei
 rather than removed. The invariant is that a verb's row index is identical in every selection
 where it appears and that adding a verb never moves an existing one — the hand learns the
 position, so the menu is never re-sorted, compacted or adaptively ordered. Above the families
-sits one *flat* row, holding Rename and Color — what a selection is opened for most: its verbs are
-items of their own at the top of the menu rather than a family's submenu. It is appended after
-the eight, so it moved no existing index, and it reads the same from the viewport and from a row
-of the Bodies list.
+sits one *flat* row, holding Rename, Color and Zoom to selection — what a selection is opened for
+most: its verbs are items of their own at the top of the menu rather than a family's submenu. It
+is appended after the eight, so it moved no existing index, and it reads the same from the
+viewport and from a row of the Bodies list.
 
-An invariant across 92 verbs and 20 selection kinds does not survive by review, so the map
+An invariant across 93 verbs and 20 selection kinds does not survive by review, so the map
 exists once, as data: `scripts/CAD/tool_atlas.json` carries every verb with its row, key, icon,
 accepted selections, preconditions and refusal string, and `scripts/CAD/gen_offer_table.py`
 emits `src/slic3r/GUI/CAD/DesignOffer.hpp` from it. The header is checked in and never

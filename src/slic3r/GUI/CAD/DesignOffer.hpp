@@ -142,6 +142,7 @@ static const OfferVerb kOfferVerbs[] = {
     {"rename", L("Rename…"), 8, "F2", "btn:rename", L("Select a feature, or a body, to rename it"), 0x00004080u, 0, 0, false, false, nullptr, nullptr, L("Give this feature a name you will recognise in the tree (a body takes its name from the feature that makes it)")},
     {"delete_face", L("Delete Face"), 7, nullptr, "fly:dressup#3", L("Delete Face needs a body — add or import one first"), 0x0000000eu, 1, 0, false, false, nullptr, "design_delete", L("Remove faces from a body and heal the solid")},
     {"colour", L("Color"), 8, nullptr, "btn:colour", nullptr, 0x000001feu, 1, 0, false, false, nullptr, "color_palette", L("Set the selected body's display color")},
+    {"zoom_to", L("Zoom to selection"), 8, nullptr, "btn:zoom_to", nullptr, 0x000041feu, 0, 0, false, false, nullptr, "design_zoom", L("Frame the selection in the view, keeping the view direction")},
     {"delete", L("Delete"), 7, "Del", "btn:delete", nullptr, 0x000f7c00u, 0, 0, false, false, nullptr, "design_delete", L("Delete what is selected")},
     {"delete_body", L("Delete Body"), 7, nullptr, "btn:delete_body", nullptr, 0x000001feu, 1, 0, false, false, nullptr, "design_delete", L("Delete this whole body — removes the feature it was made from")},
     {"sk_line_t", L("Line"), 0, "L", "key:L", nullptr, 0x000f8000u, 0, 0, false, true, L("Line"), "design_line", L("Line — click start, then end")},
@@ -201,7 +202,7 @@ static const OfferVerb kOfferVerbs[] = {
     {"sk_radius", L("Radius / diameter…"), 7, "V", "key:V", nullptr, 0x00020000u, 0, 0, false, true, nullptr, "design_dimension", L("Type the radius of this arc, or the diameter of this circle")},
     {"sk_angdist", L("Angle / distance…"), 7, "V", "key:V", nullptr, 0x00080000u, 0, 0, false, true, nullptr, "design_dimension", L("Type the angle between two lines, or the distance between the two picks")},
 };
-static const int kOfferVerbCount = 92;
+static const int kOfferVerbCount = 93;
 
 }} // namespace Slic3r::GUI
 
