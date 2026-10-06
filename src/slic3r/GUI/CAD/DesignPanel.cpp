@@ -285,9 +285,10 @@ static std::string commit_icon(bool bodies)
 
 // The icons on each Feature tree and Bodies row (DesignRowList::Action::id).
 enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete };
-// The Feature tree's first row is the Origin, pinned above the features: feature i is row i + 1.
-static constexpr int kFeatureRow0 = 1;
-// The feature a Feature tree row shows, or wxNOT_FOUND for the Origin row (and for no row).
+// The Feature tree's first two rows are the Origin and the Bed, pinned above the features:
+// feature i is row i + kFeatureRow0.
+static constexpr int kOriginRow = 0, kBedRow = 1, kFeatureRow0 = 2;
+// The feature a Feature tree row shows, or wxNOT_FOUND for a pinned row (and for no row).
 static int feature_of_row(int row) { return row >= kFeatureRow0 ? row - kFeatureRow0 : wxNOT_FOUND; }
 
 // A row's eye shows the state the row is in; its tip names what a click does.
@@ -300,6 +301,13 @@ static DesignRowList::Action eye_action(bool shown)
 static wxString origin_toggle_text(bool shown)
 {
     return shown ? _L("Hide reference planes and axes") : _L("Show reference planes and axes");
+}
+
+// What the Bed row's eye and its menu item do.
+static wxString bed_toggle_text(bool shown)
+{
+    return shown ? _L("Hide the printer bed and its plate grid")
+                 : _L("Show the printer bed and its plate grid");
 }
 
 // What Sketch asks for while it waits for a plane (DesignPanel::start_sketch).
@@ -611,17 +619,14 @@ DesignPanel::DesignPanel(wxWindow* parent)
         set_status(_L("Axonometric view, fitted"));
     };
 
-    // Commit to Plate and the bed toggle were mouse-only: a toolbar button and a checkbox with
-    // no accelerator between them, so neither could be reached from the keyboard at all, nor by
-    // anything driving the keyboard. Ctrl+Shift+P is Plate, Ctrl+Shift+B is Bed; neither
+    // Commit to Plate and the bed toggle are mouse targets — a toolbar button and the Feature
+    // tree's Bed row — so without an accelerator neither could be reached from the keyboard, nor
+    // by anything driving the keyboard. Ctrl+Shift+P is Plate, Ctrl+Shift+B is Bed; neither
     // collides with Orca's own Ctrl+Shift+S (Save as) or Ctrl+Shift+G (Print plate).
     m_keys_feature['P' | SC_SHIFT | SC_CTRL] = [this] { on_commit(); };
     m_keys_feature['B' | SC_SHIFT | SC_CTRL] = [this] {
-        if (!m_show_bed) return;
-        const bool show = !m_show_bed->GetValue();
-        m_show_bed->SetValue(show);
-        if (m_viewport) m_viewport->set_show_bed(show);
-        set_status(show ? _L("Bed shown") : _L("Bed hidden"));
+        toggle_bed();
+        set_status(m_show_bed ? _L("Bed shown") : _L("Bed hidden"));
     };
 
     // Flyout rows show the design_* glyphs as they are: drawn in Orca's icon grey (#949494), which
@@ -1518,10 +1523,10 @@ DesignPanel::DesignPanel(wxWindow* parent)
             }
             m_viewport->set_sketch_construction(m_construction->GetValue()); });
         // STAYS on the bar. Construction is not a tool, it is a persistent MODE — the same kind
-        // of thing as the Bed checkbox — and the sketch bar is already shown only in Sketch mode,
-        // so it appears exactly while it can apply. Hiding it left Q and the offer's Construction
-        // row still toggling a checkbox nobody could see: you could not tell whether the next
-        // line would be construction geometry. A stateful toggle has to show its state.
+        // of thing as the Feature tree's Bed row — and the sketch bar is already shown only in
+        // Sketch mode, so it appears exactly while it can apply. Hiding it left Q and the offer's
+        // Construction row still toggling a checkbox nobody could see: you could not tell whether
+        // the next line would be construction geometry. A stateful toggle has to show its state.
         sadd_bar(m_construction);
         add_sep(m_tb_sketch);
         auto* b_del = icon_btn("design_delete", _L("Delete selected"));
@@ -1628,23 +1633,6 @@ DesignPanel::DesignPanel(wxWindow* parent)
         auto* b_export = doc_btn("design_export", _L("Export STEP…"));
         b_export->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_export_step(); });
         add_doc(b_export);
-
-        // View option, not a document action: hide the printer bed to model without it. Lives in
-        // this row because it must stay reachable with no tool open — a card would come and go.
-        m_show_bed = new CheckBox(m_toolbar);
-        m_show_bed->SetValue(true);                 // bed visible by default, as the tab opens today
-        m_show_bed->SetToolTip(_L("Show the printer bed and its plate grid"));
-        // wxEVT_TOGGLEBUTTON, NOT wxEVT_CHECKBOX: Orca's CheckBox derives from
-        // wxBitmapToggleButton (Widgets/CheckBox.hpp), so a wxEVT_CHECKBOX handler never fires.
-        // Read the control rather than the event so the state cannot disagree with the glyph.
-        m_show_bed->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent& e) {
-            if (m_viewport) m_viewport->set_show_bed(m_show_bed->GetValue());
-            e.Skip();
-        });
-        auto* bed_lbl = new wxStaticText(m_toolbar, wxID_ANY, _L("Bed"));
-        bed_lbl->SetForegroundColour(dp_sec_text());
-        m_tb_doc->Add(m_show_bed, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 6);
-        m_tb_doc->Add(bed_lbl,    0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 4);
 
         // These act on bodies / the view, so they ride in the feature group, in the slots
         // the user assigned them (9, 11bis, 16).
@@ -3155,7 +3143,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // "the target" — but ONLY when this tree has a selection. Each list notifies on every
         // change, so clicking a body row runs apply_body_row, whose m_tree->unselect() fires
         // THIS handler, which would otherwise clear the body row the user had just clicked. The
-        // Origin row counts: it is a selected row like any other.
+        // pinned Origin and Bed rows count: they are selected rows like any other.
         if (m_parts && m_tree->selection() != wxNOT_FOUND) m_parts->unselect();
         const int sel = tree_selection();
         // Likewise a viewport pick, which would be drawn just like the feature's faces. Not while
@@ -3178,17 +3166,18 @@ DesignPanel::DesignPanel(wxWindow* parent)
     };
 
     // Double-click a row = Edit, the same gesture that re-opens a committed sketch on the canvas.
-    // The Origin row has nothing to edit.
+    // The pinned rows have nothing to edit.
     m_tree->on_activate = [this] {
         if (tree_selection() != wxNOT_FOUND) on_edit_feature();
     };
 
     // The row's own Edit / Show-hide / Delete, on the row the click selected. The body list is
     // cleared here too, not left to on_select, which re-clicking the selected row does not run:
-    // a body row still selected would be what on_toggle_visibility acts on. The Origin row's one
+    // a body row still selected would be what on_toggle_visibility acts on. A pinned row's one
     // icon is its eye.
     m_tree->on_action = [this](int row, int id) {
-        if (feature_of_row(row) == wxNOT_FOUND) { toggle_origin(); return; }
+        if (row == kOriginRow) { toggle_origin(); return; }
+        if (row == kBedRow)    { toggle_bed();    return; }
         if (m_parts) m_parts->unselect();
         switch (id) {
         case RowEdit:       on_edit_feature();      break;
@@ -3202,13 +3191,14 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // a sketch tries the row, and the row answers.
     m_tree->on_menu = [this](int row, const wxPoint& screen) {
         wxMenu menu;
-        // The Origin row is no feature: it cannot be renamed, edited, moved or deleted, and its
+        // A pinned row is no feature: it cannot be renamed, edited, moved or deleted, and its
         // menu holds exactly what its eye does.
         const int feat = feature_of_row(row);
         if (feat == wxNOT_FOUND) {
-            const int id_origin = wxWindow::NewControlId();
-            menu.Append(id_origin, origin_toggle_text(m_show_origin));
-            menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { toggle_origin(); }, id_origin);
+            const bool bed = (row == kBedRow);
+            const int id_toggle = wxWindow::NewControlId();
+            menu.Append(id_toggle, bed ? bed_toggle_text(m_show_bed) : origin_toggle_text(m_show_origin));
+            menu.Bind(wxEVT_MENU, [this, bed](wxCommandEvent&) { bed ? toggle_bed() : toggle_origin(); }, id_toggle);
             m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
             return;
         }
@@ -4431,8 +4421,10 @@ DesignPanel::DesignPanel(wxWindow* parent)
     }
 
     m_show_origin = wxGetApp().app_config->get_bool("design_show_origin");
+    m_show_bed    = wxGetApp().app_config->get_bool("design_show_bed");
+    if (m_viewport) m_viewport->set_show_bed(m_show_bed);
     set_ui_mode(UiMode::Feature);
-    // The Origin row from the first paint: nothing else builds the rows before the first edit,
+    // The pinned rows from the first paint: nothing else builds the rows before the first edit,
     // project load or theme switch.
     refresh_tree();
     build_phase("wiring");
@@ -4542,8 +4534,8 @@ void DesignPanel::set_ui_mode(UiMode m)
     // Seen on the rig: pick XY, arm Line, and the viewport is an empty grey field — no bed, no
     // grid, no origin, nothing to judge a length or a direction against. The plate grid was
     // carrying the ground reference for the whole tab. The banner already says where you are;
-    // taking the floor away as well only made the sketch harder to draw. The Bed checkbox is the
-    // one thing that governs the bed, in every mode.
+    // taking the floor away as well only made the sketch harder to draw. The Feature tree's Bed
+    // row is the one thing that governs the bed, in every mode.
     if (m_sketch_banner != nullptr) {
         const bool sketching = (m == UiMode::Sketch);
         if (sketching && m_sketch_banner_txt != nullptr)
@@ -7532,7 +7524,7 @@ void DesignPanel::refresh_tree()
 
     // Preserve the selected row across the rebuild — set_rows() drops the selection, which made
     // every edit/add feel like it "lost" the selection (and broke Edit/Move/Delete on the
-    // just-touched feature). By row, so a selected Origin row stays selected too.
+    // just-touched feature). By row, so a selected pinned row stays selected too.
     const int keep = m_tree->selection();
 
     // Datum/reference planes carry no solid; feed them to the viewport so they render as
@@ -7541,10 +7533,15 @@ void DesignPanel::refresh_tree()
     update_reference_planes();
     std::vector<DesignRowList::Row> rows;
     rows.reserve(m_doc.features.size() + kFeatureRow0);
-    // Always first and never removable: the reference planes' own switch, and nothing else.
-    DesignRowList::Action origin_eye = eye_action(m_show_origin);
-    origin_eye.tip = origin_toggle_text(m_show_origin);
-    rows.push_back({ "design_plane", _L("Origin"), {}, dp_item_text(), { origin_eye } });
+    // Always first, in kOriginRow / kBedRow order, and never removable: the reference planes' and
+    // the printer bed's own switches, and nothing else.
+    auto add_pinned = [&rows](const char* icon, const wxString& label, bool shown, const wxString& tip) {
+        DesignRowList::Action eye = eye_action(shown);
+        eye.tip = tip;
+        rows.push_back({ icon, label, {}, dp_item_text(), { eye } });
+    };
+    add_pinned("design_plane", _L("Origin"), m_show_origin, origin_toggle_text(m_show_origin));
+    add_pinned("design_bed",   _L("Bed"),    m_show_bed,    bed_toggle_text(m_show_bed));
     for (size_t fi = 0; fi < m_doc.features.size(); ++fi) {
         const CadFeature& f = m_doc.features[fi];
         DesignRowList::Row row;
@@ -11126,6 +11123,14 @@ void DesignPanel::toggle_origin()
     if (!m_show_origin) drop_plane_pick();
     // Not an edit: a plane choice under way stays, and keeps its planes up.
     refresh_tree();   // the Origin row's eye, and update_reference_planes(), which repaints
+}
+
+void DesignPanel::toggle_bed()
+{
+    m_show_bed = !m_show_bed;
+    wxGetApp().app_config->set_bool("design_show_bed", m_show_bed);
+    if (m_viewport) m_viewport->set_show_bed(m_show_bed);   // repaints
+    refresh_tree();   // the Bed row's eye
 }
 
 void DesignPanel::start_sketch()

@@ -229,9 +229,18 @@ CHROME_DY = int(os.environ.get("ORCA_CAD_CHROME_DY", "26"))
 
 DESIGN_TAB = (128, 29 + CHROME_DY)
 
+# The ribbon's document group lost its Bed checkbox and label when the bed toggle moved to the
+# Feature tree, and every group to its right moved left by their width: wxLEFT 6 + the 18 px
+# CheckBox + wxLEFT 4 + the "Bed" label (~24 px) + wxRIGHT 4, about 56 px. The x of
+# CONSTRUCTION_CHECKBOX, CON_BTN and CON_BTN_SKETCH below is the one measured before that, plus
+# this. DERIVED, NOT MEASURED: re-measure on the rig and fold it in. CONFIRM_BTN sits after the
+# ribbon's stretch spacer and did not move.
+RIBBON_DX = -56
+
 # Feature-tree rows, measured on the rig at 1920x1080: the list's first row is centred at y=215,
-# then 23 px apart. That first row is the Origin, pinned above the features and never deleted, so
-# the first FEATURE row is the second one: Delete on the Origin does nothing.
+# then 23 px apart. The first two rows are the Origin and the Bed, pinned above the features and
+# never deleted, so the first FEATURE row is the third one. Delete and double-click do nothing on
+# a pinned row, and reset_document and the reopening double-click both need a feature.
 # x=300, not the label: a second click ON the label opens the inline rename, and Delete then
 # edits the text instead of removing the feature.
 #
@@ -239,7 +248,7 @@ DESIGN_TAB = (128, 29 + CHROME_DY)
 # unshifted click lands 26 px BELOW the first row -- just past its 23 px height -- so the row is
 # never selected, Delete does nothing, and reset_document spends 40 rounds on it before dying
 # with "could not empty the feature tree". That names the feature tree, which is not the fault.
-TREE_ROW0 = (300, 215 + 23 + CHROME_DY)
+TREE_ROW0 = (300, 215 + 2 * 23 + CHROME_DY)
 
 
 def go_design():
@@ -742,7 +751,7 @@ def corner_pair(ents):
     die("no adjacent pair in what should be a rectangle")
 
 
-CONSTRUCTION_CHECKBOX = (419, 75 + CHROME_DY)
+CONSTRUCTION_CHECKBOX = (419 + RIBBON_DX, 75 + CHROME_DY)
 
 
 def draw_line(x0, y0, x1, y1, length, angle):
@@ -871,7 +880,7 @@ def rung_extend():
 # because the ladder only ever clicks "perpendicular" (3) and "equal" (5), both of which sit
 # before the first insertion. The next rung to use "tangent" would have clicked "collinear".
 CON_BTN_Y = 76 + CHROME_DY
-CON_BTN = {n: (449 + 42 * i, CON_BTN_Y) for i, n in enumerate(
+CON_BTN = {n: (449 + RIBBON_DX + 42 * i, CON_BTN_Y) for i, n in enumerate(
     ["horizontal", "vertical", "parallel", "perpendicular", "coincident", "equal",
      "equal_radius", "collinear", "concentric", "tangent", "midpoint", "symmetric",
      "sym_v", "sym_h", "angle", "radius", "diameter", "fix", "dist_x", "dist_y"])}
@@ -885,7 +894,7 @@ CON_BTN = {n: (449 + 42 * i, CON_BTN_Y) for i, n in enumerate(
 # which already carries CHROME_DY), but the X start depends on how wide the sketch toolbar to the
 # left of this group renders, and this fork keeps mainline's top row. Re-measure before trusting
 # D11 here: screenshot in sketch mode and detect the icon columns, do not derive it by offset.
-CON_BTN_SKETCH = {n: (677 + 42 * i, CON_BTN_Y) for i, n in enumerate(
+CON_BTN_SKETCH = {n: (677 + RIBBON_DX + 42 * i, CON_BTN_Y) for i, n in enumerate(
     ["horizontal", "vertical", "parallel", "perpendicular", "coincident", "equal",
      "equal_radius", "collinear", "concentric", "tangent", "midpoint", "symmetric",
      "sym_v", "sym_h", "angle", "radius", "diameter", "fix", "dist_x", "dist_y"])}

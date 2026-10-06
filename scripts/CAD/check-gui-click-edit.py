@@ -147,6 +147,7 @@ def seed_datadir(datadir):
     # ~90% case expects. A ladder whose result depends on the developer's own preferences is not
     # a gate.
     app["auto_close_sketch_loops"] = True
+    app["design_show_bed"] = True
     # SILENCE THE NETWORK PLUGIN PROMPT. Without this, GUI_App::post_init() re-raises "Bambu
     # Network Plug-in Required" from an IDLE event — after any modal sweep this driver does at
     # startup — and ShowModal() then runs a nested event loop. The app is alive, its window is
