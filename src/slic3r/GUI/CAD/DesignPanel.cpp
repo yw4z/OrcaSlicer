@@ -3717,8 +3717,13 @@ DesignPanel::DesignPanel(wxWindow* parent)
         m_pick_face_body = (level >= 1) ? body : -1;
         m_pick_face      = (level >= 1) ? face : -1;
         // Last pick wins: a leftover loop pick would block Extrude's face push/pull branch, so
-        // Extrude would extrude a sketch instead of push/pulling the clicked face.
-        if (level >= 1) m_viewport->clear_loop_pick();
+        // Extrude would extrude a sketch instead of push/pulling the clicked face. And a reference
+        // plane picked before stops being the one chosen, as a plane pick drops a face: otherwise it
+        // would come back as the sketch plane, and be drawn selected, once this pick is let go.
+        if (level >= 1) {
+            m_viewport->clear_loop_pick();
+            m_plane_picked = false;
+        }
         // Say what got picked. Without this the ONLY feedback is the viewport highlight, so a
         // pick that registers but draws faintly is indistinguishable from one that never
         // happened — which is precisely how this failure was reported and why it resisted
@@ -4004,6 +4009,15 @@ DesignPanel::DesignPanel(wxWindow* parent)
                                       "or click an object to select it"), nm));
             m_status->Refresh();
         }
+    });
+    // The reference plane drawn selected: the Plane card's base, or else the plane a sketch would go
+    // on — chosen, and not overridden by a picked face (sketch_plane_target's test, without its
+    // per-face OCCT lookup, as this is asked every frame).
+    m_viewport->set_selected_base([this] {
+        if (m_active == Tool::Plane)
+            return m_plane_base != nullptr && m_pl_faceA < 0 ? m_plane_base->GetSelection() : -1;
+        const bool face = (m_sel_solid_face >= 0 && m_sel_solid_body >= 0) || (m_pick_face >= 0 && m_pick_face_body >= 0);
+        return m_plane_picked && !face ? m_ref_plane : -1;
     });
 
     // Move-body gizmo (M5): each drag/edit reports the body's new translation. Store it as a

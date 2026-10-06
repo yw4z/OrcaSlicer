@@ -11,6 +11,7 @@
 #include "slic3r/GUI/GLModel.hpp"
 #include "slic3r/GUI/GLSelectionRectangle.hpp"   // left-drag rubber band over the committed bodies
 #include <Eigen/Core>
+#include <array>
 #include <cstddef>
 #include <wx/event.h>
 #include <functional>
@@ -56,20 +57,34 @@ inline ColorRGBA design_idle_face_color()
     return ColorRGBA(0.72f, 0.76f, 0.80f, 0.14f);
 }
 
-// A convex piece of the square drawn on planes[plane], and the segments to outline with it: its share
-// of the square's border and of the lines where it crosses the other squares.
+// A convex piece of the square drawn on planes[plane].
 struct PlanePiece
 {
-    int                                  plane;
-    std::vector<Vec3d>                   corners;
-    std::vector<std::pair<Vec3d, Vec3d>> lines;
+    int                plane;
+    std::vector<Vec3d> corners;
 };
-// The squares of half-extent `half` on `planes`, cut where they cross one another and ordered back
-// to front for an eye at `eye` (perspective) or looking along `forward` (orthographic). Translucent
-// planes that cross cannot be drawn in any per-plane order: each is partly in front of and partly
-// behind the others. Drawn piece by piece in this order, each one tints only what is behind it.
+// The squares of half-extent `half` centred on `planes`' origins, cut where they cross one another
+// and ordered back to front for an eye at `eye` (perspective) or looking along `forward`
+// (orthographic). Translucent planes that cross cannot be drawn in any per-plane order: each is
+// partly in front of and partly behind the others. Drawn piece by piece in this order, each one
+// tints only what is behind it.
 std::vector<PlanePiece> planes_back_to_front(const std::vector<SketchPlane>& planes, double half,
                                              const Vec3d& eye, const Vec3d& forward, bool perspective);
+
+// The square a reference plane is drawn as, given as the frame at its centre, half-extent `half`.
+// The base planes XY, XZ and YZ (`base` 0, 1, 2) sit in the octant (+X, -Y, +Z), the one all three
+// names face, reference_square_gap(half) clear of the two axes bounding each, so the three never cross
+// and the axes run between them. Any other base (a datum) stays centred on its own origin. The frame is the same
+// plane moved within itself, so planes_back_to_front and pick_reference_square take it unchanged.
+SketchPlane reference_square(const SketchPlane& plane, int base, double half);
+inline double reference_square_gap(double half) { return 0.25 * half; }
+// The corners of the box around a base square's label, in the square: inset from its (+x, +y) corner and
+// written along the square's x axis with its y axis up, so it turns with the plane. The box the hit
+// test takes for the label: round the strokes render_base_pick draws, from the same layout, with a
+// margin to aim at.
+std::array<Vec3d, 4> reference_label_box(const SketchPlane& square, double half, const std::string& text);
+// The nearest of `squares` (half-extent `half`) the ray from `from` along `dir` crosses, or -1.
+int pick_reference_square(const std::vector<SketchPlane>& squares, double half, const Vec3d& from, const Vec3d& dir);
 
 class DesignSketchTool {
 public:
@@ -348,6 +363,12 @@ public:
                        std::vector<std::string> labels = {});
     void clear_base_pick();
     std::function<void(int base)> on_datum_base_picked;
+    // The base drawn as selected, or -1. Asked once a frame rather than set, because what decides it
+    // (the panel's chosen sketch plane, a picked face, the Plane card's base) changes in many places.
+    std::function<int()> selected_base;
+    // The reference planes are drawn this frame, with their own half-axes and origin mark: the canvas
+    // leaves out the bed's axes triad, which would sit on top of them.
+    bool draws_reference_axes() const { return m_dbp_active && !m_active; }
 
     // Visual Fillet/Chamfer gizmo. The Dressup tool is a DesignPanel docked card, so the sketch
     // tool is NOT active during it; when a solid EDGE is picked the panel passes the body centroid
@@ -1418,7 +1439,9 @@ private:
     std::vector<int>          m_dbp_base;
     std::vector<std::string>  m_dbp_labels;
     int         m_dbp_hover{-1};
-    double      dbp_half_extent() const;   // bed-derived: reference planes are larger than the bed
+    double      dbp_half_extent() const;   // bed-derived square size
+    std::vector<SketchPlane> dbp_squares(double half) const;   // reference_square of each entry
+    void render_reference_axes(const Vec3d& origin, double half);
     void render_base_pick();
     int  hit_test_base_pick(GLCanvas3D& canvas, const wxMouseEvent& evt) const;
 

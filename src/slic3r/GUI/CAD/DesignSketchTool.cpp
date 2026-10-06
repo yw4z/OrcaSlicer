@@ -30,7 +30,7 @@
 #include <map>
 #include "libslic3r/TriangleMesh.hpp"
 
-#include <GL/glew.h>
+#include <glad/gl.h>
 #include "libslic3r/CAD/SketchEngine.hpp"
 #include "libslic3r/Point.hpp"
 #include <vector>
@@ -5385,8 +5385,12 @@ void DesignSketchTool::drag_rib_handle(GLCanvas3D& canvas, const wxMouseEvent& e
     if (on_rib_thickness_changed) on_rib_thickness_changed(m_rb_thickness);
 }
 
-// ---- Reference/base planes (Onshape-style default planes) -----------------------------
+// ---- Reference/base planes -------------------------------------------------------------
 namespace {
+// `text` in the stroke font, `height` tall and centred on the origin; `size` is its extent. With the
+// font, further down.
+std::vector<std::pair<Vec2d, Vec2d>> text_strokes(const std::string& text, double height, Vec2d& size);
+
 // One level of a BSP tree whose splitters are the planes themselves, in order: the painter's
 // algorithm made exact for polygons that cross. Pieces of plane k (and of any plane lying in it)
 // are in the splitter; every other piece is wholly on one side or is cut in two. Far side, then the
@@ -5449,33 +5453,21 @@ void paint_back_to_front(std::vector<PlanePiece>&& in, size_t k, const std::vect
     paint_back_to_front(std::move(eye_in_front ? front : back), k + 1, planes, eps, eye, forward, perspective, out);
 }
 
-Vec2d in_frame(const SketchPlane& p, const Vec3d& x) { return Vec2d((x - p.origin).dot(p.x_axis), (x - p.origin).dot(p.y_axis)); }
+// A base square's name: its cap height, and where the text is centred in the square's frame — inset
+// from the frame's (+x, +y) corner, which lies by an axis toward its far end or at the outer corner,
+// away from the other two names.
+double label_height(double half) { return 0.30 * half; }
+Vec2d  label_centre(double half, const Vec2d& size) { return Vec2d::Constant(0.88 * half) - 0.5 * size; }
 
-double plane_distance(const SketchPlane& p, const Vec3d& x) { return p.x_axis.cross(p.y_axis).normalized().dot(x - p.origin); }
+// A datum's name is not in the stroke font: it is an ImGui chip anchored at this point of its square.
+Vec2d datum_label_anchor(double half) { return Vec2d(-0.8 * half, 0.84 * half); }
 
-// Shrink the segment ab, which lies in p, to its part inside p's square (Liang-Barsky). False when
-// nothing is left.
-bool clip_to_square(Vec3d& a, Vec3d& b, const SketchPlane& p, double half, double eps)
-{
-    const Vec2d s = in_frame(p, a), d = in_frame(p, b) - s;
-    double      t0 = 0., t1 = 1.;
-    for (int axis = 0; axis < 2; ++axis)
-        for (double sign : { -1., 1. }) {   // keep sign * (s + t * d)[axis] <= half
-            const double room = half + eps - sign * s[axis], rate = sign * d[axis];
-            if (rate > 0.)
-                t1 = std::min(t1, room / rate);
-            else if (rate < 0.)
-                t0 = std::max(t0, room / rate);
-            else if (room < 0.)
-                return false;
-        }
-    if (t1 - t0 < 1e-9)
-        return false;
-    const Vec3d ab = b - a;
-    b = a + ab * t1;
-    a = a + ab * t0;
-    return true;
-}
+bool is_base_plane(int base) { return base >= 0 && base < 3; }
+
+// The octant the base squares sit in. Each name is written facing x_axis x y_axis, which is +Z for
+// XY, -Y for XZ and +X for YZ: all three point into it, so a camera there looks into the corner the
+// squares form and reads every name, and from the front XY lies below the X axis rather than behind XZ.
+Vec3d reference_octant() { return Vec3d(1., -1., 1.); }
 } // namespace
 
 std::vector<PlanePiece> planes_back_to_front(const std::vector<SketchPlane>& planes, double half,
@@ -5487,41 +5479,52 @@ std::vector<PlanePiece> planes_back_to_front(const std::vector<SketchPlane>& pla
         squares.push_back({ i, { p.to_world(Vec2d(-half, -half)), p.to_world(Vec2d(half, -half)),
                                  p.to_world(Vec2d(half, half)),   p.to_world(Vec2d(-half, half)) } });
     }
-    const double            eps = 1e-6 * std::max(half, 1.);
     std::vector<PlanePiece> out;
-    paint_back_to_front(std::move(squares), 0, planes, eps, eye, forward, perspective, out);
+    paint_back_to_front(std::move(squares), 0, planes, 1e-6 * std::max(half, 1.), eye, forward, perspective, out);
+    return out;
+}
 
-    // What to outline: the piece's share of its square's border, and of where it crosses another
-    // square. Every other edge is a cut lying in the plane that made it, but the cut ran along that
-    // whole infinite plane, so it is clipped to that plane's square: a datum that never reaches a base
-    // plane gets no line across it. A piece is convex, so an edge with both ends on one side line of
-    // its square lies along that side.
-    for (PlanePiece& piece : out) {
-        const SketchPlane& own = planes[piece.plane];
-        for (size_t i = 0; i < piece.corners.size(); ++i) {
-            const Vec3d& a      = piece.corners[i];
-            const Vec3d& b      = piece.corners[(i + 1) % piece.corners.size()];
-            const Vec2d  fa     = in_frame(own, a), fb = in_frame(own, b);
-            bool         border = false;
-            for (int axis = 0; axis < 2; ++axis)
-                for (double side : { -half, half })
-                    border = border || (std::abs(fa[axis] - side) <= eps && std::abs(fb[axis] - side) <= eps);
-            if (border) {
-                piece.lines.emplace_back(a, b);
-                continue;
-            }
-            for (int k = 0; k < int(planes.size()); ++k) {
-                auto in_k = [&](const Vec3d& x) { return std::abs(plane_distance(planes[k], x)) <= 2. * eps; };
-                // Not a plane the piece itself lies in: clipped to its own square, a cut is kept whole.
-                if (k == piece.plane || !in_k(a) || !in_k(b) || std::all_of(piece.corners.begin(), piece.corners.end(), in_k))
-                    continue;
-                Vec3d ca = a, cb = b;
-                if (clip_to_square(ca, cb, planes[k], half, eps))
-                    piece.lines.emplace_back(ca, cb);
-            }
+SketchPlane reference_square(const SketchPlane& plane, int base, double half)
+{
+    SketchPlane square = plane;
+    if (is_base_plane(base)) {
+        const Vec3d o = reference_octant();
+        square.origin += (reference_square_gap(half) + half) * (plane.x_axis.dot(o) * plane.x_axis + plane.y_axis.dot(o) * plane.y_axis);
+    }
+    return square;
+}
+
+std::array<Vec3d, 4> reference_label_box(const SketchPlane& square, double half, const std::string& text)
+{
+    const double th = label_height(half);
+    Vec2d        size;
+    text_strokes(text, th, size);
+    const Vec2d c = label_centre(half, size);
+    const Vec2d r = 0.5 * size + Vec2d::Constant(0.15 * th);   // a margin round the strokes, to aim at
+    return { square.to_world(c + Vec2d(-r.x(), -r.y())), square.to_world(c + Vec2d(r.x(), -r.y())),
+             square.to_world(c + Vec2d(r.x(), r.y())), square.to_world(c + Vec2d(-r.x(), r.y())) };
+}
+
+int pick_reference_square(const std::vector<SketchPlane>& squares, double half, const Vec3d& from, const Vec3d& dir)
+{
+    int    best   = -1;
+    double best_t = std::numeric_limits<double>::max();
+    for (int i = 0; i < int(squares.size()); ++i) {
+        const SketchPlane& s  = squares[i];
+        const Vec3d        n  = s.x_axis.cross(s.y_axis);
+        const double       dn = n.dot(dir);
+        if (std::abs(dn) < 1e-12)
+            continue;   // the ray runs along the square
+        const double t = n.dot(s.origin - from) / dn;
+        if (t <= 0. || t >= best_t)
+            continue;   // behind the eye, or no nearer than one already hit
+        const Vec3d d = from + dir * t - s.origin;
+        if (std::abs(d.dot(s.x_axis)) <= half && std::abs(d.dot(s.y_axis)) <= half) {
+            best   = i;
+            best_t = t;
         }
     }
-    return out;
+    return best;
 }
 
 void DesignSketchTool::set_base_pick(std::vector<SketchPlane> planes, std::vector<int> bases,
@@ -5543,140 +5546,237 @@ void DesignSketchTool::clear_base_pick()
     m_dbp_hover = -1;
 }
 
-// Reference planes sit INSIDE the bed. They used to be 0.6 * the bed's larger side, i.e. a square
-// 1.2x the plate, and three of them are drawn with depth testing off — so they painted over the
-// plate grid from edge to edge and the bed simply was not readable any more. "The planes hide the
-// bed", reported exactly that way. Small enough to leave the grid legible around them is also the
-// Onshape look this was reaching for: a modest square at the origin, not a tablecloth.
+// Sized from the bed, so the squares keep their size against the plate on screen: each is 0.16 of
+// the bed's larger side, about the share of the view Fusion's origin planes take at the default zoom.
+// Larger squares were reported as hiding the bed.
 double DesignSketchTool::dbp_half_extent() const
 {
-    double half = 75.0;
+    double half = 20.0;
     if (auto* pl = wxGetApp().plater()) {
         const BoundingBoxf bb = pl->build_volume().bounding_volume2d();
         const double w = bb.max.x() - bb.min.x(), d = bb.max.y() - bb.min.y();
-        if (w > 1.0 && d > 1.0) half = 0.3 * std::max(w, d);
+        if (w > 1.0 && d > 1.0) half = 0.08 * std::max(w, d);
     }
     return half;
 }
 
-// Draw the reference planes as labelled translucent squares outlined in their own hue; the hovered
-// one brightens. Depth testing is off (they overlay the bed and any bodies), so draw order is the
-// blend order — and the planes cross, so they go down piece by piece, back to front.
+std::vector<SketchPlane> DesignSketchTool::dbp_squares(double half) const
+{
+    std::vector<SketchPlane> squares;
+    for (size_t i = 0; i < m_dbp_planes.size(); ++i)
+        squares.push_back(reference_square(m_dbp_planes[i], i < m_dbp_base.size() ? m_dbp_base[i] : -1, half));
+    return squares;
+}
+
+// Dash-dot half-axes from the origin into the squares' octant, out past them along the gaps between
+// them, and a disc on the origin. Both face the camera at a constant width on screen.
+void DesignSketchTool::render_reference_axes(const Vec3d& origin, double half)
+{
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d   vd  = cam.get_dir_forward();
+    const double  upp = 1.0 / std::max(cam.get_zoom(), 1e-6);   // world units per screen pixel
+    const double  len = 1.2 * (reference_square_gap(half) + 2.0 * half);
+    // A dash, then a dot, every kPeriod of the axis.
+    constexpr double kDash = 0.07, kDotFrom = 0.10, kDotTo = 0.115, kPeriod = 0.145;
+    const ColorRGBA  colours[3] = { ColorRGBA(0.92f, 0.28f, 0.28f, 1.0f), ColorRGBA(0.30f, 0.80f, 0.34f, 1.0f),
+                                    ColorRGBA(0.32f, 0.55f, 0.95f, 1.0f) };
+    for (int k = 0; k < 3; ++k) {
+        const Vec3d                     axis = Vec3d::Unit(k) * (len * reference_octant()[k]);
+        std::vector<std::vector<Vec3d>> strokes;
+        for (double t = 0.; t < 1.; t += kPeriod) {
+            strokes.push_back({ origin + axis * t, origin + axis * std::min(t + kDash, 1.) });
+            if (t + kDotFrom < 1.)
+                strokes.push_back({ origin + axis * (t + kDotFrom), origin + axis * std::min(t + kDotTo, 1.) });
+        }
+        GLModel::Geometry g;
+        append_ribbons(g, -1, strokes, vd, Vec3d::Zero(), 1.5 * upp);   // body -1: already world coordinates
+        if (g.is_empty())
+            continue;   // seen end-on
+        GLModel m;
+        m.init_from(std::move(g));
+        m.set_color(colours[k]);
+        m.render();
+    }
+
+    const Vec3d right = cam.get_dir_right(), up = cam.get_dir_up();
+    auto        disc  = [&](double radius_px, const ColorRGBA& colour) {
+        constexpr int     kSides = 24;
+        GLModel::Geometry g;
+        g.format = { EPT::Triangles, EVL::P3 };
+        g.add_vertex((Vec3f) origin.cast<float>());
+        for (int i = 0; i < kSides; ++i) {
+            const double a = 2. * M_PI * i / kSides;
+            g.add_vertex((Vec3f) (origin + (right * std::cos(a) + up * std::sin(a)) * (radius_px * upp)).cast<float>());
+        }
+        for (int i = 0; i < kSides; ++i)
+            g.add_triangle(0, 1 + i, 1 + (i + 1) % kSides);
+        GLModel m;
+        m.init_from(std::move(g));
+        m.set_color(colour);
+        m.render();
+    };
+    disc(6.0, ColorRGBA(0.30f, 0.30f, 0.32f, 1.0f));   // a dark ring round
+    disc(4.5, ColorRGBA(0.92f, 0.92f, 0.92f, 1.0f));   // a light centre
+}
+
+// The reference planes, as in Fusion: translucent squares with the hovered one grey and the selected
+// one solid, each base plane's name written in it, and the half-axes and origin under them. Depth
+// testing is off (they overlay the bed and any bodies), so draw order is the blend order: back to
+// front, piece by piece.
 void DesignSketchTool::render_base_pick()
 {
     if (!m_dbp_active || m_dbp_planes.empty()) return;
     using EPT = GLModel::Geometry::EPrimitiveType;
     using EVL = GLModel::Geometry::EVertexLayout;
-    const double H = dbp_half_extent();
-    // Two layers of alpha a blended in either order differ by only a^2 of their colour difference,
-    // so a faint fill hides which plane is in front however well the pieces are sorted: at 0.16 that
-    // is under 3%, and the crossing planes read as one grey smear. At 0.35 it is ~12%, and the bed
-    // grid still reads through all three.
-    constexpr float kFillAlpha = 0.35f, kFillAlphaHot = 0.50f;
-    constexpr float kLineAlpha = 0.90f, kLineAlphaHot = 1.00f;
-    // Onshape-ish per-plane hues: XY blue, XZ green, YZ red (keyed by base index 0/1/2; datums grey).
-    auto hue = [](int base) -> ColorRGBA {
-        if (base == 0) return ColorRGBA(0.30f, 0.55f, 0.95f, 1.0f);
-        if (base == 1) return ColorRGBA(0.35f, 0.80f, 0.45f, 1.0f);
-        if (base == 2) return ColorRGBA(0.92f, 0.42f, 0.42f, 1.0f);
-        return ColorRGBA(0.70f, 0.72f, 0.78f, 1.0f);
+    const double                   H        = dbp_half_extent();
+    const std::vector<SketchPlane> squares  = dbp_squares(H);
+    const int                      selected = selected_base ? selected_base() : -1;
+    auto base_of = [this](size_t i) { return i < m_dbp_base.size() ? m_dbp_base[i] : -1; };
+    enum class Look { Idle, Hover, Selected };
+    auto look = [&](size_t i) {
+        return base_of(i) >= 0 && base_of(i) == selected ? Look::Selected : int(i) == m_dbp_hover ? Look::Hover : Look::Idle;
+    };
+    // Each base plane in the colour of the axis it is normal to: XY blue, XZ green, YZ red. A datum the
+    // Plane card offers as a base keeps a slate of its own, clear of the grey hover.
+    auto hue = [&](size_t i) {
+        switch (base_of(i)) {
+        case 0: return ColorRGBA(0.30f, 0.55f, 0.95f, 1.0f);
+        case 1: return ColorRGBA(0.35f, 0.80f, 0.45f, 1.0f);
+        case 2: return ColorRGBA(0.92f, 0.42f, 0.42f, 1.0f);
+        default: return ColorRGBA(0.55f, 0.60f, 0.72f, 1.0f);
+        }
+    };
+    // Where squares overlap on screen, two layers of alpha a blended in either order differ by only
+    // a^2 of their colour difference, so much fainter fills would hide which one is in front however
+    // well the pieces are sorted. The selected plane goes near solid in its own colour: a fixed
+    // selection colour would match one of the three.
+    auto fill = [&](size_t i) {
+        ColorRGBA c = look(i) == Look::Hover ? ColorRGBA(0.80f, 0.80f, 0.80f, 1.0f) : hue(i);
+        c.a(look(i) == Look::Selected ? 0.85f : look(i) == Look::Hover ? 0.45f : 0.50f);
+        return c;
+    };
+    auto ink = [&](size_t i) {
+        switch (look(i)) {
+        case Look::Selected: return ColorRGBA(0.20f, 0.25f, 0.35f, 1.0f);
+        case Look::Hover: return ColorRGBA(0.62f, 0.62f, 0.62f, 1.0f);
+        default: return hue(i);
+        }
     };
     const Camera& cam = wxGetApp().plater()->get_camera();
-    const Vec3d   vd  = cam.get_dir_forward();
-    const double  hw  = 1.5 / std::max(cam.get_zoom(), 1e-6);   // outline ribbon, as on datum planes
     glsafe(::glDisable(GL_DEPTH_TEST));
     glsafe(::glDisable(GL_CULL_FACE));
-    glsafe(::glEnable(GL_BLEND));                                // alpha is ignored without this
-    glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-    for (const PlanePiece& piece : planes_back_to_front(m_dbp_planes, H, cam.get_position(), vd,
-                                                        cam.get_type() == Camera::EType::Perspective)) {
-        const bool         hot  = piece.plane == m_dbp_hover;
-        ColorRGBA          col  = hue(piece.plane < int(m_dbp_base.size()) ? m_dbp_base[piece.plane] : -1);
-        GLModel::Geometry  fill; fill.format = { EPT::Triangles, EVL::P3 };
-        for (const Vec3d& q : piece.corners) fill.add_vertex((Vec3f)q.cast<float>());
-        for (unsigned int i = 1; i + 1 < piece.corners.size(); ++i) fill.add_triangle(0, i, i + 1);   // convex: a fan
-        GLModel fm; fm.init_from(std::move(fill));
-        col.a(hot ? kFillAlphaHot : kFillAlpha);
-        fm.set_color(col);
-        fm.render();
+    glsafe(::glEnable(GL_BLEND));   // alpha is ignored without this; destination alpha stays 1
+    glsafe(::glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA));
 
-        // Its outline and crossing lines go down with it, so a line behind another plane is tinted
-        // by it exactly like the plane it lies on.
-        std::vector<std::vector<Vec3d>> strokes;
-        for (const auto& [a, b] : piece.lines) strokes.push_back({ a, b });
-        GLModel::Geometry outline;
-        append_ribbons(outline, -1, strokes, vd, Vec3d::Zero(), hw);   // body -1: already world coordinates
-        if (!outline.is_empty()) {
-            GLModel om; om.init_from(std::move(outline));
-            col.a(hot ? kLineAlphaHot : kLineAlpha);
-            om.set_color(col);
-            om.render();
+    for (size_t i = 0; i < m_dbp_planes.size(); ++i)
+        if (is_base_plane(base_of(i))) {   // the base planes all pass through the modeling origin
+            render_reference_axes(m_dbp_planes[i].origin, H);
+            break;
         }
-    }
 
-    // Label near the top-left corner, drawn in the plane (draw_text lifts through m_plane). Labels
-    // are ImGui chips, on top of the planes whatever the order here.
-    const SketchPlane saved_plane = m_plane;
-    const double      th          = H * 0.10;
-    for (size_t i = 0; i < m_dbp_planes.size() && i < m_dbp_labels.size(); ++i) {
-        if (m_dbp_labels[i].empty()) continue;
-        m_plane = m_dbp_planes[i];
-        draw_text(m_line_model, m_dbp_labels[i], Vec2d(-H + th * 2.0, H - th * 1.6), th,
-                  hue(i < m_dbp_base.size() ? m_dbp_base[i] : -1));
+    const std::vector<PlanePiece> pieces = planes_back_to_front(squares, H, cam.get_position(), cam.get_dir_forward(),
+                                                                cam.get_type() == Camera::EType::Perspective);
+    const SketchPlane             saved_plane = m_plane;
+    for (size_t k = 0; k < pieces.size(); ++k) {
+        const PlanePiece& piece = pieces[k];
+        const size_t      i     = size_t(piece.plane);
+        GLModel::Geometry g;
+        g.format = { EPT::Triangles, EVL::P3 };
+        for (const Vec3d& q : piece.corners) g.add_vertex((Vec3f)q.cast<float>());
+        for (unsigned int c = 1; c + 1 < piece.corners.size(); ++c) g.add_triangle(0, c, c + 1);   // convex: a fan
+        GLModel m;
+        m.init_from(std::move(g));
+        m.set_color(fill(i));
+        m.render();
+
+        // A base plane's name goes down with its last piece, so a square in front tints it as it
+        // tints the fill.
+        if (!is_base_plane(base_of(i)) || i >= m_dbp_labels.size() || m_dbp_labels[i].empty()
+            || std::any_of(pieces.begin() + k + 1, pieces.end(), [&](const PlanePiece& p) { return p.plane == piece.plane; }))
+            continue;
+        const double th = label_height(H);
+        Vec2d        size;
+        std::vector<std::pair<Vec2d, Vec2d>> strokes = text_strokes(m_dbp_labels[i], th, size);
+        const Vec2d  c = label_centre(H, size);
+        for (auto& [a, b] : strokes) {
+            a += c;
+            b += c;
+        }
+        m_plane = squares[i];   // draw_strokes lifts plane coordinates through m_plane
+        draw_strokes(m_line_model, strokes, 0.07 * th, ink(i));
     }
+    for (size_t i = 0; i < m_dbp_planes.size() && i < m_dbp_labels.size(); ++i)
+        if (!is_base_plane(base_of(i)) && !m_dbp_labels[i].empty()) {
+            m_plane = squares[i];   // draw_text anchors through m_plane too
+            draw_text(m_line_model, m_dbp_labels[i], datum_label_anchor(H), H * 0.10, ink(i));
+        }
     m_plane = saved_plane;
     glsafe(::glDisable(GL_BLEND));
 }
 
-// Ray-pick the reference planes: intersect the mouse ray with each plane, keep hits inside the
-// square, return the index of the nearest by |t|. -1 on miss.
+// The reference plane under the cursor, or -1. A plane's name wins over the squares: it is the part
+// of a plane a user aims at deliberately, and from the back the XZ square stands between the eye and
+// the XY name, so a ray pick alone reports "XZ plane selected" for a click on the word XY.
 int DesignSketchTool::hit_test_base_pick(GLCanvas3D& canvas, const wxMouseEvent& evt) const
 {
     if (!m_dbp_active) return -1;
-    const double H = dbp_half_extent();
-
-    // THE LABEL WINS, and it has to. Each plane's name is a screen-space chip centred on its
-    // own in-plane anchor, and it is the one part of a base plane a user aims at deliberately —
-    // the quads are translucent and overlap everywhere. Ray-casting the quads alone made
-    // the labels pure decoration: on a fresh document at 1920x1060, clicking "XY" reported
-    // "XZ plane selected", because the XZ quad happens to sit in front at that pixel. Nothing
-    // about the click was ambiguous to the user; they clicked the word XY.
-    // Anchor and text height must track render_base_pick's, which is where they are drawn.
-    const Camera& cam = wxGetApp().plater()->get_camera();
-    const double  th  = H * 0.10;
-    const Vec2d   anchor(-H + th * 2.0, H - th * 1.6);
-    int lbest = -1; double lbest_d = 1e30;
-    for (size_t i = 0; i < m_dbp_planes.size(); ++i) {
-        if (i >= m_dbp_labels.size() || m_dbp_labels[i].empty()) continue;
-        const wxPoint sp = world_to_screen_px(cam, m_dbp_planes[i].to_world(anchor));
-        if (sp.x < 0 && sp.y < 0) continue;                    // behind the camera
-        const double dx = std::abs(double(evt.GetX() - sp.x));
-        const double dy = std::abs(double(evt.GetY() - sp.y));
-        // Chip half-extents in px, scaled like the label itself. Generous rather than tight:
-        // missing the text and silently selecting a different plane is the failure being fixed.
-        const double hw = (9.0 + 5.0 * double(m_dbp_labels[i].size())) * double(m_render_scale);
-        const double hh = 11.0 * double(m_render_scale);
-        if (dx > hw || dy > hh) continue;
-        const double d = dx * dx + dy * dy;                    // nearest label if chips overlap
+    const double                   H       = dbp_half_extent();
+    const std::vector<SketchPlane> squares = dbp_squares(H);
+    const Camera&                  cam     = wxGetApp().plater()->get_camera();
+    // As world_to_screen_px, but refusing a point behind the eye, which would come back mirrored.
+    const Eigen::Matrix4d      to_clip = cam.get_projection_matrix().matrix() * cam.get_view_matrix().matrix();
+    const std::array<int, 4>& vp      = cam.get_viewport();
+    auto to_screen = [&](const Vec3d& x, Vec2d& out) {
+        const Eigen::Vector4d clip = to_clip * x.homogeneous();
+        if (clip.w() <= 1e-9)
+            return false;
+        const Vec3d ndc = clip.head<3>() / clip.w();
+        out = Vec2d(vp[0] + (ndc.x() * 0.5 + 0.5) * vp[2], vp[1] + (1.0 - (ndc.y() * 0.5 + 0.5)) * vp[3]);
+        return true;
+    };
+    const Vec2d mouse(evt.GetX(), evt.GetY());
+    int         lbest = -1;
+    double      lbest_d = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < squares.size() && i < m_dbp_labels.size(); ++i) {
+        if (m_dbp_labels[i].empty()) continue;
+        Vec2d centre;
+        if (is_base_plane(i < m_dbp_base.size() ? m_dbp_base[i] : -1)) {
+            // The name lies in its square, so its box is hit as projected, turning with the plane.
+            const std::array<Vec3d, 4> box = reference_label_box(squares[i], H, m_dbp_labels[i]);
+            std::array<Vec2d, 4>       q;
+            bool                       seen = true;
+            for (size_t c = 0; c < 4 && seen; ++c) seen = to_screen(box[c], q[c]);
+            if (!seen) continue;
+            double area = 0.;
+            bool   left = true, right = true;   // the cursor on one side of every edge: inside
+            for (size_t c = 0; c < 4; ++c) {
+                const Vec2d& a = q[c];
+                const Vec2d& b = q[(c + 1) % 4];
+                const double s = (b.x() - a.x()) * (mouse.y() - a.y()) - (b.y() - a.y()) * (mouse.x() - a.x());
+                left  = left && s >= 0.;
+                right = right && s <= 0.;
+                area += a.x() * b.y() - b.x() * a.y();
+            }
+            if (std::abs(area) < 8. || !(left || right))
+                continue;   // edge-on, or outside
+            centre = 0.25 * (q[0] + q[1] + q[2] + q[3]);
+        } else {
+            // A datum's name is a screen chip. Generous rather than tight: missing the text and
+            // silently selecting a different plane is the failure this guards against.
+            if (!to_screen(squares[i].to_world(datum_label_anchor(H)), centre)) continue;
+            const double hw = (9.0 + 5.0 * double(m_dbp_labels[i].size())) * double(m_render_scale);
+            const double hh = 11.0 * double(m_render_scale);
+            if (std::abs(mouse.x() - centre.x()) > hw || std::abs(mouse.y() - centre.y()) > hh) continue;
+        }
+        const double d = (mouse - centre).squaredNorm();   // the nearest name if several hold the cursor
         if (d < lbest_d) { lbest_d = d; lbest = int(i); }
     }
     if (lbest >= 0) return lbest;
 
     const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
-    const Vec3d ro = r.a, rd = r.b - r.a;
-    int best = -1; double best_t = 1e30;
-    for (size_t i = 0; i < m_dbp_planes.size(); ++i) {
-        const SketchPlane& p = m_dbp_planes[i];
-        const double dn = rd.dot(p.normal);
-        if (std::abs(dn) < 1e-9) continue;                      // ray parallel to plane
-        const double t = (p.origin - ro).dot(p.normal) / dn;
-        if (t < 0) continue;                                    // behind the camera
-        const Vec3d hit = ro + rd * t;
-        const Vec3d d = hit - p.origin;
-        if (std::abs(d.dot(p.x_axis)) > H || std::abs(d.dot(p.y_axis)) > H) continue;
-        if (t < best_t) { best_t = t; best = int(i); }
-    }
-    return best;
+    return pick_reference_square(squares, H, r.a, r.b - r.a);
 }
 
 // ---- Move-body gizmo (M5) -------------------------------------------------------------
@@ -7615,9 +7715,9 @@ void DesignSketchTool::draw_strokes(GLModel& model, const std::vector<std::pair<
 }
 
 namespace {
-// Smooth single-stroke (Hershey-style) vector font for dimension labels. Glyphs
-// live in a 0..0.6 (x) by 0..1 (y) cell, baseline at y=0, cap height y=1; curved
-// digits are sampled as short segments so they read as rounded shapes, not blocks.
+// Smooth single-stroke (Hershey-style) vector font, for text lying in a plane: the reference planes'
+// names (render_base_pick). Glyphs live in a 0..0.6 (x) by 0..1 (y) cell, baseline at y=0, cap
+// height y=1; curved digits are sampled as short segments so they read as rounded shapes, not blocks.
 // `advance` is the pen step after the glyph.
 constexpr double kPi = 3.14159265358979323846;
 inline double rad(double deg) { return deg * kPi / 180.0; }
@@ -7727,6 +7827,36 @@ void glyph_strokes(char c, std::vector<std::pair<Vec2d, Vec2d>>& out, double& ad
         break;
     }
 }
+
+std::vector<std::pair<Vec2d, Vec2d>> text_strokes(const std::string& text, double height, Vec2d& size)
+{
+    std::vector<std::pair<Vec2d, Vec2d>> out;
+    double                               pen = 0.;
+    for (char c : text) {
+        std::vector<std::pair<Vec2d, Vec2d>> glyph;
+        double                               advance = 0.;
+        glyph_strokes(c, glyph, advance);
+        for (const auto& [a, b] : glyph)
+            out.emplace_back((a + Vec2d(pen, 0.)) * height, (b + Vec2d(pen, 0.)) * height);
+        pen += advance;
+    }
+    BoundingBoxf box;
+    for (const auto& [a, b] : out) {
+        box.merge(a);
+        box.merge(b);
+    }
+    if (!box.defined) {
+        size = Vec2d::Zero();
+        return out;
+    }
+    const Vec2d mid = box.center();
+    for (auto& [a, b] : out) {
+        a -= mid;
+        b -= mid;
+    }
+    size = box.size();
+    return out;
+}
 } // namespace
 
 void DesignSketchTool::draw_dim_label(const std::string& txt, const Vec2d& plane_center)
@@ -7787,8 +7917,9 @@ void DesignSketchTool::draw_text(GLModel& /*model*/, const std::string& s, const
                                  double /*height*/, const ColorRGBA& /*color*/)
 {
     // ponytail: all sketch labels now render as Measure-gizmo-style ImGui labels for visual
-    // parity with the Prepare/Preview tabs; the old vector-font path (glyph_strokes/draw_strokes
-    // for text) is retired. Leader lines/arrows still draw via draw_strokes at the call sites.
+    // parity with the Prepare/Preview tabs; the vector font (glyph_strokes/draw_strokes) is kept
+    // only for text lying in a plane, the reference planes' names. Leader lines/arrows still draw
+    // via draw_strokes at the call sites.
     //
     // The one label we do NOT draw is the one under an OPEN value field: the field is anchored
     // over it and carries the same number plus its title, so leaving the label in place shows
@@ -9525,7 +9656,7 @@ void DesignSketchTool::render(GLCanvas3D& canvas)
         render_datum_planes();
         render_mate_connectors();
         render_solid_highlight();
-        if (m_dbp_active) render_base_pick();
+        if (draws_reference_axes()) render_base_pick();   // the canvas drops the bed's triad on the same test
         if (m_dz_active) render_datum_gizmo();
         if (m_hx_active) render_helix_gizmo();
         if (m_rb_active) render_rib_gizmo();
