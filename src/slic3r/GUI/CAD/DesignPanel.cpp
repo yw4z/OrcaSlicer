@@ -1267,7 +1267,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         fadd("step", b_step);
         // Import mesh — same destination as STEP (an editable B-rep body), but the geometry has
         // to be reconstructed from triangles first (GeometryEngine::mesh_to_brep).
-        auto* b_mesh = icon_btn("param_triangles", _L("Import mesh (STL/OBJ) as an editable B-rep solid"));
+        auto* b_mesh = icon_btn("design_import_mesh", _L("Import mesh (STL/OBJ) as an editable B-rep solid"));
         b_mesh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_import_mesh(); });
         m_keys_feature[SHIFT('M')] = [this] { on_import_mesh(); };
         fadd("mesh", b_mesh);
@@ -1651,12 +1651,12 @@ DesignPanel::DesignPanel(wxWindow* parent)
         auto add_doc = [this](ScalableButton* b) {
             m_tb_doc->Add(b, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4); };
 
-        auto* b_new = doc_btn("add", _L("New Design — clear the feature tree"));
+        auto* b_new = doc_btn("design_new", _L("New Design — clear the feature tree"));
         b_new->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_new_design(); });
         add_doc(b_new);
         add_doc(static_cast<ScalableButton*>(tb_slot["step"][0]));   // 2. Import STEP
         add_doc(static_cast<ScalableButton*>(tb_slot["mesh"][0]));   // 3. Import mesh
-        auto* b_export = doc_btn("save", _L("Export STEP…"));
+        auto* b_export = doc_btn("design_export", _L("Export STEP…"));
         b_export->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_export_step(); });
         add_doc(b_export);
 
