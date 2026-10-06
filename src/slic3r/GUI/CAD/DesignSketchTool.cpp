@@ -53,6 +53,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include <cstdlib>
+#include <iterator>
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Color.hpp"
 #include "slic3r/GUI/GLSelectionRectangle.hpp"
@@ -5384,6 +5385,144 @@ void DesignSketchTool::drag_rib_handle(GLCanvas3D& canvas, const wxMouseEvent& e
 }
 
 // ---- Reference/base planes (Onshape-style default planes) -----------------------------
+namespace {
+// One level of a BSP tree whose splitters are the planes themselves, in order: the painter's
+// algorithm made exact for polygons that cross. Pieces of plane k (and of any plane lying in it)
+// are in the splitter; every other piece is wholly on one side or is cut in two. Far side, then the
+// splitter's own pieces, then the near side is back to front. A piece is only cut when it has
+// corners strictly on both sides, so neither half can be degenerate.
+void paint_back_to_front(std::vector<PlanePiece>&& in, size_t k, const std::vector<SketchPlane>& planes, double eps,
+                         const Vec3d& eye, const Vec3d& forward, bool perspective, std::vector<PlanePiece>& out)
+{
+    if (in.empty())
+        return;
+    if (k == planes.size()) {   // not reached: every piece is in the splitter at its own plane's level
+        std::move(in.begin(), in.end(), std::back_inserter(out));
+        return;
+    }
+    // The square's own normal: SketchPlane::normal is reversed on XZ, and the side tests only need
+    // one consistent choice.
+    const Vec3d  n = planes[k].x_axis.cross(planes[k].y_axis).normalized();
+    const double d = n.dot(planes[k].origin);
+    std::vector<PlanePiece> front, back, on;
+    for (PlanePiece& piece : in) {
+        if (piece.plane == int(k)) {
+            on.push_back(std::move(piece));
+            continue;
+        }
+        std::vector<double> s;
+        int                 sides = 0;
+        for (const Vec3d& c : piece.corners) {
+            s.push_back(n.dot(c) - d);
+            sides |= s.back() > eps ? 1 : s.back() < -eps ? 2 : 0;
+        }
+        if (sides == 0)
+            on.push_back(std::move(piece));
+        else if (sides == 1)
+            front.push_back(std::move(piece));
+        else if (sides == 2)
+            back.push_back(std::move(piece));
+        else {
+            PlanePiece   f{ piece.plane, {} }, b{ piece.plane, {} };
+            const size_t m = piece.corners.size();
+            for (size_t i = 0; i < m; ++i) {
+                const size_t j = (i + 1) % m;
+                const Vec3d& a = piece.corners[i];
+                if (s[i] >= -eps) f.corners.push_back(a);
+                if (s[i] <= eps)  b.corners.push_back(a);
+                if ((s[i] > eps && s[j] < -eps) || (s[i] < -eps && s[j] > eps)) {
+                    const Vec3d x = a + (piece.corners[j] - a) * (s[i] / (s[i] - s[j]));
+                    f.corners.push_back(x);
+                    b.corners.push_back(x);
+                }
+            }
+            front.push_back(std::move(f));
+            back.push_back(std::move(b));
+        }
+    }
+    // An orthographic eye is at infinity behind the view direction. Camera::get_position() is a
+    // finite point there and can sit on the wrong side of a plane, so only the direction counts.
+    const bool eye_in_front = perspective ? n.dot(eye) - d > 0. : n.dot(forward) < 0.;
+    paint_back_to_front(std::move(eye_in_front ? back : front), k + 1, planes, eps, eye, forward, perspective, out);
+    std::move(on.begin(), on.end(), std::back_inserter(out));
+    paint_back_to_front(std::move(eye_in_front ? front : back), k + 1, planes, eps, eye, forward, perspective, out);
+}
+
+Vec2d in_frame(const SketchPlane& p, const Vec3d& x) { return Vec2d((x - p.origin).dot(p.x_axis), (x - p.origin).dot(p.y_axis)); }
+
+double plane_distance(const SketchPlane& p, const Vec3d& x) { return p.x_axis.cross(p.y_axis).normalized().dot(x - p.origin); }
+
+// Shrink the segment ab, which lies in p, to its part inside p's square (Liang-Barsky). False when
+// nothing is left.
+bool clip_to_square(Vec3d& a, Vec3d& b, const SketchPlane& p, double half, double eps)
+{
+    const Vec2d s = in_frame(p, a), d = in_frame(p, b) - s;
+    double      t0 = 0., t1 = 1.;
+    for (int axis = 0; axis < 2; ++axis)
+        for (double sign : { -1., 1. }) {   // keep sign * (s + t * d)[axis] <= half
+            const double room = half + eps - sign * s[axis], rate = sign * d[axis];
+            if (rate > 0.)
+                t1 = std::min(t1, room / rate);
+            else if (rate < 0.)
+                t0 = std::max(t0, room / rate);
+            else if (room < 0.)
+                return false;
+        }
+    if (t1 - t0 < 1e-9)
+        return false;
+    const Vec3d ab = b - a;
+    b = a + ab * t1;
+    a = a + ab * t0;
+    return true;
+}
+} // namespace
+
+std::vector<PlanePiece> planes_back_to_front(const std::vector<SketchPlane>& planes, double half,
+                                             const Vec3d& eye, const Vec3d& forward, bool perspective)
+{
+    std::vector<PlanePiece> squares;
+    for (int i = 0; i < int(planes.size()); ++i) {
+        const SketchPlane& p = planes[i];
+        squares.push_back({ i, { p.to_world(Vec2d(-half, -half)), p.to_world(Vec2d(half, -half)),
+                                 p.to_world(Vec2d(half, half)),   p.to_world(Vec2d(-half, half)) } });
+    }
+    const double            eps = 1e-6 * std::max(half, 1.);
+    std::vector<PlanePiece> out;
+    paint_back_to_front(std::move(squares), 0, planes, eps, eye, forward, perspective, out);
+
+    // What to outline: the piece's share of its square's border, and of where it crosses another
+    // square. Every other edge is a cut lying in the plane that made it, but the cut ran along that
+    // whole infinite plane, so it is clipped to that plane's square: a datum that never reaches a base
+    // plane gets no line across it. A piece is convex, so an edge with both ends on one side line of
+    // its square lies along that side.
+    for (PlanePiece& piece : out) {
+        const SketchPlane& own = planes[piece.plane];
+        for (size_t i = 0; i < piece.corners.size(); ++i) {
+            const Vec3d& a      = piece.corners[i];
+            const Vec3d& b      = piece.corners[(i + 1) % piece.corners.size()];
+            const Vec2d  fa     = in_frame(own, a), fb = in_frame(own, b);
+            bool         border = false;
+            for (int axis = 0; axis < 2; ++axis)
+                for (double side : { -half, half })
+                    border = border || (std::abs(fa[axis] - side) <= eps && std::abs(fb[axis] - side) <= eps);
+            if (border) {
+                piece.lines.emplace_back(a, b);
+                continue;
+            }
+            for (int k = 0; k < int(planes.size()); ++k) {
+                auto in_k = [&](const Vec3d& x) { return std::abs(plane_distance(planes[k], x)) <= 2. * eps; };
+                // Not a plane the piece itself lies in: clipped to its own square, a cut is kept whole.
+                if (k == piece.plane || !in_k(a) || !in_k(b) || std::all_of(piece.corners.begin(), piece.corners.end(), in_k))
+                    continue;
+                Vec3d ca = a, cb = b;
+                if (clip_to_square(ca, cb, planes[k], half, eps))
+                    piece.lines.emplace_back(ca, cb);
+            }
+        }
+    }
+    return out;
+}
+
 void DesignSketchTool::set_base_pick(std::vector<SketchPlane> planes, std::vector<int> bases,
                                      std::vector<std::string> labels)
 {
@@ -5419,49 +5558,72 @@ double DesignSketchTool::dbp_half_extent() const
     return half;
 }
 
-// Draw the reference planes as large translucent labelled squares; the hovered one brightens.
+// Draw the reference planes as labelled translucent squares outlined in their own hue; the hovered
+// one brightens. Depth testing is off (they overlay the bed and any bodies), so draw order is the
+// blend order — and the planes cross, so they go down piece by piece, back to front.
 void DesignSketchTool::render_base_pick()
 {
     if (!m_dbp_active || m_dbp_planes.empty()) return;
     using EPT = GLModel::Geometry::EPrimitiveType;
     using EVL = GLModel::Geometry::EVertexLayout;
     const double H = dbp_half_extent();
-    // Onshape-ish per-plane tints: XY blue, XZ green, YZ red (keyed by base index 0/1/2; datums grey).
-    auto tint = [](int base, bool hot) -> ColorRGBA {
-        float a = hot ? 0.10f : 0.047f;   // base planes kept faint (reduced ~2/3 from 0.30/0.14)
-        if (base == 0) return ColorRGBA(0.30f, 0.55f, 0.95f, a);
-        if (base == 1) return ColorRGBA(0.35f, 0.80f, 0.45f, a);
-        if (base == 2) return ColorRGBA(0.92f, 0.42f, 0.42f, a);
-        return ColorRGBA(0.70f, 0.72f, 0.78f, a);
+    // Two layers of alpha a blended in either order differ by only a^2 of their colour difference,
+    // so a faint fill hides which plane is in front however well the pieces are sorted: at 0.16 that
+    // is under 3%, and the crossing planes read as one grey smear. At 0.35 it is ~12%, and the bed
+    // grid still reads through all three.
+    constexpr float kFillAlpha = 0.35f, kFillAlphaHot = 0.50f;
+    constexpr float kLineAlpha = 0.90f, kLineAlphaHot = 1.00f;
+    // Onshape-ish per-plane hues: XY blue, XZ green, YZ red (keyed by base index 0/1/2; datums grey).
+    auto hue = [](int base) -> ColorRGBA {
+        if (base == 0) return ColorRGBA(0.30f, 0.55f, 0.95f, 1.0f);
+        if (base == 1) return ColorRGBA(0.35f, 0.80f, 0.45f, 1.0f);
+        if (base == 2) return ColorRGBA(0.92f, 0.42f, 0.42f, 1.0f);
+        return ColorRGBA(0.70f, 0.72f, 0.78f, 1.0f);
     };
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d   vd  = cam.get_dir_forward();
+    const double  hw  = 1.5 / std::max(cam.get_zoom(), 1e-6);   // outline ribbon, as on datum planes
     glsafe(::glDisable(GL_DEPTH_TEST));
     glsafe(::glDisable(GL_CULL_FACE));
     glsafe(::glEnable(GL_BLEND));                                // alpha is ignored without this
     glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-    const SketchPlane saved_plane = m_plane;
-    for (size_t i = 0; i < m_dbp_planes.size(); ++i) {
-        const SketchPlane& p = m_dbp_planes[i];
-        const Vec3d q0 = p.to_world(Vec2d(-H, -H)), q1 = p.to_world(Vec2d(H, -H)),
-                    q2 = p.to_world(Vec2d(H, H)),   q3 = p.to_world(Vec2d(-H, H));
-        GLModel::Geometry quad; quad.format = { EPT::Triangles, EVL::P3 };
-        quad.add_vertex((Vec3f)q0.cast<float>()); quad.add_vertex((Vec3f)q1.cast<float>());
-        quad.add_vertex((Vec3f)q2.cast<float>()); quad.add_vertex((Vec3f)q3.cast<float>());
-        quad.add_triangle(0, 1, 2); quad.add_triangle(0, 2, 3);
-        GLModel m; m.init_from(std::move(quad));
-        const bool hot = (int(i) == m_dbp_hover);
-        const int  base = (i < m_dbp_base.size()) ? m_dbp_base[i] : -1;
-        m.set_color(tint(base, hot));
-        m.render();
+    for (const PlanePiece& piece : planes_back_to_front(m_dbp_planes, H, cam.get_position(), vd,
+                                                        cam.get_type() == Camera::EType::Perspective)) {
+        const bool         hot  = piece.plane == m_dbp_hover;
+        ColorRGBA          col  = hue(piece.plane < int(m_dbp_base.size()) ? m_dbp_base[piece.plane] : -1);
+        GLModel::Geometry  fill; fill.format = { EPT::Triangles, EVL::P3 };
+        for (const Vec3d& q : piece.corners) fill.add_vertex((Vec3f)q.cast<float>());
+        for (unsigned int i = 1; i + 1 < piece.corners.size(); ++i) fill.add_triangle(0, i, i + 1);   // convex: a fan
+        GLModel fm; fm.init_from(std::move(fill));
+        col.a(hot ? kFillAlphaHot : kFillAlpha);
+        fm.set_color(col);
+        fm.render();
 
-        // Label near the top-left corner, drawn in the plane (draw_text lifts through m_plane).
-        if (i < m_dbp_labels.size() && !m_dbp_labels[i].empty()) {
-            m_plane = p;
-            const double th = H * 0.10;
-            const ColorRGBA lc = tint(base, true); ColorRGBA lcs(lc.r(), lc.g(), lc.b(), 1.0f);
-            draw_text(m_line_model, m_dbp_labels[i], Vec2d(-H + th * 2.0, H - th * 1.6), th, lcs);
+        // Its outline and crossing lines go down with it, so a line behind another plane is tinted
+        // by it exactly like the plane it lies on.
+        std::vector<std::vector<Vec3d>> strokes;
+        for (const auto& [a, b] : piece.lines) strokes.push_back({ a, b });
+        GLModel::Geometry outline;
+        append_ribbons(outline, -1, strokes, vd, Vec3d::Zero(), hw);   // body -1: already world coordinates
+        if (!outline.is_empty()) {
+            GLModel om; om.init_from(std::move(outline));
+            col.a(hot ? kLineAlphaHot : kLineAlpha);
+            om.set_color(col);
+            om.render();
         }
     }
-    m_plane = saved_plane;   // draw_text renders each label immediately (draw_strokes self-renders)
+
+    // Label near the top-left corner, drawn in the plane (draw_text lifts through m_plane). Labels
+    // are ImGui chips, on top of the planes whatever the order here.
+    const SketchPlane saved_plane = m_plane;
+    const double      th          = H * 0.10;
+    for (size_t i = 0; i < m_dbp_planes.size() && i < m_dbp_labels.size(); ++i) {
+        if (m_dbp_labels[i].empty()) continue;
+        m_plane = m_dbp_planes[i];
+        draw_text(m_line_model, m_dbp_labels[i], Vec2d(-H + th * 2.0, H - th * 1.6), th,
+                  hue(i < m_dbp_base.size() ? m_dbp_base[i] : -1));
+    }
+    m_plane = saved_plane;
     glsafe(::glDisable(GL_BLEND));
 }
 
@@ -5474,7 +5636,7 @@ int DesignSketchTool::hit_test_base_pick(GLCanvas3D& canvas, const wxMouseEvent&
 
     // THE LABEL WINS, and it has to. Each plane's name is a screen-space chip centred on its
     // own in-plane anchor, and it is the one part of a base plane a user aims at deliberately —
-    // the quads are near-transparent and overlap everywhere. Ray-casting the quads alone made
+    // the quads are translucent and overlap everywhere. Ray-casting the quads alone made
     // the labels pure decoration: on a fresh document at 1920x1060, clicking "XY" reported
     // "XZ plane selected", because the XZ quad happens to sit in front at that pixel. Nothing
     // about the click was ambiguous to the user; they clicked the word XY.

@@ -54,6 +54,22 @@ inline ColorRGBA design_idle_face_color()
 {
     return ColorRGBA(0.72f, 0.76f, 0.80f, 0.14f);
 }
+
+// A convex piece of the square drawn on planes[plane], and the segments to outline with it: its share
+// of the square's border and of the lines where it crosses the other squares.
+struct PlanePiece
+{
+    int                                  plane;
+    std::vector<Vec3d>                   corners;
+    std::vector<std::pair<Vec3d, Vec3d>> lines;
+};
+// The squares of half-extent `half` on `planes`, cut where they cross one another and ordered back
+// to front for an eye at `eye` (perspective) or looking along `forward` (orthographic). Translucent
+// planes that cross cannot be drawn in any per-plane order: each is partly in front of and partly
+// behind the others. Drawn piece by piece in this order, each one tints only what is behind it.
+std::vector<PlanePiece> planes_back_to_front(const std::vector<SketchPlane>& planes, double half,
+                                             const Vec3d& eye, const Vec3d& forward, bool perspective);
+
 class DesignSketchTool {
 public:
     enum class Mode { Select, Dimension, Polyline, Line, CornerRect, CenterRect, ObliqueRect,
