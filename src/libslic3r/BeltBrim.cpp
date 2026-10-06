@@ -230,6 +230,19 @@ static Polygon band_box(const BoundingBox &bounds, int from_axis, coordf_t u_lo,
     return poly;
 }
 
+ExPolygons belt_brim_clip_leading_edge(const ExPolygons &region, const BeltBrimFrame &frame, coordf_t u_cut)
+{
+    if (region.empty())
+        return region;
+    BoundingBox keep_bb = get_extents(region);
+    keep_bb.offset(scale_(1.));
+    const bool    low_side = frame.downhill_sign() < 0;   // downhill is -u
+    const Polygon keep = band_box(keep_bb, frame.from_axis,
+        low_side ? unscale<double>(frame.from_axis == 0 ? keep_bb.min.x() : keep_bb.min.y()) : u_cut,
+        low_side ? u_cut : unscale<double>(frame.from_axis == 0 ? keep_bb.max.x() : keep_bb.max.y()));
+    return keep.empty() ? ExPolygons{} : intersection_ex(region, Polygons{ keep });
+}
+
 // Everything the per-band line generator needs, gathered once per object.
 struct BeltBrimContext
 {
@@ -476,20 +489,11 @@ void make_belt_brim(PrintObject &object)
                          width, gap, leading, lateral, bc.frame),
         bc.frame);
 
-    if (bt == btLeadingEdgeOnly && ! bc.region.empty()) {
-        // Keep only what lies at or downhill of the object's FIRST contact with the
-        // belt, so the part is supported as it lands and nothing is printed alongside
-        // it afterwards.  The cut is the uphill edge of the first layer's contact band:
-        // everything past it belongs to later contacts.
-        const coordf_t u_cut   = bc.ctx.cutoff_u(object.layers().front()->print_z);
-        BoundingBox    keep_bb = get_extents(bc.region);
-        keep_bb.offset(scale_(1.));
-        const bool     low_side = bc.frame.shear > 0.;   // downhill is -u
-        const Polygon  keep = band_box(keep_bb, bc.frame.from_axis,
-            low_side ? unscale<double>(bc.frame.from_axis == 0 ? keep_bb.min.x() : keep_bb.min.y()) : u_cut,
-            low_side ? u_cut : unscale<double>(bc.frame.from_axis == 0 ? keep_bb.max.x() : keep_bb.max.y()));
-        bc.region = keep.empty() ? ExPolygons{} : intersection_ex(bc.region, Polygons{ keep });
-    }
+    if (bt == btLeadingEdgeOnly && ! bc.region.empty())
+        // The cut is the uphill edge of the first layer's contact band: everything
+        // past it belongs to later contacts.
+        bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame,
+                                                bc.ctx.cutoff_u(object.layers().front()->print_z));
 
     if (bc.region.empty())
         return;

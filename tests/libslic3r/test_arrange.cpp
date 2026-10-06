@@ -279,12 +279,15 @@ TEST_CASE("Arrange aligns the pile to a custom center", "[Arrange]")
 // Centring a pile on a point that close to the edge pushed everything longer than the room
 // around it off the bed: four 90 mm parts on a 95 x 500 mm belt ended with one across the
 // edge and one outside, with 290 mm of belt free behind them. The pile stops at the edge.
-TEST_CASE("Arrange keeps a pile aligned near an edge on the bed", "[Arrange]")
+TEST_CASE("Arrange keeps a pile aligned near an edge on the bed", "[Arrange][belt]")
 {
     const BoundingBox belt   = bed(95, 500);
     ArrangePolygons   items  = squares(4, 90.);
     ArrangeParams     params = quiet_params(scaled(2.));
     params.align_center      = Vec2d(0.5, 0.05);
+    params.is_belt           = true;
+    params.belt_axis         = 1;
+    params.belt_tilt_slope   = 1.f;
 
     arrange(items, belt, params);
 
@@ -297,6 +300,29 @@ TEST_CASE("Arrange keeps a pile aligned near an edge on the bed", "[Arrange]")
     }
     // Snapped to the edge it was aimed at, less the spacing margin, not re-centred.
     CHECK(lowest < scaled(10.));
+    require_no_overlap(items);
+}
+
+// The clamp is a belt feature. Printers whose best_object_pos is off-centre (the A1 mini
+// and the H2 family) keep their final alignment: the pile is centred on that point, even
+// when that puts part of it outside the bed.
+TEST_CASE("Arrange leaves the final alignment of a flat bed unclamped", "[Arrange]")
+{
+    const BoundingBox bed_   = bed(95, 500);
+    ArrangePolygons   items  = squares(4, 90.);
+    ArrangeParams     params = quiet_params(scaled(2.));
+    params.align_center      = Vec2d(0.5, 0.05);
+
+    arrange(items, bed_, params);
+
+    BoundingBox pile;
+    for (const ArrangePolygon &ap : items) {
+        REQUIRE(ap.bed_idx == 0);
+        pile.merge(ap.transformed_poly().contour.bounding_box());
+    }
+    // Centred on the 5% mark of the bed's length, not pushed inside it.
+    CHECK_THAT(unscaled<double>(pile.center().y()), Catch::Matchers::WithinAbs(0.05 * 500., 15.));
+    CHECK(pile.min.y() < 0);
     require_no_overlap(items);
 }
 

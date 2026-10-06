@@ -993,6 +993,9 @@ protected:
     // first-layer. Measuring against the belt itself is independent of every
     // remap and back-transform.
     bool belt_height_above_floor(const Vec3d &point_slicing_mm, double &height_mm) const;
+    // 1 / 0 / -1: the object layer is entirely past the first-layer band above the
+    // belt / reaches into it / the belt surface is not known for it.
+    int  belt_layer_past_first_layer_band(const Layer *object_layer) const;
     int layer_id() const {
         if (m_layer == nullptr)
             return -1;

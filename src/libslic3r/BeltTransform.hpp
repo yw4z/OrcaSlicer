@@ -47,16 +47,31 @@ class BeltTransformPipeline
 public:
     // ---- Identity checks --------------------------------------------------
 
+    // Whether the axis remaps (preslice_remap_* and gcode_remap_*) apply at all.
+    // The remap fields are only offered in the belt printer group, so a value
+    // left in a profile must not change a non-belt print: with belt mode off every
+    // belt-only key is a no-op. This is the one place to widen if a non-belt use
+    // ever needs them.
+    static bool axis_remap_enabled(const PrintConfig &config) { return config.belt_printer.value; }
+    static bool axis_remap_enabled(const DynamicPrintConfig &config)
+    {
+        auto *opt = config.option<ConfigOptionBool>("belt_printer");
+        return opt != nullptr && opt->value;
+    }
+
     static bool has_preslice_remap(const PrintConfig &config)
     {
-        return int(config.preslice_remap_x.value) != int(RemapAxis::PosX) ||
+        return axis_remap_enabled(config) &&
+              (int(config.preslice_remap_x.value) != int(RemapAxis::PosX) ||
                int(config.preslice_remap_y.value) != int(RemapAxis::PosY) ||
-               int(config.preslice_remap_z.value) != int(RemapAxis::PosZ);
+               int(config.preslice_remap_z.value) != int(RemapAxis::PosZ));
     }
 
     // Overload accepting DynamicPrintConfig (used in static slicing_parameters).
     static bool has_preslice_remap(const DynamicPrintConfig &config)
     {
+        if (! axis_remap_enabled(config))
+            return false;
         auto get_int = [&](const char *key) -> int {
             auto *opt = config.option<ConfigOptionEnum<RemapAxis>>(key);
             return opt ? int(opt->value) : 0;

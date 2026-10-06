@@ -1105,6 +1105,10 @@ class Print;
     private:
         CommandProcessor m_command_processor;
         GCodeReader m_parser;
+        // Belt printer: the belt keys of the loaded file's config block (plus the bed they
+        // are relative to), handed to the preview through export_config_for_render() so the
+        // belt view and its back-transform follow the file, not the selected printer.
+        DynamicConfig m_belt_render_config;
         EUnits m_units;
         EPositioningType m_global_positioning_type;
         EPositioningType m_e_local_positioning_type;

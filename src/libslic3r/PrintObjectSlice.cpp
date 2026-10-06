@@ -895,6 +895,15 @@ void PrintObject::slice()
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
     m_print->throw_if_canceled();
     m_typed_slices = false;
+    // The belt state below is only written while belt mode is on (and the min-Z
+    // lift only when there is a rotation or remap). Start every slice from zero,
+    // or a project switched from a belt printer to a normal one, or whose tilt
+    // axis was set to None, keeps the previous offsets: the adaptive infill octree
+    // and the organic support layers (PrintObject.cpp) would still be shifted by
+    // them.
+    m_belt_min_z              = 0.;
+    m_belt_global_z_offset    = 0.;
+    m_belt_global_xy_correction = Vec2d::Zero();
     this->clear_layers();
     m_layers = new_layers(this, generate_object_layers(m_slicing_params, layer_height_profile, m_config.precise_z_height.value));
     this->slice_volumes();

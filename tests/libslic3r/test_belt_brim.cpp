@@ -324,11 +324,9 @@ SCENARIO("belt_brim_region builds an inner ring inside a hole", "[BeltBrim]") {
 }
 
 SCENARIO("Leading-edge-only retains the downhill half of the brim region", "[BeltBrim]") {
-    // BeltBrim.cpp ~445-458 clips the region to the object's first-contact band and keeps
-    // only what lies at or downhill of it.  That clip is built with band_box(), which is
-    // file-static, so the rectangular half-band is reconstructed here with the SAME sign
-    // rule the code uses (low_side = shear > 0, i.e. downhill is -u) to pin the convention
-    // for both tilt signs.  downhill_sign() is the exported accessor the flag mirrors.
+    // The production clip, belt_brim_clip_leading_edge(), keeps what lies at or downhill
+    // of the first-contact cut.  downhill_sign() pins the convention for both tilt signs:
+    // low_side = shear > 0, i.e. downhill is -u.
     const coord_t mm    = scale_(1.);
     const double  shear = GENERATE(1.0, -1.0);
     DYNAMIC_SECTION("shear " << shear) {
@@ -336,27 +334,37 @@ SCENARIO("Leading-edge-only retains the downhill half of the brim region", "[Bel
         CHECK((frame.downhill_sign() < 0) == (frame.shear > 0.));
 
         const ExPolygons region { make_box(0, 0, 20 * mm, 20 * mm) };   // straddles the cut
-        const coord_t     u_cut = 8 * mm;
-        const BoundingBox bb    = get_extents(region);
+        const coordf_t    u_cut = 8.;                                     // mm
 
-        const bool    low_side = frame.shear > 0.;
-        const coord_t lo = low_side ? bb.min.y() : u_cut;
-        const coord_t hi = low_side ? u_cut      : bb.max.y();
-        Polygon keep;
-        keep.points = { Point(bb.min.x(), lo), Point(bb.max.x(), lo),
-                        Point(bb.max.x(), hi), Point(bb.min.x(), hi) };
-        const ExPolygons kept = intersection_ex(region, Polygons{ keep });
+        const ExPolygons kept = belt_brim_clip_leading_edge(region, frame, u_cut);
 
         REQUIRE(! kept.empty());
         const BoundingBox kb = get_extents(kept);
         if (frame.shear > 0.) {
             // downhill is -u: nothing above the cut survives.
-            CHECK(kb.max.y() <= u_cut + 2);
-            CHECK(kb.min.y() <  u_cut);
+            CHECK(kb.max.y() <= 8 * mm + 2);
+            CHECK(kb.min.y() <  8 * mm);
         } else {
             // downhill is +u: nothing below the cut survives.
-            CHECK(kb.min.y() >= u_cut - 2);
-            CHECK(kb.max.y() >  u_cut);
+            CHECK(kb.min.y() >= 8 * mm - 2);
+            CHECK(kb.max.y() >  8 * mm);
+        }
+        // Half of the box is kept either way, and the full width across the belt.
+        CHECK_THAT(area(kept), Catch::Matchers::WithinRel(area(region) * (frame.shear > 0. ? 8. / 20. : 12. / 20.), 0.01));
+        CHECK(kb.min.x() == 0);
+        CHECK(kb.max.x() == 20 * mm);
+    }
+    WHEN("the cut lies beyond the region") {
+        const BeltBrimFrame frame { 1.0, 1 };
+        const ExPolygons region { make_box(0, 0, 20 * mm, 20 * mm) };
+        THEN("a cut past the uphill end keeps everything") {
+            CHECK_THAT(area(belt_brim_clip_leading_edge(region, frame, 30.)), Catch::Matchers::WithinRel(area(region), 0.001));
+        }
+        THEN("a cut before the downhill end keeps nothing") {
+            CHECK(belt_brim_clip_leading_edge(region, frame, -5.).empty());
+        }
+        THEN("an empty region stays empty") {
+            CHECK(belt_brim_clip_leading_edge(ExPolygons{}, frame, 8.).empty());
         }
     }
 }

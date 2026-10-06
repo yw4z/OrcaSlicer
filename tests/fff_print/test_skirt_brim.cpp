@@ -834,6 +834,60 @@ TEST_CASE("Belt brim on a single extruder emits every band once", "[SkirtBrim][b
     CHECK(belt_tools_for_role(gc, "brim") == std::set<int>{ 0 });   // filament 1 -> tool 0
 }
 
+// Number of brim segments the belt brim generator produced for `object`: the lattice
+// lines of every per-layer band plus the apron prologue.  Each segment is written as one
+// extruding move, so this is what a G-code count has to match.  A pass count cannot see a
+// band emitted twice back to back (two copies of the same band merge into one pass).
+static long belt_brim_segments(const PrintObject &object)
+{
+    auto segments = [](const ExtrusionEntityCollection &fills) {
+        long n = 0;
+        for (const ExtrusionEntity *entity : fills.flatten().entities)
+            for (const Polyline &pl : entity->as_polylines())
+                n += long(pl.size()) - 1;
+        return n;
+    };
+    long n = 0;
+    for (const ExtrusionEntityCollection &band : object.belt_brim_by_layer())
+        n += segments(band);
+    for (const BeltBrimBand &band : object.belt_brim_prologue())
+        n += segments(band.fills);
+    return n;
+}
+
+// Number of extruding moves in the G-code whose role is `role`.
+static long role_segments(const std::string &gcode, const std::string &role)
+{
+    long n = 0;
+    GCodeReader reader;
+    reader.parse_buffer(gcode, [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
+        if (line.extruding(self) && line.dist_XY(self) > EPSILON && line.comment().find(role) != std::string_view::npos)
+            ++ n;
+    });
+    return n;
+}
+
+TEST_CASE("Belt brim writes every generated segment exactly once", "[SkirtBrim][belt]")
+{
+    // The pass count above cannot tell one band from the same band twice in a row; the
+    // segment count can, so a brim band emitted twice back to back fails here.
+    DynamicPrintConfig config = belt_brim_config();
+    config.set_deserialize_strict({
+        { "brim_type",           "outer_only" },
+        { "brim_width",          4 },
+        { "brim_object_gap",     0 },
+        { "leading_brim_length", 6 },
+    });
+    Print print;
+    Model model;
+    init_print({ cube(20) }, print, model, config);
+    const std::string gc = gcode(print);
+
+    const long expected = belt_brim_segments(*print.objects().front());
+    REQUIRE(expected > 100);
+    CHECK(role_segments(gc, "brim") == expected);
+}
+
 // B - multi extruder (wall filament id 2).  Every belt-brim line must print on the object's
 // wall filament (index 2 -> tool 1), and the total number of passes must equal the
 // single-extruder baseline: no per-filament doubling.

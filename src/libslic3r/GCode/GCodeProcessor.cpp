@@ -3214,6 +3214,33 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
 {
     m_parser.apply_config(config);
 
+    // Belt printer: remember the file's belt keys for export_config_for_render(). The
+    // config block lists belt_printer for every printer, so a non-belt file loaded while
+    // a belt printer is selected switches the preview's belt view off, and a belt file
+    // loaded on another printer brings its own tilt, remaps and bed along.
+    m_belt_render_config.clear();
+    {
+        const auto *belt = config.option<ConfigOptionBool>("belt_printer");
+        if (belt != nullptr) {
+            static const char *belt_keys[] = {
+                "belt_printer", "belt_slice_rotation", "belt_slice_rotation_angle", "belt_slice_rotation_global",
+                "belt_preslice_global", "preslice_remap_x", "preslice_remap_y", "preslice_remap_z", "preslice_remap_global",
+                "gcode_remap_x", "gcode_remap_y", "gcode_remap_z", "gcode_back_transform",
+                "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
+            };
+            for (const char *key : belt_keys)
+                if (const ConfigOption *opt = config.option(key); opt != nullptr)
+                    m_belt_render_config.set_key_value(key, opt->clone());
+            // The Rev remaps mirror inside the build volume, so the designed view needs
+            // the bed the file was sliced for. Only a belt file may override it.
+            static const char *bed_keys[] = { "printable_area", "printable_height" };
+            if (belt->value)
+                for (const char *key : bed_keys)
+                    if (const ConfigOption *opt = config.option(key); opt != nullptr)
+                        m_belt_render_config.set_key_value(key, opt->clone());
+        }
+    }
+
     //BBS
     const ConfigOptionFloatsNullable* nozzle_volume = config.option<ConfigOptionFloatsNullable>("nozzle_volume");
     if (nozzle_volume != nullptr) {
@@ -3738,6 +3765,7 @@ DynamicConfig GCodeProcessor::export_config_for_render() const
     config.set_key_value("filament_is_support", new ConfigOptionBools(m_parser.get_config().filament_is_support.values));
     config.set_key_value("filament_type", new ConfigOptionStrings(m_parser.get_config().filament_type.values));
     config.set_key_value("filament_map", new ConfigOptionInts(m_parser.get_config().filament_map.values));
+    config.apply(m_belt_render_config);
     return config;
 }
 

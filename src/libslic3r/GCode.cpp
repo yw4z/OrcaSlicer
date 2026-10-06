@@ -107,6 +107,7 @@
 #include "calib.hpp"
 #include "libslic3r_version.h"
 #include "GCode/BeltKinematics.hpp"
+#include "FirstLayerPlane.hpp"
 // Intel redesigned some TBB interface considerably when merging TBB with their oneAPI set of libraries, see GH #7332.
 // We are using quite an old TBB 2017 U7. Before we update our build servers, let's use the old API, which is deprecated in up to date TBB.
 #if ! defined(TBB_VERSION_MAJOR)
@@ -3133,15 +3134,18 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     this->init_belt_writer(print);
     m_writer.set_is_bbl_machine(is_bbl_printers);
 
-    // Standalone axis remap (works with or without belt mode).
-    // Sync the writer's remap state to the current export UNCONDITIONALLY — even at
-    // the identity mapping (0,1,2) — so a reused writer never retains a stale
-    // non-identity mapping from a prior export. has_axis_remap() returns false at
-    // identity, so identity/default output stays unchanged.
+    // G-code axis remap. Only belt printers get one (see
+    // BeltTransformPipeline::axis_remap_enabled): a remap left in a profile must
+    // not change a non-belt print. Sync the writer's remap state to the current
+    // export UNCONDITIONALLY — even at the identity mapping (0,1,2) — so a reused
+    // writer never retains a stale non-identity mapping from a prior export.
+    // has_axis_remap() returns false at identity, so identity/default output stays
+    // unchanged.
     {
-        int rx = int(print.config().gcode_remap_x.value);
-        int ry = int(print.config().gcode_remap_y.value);
-        int rz = int(print.config().gcode_remap_z.value);
+        const bool remap = BeltTransformPipeline::axis_remap_enabled(print.config());
+        int rx = remap ? int(print.config().gcode_remap_x.value) : int(RemapAxis::PosX);
+        int ry = remap ? int(print.config().gcode_remap_y.value) : int(RemapAxis::PosY);
+        int rz = remap ? int(print.config().gcode_remap_z.value) : int(RemapAxis::PosZ);
         m_writer.set_axis_remap(rx, ry, rz);
         BoundingBoxf bbox_bed(print.config().printable_area.values);
         m_writer.set_build_volume_max(Vec3d(bbox_bed.max.x(), bbox_bed.max.y(),
@@ -3153,13 +3157,21 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // circuit to the legacy Layer::id() == 0 path so g-code stays bit-
     // identical to the pre-feature behavior.
     m_first_layer_plane = std::make_unique<FirstLayerPlane>(print.config());
-    // Belt writers only: the plane also switches travel-speed selection to be
-    // per-point (see GCodeWriter::uses_pointwise_travel_speed()), which must not
-    // change for non-belt printers.
+    // Belt writers only: travel-speed selection becomes per-point (see
+    // GCodeWriter::uses_pointwise_travel_speed()), which must not change for
+    // non-belt printers. The writer gets the same test the extrusions use, so a
+    // travel is judged against the belt surface (belt_height_above_floor) exactly
+    // like the path it leads to, and not against the FirstLayerPlane, which
+    // misreports the height under a non-identity gcode_remap_*. Writer points
+    // carry the G-code origin and extruder offset that point_to_gcode() added;
+    // the belt surface is described in the object's own frame.
     if (print.config().belt_printer.value) {
-        m_writer.set_first_layer_plane(
-            m_first_layer_plane.get(),
-            print.config().initial_layer_print_height.value);
+        m_writer.set_first_layer_point_test([this](const Vec3d &point_logical) {
+            const Vec2d extruder_offset = m_writer.filament() != nullptr ? EXTRUDER_CONFIG(extruder_offset) : Vec2d::Zero();
+            return this->on_first_layer(Vec3d(point_logical.x() - m_origin.x() + extruder_offset.x(),
+                                              point_logical.y() - m_origin.y() + extruder_offset.y(),
+                                              point_logical.z()));
+        });
     }
 
     // How many times will be change_layer() called?
@@ -6295,7 +6307,11 @@ LayerResult GCode::process_layer(
     // fall back to the legacy `!first_layer` predicate so behavior is
     // bit-identical to the pre-feature path.
     bool past_first_layer_band = !first_layer;
-    if (m_first_layer_plane && m_first_layer_plane->is_active()) {
+    if (int past = this->belt_layer_past_first_layer_band(object_layer); past >= 0) {
+        // Belt surface known for this object: measured from the belt itself, as the
+        // extrusions and travels are, rather than through FirstLayerPlane.
+        past_first_layer_band = past > 0;
+    } else if (m_first_layer_plane && m_first_layer_plane->is_active()) {
         past_first_layer_band = false;
         if (object_layer != nullptr) {
             // Conservatively walk the layer's lslice bboxes; if every bbox's
@@ -10615,6 +10631,36 @@ std::string GCode::set_object_info(Print *print) {
     }
 
     return gcode.str();
+}
+
+// Whether an object layer lies entirely past the first-layer band above the belt:
+// 1 when its lowest point is at least one band thickness above the belt, 0 when
+// any of it is inside the band, -1 when the belt surface is not known for this
+// layer (not a belt print, an explicit first-layer plane, or no object layer), in
+// which case the caller falls back to FirstLayerPlane / the slicing layer index.
+int GCode::belt_layer_past_first_layer_band(const Layer *object_layer) const
+{
+    if (object_layer == nullptr)
+        return -1;
+    // The belt surface is linear in the sliced XY, so a bbox's lowest point above
+    // it is at one of its corners.
+    double min_height = std::numeric_limits<double>::max();
+    bool   known      = false;
+    for (const BoundingBox &bb : object_layer->lslices_bboxes) {
+        const double xs[2] = { unscale<double>(bb.min.x()), unscale<double>(bb.max.x()) };
+        const double ys[2] = { unscale<double>(bb.min.y()), unscale<double>(bb.max.y()) };
+        for (double x : xs)
+            for (double y : ys) {
+                double h;
+                if (! this->belt_height_above_floor(Vec3d(x, y, object_layer->print_z), h))
+                    return -1;
+                known      = true;
+                min_height = std::min(min_height, h);
+            }
+    }
+    if (! known)
+        return -1;
+    return min_height >= this->first_layer_band_mm() - EPSILON ? 1 : 0;
 }
 
 bool GCode::belt_height_above_floor(const Vec3d &point_slicing_mm, double &height_mm) const

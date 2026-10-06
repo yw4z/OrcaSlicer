@@ -1376,9 +1376,12 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     m_loaded_as_preview = false;
 
     // Belt printers: drive the designed/raw view UI (legend checkbox, hotkey B, canvas-toolbar
-    // menu item) from the loaded print. The tilt magnitude comes from the G-code header
-    // (gcode_result.belt_tilt_angle, abs of the slicing rotation).
-    m_belt_view_enabled = print.config().belt_printer.value;
+    // menu item) from the G-code itself. Only BeltGCode writes the belt header, so its tilt
+    // (gcode_result.belt_tilt_angle, abs of the slicing rotation) says whether this is belt
+    // G-code; the selected printer does not, for a file opened from disk. The back-transform
+    // below still reads print.config(), which Plater::load_gcode() fills from the file's own
+    // config block (GCodeProcessor::export_config_for_render).
+    m_belt_view_enabled = gcode_result.belt_tilt_angle > 0.f;
     m_belt_angle_deg    = gcode_result.belt_tilt_angle;
 
     const bool current_top_layer_only = m_viewer.is_top_layer_only_view_range();
@@ -1394,7 +1397,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     // On a belt printer the toolpath geometry fed to libvgcode also depends on the
     // designed/raw view state (the back-transform is applied in convert), so the
     // same result is converted again only when that view has been toggled.
-    const bool same_belt_view = !print.config().belt_printer.value || m_last_belt_show_designed == m_belt_show_designed;
+    const bool same_belt_view = !m_belt_view_enabled || m_last_belt_show_designed == m_belt_show_designed;
     if (m_last_result_id == gcode_result.id && wxGetApp().is_editor() && same_belt_view) {
         //BBS: add logs
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": the same id %1%, return directly, result %2% ") % m_last_result_id % (&gcode_result);
@@ -1441,7 +1444,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     // the toolpath geometry into model/Cartesian space using the general belt
     // inverse (handles any mesh rotation + shear + axis remap). When off, the raw
     // machine-frame G-code is shown (useful for debugging the transform itself).
-    const bool is_belt = print.config().belt_printer.value;
+    const bool is_belt = m_belt_view_enabled && print.config().belt_printer.value;
     Transform3d belt_inv = (is_belt && m_belt_show_designed)
         ? compute_belt_back_transform(print.config()) : Transform3d::Identity();
     // Belt: move positions are stored as gcode_Z + belt_z_origin (the start G-code's
