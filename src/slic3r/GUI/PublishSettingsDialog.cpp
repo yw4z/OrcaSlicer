@@ -882,6 +882,8 @@ void PublishSettingsDialog::build_option_model()
             const size_t extruders_count = printer_tab->m_extruders_count;
             for (size_t extruder_idx = 0; extruder_idx < extruders_count; ++extruder_idx) {
                 const wxString page_title = Tab::translate_category(extruders_count > 1 ? wxString::Format("Extruder %d", int(extruder_idx + 1)) : wxString("Extruder"), tab->m_type);
+                // Retraction and Z-Hop values are stored per variant column, not per extruder.
+                const int variant_index = printer_tab->extruder_variant_index(int(extruder_idx));
                 for (const ConfigOptionsGroupShp& optgroup : page->m_optgroups) {
                     // Allowlist on the untranslated optgroup title; the "Retraction when
                     // switching material" group is intentionally skipped.
@@ -893,7 +895,7 @@ void PublishSettingsDialog::build_option_model()
                         // Rows are keyed by the full per-extruder "#N" opt_id so each extruder
                         // tab publishes its own value; GetPublishedKeys() emits the checked rows
                         // as-is.
-                        const std::string opt_id = pure_key + "#" + std::to_string(extruder_idx);
+                        const std::string opt_id = pure_key + "#" + std::to_string(variant_index);
                         if (!printer_added.insert(opt_id).second)
                             continue;
                         wxString label, value, unit;

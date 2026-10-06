@@ -726,6 +726,9 @@ public:
 	Page*		extruder_page() const;
 	// Config index an "Extruder" page field (e.g. "retraction_length#0") currently edits, -1 if not on that page.
 	int			extruder_page_data_index(const std::string& field_id) const;
+	// Config index of an extruder's per-variant options (Retraction, Z-Hop, ...): its variant column
+	// for the nozzle selected on the switch, or the extruder index on a printer without variants.
+	int			extruder_variant_index(int extruder);
 	// After the config was restored (roll back): follow its extruder count, if it differs.
 	void		sync_extruders_count();
 	// Search jump to "Extruder N" / "key#N": selects extruder N on the switch, then activates the

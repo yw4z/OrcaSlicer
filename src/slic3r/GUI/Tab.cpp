@@ -6225,12 +6225,6 @@ void TabPrinter::toggle_options()
         return;
 
     auto nozzle_volumes = m_preset_bundle->project_config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
-    auto extruders      = m_config->option<ConfigOptionEnumsGeneric>("extruder_type");
-        auto get_index_for_extruder =
-            [this, &extruders](int extruder_id, int stride = 1) {
-        return m_config->get_index_for_extruder(extruder_id + 1, "printer_extruder_id",
-            ExtruderType(extruders->values[extruder_id]), get_actual_nozzle_volume_type(extruder_id), "printer_extruder_variant", stride);
-    };
 
     //BBS: whether the preset is Bambu Lab printer
     bool is_BBL_printer = false;
@@ -6311,9 +6305,7 @@ void TabPrinter::toggle_options()
         // controls carry field index 0 (i), the values are read for `extruder`.
         const size_t i        = 0;
         const size_t extruder = std::min<size_t>(size_t(get_current_active_extruder()), m_extruders_count - 1);
-        int variant_index = get_index_for_extruder(extruder);
-        if (variant_index < 0)
-            variant_index = int(extruder);
+        const int    variant_index = extruder_variant_index(int(extruder));
         bool have_retract_length = m_config->opt_float("retraction_length", variant_index) > 0;
 
         toggle_option("extruder_printable_area", false, i);          // disable
@@ -8452,6 +8444,16 @@ int TabPrinter::extruder_page_data_index(const std::string &field_id) const
     return -1;
 }
 
+int TabPrinter::extruder_variant_index(int extruder)
+{
+    const auto *extruders = m_config->option<ConfigOptionEnumsGeneric>("extruder_type");
+    const int   index     = extruder < int(extruders->size()) ?
+                                m_config->get_index_for_extruder(extruder + 1, "printer_extruder_id", ExtruderType(extruders->values[extruder]),
+                                                                 get_actual_nozzle_volume_type(extruder), "printer_extruder_variant") :
+                                -1;
+    return index < 0 ? extruder : index;
+}
+
 void TabPrinter::update_custom_dirty(std::vector<std::string> &dirty_options, std::vector<std::string> &nonsys_options)
 {
     drop_unchanged_added_entries(dirty_options, *m_config, &m_presets->get_selected_preset());
@@ -8641,9 +8643,7 @@ void Tab::switch_excluder(int extruder_id, bool reload)
         if (m_type == Preset::TYPE_PRINTER) {
             if (page->title() == "Extruder") {
                 is_extruder = true;
-                page_index  = page_extruder < int(extruders->size()) ? get_index_for_extruder(page_extruder) : -1;
-                if (page_index < 0)
-                    page_index = page_extruder;
+                page_index  = static_cast<TabPrinter *>(this)->extruder_variant_index(page_extruder);
             } else if (page->title().StartsWith("Motion ability")) {
                 page_index = get_index_for_extruder(common_extruder, 2);
             }
