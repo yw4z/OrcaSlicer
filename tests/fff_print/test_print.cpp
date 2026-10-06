@@ -1240,7 +1240,7 @@ TEST_CASE("Organic tree supports place a support blocker at its own height above
     const Vec3d centre3 = print_object.trafo_sliced() * blocker->get_offset();
     const Point centre  = Point::new_scale(centre3.x(), centre3.y());
     auto collides = [&](size_t tree_layer) {
-        for (const Polygon &poly : volumes.getCollision(0, TreeSupport3D::LayerIndex(tree_layer), false))
+        for (const Slic3r::Polygon &poly : volumes.getCollision(0, TreeSupport3D::LayerIndex(tree_layer), false))
             if (poly.contains(centre))
                 return true;
         return false;
