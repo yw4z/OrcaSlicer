@@ -2,6 +2,7 @@
 #define slic3r_DesignSketchTool_hpp_
 
 #include "libslic3r/Point.hpp"
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/CAD/SketchEngine.hpp"
 #include "libslic3r/CAD/CadDocument.hpp"   // CadBody for per-body solid picking
 #include <TopoDS_Shape.hxx>
@@ -24,6 +25,7 @@ class wxPoint;
 namespace Slic3r {
 
 class TriangleMesh;   // fwd (libslic3r) — solid-pick mesh, non-owning pointer
+class GLVolumeCollection;
 
 namespace GUI {
 
@@ -226,6 +228,11 @@ public:
     void set_highlight_faces(const std::vector<std::pair<int, int>>& faces);
     // Every face drawn as selected, sorted: the committed pick's and the still-valid ones above.
     std::vector<std::pair<int, int>> selected_faces() const;
+    // What the canvas's Fit button frames: the selection — faces (the Feature tree's included), a
+    // body, edges, a vertex, a sketch region, the live sketch's picked entities — else everything
+    // on show: the visible bodies, the preview of the feature being edited and every sketch.
+    // Undefined when the tab shows none of it. `volumes` are the canvas's: bodies and preview.
+    BoundingBoxf3 fit_box(const GLVolumeCollection& volumes) const;
 
     // Move-body gizmo (M5): translate a whole body with three world-axis drag arrows
     // (X red / Y green / Z blue) anchored at the body centroid. Display-only — the host
