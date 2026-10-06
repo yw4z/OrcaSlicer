@@ -644,9 +644,9 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // the addresses are created inside the widget-building loops, so not building would silently
     // delete 42 verbs from the offer while they still rendered. 7ih records the cleanup
     // that lets the construction go away too.
-    // What stays: the two doc-row imports (consumed by add_doc below) and the view controls,
-    // which are chrome_only in the atlas and so have no offer row to fall back on.
-    static const std::set<std::string> kBarKeep = { "step", "mesh", "place", "section", "flip" };
+    // What stays: the view controls, which are chrome_only in the atlas and so have no offer row
+    // to fall back on.
+    static const std::set<std::string> kBarKeep = { "place", "section", "flip" };
     auto fadd = [&tb_slot](const char* id, wxWindow* w) {
         if (kBarKeep.count(id) == 0) { w->Hide(); return; }
         tb_slot[id].push_back(w);
@@ -1259,18 +1259,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
              }, SHIFT('T')},
         });
         // Text / SVG insert tools live in the SKETCH toolbar (they produce 2D profiles =
-        // sketches), not here. STEP stays in Features: it imports a whole B-rep solid.
-        // Import STEP — standalone: a STEP comes in as a whole editable B-rep body, not a profile.
-        auto* b_step = icon_btn("design_step", _L("Import STEP (editable B-rep solid)"));
-        b_step->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_import_step(); });
-        m_keys_feature[SHIFT('I')] = [this] { on_import_step(); };
-        fadd("step", b_step);
-        // Import mesh — same destination as STEP (an editable B-rep body), but the geometry has
-        // to be reconstructed from triangles first (GeometryEngine::mesh_to_brep).
-        auto* b_mesh = icon_btn("design_import_mesh", _L("Import mesh (STL/OBJ) as an editable B-rep solid"));
-        b_mesh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_import_mesh(); });
-        m_keys_feature[SHIFT('M')] = [this] { on_import_mesh(); };
-        fadd("mesh", b_mesh);
+        // sketches), not here. Import STEP / mesh are document actions: see the doc row.
         auto* b_constrain = icon_btn("design_constrain", _L("Constrain selected sketch"));
         b_constrain->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
             on_begin_constrain();
@@ -1654,8 +1643,17 @@ DesignPanel::DesignPanel(wxWindow* parent)
         auto* b_new = doc_btn("design_new", _L("New Design — clear the feature tree"));
         b_new->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_new_design(); });
         add_doc(b_new);
-        add_doc(static_cast<ScalableButton*>(tb_slot["step"][0]));   // 2. Import STEP
-        add_doc(static_cast<ScalableButton*>(tb_slot["mesh"][0]));   // 3. Import mesh
+        // Import STEP — a STEP comes in as a whole editable B-rep body, not a profile.
+        auto* b_step = doc_btn("design_step", _L("Import STEP (editable B-rep solid)"));
+        b_step->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_import_step(); });
+        m_keys_feature[SHIFT('I')] = [this] { on_import_step(); };
+        add_doc(b_step);
+        // Import mesh — same destination as STEP (an editable B-rep body), but the geometry has
+        // to be reconstructed from triangles first (GeometryEngine::mesh_to_brep).
+        auto* b_mesh = doc_btn("design_import_mesh", _L("Import mesh (STL/OBJ) as an editable B-rep solid"));
+        b_mesh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_import_mesh(); });
+        m_keys_feature[SHIFT('M')] = [this] { on_import_mesh(); };
+        add_doc(b_mesh);
         auto* b_export = doc_btn("design_export", _L("Export STEP…"));
         b_export->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_export_step(); });
         add_doc(b_export);
