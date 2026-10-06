@@ -3113,7 +3113,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("enable_tower_interface_cooldown_during_tower", "multimaterial_settings_prime_tower");
         optgroup->append_single_option_line("prime_tower_enable_framework", "multimaterial_settings_prime_tower");
         optgroup->append_single_option_line("prime_tower_width", "multimaterial_settings_prime_tower#width");
-        optgroup->append_single_option_line("belt_purge_tower_width", "multimaterial_settings_prime_tower");
+        optgroup->append_single_option_line("belt_purge_tower_width", "multimaterial_settings_prime_tower#belt-purge-tower-width");
         optgroup->append_single_option_line("prime_volume", "multimaterial_settings_prime_tower");
         optgroup->append_single_option_line("prime_tower_brim_width", "multimaterial_settings_prime_tower#brim-width");
         optgroup->append_single_option_line("prime_tower_infill_gap", "multimaterial_settings_prime_tower");
@@ -5245,8 +5245,8 @@ void TabPrinter::build_fff()
         // Belt printer: dedicated section. Everything except the "Enable belt printing"
         // checkbox is hidden when belt_printer is off (see TabPrinter::toggle_options).
         auto belt_og = page->new_optgroup(L("Belt printer"), L"param_advanced");
-        belt_og->append_single_option_line("belt_printer");
-        belt_og->append_single_option_line("belt_printer_infinite_y");
+        belt_og->append_single_option_line("belt_printer", "printer_basic_information_belt_printer#enable-belt-printing");
+        belt_og->append_single_option_line("belt_printer_infinite_y", "printer_basic_information_belt_printer#infinite-y-axis");
         // Belt tilt: the sole mesh-side transform and the single source of truth for
         // the physical tilt (drives bed rendering and support gravity tilt too).
         // Isometric rotation, no distortion; the back-transform inverts it before the
@@ -5257,6 +5257,7 @@ void TabPrinter::build_fff()
                             "slicing. Also drives bed rendering and support gravity tilt. "
                             "Isometric (no distortion); the back-transform inverts it before "
                             "the machine-frame remap.") };
+            line.label_path = "printer_basic_information_belt_printer#belt-tilt";
             line.append_option(belt_og->get_option("belt_slice_rotation"));
             line.append_option(belt_og->get_option("belt_slice_rotation_angle"));
             line.append_option(belt_og->get_option("belt_slice_rotation_global"));
@@ -5267,14 +5268,15 @@ void TabPrinter::build_fff()
                           L("Remap model axes before slicing so the slicer's coordinate system matches "
                             "the physical bed orientation. For belt printers whose bed is NOT in the XY plane, "
                             "use this to swap axes so layers are stacked in the correct physical direction.") };
+            line.label_path = "printer_basic_information_belt_printer#pre-slice-axis-remap";
             line.append_option(belt_og->get_option("preslice_remap_x"));
             line.append_option(belt_og->get_option("preslice_remap_y"));
             line.append_option(belt_og->get_option("preslice_remap_z"));
             line.append_option(belt_og->get_option("preslice_remap_global"));
             belt_og->append_line(line);
         }
-        belt_og->append_single_option_line("belt_preslice_global");
-        belt_og->append_single_option_line("gcode_back_transform");
+        belt_og->append_single_option_line("belt_preslice_global", "printer_basic_information_belt_printer#global-mesh-transforms");
+        belt_og->append_single_option_line("gcode_back_transform", "printer_basic_information_belt_printer#g-code-back-transform");
         {
             Line line = { L("First layer plane"),
                           L("Reference plane used to decide which extrusions get first-layer "
@@ -5282,6 +5284,7 @@ void TabPrinter::build_fff()
                             "printers, Auto resolves to the tilted belt-shear plane so that "
                             "first-layer treatment follows perpendicular distance from the belt "
                             "surface, not slicing layer index.") };
+            line.label_path = "printer_basic_information_belt_printer#first-layer-plane";
             line.append_option(belt_og->get_option("first_layer_plane"));
             line.append_option(belt_og->get_option("first_layer_plane_offset"));
             line.append_option(belt_og->get_option("first_layer_plane_thickness"));
@@ -5289,9 +5292,9 @@ void TabPrinter::build_fff()
         }
         // Support floor: split across lines so each setting's own mode controls
         // its visibility (floor_mode = Develop, floor_offset = Advanced, z_offset_mode = Expert).
-        belt_og->append_single_option_line("belt_support_floor_offset");
-        belt_og->append_single_option_line("belt_support_z_offset_mode");
-        belt_og->append_single_option_line("belt_support_floor_mode");
+        belt_og->append_single_option_line("belt_support_floor_offset", "printer_basic_information_belt_printer#support-floor-z-offset");
+        belt_og->append_single_option_line("belt_support_z_offset_mode", "printer_basic_information_belt_printer#z-offset-mode");
+        belt_og->append_single_option_line("belt_support_floor_mode", "printer_basic_information_belt_printer#floor-mode");
 
         // Machine-frame transform: the shear (tan) + scale (1/cos) that map
         // Cartesian G-code into the printer's physical machine frame are derived
@@ -5301,6 +5304,7 @@ void TabPrinter::build_fff()
             auto mf = page->new_optgroup(L("Machine frame transforms"), L"param_advanced");
             {
                 Line line = { L("G-code axis remap (post-slice)"), L("Remap slicing-frame axes to machine axes in G-code output. Applied AFTER slicing, during G-code generation.") };
+                line.label_path = "printer_basic_information_machine_frame_transforms#g-code-axis-remap";
                 line.append_option(mf->get_option("gcode_remap_x"));
                 line.append_option(mf->get_option("gcode_remap_y"));
                 line.append_option(mf->get_option("gcode_remap_z"));
@@ -5312,6 +5316,7 @@ void TabPrinter::build_fff()
                                 "the belt tilt angle. Enable 'Decouple' to set an independent "
                                 "machine-frame angle when the physical gantry tilt differs from "
                                 "the slicing rotation.") };
+                line.label_path = "printer_basic_information_machine_frame_transforms#machine-frame-tilt";
                 line.append_option(mf->get_option("belt_frame_tilt_decouple"));
                 line.append_option(mf->get_option("belt_frame_tilt_angle"));
                 mf->append_line(line);
@@ -5362,8 +5367,8 @@ void TabPrinter::build_fff()
         optgroup->append_single_option_line("use_firmware_retraction", "printer_basic_information_advanced#use-firmware-retraction");
         // optgroup->append_single_option_line("spaghetti_detector");
         optgroup->append_single_option_line("time_cost", "printer_basic_information_advanced#time-cost");
-        optgroup->append_single_option_line("build_plate_tilt_x");
-        optgroup->append_single_option_line("build_plate_tilt_y");
+        optgroup->append_single_option_line("build_plate_tilt_x", "printer_basic_information_advanced#build-plate-tilt");
+        optgroup->append_single_option_line("build_plate_tilt_y", "printer_basic_information_advanced#build-plate-tilt");
 
         optgroup = page->new_optgroup(L("Plugin Configuration"), L"param_gcode");
         optgroup->append_single_option_line("printer_plugin_config_overrides");
@@ -5883,7 +5888,7 @@ if (is_marlin_flavor)
         // auto-generated purge prism; this is its enable (gated to belt printers
         // in toggle_options()).
         optgroup = page->new_optgroup(L("Belt purge tower"), "param_tower");
-        optgroup->append_single_option_line("enable_belt_purge_tower", "printer_multimaterial_wipe_tower");
+        optgroup->append_single_option_line("enable_belt_purge_tower", "printer_multimaterial_wipe_tower#belt-purge-tower");
 
 
         optgroup = page->new_optgroup(L("Single extruder multi-material parameters"), "param_settings");
