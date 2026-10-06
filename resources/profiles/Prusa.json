@@ -1,6 +1,6 @@
 {
 	"name": "Prusa",
-	"version": "02.04.00.15",
+	"version": "02.04.00.16",
 	"force_update": "0",
 	"description": "Prusa configurations",
 	"machine_model_list": [
@@ -1573,48 +1573,24 @@
 	],
 	"filament_list": [
 		{
-			"name": "Generic ASA @Prusa CORE One",
-			"sub_path": "filament/Generic ASA @Prusa CORE One.json"
-		},
-		{
-			"name": "Generic PLA Silk @Prusa CORE One",
-			"sub_path": "filament/Generic PLA Silk @Prusa CORE One.json"
-		},
-		{
 			"name": "fdm_filament_common",
 			"sub_path": "filament/fdm_filament_common.json"
 		},
 		{
-			"name": "Generic ASA @Prusa CORE One 0.6",
-			"sub_path": "filament/Generic ASA @Prusa CORE One 0.6.json"
+			"name": "fdm_filament_template_nextruder_pet",
+			"sub_path": "filament/fdm_filament_template_nextruder_pet.json"
 		},
 		{
-			"name": "Generic ASA @Prusa CORE One 0.8",
-			"sub_path": "filament/Generic ASA @Prusa CORE One 0.8.json"
+			"name": "fdm_filament_template_nextruder_pet_hf",
+			"sub_path": "filament/fdm_filament_template_nextruder_pet_hf.json"
 		},
 		{
-			"name": "Generic ASA @Prusa CORE One HF 0.4",
-			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.4.json"
+			"name": "fdm_filament_template_nextruder_pla",
+			"sub_path": "filament/fdm_filament_template_nextruder_pla.json"
 		},
 		{
-			"name": "Generic ASA @Prusa CORE One HF 0.5",
-			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.5.json"
-		},
-		{
-			"name": "Generic ASA @Prusa CORE One HF 0.6",
-			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.6.json"
-		},
-		{
-			"name": "Generic ASA @Prusa CORE One HF 0.8",
-			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.8.json"
-		},
-		{
-			"name": "Generic PLA Silk @Prusa CORE One 0.6",
-			"sub_path": "filament/Generic PLA Silk @Prusa CORE One 0.6.json"
-		},
-		{
-			"name": "Generic PLA Silk @Prusa CORE One 0.8",
-			"sub_path": "filament/Generic PLA Silk @Prusa CORE One 0.8.json"
+			"name": "fdm_filament_template_nextruder_pla_hf",
+			"sub_path": "filament/fdm_filament_template_nextruder_pla_hf.json"
 		},
 		{
 			"name": "fdm_filament_abs",
@@ -1663,6 +1639,14 @@
 		{
 			"name": "fdm_filament_tpu",
 			"sub_path": "filament/fdm_filament_tpu.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One",
+			"sub_path": "filament/Generic ASA @Prusa CORE One.json"
+		},
+		{
+			"name": "Generic PLA Silk @Prusa CORE One",
+			"sub_path": "filament/Generic PLA Silk @Prusa CORE One.json"
 		},
 		{
 			"name": "Generic ABS @Prusa MK3.5",
@@ -2159,6 +2143,38 @@
 		{
 			"name": "Generic TPU HF @Prusa MK3.5",
 			"sub_path": "filament/Generic TPU HF @Prusa MK3.5.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One 0.6",
+			"sub_path": "filament/Generic ASA @Prusa CORE One 0.6.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One 0.8",
+			"sub_path": "filament/Generic ASA @Prusa CORE One 0.8.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One HF 0.4",
+			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.4.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One HF 0.5",
+			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.5.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One HF 0.6",
+			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.6.json"
+		},
+		{
+			"name": "Generic ASA @Prusa CORE One HF 0.8",
+			"sub_path": "filament/Generic ASA @Prusa CORE One HF 0.8.json"
+		},
+		{
+			"name": "Generic PLA Silk @Prusa CORE One 0.6",
+			"sub_path": "filament/Generic PLA Silk @Prusa CORE One 0.6.json"
+		},
+		{
+			"name": "Generic PLA Silk @Prusa CORE One 0.8",
+			"sub_path": "filament/Generic PLA Silk @Prusa CORE One 0.8.json"
 		},
 		{
 			"name": "Generic ABS @Prusa MK4S HF0.4",
