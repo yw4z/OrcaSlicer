@@ -480,10 +480,13 @@ def type_into_open_field(value, mark):
 def enter_sketch(timeout=180):
     """Open a real sketch on a real plane, and PROVE it with the socket before drawing anything.
 
-    THE SEQUENCE MATTERS AND IT IS NOT OBVIOUS. Shift+S enters sketch MODE and pops the plane
-    offer; the offer must be dismissed; and the plane itself is chosen by clicking it in the
-    viewport BEFORE Shift+S. check-gui-sketching.py has always done all four steps. This ladder
-    did two of them — Design tab, then Shift+S — and went straight to the tool letters.
+    THE SEQUENCE MATTERS AND IT IS NOT OBVIOUS. The reference planes are hidden until Shift+S
+    enters sketch MODE, so the plane is clicked AFTER it. Entering with a plane an earlier rung
+    chose pops the plane offer at once, and a click outside a popup menu only closes it, so the
+    plane is clicked twice, apart: the second click always lands on the plane. No Escape — with
+    no offer up, Escape in an empty sketch leaves it. Then a tool letter starts the session.
+    check-gui-sketching.py does the same steps. This ladder once did two of them — Design tab,
+    then Shift+S — and went straight to the tool letters.
 
     That intermediate state is the trap. `is_sketching` reads 1, every tool key is accepted and
     traced, and not one click draws anything, because there is no plane under them. The ladder
@@ -499,9 +502,9 @@ def enter_sketch(timeout=180):
         click(132, 53)                   # Design tab
         time.sleep(2.0)
         dismiss_modals()
-        click(*PLANE_PX)                 # pick the plane IN THE VIEWPORT — before Shift+S
-        key("shift+s", 1.0)
-        key("Escape", 0.5)               # entering sketch mode pops the offer; dismiss it
+        key("shift+s", 1.0)              # sketch mode brings the reference planes up
+        click(*PLANE_PX, pause=0.8)      # closes the offer if an earlier rung's plane popped it...
+        click(*PLANE_PX)                 # ...so this is the click that picks the plane IN THE VIEWPORT
         key("p", 0.6)                    # any sketch tool starts the session on that plane
         if try_call("sketch_describe") is not None:
             # NO Escape here. Every rung already opens with one to drop whatever tool the last
@@ -511,14 +514,15 @@ def enter_sketch(timeout=180):
             # reported all eleven checks failed with "nothing opened" — the tools were arming
             # into an empty Feature-mode document.
             return
-    die("no sketch opened after plane click + Shift+S within "
+    die("no sketch opened after Shift+S + plane click within "
         f"{timeout}s — sketch_describe never answered on {A.sock} (trace {TRACE})")
 
 
 # tool key, the clicks that draw it, and one distinct value per queued field. The values are
 # deliberately nothing like the as-drawn size, so a committed prefill cannot coincide with them.
-# Where the plane label sits in the viewport before a sketch is open. Same constant the gesture
-# ladder uses; it is a label on the 3D view, not a widget, so it moves only if the camera does.
+# Where the plane label sits in the viewport once sketch mode has brought the planes up. Same
+# constant the gesture ladder uses; it is a label on the 3D view, not a widget, so it moves only
+# if the camera does.
 PLANE_PX = (913, 359)
 
 # Every coordinate below stays inside 1000..1400 x 500..760 — the box check-gui-sketching.py's

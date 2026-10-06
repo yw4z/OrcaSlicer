@@ -9,6 +9,7 @@
 #include "slic3r/GUI/GUI_Utils.hpp"
 #include "slic3r/GUI/Widgets/Button.hpp"
 #include "libslic3r/CAD/GeometryEngine.hpp"   // face_by_index for face-extrude gizmo anchor
+#include "libslic3r/AppConfig.hpp"        // design_* view preferences
 #include "libslic3r/TriangleMesh.hpp"     // mesh import: STL/OBJ -> indexed_triangle_set
 #include "libslic3r/Format/OBJ.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"   // put_other_changes: mark the project dirty outside the undo stack
@@ -284,11 +285,21 @@ static std::string commit_icon(bool bodies)
 
 // The icons on each Feature tree and Bodies row (DesignRowList::Action::id).
 enum RowAction { RowEdit, RowMove, RowVisibility, RowDelete };
+// The Feature tree's first row is the Origin, pinned above the features: feature i is row i + 1.
+static constexpr int kFeatureRow0 = 1;
+// The feature a Feature tree row shows, or wxNOT_FOUND for the Origin row (and for no row).
+static int feature_of_row(int row) { return row >= kFeatureRow0 ? row - kFeatureRow0 : wxNOT_FOUND; }
 
 // A row's eye shows the state the row is in; its tip names what a click does.
 static DesignRowList::Action eye_action(bool shown)
 {
     return { RowVisibility, shown ? "design_eye" : "design_eye_off", shown ? _L("Hide") : _L("Show") };
+}
+
+// What the Origin row's eye and its menu item do.
+static wxString origin_toggle_text(bool shown)
+{
+    return shown ? _L("Hide reference planes and axes") : _L("Show reference planes and axes");
 }
 
 // Prepare outlines every numeric field (rounded, #4A4A51 on dark). wxSpinCtrlDouble is a
@@ -1099,8 +1110,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
             // is editable now (CadBody::user_name), so the verb opens the editor there.
             if (const int b = tree_body_selection(); b >= 0)
                 m_parts->begin_rename(b);
-            else if (const int sel = tree_selection(); sel != wxNOT_FOUND)
-                m_tree->begin_rename(sel);
+            else if (tree_selection() != wxNOT_FOUND)
+                m_tree->begin_rename(m_tree->selection());
             else
                 set_status(_L("Select a feature, or a body, first — then rename it"));   // not an error
         };
@@ -3164,8 +3175,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
               FromDIP(SidebarProps::ContentMargin()));
     tree_inner->Add(new wxStaticLine(m_tree_box), 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP,
               FromDIP(SidebarProps::TitlebarMargin()));
-    // Sized to its rows, so a short history wastes no block, and scrolling past 9.
-    m_tree = new DesignRowList(m_tree_box, 9);
+    // Sized to its rows, so a short history wastes no block, and scrolling past 9 features.
+    m_tree = new DesignRowList(m_tree_box, 9 + kFeatureRow0);
     m_tree->SetBackgroundColour(dp_panel_bg());
     tree_inner->Add(m_tree, 0, wxEXPAND | wxALL, 12);
 
@@ -3176,8 +3187,9 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // Picking a feature drops any body selection, so the two lists never both claim to be
         // "the target" — but ONLY when this tree has a selection. Each list notifies on every
         // change, so clicking a body row runs apply_body_row, whose m_tree->unselect() fires
-        // THIS handler, which would otherwise clear the body row the user had just clicked.
-        if (m_parts && tree_selection() != wxNOT_FOUND) m_parts->unselect();
+        // THIS handler, which would otherwise clear the body row the user had just clicked. The
+        // Origin row counts: it is a selected row like any other.
+        if (m_parts && m_tree->selection() != wxNOT_FOUND) m_parts->unselect();
         const int sel = tree_selection();
         // Likewise a viewport pick, which would be drawn just like the feature's faces. Not while
         // a card is open: the card reads that pick.
@@ -3199,12 +3211,17 @@ DesignPanel::DesignPanel(wxWindow* parent)
     };
 
     // Double-click a row = Edit, the same gesture that re-opens a committed sketch on the canvas.
-    m_tree->on_activate = [this] { on_edit_feature(); };
+    // The Origin row has nothing to edit.
+    m_tree->on_activate = [this] {
+        if (tree_selection() != wxNOT_FOUND) on_edit_feature();
+    };
 
     // The row's own Edit / Show-hide / Delete, on the row the click selected. The body list is
     // cleared here too, not left to on_select, which re-clicking the selected row does not run:
-    // a body row still selected would be what on_toggle_visibility acts on.
-    m_tree->on_action = [this](int, int id) {
+    // a body row still selected would be what on_toggle_visibility acts on. The Origin row's one
+    // icon is its eye.
+    m_tree->on_action = [this](int row, int id) {
+        if (feature_of_row(row) == wxNOT_FOUND) { toggle_origin(); return; }
         if (m_parts) m_parts->unselect();
         switch (id) {
         case RowEdit:       on_edit_feature();      break;
@@ -3217,11 +3234,21 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // double-click is Edit, and F2 is a function key nothing announces. A user who wants to name
     // a sketch tries the row, and the row answers.
     m_tree->on_menu = [this](int row, const wxPoint& screen) {
+        wxMenu menu;
+        // The Origin row is no feature: it cannot be renamed, edited, moved or deleted, and its
+        // menu holds exactly what its eye does.
+        const int feat = feature_of_row(row);
+        if (feat == wxNOT_FOUND) {
+            const int id_origin = wxWindow::NewControlId();
+            menu.Append(id_origin, origin_toggle_text(m_show_origin));
+            menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { toggle_origin(); }, id_origin);
+            m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
+            return;
+        }
         // EVERYTHING A ROW CAN DO, in one place. The row's icons are the quick bar, but the menu
         // is the reference: the element you click answers with what applies to it, and a menu
         // grows without spending an icon nobody recognises. Split into what the row IS (name,
         // contents), where it SITS (order, visibility) and what removes it.
-        wxMenu menu;
         const int id_rename = wxWindow::NewControlId();
         const int id_edit   = wxWindow::NewControlId();
         const int id_up     = wxWindow::NewControlId();
@@ -3234,8 +3261,8 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // Scale artwork acts on THIS feature's imported outline, so it belongs to the row and
         // is offered only where it means something. It used to hide inside the header's Move
         // button, which otherwise moved a body — two different subjects on one icon.
-        const bool art = row < int(m_doc.features.size()) &&
-                         !m_doc.features[row].imported_regions.empty();
+        const bool art = feat < int(m_doc.features.size()) &&
+                         !m_doc.features[feat].imported_regions.empty();
         if (art) menu.Append(id_art, _L("Scale artwork"));
         menu.AppendSeparator();
         menu.Append(id_up,     _L("Move up"));
@@ -3250,7 +3277,7 @@ DesignPanel::DesignPanel(wxWindow* parent)
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_toggle_visibility(); }, id_vis);
         menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { on_delete_feature(); },    id_del);
         if (art)
-            menu.Bind(wxEVT_MENU, [this, row](wxCommandEvent&) { on_transform_imported(row); }, id_art);
+            menu.Bind(wxEVT_MENU, [this, feat](wxCommandEvent&) { on_transform_imported(feat); }, id_art);
         m_tree->PopupMenu(&menu, m_tree->ScreenToClient(screen));
     };
 
@@ -3259,8 +3286,9 @@ DesignPanel::DesignPanel(wxWindow* parent)
     // renaming belongs on the row, not in a side-panel field. The list hands the name over after
     // its editor's events have finished, so rebuilding the rows here is safe.
     m_tree->on_rename = [this](int row, const wxString& name) {
-        if (row < 0 || row >= int(m_doc.features.size())) return;
-        m_doc.features[row].name = std::string(name.ToUTF8().data());
+        const int feat = feature_of_row(row);
+        if (feat == wxNOT_FOUND || feat >= int(m_doc.features.size())) return;
+        m_doc.features[feat].name = std::string(name.ToUTF8().data());
         refresh_tree();   // which syncs the recipe, so the save path persists the name
     };
 
@@ -4422,7 +4450,11 @@ DesignPanel::DesignPanel(wxWindow* parent)
         assert(dead.empty());   // debug builds stop here; release ships the log line
     }
 
+    m_show_origin = wxGetApp().app_config->get_bool("design_show_origin");
     set_ui_mode(UiMode::Feature);
+    // The Origin row from the first paint: nothing else builds the rows before the first edit,
+    // project load or theme switch.
+    refresh_tree();
     build_phase("wiring");
     BOOST_LOG_TRIVIAL(info) << "Design tab build: total " << build_clock.Time() << " ms";
 }
@@ -4516,9 +4548,9 @@ void DesignPanel::set_ui_mode(UiMode m)
         m_form->FitInside();
     }
     update_action_bar();   // Sketch/Constrain modes show the unified ✓/✗; Feature idle hides it
-    // The origin planes follow the mode: entering Sketch offers them even when a body exists,
-    // leaving it takes them back. Without this they would only refresh on the next tree
-    // rebuild, which is not an event that happens when you merely press Sketch.
+    // The reference planes follow the mode (update_reference_planes). Without this they would
+    // only refresh on the next tree rebuild, which is not an event that happens when you merely
+    // press Sketch.
     update_reference_planes();
 
     // Say where you are, in words, across the top of the viewport.
@@ -7256,7 +7288,7 @@ wxString DesignPanel::idle_hint() const
 {
     return m_doc.features.empty()
         ? _L("Nothing yet — import a STEP or a mesh from the toolbar,\n"
-             "or click a reference plane and right-click it to start a sketch.")
+             "or press Sketch and click a reference plane to start a sketch.")
         : _L("No solid yet — select a sketch and right-click it to Extrude.");
 }
 
@@ -7284,7 +7316,7 @@ void DesignPanel::on_tab_shown()
     if (m_viewport) m_viewport->refresh_bed();
 
     hydrate_from_model();
-    update_reference_planes();   // entering the Design tab: show the XY/XZ/YZ planes if no object yet
+    update_reference_planes();   // entering the Design tab
     if (show_clock.Time() > 100)   // a slow first show is what users report; the usual one is not news
         BOOST_LOG_TRIVIAL(info) << "Design tab shown: bed, project recipe and planes in " << show_clock.Time() << " ms";
     m_laid_out = true;
@@ -7515,15 +7547,19 @@ void DesignPanel::refresh_tree()
 
     // Preserve the selected row across the rebuild — set_rows() drops the selection, which made
     // every edit/add feel like it "lost" the selection (and broke Edit/Move/Delete on the
-    // just-touched feature).
-    const int keep = tree_selection();
+    // just-touched feature). By row, so a selected Origin row stays selected too.
+    const int keep = m_tree->selection();
 
     // Datum/reference planes carry no solid; feed them to the viewport so they render as
     // translucent rectangles (otherwise a Plane feature is invisible in the canvas).
     refresh_datum_planes();
-    update_reference_planes();   // body added/removed -> show/hide the XY/XZ/YZ origin planes
+    update_reference_planes();
     std::vector<DesignRowList::Row> rows;
-    rows.reserve(m_doc.features.size());
+    rows.reserve(m_doc.features.size() + kFeatureRow0);
+    // Always first and never removable: the reference planes' own switch, and nothing else.
+    DesignRowList::Action origin_eye = eye_action(m_show_origin);
+    origin_eye.tip = origin_toggle_text(m_show_origin);
+    rows.push_back({ "design_plane", _L("Origin"), {}, dp_item_text(), { origin_eye } });
     for (size_t fi = 0; fi < m_doc.features.size(); ++fi) {
         const CadFeature& f = m_doc.features[fi];
         DesignRowList::Row row;
@@ -7618,7 +7654,7 @@ int DesignPanel::tree_body_selection() const
 // if a row was selected.
 bool DesignPanel::deselect_rows()
 {
-    const bool any = (m_tree && tree_selection() != wxNOT_FOUND) || tree_body_selection() >= 0;
+    const bool any = (m_tree && m_tree->selection() != wxNOT_FOUND) || tree_body_selection() >= 0;
     if (m_tree) m_tree->unselect();
     if (m_parts) m_parts->unselect();
     return any;
@@ -7933,13 +7969,13 @@ bool DesignPanel::place_on_face()
 
 int DesignPanel::tree_selection() const
 {
-    return m_tree->selection();
+    return feature_of_row(m_tree->selection());
 }
 
-void DesignPanel::set_tree_selection(int row)
+void DesignPanel::set_tree_selection(int feature)
 {
-    if (row >= 0 && row < int(m_tree->GetItemCount()))
-        m_tree->select(row);
+    if (feature >= 0 && feature + kFeatureRow0 < int(m_tree->GetItemCount()))
+        m_tree->select(feature + kFeatureRow0);
 }
 
 // The selection (the solid pick, the hit face and the committed-loop pick) names bodies, faces and
@@ -11042,10 +11078,9 @@ void DesignPanel::update_rib_gizmo()
                               m_rib_thickness ? m_rib_thickness->GetValue() : 0.0);
 }
 
-// Onshape default planes: the XY/XZ/YZ reference planes are persistent, transparent, labelled, and
-// larger than the bed — shown as the FALLBACK when there is no object yet. When the Plane tool is
-// open they additionally surface existing datums so a base can be picked. Single authority for the
-// reference-plane overlay (set/clear_base_pick).
+// The XY/XZ/YZ reference planes and their axes. Single authority for the overlay
+// (set/clear_base_pick): the Plane tool offers them with the datums as Offset bases; otherwise they
+// are up while the Feature tree's Origin row shows them, and while a sketch plane is being chosen.
 void DesignPanel::update_reference_planes()
 {
     if (!m_viewport) return;
@@ -11072,24 +11107,21 @@ void DesignPanel::update_reference_planes()
         }
         return;
     }
-    // Fallback (Onshape default planes): show the 3 reference planes while there is no SOLID body
-    // yet — so they persist through the 2D-sketch phase and reappear after a sketch is confirmed
-    // (a sketch creates no body). They no longer block selection: clicking existing geometry wins,
-    // a base-plane pick only fires on a click that hit nothing else (see on_mouse fall-through).
-    // Available while there is no solid yet OR while the user is actually choosing a sketch
-    // plane. The second half fixes a dead end: delete a sketch on a document that still has a
-    // body, press Sketch, and act_sketch says "click a face or a reference plane" — with the
-    // reference planes already taken away, because a body existed. The instruction was
-    // impossible to follow and there was no way to start a sketch at all short of finding a
-    // face to click.
-    //
-    // Not simply always-on: m_dbp_active both RENDERS and picks, so three translucent planes
-    // would otherwise float over every finished model. Tying them to Sketch mode shows them
-    // exactly when they are the thing being chosen, and hides them again on Finish.
-    if (m_doc.bodies.empty() || m_ui_mode == UiMode::Sketch)
+    // Sketch mode is where a plane is the thing being picked (act_sketch asks for "a face or a
+    // reference plane"); a live session draws none (DesignSketchTool::draws_reference_axes).
+    // They never block selection: clicking existing geometry wins, and a base-plane pick only
+    // fires on a click that hit nothing else (see on_mouse fall-through).
+    if (m_show_origin || m_ui_mode == UiMode::Sketch)
         m_viewport->set_base_pick(std::move(bp), std::move(bi), std::move(bl));
     else
         m_viewport->clear_base_pick();
+}
+
+void DesignPanel::toggle_origin()
+{
+    m_show_origin = !m_show_origin;
+    wxGetApp().app_config->set_bool("design_show_origin", m_show_origin);
+    refresh_tree();   // the Origin row's eye, and update_reference_planes(), which repaints
 }
 
 TriangleMesh DesignPanel::ghost_from_bodies(const std::vector<TriangleMesh>& per_body) const
@@ -11693,7 +11725,7 @@ void DesignPanel::close_tool()
     m_viewport->clear_datum_gizmo();
     m_viewport->set_operand_bodies(-1, -1);
     m_viewport->set_highlight_sketches({});
-    update_reference_planes();   // back to no-tool: show the origin planes if there is no object yet
+    update_reference_planes();   // back to no-tool
     update_cards_frame(); m_form->Layout();
     m_form->FitInside();
     update_action_bar();   // no feature tool active -> hide the bar (unless a mode keeps it)

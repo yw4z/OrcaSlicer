@@ -229,7 +229,9 @@ CHROME_DY = int(os.environ.get("ORCA_CAD_CHROME_DY", "26"))
 
 DESIGN_TAB = (128, 29 + CHROME_DY)
 
-# Feature-tree rows, measured on the rig at 1920x1080: first row centre, then 23 px apart.
+# Feature-tree rows, measured on the rig at 1920x1080: the list's first row is centred at y=215,
+# then 23 px apart. That first row is the Origin, pinned above the features and never deleted, so
+# the first FEATURE row is the second one: Delete on the Origin does nothing.
 # x=300, not the label: a second click ON the label opens the inline rename, and Delete then
 # edits the text instead of removing the feature.
 #
@@ -237,7 +239,7 @@ DESIGN_TAB = (128, 29 + CHROME_DY)
 # unshifted click lands 26 px BELOW the first row -- just past its 23 px height -- so the row is
 # never selected, Delete does nothing, and reset_document spends 40 rounds on it before dying
 # with "could not empty the feature tree". That names the feature tree, which is not the fault.
-TREE_ROW0 = (300, 215 + CHROME_DY)
+TREE_ROW0 = (300, 215 + 23 + CHROME_DY)
 
 
 def go_design():
@@ -266,18 +268,20 @@ def reset_document():
 def enter_sketch(tool_key, plane_px=(913, 359)):
     """Enter a sketch the way the design law says: pick the plane in the viewport, then the tool.
 
-    Shift+S enters sketch MODE and pops the offer; Escape dismisses it; the tool letter then
-    starts the session on the plane the click selected. All four steps are real input — nothing
-    here goes through the socket.
+    Shift+S enters sketch MODE, which brings the reference planes up; the click picks one; the
+    tool letter then starts the session on it. Entering with a plane an earlier rung chose pops
+    the offer at once, and a click outside a popup menu only closes it, so the plane is clicked
+    twice, apart. No Escape: with no offer up, Escape in an empty sketch leaves it. All of it is
+    real input — nothing here goes through the socket.
     """
     leave_sketch()
-    click(*plane_px)
     key("shift+s", 0.8)
-    key("Escape", 0.4)          # entering sketch mode pops the offer; dismiss it
+    click(*plane_px, pause=0.8)   # closes the offer if an earlier rung's plane popped it...
+    click(*plane_px)              # ...so this is the click that picks the plane
     key("p", 0.6)
     if try_call("sketch_describe") is None:
         shot("/shots/gl-enter-failed.png")
-        die("no sketch opened after plane click + Shift+S (see /shots/gl-enter-failed.png)")
+        die("no sketch opened after Shift+S + plane click (see /shots/gl-enter-failed.png)")
     calibrate_here()            # THIS sketch's own camera map, on THIS sketch's own plane
     key(tool_key, 0.6)
 

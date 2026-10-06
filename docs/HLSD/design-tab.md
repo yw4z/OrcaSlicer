@@ -181,6 +181,17 @@ canvas (a sibling of the canvas, not a child over it — on GTK a child window o
 a plate grid is never read as a sketch grid, and `N` to look normal to the plane. Code that
 changes any of the three belongs with a change to this section.
 
+The reference planes — XY, XZ and YZ through the modeling origin, with their half-axes — are
+drawn on demand, because three translucent squares over every model are noise once they are not
+the thing being picked. Sketch mode brings them up, since choosing the sketch plane is exactly
+when they are picked; a live session draws none, and Finish or Cancel takes them away. The
+Feature tree's Origin row, pinned above the features and never removable, keeps them up outside a
+sketch. Its state is a view preference in AppConfig rather than part of the recipe, so it costs
+the project format nothing. The Plane tool keeps its own rule: the planes and the datums as Offset
+bases, and nothing for the other methods, where a click on a plane would rewrite the datum's
+references. The `P` and `A` keys are a separate, unpickable view helper and do not follow the
+Origin row.
+
 ## Rendering the bodies
 
 The tab draws its bodies through the same `GLCanvas3D` object path as Prepare, so how they look
@@ -253,8 +264,8 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
   constraint-row buttons are Orca's self-painted `Button`, because a native button cannot take a
   hover background on macOS. The Feature tree and Bodies lists are a custom-drawn
   `DesignRowList` rather than a `wxTreeCtrl`, so each row carries its own actions — Edit,
-  Show/hide and Delete on a feature, Move, Show/hide and Delete on a body — and the eye shows
-  whether that row is hidden.
+  Show/hide and Delete on a feature, Move, Show/hide and Delete on a body, and only Show/hide on
+  the Origin row above the features — and the eye shows whether that row is hidden.
 - **Plates.** This is the one thing the tab does not follow. The canvas has a bed of its own at
   the printer bed's home position, whichever plate Prepare has current, and a new document's
   modeling origin is that bed's centre. A bed that followed the current plate would slide out

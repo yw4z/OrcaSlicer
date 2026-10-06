@@ -383,7 +383,8 @@ private:
     void       update_rib_gizmo();        // in-plane slab footprint + thickness handles (Rib card)
     void       refresh_datum_planes();    // push resolved datum frames + per-plane u/v extents to viewport
     void       refresh_mate_connectors(); // push connector frames so verse + polarity are visible
-    void       update_reference_planes(); // persistent XY/XZ/YZ reference planes (fallback when no object)
+    void       update_reference_planes(); // the XY/XZ/YZ planes + axes: Origin row, Sketch mode, Plane tool
+    void       toggle_origin();           // the Origin row's eye: keep the reference planes up, or not
 
     CadDocument m_doc;
 
@@ -573,6 +574,10 @@ private:
     // m_ref_plane is always a VALID plane, so it cannot itself distinguish "the user chose XY"
     // from "nobody has chosen anything yet". This does.
     bool              m_plane_picked{false};
+    // The Feature tree's Origin row: keeps the reference planes and their axes up
+    // (update_reference_planes). A view preference (AppConfig "design_show_origin"), not part of
+    // the recipe.
+    bool              m_show_origin{false};
     ComboBox*         m_shape{nullptr};
     ComboBox*         m_mode{nullptr};
     wxSpinCtrlDouble* m_width{nullptr};
@@ -913,9 +918,9 @@ private:
     std::function<void(double)> m_value_cont;   // deferred apply, run on Confirm
     std::function<void()>       m_value_cancel; // optional action when the card is cancelled
 
-    // Feature tree: one row per feature, in feature order, with a per-type icon and the row's
-    // own Edit / Show-hide / Delete icons. Callers use row indices via
-    // tree_selection()/set_tree_selection(); refresh_tree() rebuilds the rows.
+    // Feature tree: the Origin row, then one row per feature, in feature order, with a per-type
+    // icon and the row's own Edit / Show-hide / Delete icons. Feature i is row i + 1; callers use
+    // feature indices via tree_selection()/set_tree_selection(); refresh_tree() rebuilds the rows.
     DesignRowList*            m_tree{nullptr};
     // The faces the selected feature row made (CadDocument::faces_made_by), drawn as selected.
     // Finding them replays the history, so they are kept per row and topology generation.
@@ -969,10 +974,10 @@ private:
     void arm_transform_gizmo();           // arm the move gizmo on the Transform card's body (add mode only)
     void on_set_body_color();             // Color tool: pick a per-body display colour override
     void on_boolean_tool();               // Boolean (combine bodies): needs two solids, then opens the tool
-    int  tree_selection() const;          // selected feature row, or wxNOT_FOUND
+    int  tree_selection() const;          // selected feature's index, or wxNOT_FOUND (none, or the Origin row)
     int  tree_body_selection() const;     // selected Parts-list body index, or -1
     void refresh_parts();                 // rebuild the Bodies list under the feature tree
-    void set_tree_selection(int row);
+    void set_tree_selection(int feature);
     static const char* tree_icon_for(CadFeatureType t);
 
     wxStaticText*     m_status{nullptr};
