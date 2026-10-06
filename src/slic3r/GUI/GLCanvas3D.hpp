@@ -1061,6 +1061,9 @@ public:
     bool  is_collapse_toolbar_on_left() const;
     float get_collapse_toolbar_width() const;
     float get_collapse_toolbar_height() const;
+    // Right edge, in canvas pixels, of the bottom-left corner the 3D navigator and the round
+    // canvas buttons own. An overlay along the bottom edge starts past it.
+    float get_canvas_toolbar_right() const;
 
     void update_volumes_colors_by_extruder();
 

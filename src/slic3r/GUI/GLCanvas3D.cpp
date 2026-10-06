@@ -2088,6 +2088,25 @@ float GLCanvas3D::get_collapse_toolbar_height() const
     return collapse_side() != CollapseSide::None ? collapse_toolbar().get_height() : 0;
 }
 
+// The bottom-left corner: the 3D navigator, then the column of round canvas buttons beside it, in
+// units of the toolbar scale. Shared by _render_3d_navigator, _render_canvas_toolbar and
+// get_canvas_toolbar_right, so an overlay kept clear of the corner follows its layout.
+static constexpr float NAVIGATOR_SIZE         = 128.f;
+static constexpr float CANVAS_TOOLBAR_MARGIN  = 10.f;   // off the canvas edge, when there is no navigator
+static constexpr float CANVAS_TOOLBAR_PADDING = 2.f;
+static constexpr float CANVAS_TOOLBAR_BUTTON  = 36.f;
+
+float GLCanvas3D::get_canvas_toolbar_right() const
+{
+    // The toolbar scale, which on Windows follows the monitor's DPI where the ImGui style does not.
+    float sc = get_scale();
+#ifdef WIN32
+    sc *= (float) get_dpi_for_window(wxGetApp().GetTopWindow()) / (float) DPI_DEFAULT;
+#endif // WIN32
+    const float left = wxGetApp().show_3d_navigator() ? NAVIGATOR_SIZE : CANVAS_TOOLBAR_MARGIN;
+    return (left + 2.f * CANVAS_TOOLBAR_PADDING + CANVAS_TOOLBAR_BUTTON) * sc;
+}
+
 GLToolbar& GLCanvas3D::collapse_toolbar() const
 {
     return m_collapse_toolbar != nullptr ? *m_collapse_toolbar : wxGetApp().plater()->get_collapse_toolbar();
@@ -6358,7 +6377,7 @@ void GLCanvas3D::_render_3d_navigator()
         }
     }
 
-    const float size  = 128 * sc;
+    const float size  = NAVIGATOR_SIZE * sc;
     m_canvas_toolbar_pos[0] = size;
     const auto result = ImGuizmo::ViewManipulate(cameraView, cameraProjection, ImGuizmo::OPERATION::ROTATE, ImGuizmo::MODE::WORLD, nullptr,
                                                  camDistance, ImVec2(viewManipulateLeft, viewManipulateTop - size), ImVec2(size, size),
@@ -10064,10 +10083,10 @@ void GLCanvas3D::_render_canvas_toolbar()
         sc *= (float) dpi / (float) DPI_DEFAULT;
     #endif // WIN32
 
-    ImVec2        btn_size = ImVec2(36.f, 36.f) * sc;
-    ImVec2        margin   = ImVec2(m_canvas_toolbar_pos[0] > 0 ? 0.f : (10.f * sc), 10.f * sc);
+    ImVec2        btn_size = ImVec2(CANVAS_TOOLBAR_BUTTON, CANVAS_TOOLBAR_BUTTON) * sc;
+    ImVec2        margin   = ImVec2(m_canvas_toolbar_pos[0] > 0 ? 0.f : (CANVAS_TOOLBAR_MARGIN * sc), CANVAS_TOOLBAR_MARGIN * sc);
     ImVec2        spacing  = ImVec2(6.f, 6.f)  * sc;
-    ImVec2        padding  = ImVec2(2.f, 2.f)  * sc;
+    ImVec2        padding  = ImVec2(CANVAS_TOOLBAR_PADDING, CANVAS_TOOLBAR_PADDING) * sc;
     Vec2i32       pos      = {
         m_canvas_toolbar_pos[0]        + margin.x,
         get_canvas_size().get_height() - margin.y
