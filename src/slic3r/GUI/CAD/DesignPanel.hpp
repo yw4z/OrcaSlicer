@@ -964,6 +964,8 @@ private:
     void rebuild_disp_meshes();           // recompute m_disp_* from m_doc + m_body_xform
     void feed_bodies();                   // push m_disp_* + visibility/xform to the viewport
     void on_move_body();                  // start the move gizmo on the selected body
+    bool body_move_pending() const { return m_move_body >= 0; }   // the Move button's session is open
+    void end_body_move(bool keep);        // leave it: keep the dragged pose, or put the body back
     void arm_transform_gizmo();           // arm the move gizmo on the Transform card's body (add mode only)
     void on_set_body_color();             // Color tool: pick a per-body display colour override
     void on_boolean_tool();               // Boolean (combine bodies): needs two solids, then opens the tool

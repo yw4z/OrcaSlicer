@@ -5791,6 +5791,10 @@ void DesignSketchTool::set_move_gizmo(int body, const Vec3d& pivot, const Transf
     m_mv_rot        = Eigen::Matrix3d::Identity();
     m_mv_drag       = -1;
     m_mv_radius     = std::max(body_radius, 0.0);
+    // The selection is held while the gizmo is up (see on_mouse_impl): no press half-way to a
+    // pick, and no hover outline promising a click that will not be taken.
+    m_pick_pending  = false;
+    m_pre           = SolidPick{};
 }
 
 // Gizmo arm length in world mm. Orca's Prepare gizmos size themselves from the selection's
@@ -10817,13 +10821,9 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
             canvas.zoom_to_volumes();
             return true;
         }
-        // Visual Extrude gizmo (C5b): while the Extrude card is open the depth arrow is
-        // grabbable — drag changes the depth live; a click (no drag) on the arrow opens the
-        // inline depth editor. Intercept before the early no-LeftDown bailout so Dragging/
-        // LeftUp reach us; a LeftDown that misses the arrow falls through to solid/loop pick.
         // Move-body gizmo (M5): three world-axis arrows on the selected body. Drag an arrow to
         // translate live; a stationary click on it opens the inline offset editor; a right click
-        // exits move mode. A LeftDown that misses the arrows falls through to solid re-pick.
+        // opens the offer. Anything else is the camera's: see the end of this block.
         if (m_mv_active) {
             if (m_mv_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
                 if (m_mv_drag < 3) drag_move_arrow(canvas.mouse_ray(Point(evt.GetX(), evt.GetY())));
@@ -10854,7 +10854,11 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
                     double a0; if (arc_mouse_angle(canvas, evt, axis, a0)) m_mv_arc_a0 = a0;
                     return true;
                 }
+                // Off the gizmo a press only steers the camera: no pick, so the selection the
+                // Move acts on is held until it ends.
+                return false;
             }
+            if (evt.Moving()) return false;   // no hover outline: see set_move_gizmo
         }
         // Datum-plane resize gizmo (C3): while the Plane card is open the 4 edge handles are
         // grabbable — drag changes the u/v extent live. A LeftDown that misses falls through.
@@ -10913,6 +10917,10 @@ bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
                 if (h >= 0) return true;   // caller render()s on true -> hover repaints on software GL
             }
         }
+        // Visual Extrude gizmo (C5b): while the Extrude card is open the depth arrow is
+        // grabbable — drag changes the depth live; a click (no drag) on the arrow opens the
+        // inline depth editor. Intercept before the early no-LeftDown bailout so Dragging/
+        // LeftUp reach us; a LeftDown that misses the arrow falls through to solid/loop pick.
         if (m_ex_active) {
             if (m_ex_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
                 drag_extrude_arrow(canvas, evt, m_ex_drag);

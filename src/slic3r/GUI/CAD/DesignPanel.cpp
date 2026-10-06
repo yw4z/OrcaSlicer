@@ -3704,8 +3704,6 @@ DesignPanel::DesignPanel(wxWindow* parent)
         // One selection at a time: a pick replaces the Feature tree row. Not while a card is open:
         // the feature being edited keeps its row while the card's picks are made.
         if (level >= 1 && m_active == Tool::None && m_tree) m_tree->unselect();
-        // A pick that fell through the move gizmo (clicked off the arrows) exits move mode.
-        if (m_viewport->moving_body()) m_viewport->clear_move_gizmo();
         // Remember which body + face/edge so Extrude / dress-up target the RIGHT body.
         m_sel_solid_body = (level >= 1) ? body : -1;
         m_sel_solid_face = (level == 2) ? face : -1;   // 4 = Vertex: a corner is not its face
@@ -4468,6 +4466,9 @@ void DesignPanel::apply_dof_status(int dof, bool ok, bool has_constraints)
 
 void DesignPanel::set_ui_mode(UiMode m)
 {
+    // A session's ✓/✗ and Esc are its own; a Move left open would answer them instead, unseen,
+    // since the gizmo is not drawn in a sketch.
+    if (m != UiMode::Feature) end_body_move(true);
     m_ui_mode = m;
     if (m != UiMode::Sketch) m_sketch_on.clear();   // no stale "on the picked face" on the next hint
     // A committed loop picked before the session means nothing to the sketch map, but it would
@@ -4554,7 +4555,9 @@ void DesignPanel::set_status_ok()
     set_status(wxString::Format(_L("OK — %zu triangles"),
                                         m_doc.display_mesh.its.indices.size()));
     if (m_viewport != nullptr) {
-        m_viewport->clear_move_gizmo();   // a recompute invalidates the gizmo's body centroid
+        // A recompute invalidates the gizmo's body centroid; a Move ends with it, keeping its pose.
+        if (body_move_pending()) end_body_move(true);
+        else                     m_viewport->clear_move_gizmo();   // the Transform card's, if up
         rebuild_disp_meshes();            // apply per-body Move transforms to the display/pick meshes
         // Point the solid-pick at the fresh body + TRANSFORMED pick mesh (stable address) + the
         // per-body xform vector (for edge sampling). Resets the whole/face/edge selection, whose
@@ -4665,6 +4668,7 @@ void DesignPanel::on_add_text()
 void DesignPanel::open_text_dialog(int feat)
 {
     if (m_text_dlg != nullptr) { m_text_dlg->Raise(); return; }
+    end_body_move(true);
     m_text_editing = feat >= 0 && feat < int(m_doc.features.size()) && m_doc.features[feat].is_text();
     m_text_feat    = m_text_editing ? feat : -1;
     m_text_face_body = -1;
@@ -5122,6 +5126,7 @@ void DesignPanel::add_imported_sketch(
 // Show the Insert Confirm/Cancel card while the imported art is being placed/sized.
 void DesignPanel::open_insert_card(const wxString& base_name)
 {
+    end_body_move(true);
     m_active = Tool::Insert;
     if (m_hdr_insert) m_hdr_insert->SetLabel(base_name);
     wxSizer* s = m_cards->GetSizer();
@@ -5167,6 +5172,7 @@ void DesignPanel::on_transform_imported(int feat_idx)
     const CadFeature& f = m_doc.features[feat_idx];
     if (f.imported_regions.empty())
         return;
+    end_body_move(true);   // the art's placement gizmo and ✓/✗ take over from a Move left open
     // In-canvas bbox handles (replaces the Move/Scale dialog): drag a corner to scale,
     // the centre to move. Values stream back via set_on_imported_transform.
     m_viewport->begin_imported_transform(feat_idx, f.imported_regions, f.plane,
@@ -5694,7 +5700,6 @@ void DesignPanel::on_add_transform()
                          // below does not — without this the body would keep showing the
                          // dragged pose after a Transform that failed to build.
         m_xf_gizmo_body = -1;
-        m_move_body     = -1;
     }
     if (m_doc.bodies.empty()) {
         set_status(StatusKind::Warning, _L("Transform needs a body — add or import one first"));
@@ -7769,11 +7774,24 @@ void DesignPanel::on_move_body()
 {
     const int b = m_sel_solid_body;
     if (m_viewport == nullptr) return;
+    // Whatever is open owns the canvas and the ✓/✗, so a Move armed under it could not be left.
+    // The Bodies list stays clickable meanwhile, hence the check here.
+    if (m_active != Tool::None || m_ui_mode != UiMode::Feature || m_text_dlg != nullptr) {
+        set_status(StatusKind::Info, _L("Finish or cancel what is open first"));
+        return;
+    }
     if (b < 0 || b >= int(m_doc.display_body_meshes.size())) {
         // Never fail silently here: the caller gates on bodies.size() while this needs a
         // tessellated per-body mesh, and when those disagreed the click did nothing at all.
         set_status(StatusKind::Error, b < 0 ? _L("Select a body first — click it in the viewport or the Bodies list")
                                  : _L("That body has no display mesh yet — recompute first"));
+        return;
+    }
+    const wxString hint = _L("Drag the arrows to move, the rings to rotate — then Confirm (Esc cancels)");
+    // Already moving it: Cancel still goes back to where it began. Another body re-arms below,
+    // and the one being moved keeps its placement.
+    if (body_move_pending() && b == m_move_body) {
+        set_status(StatusKind::Info, hint);
         return;
     }
     sync_body_xform();
@@ -7796,7 +7814,25 @@ void DesignPanel::on_move_body()
     if (m_move_angle) m_move_angle->SetValue(0.0);
     show_move_card(true);
     update_action_bar();      // surface the unified ✓/✗ while moving
-    set_status(StatusKind::Info, _L("Drag the arrows to move, the rings to rotate — then Confirm (Esc cancels)"));
+    set_status(StatusKind::Info, hint);
+}
+
+// The one way out of the Move button's session, so the gizmo, the Move / Rotate card and the ✓/✗
+// go together. keep = true leaves the pose on screen, as starting another edit does; only Esc and
+// Cancel put the body back. A no-op when no Move is up.
+void DesignPanel::end_body_move(bool keep)
+{
+    if (!body_move_pending()) return;
+    if (!keep) {
+        sync_body_xform();
+        if (m_move_body < int(m_body_xform.size()))
+            m_body_xform[m_move_body] = m_move_prev;
+        feed_bodies();           // re-render the reverted placement
+    }
+    m_viewport->clear_move_gizmo();
+    m_move_body = -1;
+    show_move_card(false);
+    update_action_bar();
 }
 
 // Transform card (add mode): arm the same move gizmo on the card's body so the geometry-first
@@ -7817,8 +7853,6 @@ void DesignPanel::arm_transform_gizmo()
     if (m_viewport) m_viewport->begin_move_body(b, pivot, base, radius);
     m_xf_gizmo_body = b;
     m_xf_gizmo_base = base;
-    m_move_body = b;          // the existing revert paths key off these two
-    m_move_prev = base;
     // Write the pivot into the card so the parametric feature reproduces what was dragged;
     // dx/dy/dz and angle start at zero (the gizmo reports deltas from this pose).
     if (m_xf_pivot_x) m_xf_pivot_x->SetValue(pivot.x());
@@ -7937,7 +7971,7 @@ void DesignPanel::drop_solid_pick()
 bool DesignPanel::begin_renumber()
 {
     if (m_ui_mode != UiMode::Feature || m_text_dlg != nullptr || m_active == Tool::Insert
-        || (m_active == Tool::None && m_viewport != nullptr && m_viewport->moving_body())) {
+        || body_move_pending()) {
         set_status(StatusKind::Info, _L("Finish or cancel what is open first"));
         return false;
     }
@@ -8000,13 +8034,12 @@ void DesignPanel::on_new_design()
 void DesignPanel::clear_document()
 {
     tool_cancel();                 // leave any active tool / sketch / constrain cleanly
+    end_body_move(true);           // ...and a Move, which tool_cancel leaves while a value is pending
     m_doc.clear();                 // features + bodies + meshes + history
     m_doc.auto_close_loops = wxGetApp().is_auto_close_sketch_loops();   // a new design: today's preference
     Slic3r::set_sketch_auto_close(m_doc.auto_close_loops);
     drop_selection();
     m_edit_index = -1;
-    m_move_body  = -1;
-    show_move_card(false);
     m_body_xform.clear();
     if (m_viewport) { m_viewport->clear_move_gizmo(); m_viewport->clear_mesh(); }
     after_tree_edit(true);         // rebuild the (now empty) tree + clear the viewport
@@ -8090,6 +8123,11 @@ void DesignPanel::on_toggle_visibility()
         return;
     }
 
+    // Hiding or showing a feature can renumber the bodies, and the Move holds a body index.
+    if (body_move_pending()) {
+        set_status(StatusKind::Info, _L("Finish or cancel what is open first"));
+        return;
+    }
     int sel = tree_selection();
     if (sel == wxNOT_FOUND || sel >= int(m_doc.features.size())) {
         set_status(StatusKind::Error, _L("Select a feature in the tree first"));
@@ -8109,7 +8147,7 @@ void DesignPanel::on_toggle_visibility()
         if (m_doc.display_mesh.its.indices.empty()) {
             m_viewport->clear_mesh();
         } else {
-            // Not set_status_ok(), which would take the gizmo from a Move still open.
+            // Not set_status_ok(), which would take the gizmo from an open Transform card.
             feed_bodies();
             // Hiding or showing a feature rebuilds the bodies and can renumber them, so the pick is
             // re-pointed and its selection dropped. That also brings picking back for a body shown
@@ -11308,6 +11346,7 @@ void DesignPanel::push_polygon_params()
 
 void DesignPanel::open_tool(Tool t)
 {
+    end_body_move(true);   // first: arm_transform_gizmo below takes over the same gizmo
     m_active = t;
     m_candidate_ok = true;   // a fresh card is confirmable until its preview says otherwise
     // Fillet/Chamfer/Draft no longer fade the body see-through; instead, once a valid target
@@ -11606,7 +11645,6 @@ void DesignPanel::close_tool()
         if (m_viewport) m_viewport->clear_move_gizmo();
         feed_bodies();
         m_xf_gizmo_body = -1;
-        m_move_body     = -1;
     }
     if (m_viewport) { m_viewport->set_body_translucent(false); m_viewport->set_body_hidden(false); m_viewport->set_xray_focus(-1); }   // restore the opaque solid
     wxSizer* s = m_cards->GetSizer();
@@ -11730,11 +11768,8 @@ void DesignPanel::cancel_tool()
 void DesignPanel::tool_confirm()
 {
     if (m_value_cont) { confirm_value(); return; }   // value card owns ribbon ✓ while a value is pending
-    if (m_active == Tool::None && m_viewport && m_viewport->moving_body()) {   // keep the placement, drop the gizmo
-        m_viewport->clear_move_gizmo();
-        m_move_body = -1;
-        show_move_card(false);
-        update_action_bar();
+    if (body_move_pending()) {   // keep the placement, drop the gizmo
+        end_body_move(true);
         set_status_ok();
         return;
     }
@@ -11762,15 +11797,8 @@ void DesignPanel::tool_confirm()
 void DesignPanel::tool_cancel()
 {
     if (m_value_cont) { cancel_value(); return; }     // value card owns ribbon ✗ while a value is pending
-    if (m_active == Tool::None && m_viewport && m_viewport->moving_body()) {   // revert to the pose at move-start
-        sync_body_xform();
-        if (m_move_body >= 0 && m_move_body < int(m_body_xform.size()))
-            m_body_xform[m_move_body] = m_move_prev;
-        m_viewport->clear_move_gizmo();
-        m_move_body = -1;
-        show_move_card(false);
-        feed_bodies();           // re-render the reverted placement
-        update_action_bar();
+    if (body_move_pending()) {   // revert to the pose at move-start
+        end_body_move(false);
         set_status(StatusKind::Info, _L("Move cancelled"));
         return;
     }
@@ -11811,8 +11839,7 @@ bool DesignPanel::confirm_enabled() const
 {
     if (m_value_cont) return true;
     if (m_active == Tool::None)
-        return (m_viewport && m_viewport->moving_body())
-               || m_ui_mode == UiMode::Sketch || m_ui_mode == UiMode::Constrain;
+        return body_move_pending() || m_ui_mode == UiMode::Sketch || m_ui_mode == UiMode::Constrain;
     if (m_active == Tool::Insert) return true;
     return m_candidate_ok;
 }
@@ -11836,9 +11863,8 @@ CadLevel DesignPanel::escape_level() const
                           || (m_viewport && m_viewport->inline_busy());
     // An uncommitted delta: clicks are down on an entity that does not exist yet, or a body is
     // being moved by a gizmo that has not been confirmed.
-    st.gesture_active   = m_viewport
-                          && (m_viewport->drawing_in_progress()
-                              || (m_active == Tool::None && m_viewport->moving_body()));
+    st.gesture_active   = body_move_pending()
+                          || (m_viewport && m_viewport->drawing_in_progress());
     // Something is armed and waiting for input: a feature card, a sketch draw tool, Constrain.
     // A sketch SESSION is deliberately not in this list — see escape().
     st.tool_armed       = (m_active != Tool::None)
@@ -11912,7 +11938,7 @@ bool DesignPanel::menu_can_undo_redo(bool redo) const
 {
     if (m_ui_mode == UiMode::Sketch && m_viewport && m_viewport->is_sketching())
         return redo ? m_viewport->can_redo_sketch_entity() : m_viewport->can_undo_sketch_entity();
-    if (m_ui_mode != UiMode::Feature || m_active != Tool::None) return false;
+    if (m_ui_mode != UiMode::Feature || m_active != Tool::None || body_move_pending()) return false;
     return redo ? m_doc.can_redo() : m_doc.can_undo();
 }
 
@@ -11934,7 +11960,7 @@ void DesignPanel::update_action_bar()
     const bool active = (m_active != Tool::None)
                      || m_ui_mode == UiMode::Sketch
                      || m_ui_mode == UiMode::Constrain
-                     || (m_viewport && m_viewport->moving_body());
+                     || body_move_pending();
     s->Show(m_tb_action, active, true);
     // HIDING THE BAR ORPHANS THE KEYBOARD, and that is the "app does not consent to sketch"
     // report. The ✓/✗ live in this bar, so the click that confirms a feature leaves focus on a
@@ -11970,7 +11996,8 @@ void DesignPanel::do_undo_redo(bool redo)
     // v1: act only in Feature mode. While authoring/constraining a sketch (m_ui_mode) or
     // with a feature dialog open (m_active), Esc/Cancel is the way out — popping committed
     // history mid-tool would be ambiguous (and could orphan the tool's referenced feature).
-    if (m_ui_mode != UiMode::Feature || m_active != Tool::None) {
+    // A Move is not in the history at all, so an undo under it would keep it without asking.
+    if (m_ui_mode != UiMode::Feature || m_active != Tool::None || body_move_pending()) {
         set_status(StatusKind::Info, _L("Finish or cancel the current tool first (Esc)"));
         return;
     }

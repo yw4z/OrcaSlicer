@@ -743,8 +743,6 @@ void DesignCanvas::clear_move_gizmo()
     request_repaint();
 }
 
-bool DesignCanvas::moving_body() const { return m_sketch_tool.moving_body(); }
-
 void DesignCanvas::set_on_body_move_changed(std::function<void(int, const Transform3d&)> cb)
 {
     m_sketch_tool.on_body_move_changed = std::move(cb);

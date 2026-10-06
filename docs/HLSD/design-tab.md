@@ -149,6 +149,14 @@ explicit selection, the sketch ribbon's Cancel, which asks first, or `Ctrl+Z`. A
 *session* is deliberately not a `Tool` level; it is the environment the `Idle` level lives in,
 which makes the destructive path unrepresentable rather than merely unlikely.
 
+A body Move is the one `Gesture` that outlives the press: its gizmo stays up between drags until
+Confirm keeps the placement or `Esc` or Cancel puts the body back. Until then the selection is
+held — a click off the gizmo only steers the camera — and undo is refused, since the placement
+is not in the history. Anything that starts another edit (a feature card, a sketch, placing
+imported art or text, another body's Move, a rebuild) keeps the placement, as switching gizmos
+keeps a move in Prepare. The panel ends the Move in one place (`DesignPanel::end_body_move`), so
+the gizmo, the Move / Rotate card and the ✓/✗ cannot outlive one another.
+
 Right-click is read at button-up against one budget, 3 px of drift, applied to the whole press
 rather than to its end points: a press that wandered past the budget at any moment is
 navigation, even if it comes back to where it started, which is what stops a slow, careful
@@ -226,7 +234,8 @@ replay costs up to a recompute, so the panel finds the faces once per row and to
 generation, off the UI thread, and only while no feature card is open. One selection is live at
 a time: a viewport pick clears the feature row and a feature row clears the viewport pick, as the
 Feature tree and Bodies list do between themselves. `Esc`, a click on empty space and an
-empty rubber band all let go of it, whichever list or pick made it.
+empty rubber band all let go of it, whichever list or pick made it — except while a body Move is
+open, which holds the selection until it ends (see the interaction contract).
 
 ## Following the app
 

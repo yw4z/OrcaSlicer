@@ -274,7 +274,6 @@ public:
     void set_move_gizmo(int body, const Vec3d& pivot, const Transform3d& base_xform,
                         double body_radius = 0.0);
     void clear_move_gizmo();
-    bool moving_body() const { return m_mv_active; }
     int  move_body_index() const { return m_mv_body; }
     // Press, then drag, translate arrow `axis` (0..2 = X/Y/Z) with the mouse ray under the cursor.
     void grab_move_arrow(int axis, const Linef3& ray);

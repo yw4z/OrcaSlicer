@@ -161,7 +161,6 @@ public:
     void begin_move_body(int body, const Vec3d& pivot, const Transform3d& base_xform,
                          double body_radius);
     void clear_move_gizmo();
-    bool moving_body() const;
     void set_on_body_move_changed(std::function<void(int, const Transform3d&)> cb);
     // Visual Fillet/Chamfer radius gizmo: when a solid edge is picked, anchor a radius arrow on
     // it; drag/edit fire the radius callback. Returns false if no edge is currently picked.
