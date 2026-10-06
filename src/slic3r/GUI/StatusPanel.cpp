@@ -117,6 +117,7 @@
 #include "SafetyOptionsDialog.hpp"
 
 #include "ThermalPreconditioningDialog.hpp"
+#include <wx/dcgraph.h>
 
 
 namespace Slic3r { namespace GUI {
@@ -1216,7 +1217,7 @@ void PrintingTaskPanel::on_stage_clicked(wxMouseEvent &event)
 
     if (obj && obj->stage_curr == 58) {
             wxWindow *top    = wxGetTopLevelParent(this);
-            ThermalPreconditioningDialog m_thermal_dialog(top ? top : this, obj->get_dev_id() , "Calculating...");
+            ThermalPreconditioningDialog m_thermal_dialog(top ? top : this, obj->get_dev_id() , _L("Calculating..."));
             m_thermal_dialog.ShowModal();
     }
 
