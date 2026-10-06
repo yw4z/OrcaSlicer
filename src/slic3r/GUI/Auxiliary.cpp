@@ -65,6 +65,8 @@
 #include "Widgets/Label.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/Plater.hpp"
+#include <wx/dcgraph.h>
+#include <wx/dcmemory.h>
 
 namespace fs = boost::filesystem;
 
@@ -1152,6 +1154,7 @@ void AuxiliaryPanel::update_all_cover()
      m_sizer_description->Add(m_text_description, 0, wxALIGN_TOP | wxRIGHT, FromDIP(10));
      m_input_description = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, 
                                           wxSize(FromDIP(450), FromDIP(300)), wxTE_MULTILINE | wxTE_PROCESS_ENTER);
+     m_input_description->SetBackgroundColour(*wxWHITE);
      m_input_description->SetFont(::Label::Body_14);
      m_sizer_description->Add(m_input_description, 0, wxALIGN_CENTER, 0);
 
