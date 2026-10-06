@@ -393,7 +393,7 @@ public:
     void repaint_now();
 
 private:
-    void reload(bool keep_view);
+    void reload();
     void swap_camera();   // enter_viewport / leave_viewport, in the one direction they share
 
     // Selected faces are filled by the canvas: each body's selected faces become a volume of their
@@ -428,7 +428,6 @@ private:
     Camera      m_parked_camera;
     bool        m_camera_swapped{false};   // guards a leave without an enter, and the reverse
     Model       m_model;
-    bool        m_first_frame{true};
     int         m_hl_body_target{-1};
     int         m_hl_body_tool{-1};
     bool        m_body_translucent{false};// fillet/chamfer preview → render the body see-through

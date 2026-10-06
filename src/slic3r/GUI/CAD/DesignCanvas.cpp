@@ -349,7 +349,7 @@ void DesignCanvas::repaint_now()
     m_canvas_widget->Update();    // service the pending paint immediately (a modal popup owns the loop)
 }
 
-void DesignCanvas::reload(bool keep_view)
+void DesignCanvas::reload()
 {
     m_canvas->reset_volumes();
 
@@ -393,14 +393,8 @@ void DesignCanvas::reload(bool keep_view)
         }
     }
 
-    if (!keep_view) {
-        if (m_first_frame && !m_model.objects.empty()) {
-            m_canvas->select_view("iso");
-            m_canvas->zoom_to_volumes();
-            m_first_frame = false;
-        }
-    }
-
+    // The camera stays where the user left it, even for the first body: Home and a double-click
+    // fit on demand.
     m_canvas->set_as_dirty();
     if (m_canvas_widget)
         m_canvas_widget->Refresh();
@@ -417,7 +411,7 @@ void DesignCanvas::set_bodies(const std::vector<TriangleMesh>* body_meshes,
     m_sketch_tool.refresh_body_edges();   // of the bodies set_solid_pick() pointed the tool at
     m_lit_faces   = m_sketch_tool.selected_faces();
     rebuild_bodies();
-    reload(!m_first_frame);
+    reload();
 }
 
 void DesignCanvas::clear_mesh()
@@ -428,7 +422,7 @@ void DesignCanvas::clear_mesh()
     m_sketch_tool.set_solid_pick(nullptr, nullptr, nullptr, nullptr);
     if (!m_model.objects.empty()) {
         m_model.delete_object((size_t)0);
-        reload(true);
+        reload();
     }
 }
 
@@ -442,14 +436,14 @@ void DesignCanvas::set_preview_mesh(const TriangleMesh& mesh)
     obj->add_volume(mesh);
     obj->add_instance();
 
-    reload(true);
+    reload();
 }
 
 void DesignCanvas::clear_preview()
 {
     if (m_model.objects.size() > 1) {
         m_model.delete_object((size_t)1);
-        reload(true);
+        reload();
     }
 }
 
@@ -1263,7 +1257,7 @@ void DesignCanvas::sync_selected_faces()
         if (m_body_meshes == nullptr || m_model.objects.empty())
             return;
         rebuild_bodies();
-        reload(true);
+        reload();
     });
 }
 
@@ -1315,7 +1309,7 @@ void DesignCanvas::set_operand_bodies(int target_body, int tool_body)
     if (m_hl_body_target == target_body && m_hl_body_tool == tool_body) return;
     m_hl_body_target = target_body;
     m_hl_body_tool   = tool_body;
-    reload(true);      // recolours the body volumes
+    reload();      // recolours the body volumes
 }
 
 void DesignCanvas::set_highlight_sketches(std::vector<std::pair<int, ColorRGBA>> hl)
@@ -1328,7 +1322,7 @@ void DesignCanvas::set_body_translucent(bool on)
 {
     if (m_body_translucent == on) return;
     m_body_translucent = on;
-    reload(true);   // re-applies object-0 alpha so the solid fades for the fillet preview
+    reload();   // re-applies object-0 alpha so the solid fades for the fillet preview
 }
 
 void DesignCanvas::set_xray_focus(int body)
@@ -1336,7 +1330,7 @@ void DesignCanvas::set_xray_focus(int body)
     if (m_xray_focus == body) return;
     m_xray_focus = body;
     m_sketch_tool.set_pick_only_body(body);
-    reload(true);   // re-applies per-body alpha so the non-focused bodies fade
+    reload();   // re-applies per-body alpha so the non-focused bodies fade
 }
 
 void DesignCanvas::set_body_hidden(bool on)
@@ -1344,7 +1338,7 @@ void DesignCanvas::set_body_hidden(bool on)
     if (m_body_hidden == on) return;
     m_body_hidden = on;
     m_sketch_tool.set_body_edges_hidden(on);
-    reload(true);   // hides/show base bodies + flips the ghost opaque/faint for preview-only mode
+    reload();   // hides/show base bodies + flips the ghost opaque/faint for preview-only mode
 }
 
 bool DesignCanvas::delete_selected_sketch_entities()
