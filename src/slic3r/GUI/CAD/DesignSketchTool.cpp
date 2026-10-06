@@ -3473,18 +3473,19 @@ static double display_edge_tol(const TopoDS_Shape& shape)
 void DesignSketchTool::refresh_body_edges()
 {
     const size_t n = m_solid_bodies != nullptr ? m_solid_bodies->size() : 0;
+    bool rebuilt = n < m_body_edges_shape.size();   // a body went away
     m_body_edges.resize(n);
-    m_body_edges_key.resize(n, nullptr);
+    m_body_edges_shape.resize(n);
     m_body_edges_tol.resize(n, 0.0);
     for (size_t b = 0; b < n; ++b) {
-        const void* key = body_key(int(b));
-        if (key == m_body_edges_key[b] && key != nullptr)
+        if (is_current_shape(int(b), m_body_edges_shape[b]))
             continue;
-        m_body_edges_key[b] = key;
-        m_body_edges[b].clear();
-        if (key == nullptr)
-            continue;
+        rebuilt = rebuilt || !m_body_edges_shape[b].IsNull();   // a body sampled before was rebuilt
         const TopoDS_Shape& shape = (*m_solid_bodies)[b].shape;
+        m_body_edges_shape[b] = shape;
+        m_body_edges[b].clear();
+        if (shape.IsNull())
+            continue;
         m_body_edges_tol[b] = display_edge_tol(shape);
         try {
             m_body_edges[b] = GeometryEngine::display_edges(shape, m_body_edges_tol[b]);
@@ -3492,15 +3493,36 @@ void DesignSketchTool::refresh_body_edges()
             m_body_edges[b].clear();   // an unsampleable edge costs its body the lines, nothing else
         }
     }
+    // A pick expires once the body it was taken on is rebuilt, which renumbers its faces and
+    // edges. Judged by that body's shape, not by these lines: a recompute that refreshed no lines
+    // (adding a datum, say) may come before a pick on the bodies it built, and that pick holds.
+    // The hover is resolved again on the next mouse move, so any rebuild just drops it.
+    if (m_solid_sel != SolidSel::None && !is_current_shape(m_sel_body, m_sel_shape))
+        clear_solid_selection();
+    else if (rebuilt)
+        m_pre = SolidPick{};
+    // The face outlines of a rebuilt body let go of its shape, which may be a large import.
+    const auto stale = [this](const FaceHighlight& h) { return !is_current_shape(h.body, h.shape); };
+    if (stale(m_sel_hl)) m_sel_hl = FaceHighlight{};
+    if (stale(m_pre_hl)) m_pre_hl = FaceHighlight{};
+    m_hl_faces.erase(std::remove_if(m_hl_faces.begin(), m_hl_faces.end(), stale), m_hl_faces.end());
 }
 
-// The identity of a body's current shape. Face ids and sampled edges hold while it does.
-const void* DesignSketchTool::body_key(int body) const
+const TopoDS_Shape* DesignSketchTool::body_shape(int body) const
 {
     if (m_solid_bodies == nullptr || body < 0 || body >= int(m_solid_bodies->size()))
         return nullptr;
     const TopoDS_Shape& shape = (*m_solid_bodies)[body].shape;
-    return shape.IsNull() ? nullptr : shape.TShape().get();
+    return shape.IsNull() ? nullptr : &shape;
+}
+
+// Whether `sampled` is still the body's shape. The caches hold the shape itself rather than its
+// address, so the sampled TShape stays alive and no rebuilt body can be allocated in its place.
+// IsSame also compares the Location, which the sampled lines are in.
+bool DesignSketchTool::is_current_shape(int body, const TopoDS_Shape& sampled) const
+{
+    const TopoDS_Shape* shape = body_shape(body);
+    return shape != nullptr && sampled.IsSame(*shape);
 }
 
 // View-facing ribbons along a body's polylines (shape coordinates), `hw` either side of the line
@@ -3603,6 +3625,7 @@ void DesignSketchTool::clear_solid_selection()
 {
     m_solid_sel = SolidSel::None;
     m_sel_body = m_sel_face = m_sel_edge = -1;
+    m_sel_shape = TopoDS_Shape();
     m_sel_edge_pts.clear();
     m_sel_edges_more.clear();
     m_sel_edges_more_pts.clear();
@@ -3630,6 +3653,7 @@ void DesignSketchTool::select_body(int body)
         return;
     }
     m_sel_body  = body;
+    m_sel_shape = (*m_solid_bodies)[body].shape;
     m_sel_face  = m_sel_edge = -1;
     m_sel_edge_pts.clear();
     m_sel_edges_more.clear();
@@ -3641,7 +3665,7 @@ void DesignSketchTool::set_highlight_faces(const std::vector<std::pair<int, int>
 {
     std::map<int, std::vector<int>> by_body;
     for (const auto& [b, f] : faces)
-        if (body_key(b) != nullptr)
+        if (body_shape(b) != nullptr)
             by_body[b].push_back(f);
     // Reuse each body's entry, so re-sending the same faces resamples nothing.
     std::vector<FaceHighlight> next;
@@ -3663,13 +3687,16 @@ DesignSketchTool::FaceHighlight DesignSketchTool::make_face_highlight(int body, 
     std::sort(faces.begin(), faces.end());
     faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
     h.faces = std::move(faces);
-    h.key   = body_key(body);
-    if (h.key == nullptr || h.faces.empty())
+    const TopoDS_Shape* shape = body_shape(body);
+    if (shape == nullptr)
+        return h;
+    h.shape = *shape;
+    if (h.faces.empty())
         return h;
     // Sampled at the body edges' tolerance; a whole body reuses its body edges.
-    const TopoDS_Shape&            shape  = (*m_solid_bodies)[body].shape;
-    const std::vector<TopoDS_Face> all    = GeometryEngine::faces_of(shape);
-    const bool                     cached = body < int(m_body_edges_key.size()) && m_body_edges_key[body] == h.key;
+    const std::vector<TopoDS_Face> all    = GeometryEngine::faces_of(*shape);
+    const bool                     cached = body < int(m_body_edges_shape.size())
+                                            && is_current_shape(body, m_body_edges_shape[body]);
     if (cached && h.faces.size() == all.size() && h.faces.front() == 0 && h.faces.back() == int(all.size()) - 1) {
         h.edges = m_body_edges[body];
         return h;
@@ -3681,7 +3708,7 @@ DesignSketchTool::FaceHighlight DesignSketchTool::make_face_highlight(int body, 
         if (f >= 0 && f < int(all.size()))
             builder.Add(picked, all[f]);
     try {
-        h.edges = GeometryEngine::display_edges(picked, cached ? m_body_edges_tol[body] : display_edge_tol(shape));
+        h.edges = GeometryEngine::display_edges(picked, cached ? m_body_edges_tol[body] : display_edge_tol(*shape));
     } catch (const Standard_Failure&) {
         h.edges.clear();   // an edge that cannot be sampled costs the outline, never the fill
     }
@@ -3691,12 +3718,13 @@ DesignSketchTool::FaceHighlight DesignSketchTool::make_face_highlight(int body, 
 std::vector<std::pair<int, int>> DesignSketchTool::picked_faces() const
 {
     std::vector<std::pair<int, int>> out;
-    if (body_key(m_sel_body) == nullptr)
+    const TopoDS_Shape* shape = body_shape(m_sel_body);
+    if (shape == nullptr)
         return out;
     if (m_solid_sel == SolidSel::Face && m_sel_face >= 0)
         out.emplace_back(m_sel_body, m_sel_face);
     else if (m_solid_sel == SolidSel::Whole)
-        for (int f = 0, n = GeometryEngine::face_count((*m_solid_bodies)[m_sel_body].shape); f < n; ++f)
+        for (int f = 0, n = GeometryEngine::face_count(*shape); f < n; ++f)
             out.emplace_back(m_sel_body, f);
     return out;
 }
@@ -3705,7 +3733,7 @@ std::vector<std::pair<int, int>> DesignSketchTool::selected_faces() const
 {
     std::vector<std::pair<int, int>> out = picked_faces();
     for (const FaceHighlight& h : m_hl_faces)
-        if (h.key != nullptr && h.key == body_key(h.body))
+        if (is_current_shape(h.body, h.shape))
             for (int f : h.faces)
                 out.emplace_back(h.body, f);
     std::sort(out.begin(), out.end());
@@ -3718,7 +3746,7 @@ const DesignSketchTool::FaceHighlight& DesignSketchTool::cached_face_highlight(F
 {
     std::sort(faces.begin(), faces.end());
     faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
-    if (cache.body != body || cache.faces != faces || cache.key != body_key(body))
+    if (cache.body != body || cache.faces != faces || !is_current_shape(body, cache.shape))
         cache = make_face_highlight(body, std::move(faces));
     return cache;
 }
@@ -3729,7 +3757,7 @@ const DesignSketchTool::FaceHighlight& DesignSketchTool::cached_face_highlight(F
 // version: the line alone, thinner and fainter.
 void DesignSketchTool::render_face_outline(const FaceHighlight& h, bool quiet)
 {
-    if (m_body_edges_hidden || h.key == nullptr || h.key != body_key(h.body) || !body_pickable(h.body))
+    if (m_body_edges_hidden || !is_current_shape(h.body, h.shape) || !body_pickable(h.body))
         return;   // hidden, or the body was rebuilt and these face ids are stale
 
     const Camera& cam = wxGetApp().plater()->get_camera();
@@ -4006,6 +4034,7 @@ bool DesignSketchTool::handle_solid_click(GLCanvas3D& canvas, const wxMouseEvent
     m_sel_edges_more_pts.clear();
 
     m_sel_body      = p.body;
+    m_sel_shape     = (*m_solid_bodies)[p.body].shape;   // resolve_solid_pick checked p.body
     m_sel_face      = p.face;
     m_sel_edge      = p.edge;
     m_sel_edge_pts  = std::move(p.edge_pts);

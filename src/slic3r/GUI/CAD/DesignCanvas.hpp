@@ -49,10 +49,11 @@ public:
 
     // Multi-body display: one GLVolume per body, each coloured distinctly (per-body colour).
     // `visible` (optional, indexed by body) hides bodies whose flag is false. `body_meshes` is kept
-    // by address (a stable panel member) and read again whenever the selection changes.
+    // by address (a stable panel member) and read again whenever the selection changes. The
+    // bodies' edge lines are refreshed with them (DesignSketchTool::refresh_body_edges).
     void set_bodies(const std::vector<TriangleMesh>* body_meshes,
                     const std::vector<bool>& visible = {});
-    void clear_mesh();
+    void clear_mesh();   // no bodies: drops their volumes and the tool's edge lines, pick and selection
 
     void set_preview_mesh(const TriangleMesh& mesh);
     void clear_preview();

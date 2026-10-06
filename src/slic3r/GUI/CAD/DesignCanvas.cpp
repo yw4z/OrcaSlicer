@@ -414,6 +414,7 @@ void DesignCanvas::set_bodies(const std::vector<TriangleMesh>* body_meshes,
     if (body_meshes == nullptr || body_meshes->empty()) { clear_mesh(); return; }
 
     m_body_meshes = body_meshes;
+    m_sketch_tool.refresh_body_edges();   // of the bodies set_solid_pick() pointed the tool at
     m_lit_faces   = m_sketch_tool.selected_faces();
     rebuild_bodies();
     reload(!m_first_frame);
@@ -423,6 +424,8 @@ void DesignCanvas::clear_mesh()
 {
     m_body_meshes = nullptr;
     m_volumes.clear();
+    // No solid, so no edge lines, pick or hover either, as after a rebuild that leaves no body.
+    m_sketch_tool.set_solid_pick(nullptr, nullptr, nullptr, nullptr);
     if (!m_model.objects.empty()) {
         m_model.delete_object((size_t)0);
         reload(true);

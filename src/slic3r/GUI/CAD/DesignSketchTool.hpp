@@ -4,6 +4,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/CAD/SketchEngine.hpp"
 #include "libslic3r/CAD/CadDocument.hpp"   // CadBody for per-body solid picking
+#include <TopoDS_Shape.hxx>
 #include "libslic3r/CAD/SketchInference.hpp"
 #include "slic3r/GUI/GLModel.hpp"
 #include "slic3r/GUI/GLSelectionRectangle.hpp"   // left-drag rubber band over the committed bodies
@@ -208,6 +209,9 @@ public:
     // their edges do not float over the preview.
     void set_body_edges_hidden(bool h) { m_body_edges_hidden = h; }
     void clear_solid_selection();
+    // Resample the edges of each body whose shape changed and drop those of bodies that are gone.
+    // Also expires a pick or hover on a rebuilt body. The canvas calls it whenever it gets the bodies.
+    void refresh_body_edges();
     bool has_solid_selection() const { return m_solid_sel != SolidSel::None; }
     // Every picked edge when the selection is an edge set (Shift/Ctrl+click adds and removes
     // edges of the same body): the earlier picks first, the last-clicked edge at the end.
@@ -1226,19 +1230,20 @@ private:
     Vec3d body_xform_pt(int body, const Vec3d& p) const;     // map an OCCT-shape point through the body xform
     // The bodies' B-rep edges, drawn as dark lines over the solids so faces and features read
     // apart. One polyline set per body in its own shape coordinates, resampled only for a body
-    // whose shape changed (keyed by the TShape), since set_solid_pick runs on every recompute.
+    // whose shape changed (see is_current_shape).
     std::vector<std::vector<std::vector<Vec3d>>> m_body_edges;
-    std::vector<const void*>                     m_body_edges_key;
+    std::vector<TopoDS_Shape>                    m_body_edges_shape;   // the shape each set was sampled from
     std::vector<double>                          m_body_edges_tol;   // the chord tolerance they were sampled at
     bool                                         m_body_edges_hidden{false};
-    void refresh_body_edges();
     void render_body_edges();
-    const void* body_key(int body) const;   // the body's TShape, nullptr when there is none
+    const TopoDS_Shape* body_shape(int body) const;   // nullptr when there is no such body or it has no shape
+    bool is_current_shape(int body, const TopoDS_Shape& sampled) const;   // `sampled` is still the body's shape
     void append_ribbons(GLModel::Geometry& g, int body, const std::vector<std::vector<Vec3d>>& polylines,
                         const Vec3d& vd, const Vec3d& pull, double hw) const;
     bool body_pickable(int b) const;                    // false when the body is explicitly hidden
     SolidSel                m_solid_sel{SolidSel::None};
     int                     m_sel_body{-1};   // which body the face/edge selection is on
+    TopoDS_Shape            m_sel_shape;      // that body's shape when picked: the ids index into it
     int                     m_sel_face{-1};
     int                     m_sel_edge{-1};
     std::vector<Vec3d>      m_sel_edge_pts;
@@ -1283,11 +1288,11 @@ private:
     void render_solid_sel(SolidSel kind, const std::vector<Vec3d>& edge_pts, const Vec3d& vertex_pt,
                           const ColorRGBA& rgb);
     // A set of selected faces of one body, with their edges sampled once, keyed by the body's
-    // TShape so a recompute that rebuilt the body retires it.
+    // shape so a recompute that rebuilt the body retires it.
     struct FaceHighlight {
         int                             body{-1};
         std::vector<int>                faces;   // sorted
-        const void*                     key{nullptr};
+        TopoDS_Shape                    shape;
         std::vector<std::vector<Vec3d>> edges;   // in the body's shape coordinates
     };
     FaceHighlight make_face_highlight(int body, std::vector<int> faces) const;

@@ -7896,8 +7896,7 @@ void DesignPanel::set_tree_selection(int row)
 
 // The selection (the solid pick, the hit face and the committed-loop pick) names bodies, faces and
 // features by index, so replacing or renumbering the feature list (undo/redo, New Design, load,
-// delete, reorder) drops it, the viewport's highlights with it. The solid highlight too: a rebuild
-// that leaves no body never reaches set_solid_pick. The callers repaint.
+// delete, reorder) drops it, the viewport's highlights with it. The callers repaint.
 void DesignPanel::drop_selection()
 {
     if (m_viewport != nullptr)
@@ -8093,8 +8092,18 @@ void DesignPanel::on_toggle_visibility()
     refresh_tree();                       // greys the row
     set_tree_selection(sel);              // keep the toggled feature selected
     if (m_viewport != nullptr) {
-        if (m_doc.display_mesh.its.indices.empty()) m_viewport->clear_mesh();
-        else                                        feed_bodies();
+        if (m_doc.display_mesh.its.indices.empty()) {
+            m_viewport->clear_mesh();
+        } else {
+            // Not set_status_ok(), which would take the gizmo from a Move still open.
+            feed_bodies();
+            // Hiding or showing a feature rebuilds the bodies and can renumber them, so the pick is
+            // re-pointed and its selection dropped. That also brings picking back for a body shown
+            // after everything was hidden (clear_mesh() dropped it).
+            m_viewport->set_solid_pick(&m_doc.bodies, &m_disp_pick_mesh,
+                                       &m_doc.display_tri_face, &m_doc.display_tri_body,
+                                       &m_body_visible, &m_body_xform);
+        }
     }
     sync_sketch_display();                // skips the hidden sketch + direct-renders
     set_status(StatusKind::Info, shown ? _L("Feature shown") : _L("Feature hidden"));
