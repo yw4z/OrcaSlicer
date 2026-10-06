@@ -135,7 +135,7 @@ contract between them is stated in code rather than spread across handlers.
 | --- | --- | --- |
 | `Transient` | a value field or a popup menu | closes it; the tool stays armed |
 | `Gesture` | an uncommitted delta — an entity being drawn, a body being dragged | reverts it; committed work is untouched |
-| `Tool` | a feature card, an armed sketch tool, a constrain session | exits it; drawn entities survive |
+| `Tool` | a feature card, Sketch waiting for its plane, an armed sketch tool, a constrain session | exits it; drawn entities survive |
 | `Idle` | nothing transient | clears the selection, a Feature tree or Bodies row included; leaves a sketch session only if it is empty |
 
 `cad_escape_level()` is a `constexpr` free function over a POD of four booleans rather than a
@@ -181,10 +181,18 @@ canvas (a sibling of the canvas, not a child over it — on GTK a child window o
 a plate grid is never read as a sketch grid, and `N` to look normal to the plane. Code that
 changes any of the three belongs with a change to this section.
 
+Sketch mode is never entered without a plane under it, so the banner, the sketch keys and the
+sketch offer always have a session to act on. Sketch on a picked flat face or reference plane opens
+the session on it at once. With nothing picked it stays in Feature mode and waits for one — an
+armed `Tool`, left with `Esc` or ✗, and ended by anything that starts another edit — and the
+reference plane or flat face clicked next opens the session. A picked plane is a selection like a
+face: the sketch on it uses it up, and `Esc` or a click on nothing lets go of it, so a plane that
+can no longer be seen never decides where the next sketch goes.
+
 The reference planes — XY, XZ and YZ through the modeling origin, with their half-axes — are
 drawn on demand, because three translucent squares over every model are noise once they are not
-the thing being picked. Sketch mode brings them up, since choosing the sketch plane is exactly
-when they are picked; a live session draws none, and Finish or Cancel takes them away. The
+the thing being picked. Sketch brings them up while it waits for a plane, which is exactly when
+they are picked, and the session the pick opens takes them away; a live session draws none. The
 Feature tree's Origin row, pinned above the features and never removable, keeps them up outside a
 sketch. Its state is a view preference in AppConfig rather than part of the recipe, so it costs
 the project format nothing. The Plane tool keeps its own rule: the planes and the datums as Offset

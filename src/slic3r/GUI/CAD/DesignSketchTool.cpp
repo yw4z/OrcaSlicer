@@ -9486,7 +9486,10 @@ const ColorRGBA* DesignSketchTool::sketch_hl_color(int feature) const
 // forgotten by the next one. Cheap: three ints compared per frame.
 void DesignSketchTool::emit_step_hint()
 {
-    if (!on_step_changed) return;
+    // No session, no step. render() also runs while only the reference planes are up, and m_mode
+    // then holds the last session's tool (Polyline before the first), whose prompt used to replace
+    // the panel's own line — "click a reference plane" while Sketch waits for one.
+    if (!on_step_changed || !m_active) return;
     int step = 0, picks = 0;
     if (is_edit_op_mode()) {
         picks = (m_mode == Mode::Mirror) ? int(m_mirror_targets.size())

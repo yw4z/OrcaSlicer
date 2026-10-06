@@ -173,7 +173,6 @@ public:
     // Returns false when no session is live, so the caller can fall back to a new feature.
     bool add_imported_regions(const std::vector<std::vector<std::vector<Vec2d>>>& regions);
     void set_tool(Mode mode);                 // switch tool, keep accumulated entities
-    void set_plane(const SketchPlane& plane) { m_plane = plane; }  // re-plane a live sketch (a reference plane was clicked mid-session); entities are 2D, re-lifted through the new plane
     void set_construction(bool c) { m_construction = c; }
     void set_polygon_sides(int n) { m_polygon_sides = (n < 3 ? 3 : n); }
     void set_polygon_circumscribed(bool c) { m_polygon_circumscribed = c; }

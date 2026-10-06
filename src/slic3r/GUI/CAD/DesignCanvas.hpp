@@ -68,7 +68,6 @@ public:
                      const std::vector<SketchEntityConstraintDef>& constraints,
                      const SketchPlane& plane);
     void set_sketch_tool(DesignSketchTool::Mode mode);
-    void set_sketch_plane(const SketchPlane& plane);   // re-plane the live sketch when a reference plane is clicked in 3D
     void set_sketch_construction(bool c);
     // Flip the sketch selection between construction and real geometry; returns the
     // number of entities changed (0 = nothing selected, caller falls back to the mode).

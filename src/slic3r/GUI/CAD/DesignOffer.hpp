@@ -99,7 +99,7 @@ static const bool kOfferRowFlat[] = {
 };
 
 static const OfferVerb kOfferVerbs[] = {
-    {"sketch", L("Sketch"), 0, "Shift+S", "key:S+S", L("Click a face or a reference plane in the viewport, then a sketch tool"), 0x00000403u, 0, 0, false, false, nullptr, "design_sketch", L("Click a face or a reference plane, then pick a drawing tool")},
+    {"sketch", L("Sketch"), 0, "Shift+S", "key:S+S", L("Select a flat face or a reference plane to sketch on"), 0x00000403u, 0, 0, false, false, nullptr, "design_sketch", L("Sketch on the selected flat face or plane, or click one next")},
     {"extrude", L("Extrude"), 1, "Shift+E", "key:S+E", L("Create a sketch, or pick a solid face, first"), 0x00004002u, 0, 0, false, false, nullptr, "design_extrude", L("Extrude a sketch profile, or push/pull a picked face")},
     {"revolve", L("Revolve"), 1, "Shift+R", "key:S+R", L("Create a sketch profile to revolve first"), 0x00004000u, 0, 0, false, false, nullptr, "design_revolve", L("Revolve a profile about an axis")},
     {"sweep", L("Sweep"), 1, "Shift+W", "key:S+W", L("Create a profile sketch to sweep first"), 0x00004000u, 0, 2, false, false, nullptr, "design_sweep", L("Sweep a profile along a path")},

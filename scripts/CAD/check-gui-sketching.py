@@ -268,16 +268,17 @@ def reset_document():
 def enter_sketch(tool_key, plane_px=(913, 359)):
     """Enter a sketch the way the design law says: pick the plane in the viewport, then the tool.
 
-    Shift+S enters sketch MODE, which brings the reference planes up; the click picks one; the
-    tool letter then starts the session on it. Entering with a plane an earlier rung chose pops
-    the offer at once, and a click outside a popup menu only closes it, so the plane is clicked
-    twice, apart. No Escape: with no offer up, Escape in an empty sketch leaves it. All of it is
-    real input — nothing here goes through the socket.
+    leave_sketch()'s Escapes let go of every pick, so Shift+S finds nothing to sketch on and only
+    brings the reference planes up; the click on one opens the session on it and pops the tool
+    offer. A click outside a popup menu only closes it, so the same spot is clicked again, apart:
+    inside the session it is empty canvas, so it selects nothing if the offer is slow to appear.
+    No Escape: with no offer up, Escape in an empty sketch leaves it. The tool letter then arms
+    the tool. All of it is real input — nothing here goes through the socket.
     """
     leave_sketch()
     key("shift+s", 0.8)
-    click(*plane_px, pause=0.8)   # closes the offer if an earlier rung's plane popped it...
-    click(*plane_px)              # ...so this is the click that picks the plane
+    click(*plane_px, pause=0.8)   # picks the plane: the session opens and the offer pops...
+    click(*plane_px)              # ...and this closes the offer
     key("p", 0.6)
     if try_call("sketch_describe") is None:
         shot("/shots/gl-enter-failed.png")

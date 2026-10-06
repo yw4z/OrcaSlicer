@@ -481,13 +481,6 @@ void DesignCanvas::begin_sketch(const SketchPlane& plane, DesignSketchTool::Mode
     if (m_canvas_widget) m_canvas_widget->Refresh();
 }
 
-void DesignCanvas::set_sketch_plane(const SketchPlane& plane)
-{
-    m_sketch_tool.set_plane(plane);   // keeps the 2D entities; only the carrier plane changes
-    if (m_canvas) m_canvas->set_as_dirty();
-    if (m_canvas_widget) m_canvas_widget->Refresh();
-}
-
 void DesignCanvas::edit_sketch(const std::vector<SketchEntity>& entities,
                                const std::vector<SketchEntityConstraintDef>& constraints,
                                const SketchPlane& plane)
