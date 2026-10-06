@@ -10,6 +10,8 @@
 #include <string>
 #include <charconv>
 #include <vector>
+#include <functional>
+#include <utility>
 #include "Extruder.hpp"
 #include "Point.hpp"
 #include "Polygon.hpp"
@@ -20,7 +22,6 @@
 
 namespace Slic3r {
 
-class FirstLayerPlane;
 
 class GCodeWriter {
 public:
@@ -168,13 +169,13 @@ public:
     void set_kinematics(std::unique_ptr<MachineKinematics> kinematics);
     const MachineKinematics& kinematics() const { return *m_kinematics; }
 
-    // First-layer plane evaluator.  When set to an active plane, travel speed
-    // selection consults the plane per destination point instead of the
-    // layer-coarse m_is_first_layer flag.  Borrowed pointer; lifetime is owned
-    // by GCode, which constructs the plane after the writer exists -- so this is
-    // deliberately a setter and not a constructor argument.
-    void set_first_layer_plane(const FirstLayerPlane *plane, double first_layer_height_mm)
-        { m_first_layer_plane = plane; m_first_layer_thickness_mm = first_layer_height_mm; }
+    // Per-point first-layer test.  When set, travel speed selection asks it per
+    // destination point (in the writer's logical placed frame) instead of using
+    // the layer-coarse m_is_first_layer flag.  GCode installs it on belt printers
+    // with the same test its extrusions use (GCode::on_first_layer(point)), so a
+    // travel is judged against the belt surface exactly as the path it leads to.
+    using FirstLayerPointTest = std::function<bool(const Vec3d &point_logical)>;
+    void set_first_layer_point_test(FirstLayerPointTest test) { m_first_layer_point_test = std::move(test); }
 
     // Force every lift to a plain vertical lift.  Spiral and slope lifts compute
     // their slope in the logical frame and do not account for a machine mapping
@@ -197,9 +198,8 @@ protected:
 
     std::string _travel_to_z(double z, const std::string &comment);
 
-    // Whether a destination gets first-layer treatment.  With an active plane
-    // evaluator, distance from the plane decides; otherwise the layer-coarse
-    // m_is_first_layer flag does.
+    // Whether a destination gets first-layer treatment.  With a point test
+    // installed it decides; otherwise the layer-coarse m_is_first_layer flag does.
     bool point_on_first_layer(const Vec3d &point_logical) const;
 
     // True when a lift must be skipped because this mapping would emit the
@@ -207,17 +207,15 @@ protected:
     bool must_skip_lift_now() const;
 
     // True when travel speed is selected per destination point rather than per
-    // layer. Set for writers that install a first-layer plane. The historical
-    // path emits the raw configured travel speed in the final branch of
-    // travel_to_xyz(), ignoring the first-layer selection computed at the top of
-    // that function; a plane-driven writer uses the first-layer-aware value
-    // throughout. Both are preserved exactly -- unifying them would change
+    // layer. Set for writers that install a first-layer point test. The
+    // historical path emits the raw configured travel speed in the final branch
+    // of travel_to_xyz(), ignoring the first-layer selection computed at the top
+    // of that function; a point-test-driven writer uses the first-layer-aware
+    // value throughout. Both are preserved exactly -- unifying them would change
     // emitted feedrates and belongs in its own commit.
-    bool uses_pointwise_travel_speed() const { return m_first_layer_plane != nullptr; }
+    bool uses_pointwise_travel_speed() const { return bool(m_first_layer_point_test); }
 
-    // Borrowed; null = inactive.
-    const FirstLayerPlane *m_first_layer_plane = nullptr;
-    double                 m_first_layer_thickness_mm = 0.;
+    FirstLayerPointTest    m_first_layer_point_test;
     bool                   m_force_normal_lift = false;
 
     // The machine frame mapping.  Owns the axis-remap state that used to live

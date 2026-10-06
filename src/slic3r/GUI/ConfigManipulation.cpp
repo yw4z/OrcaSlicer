@@ -353,6 +353,31 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
 
     bool is_object_config = (!is_global_config && !is_plate_config);
 
+    // Belt printer: a raft and a draft shield are refused by Print::validate(), and
+    // the fields that would clear them are greyed out in belt mode, so a preset that
+    // carries either could not be sliced at all. Reset them instead of only disabling
+    // the fields.
+    if (GUI::wxGetApp().preset_bundle != nullptr) {
+        const auto *belt_opt = GUI::wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionBool>("belt_printer");
+        const auto *raft_opt = config->option<ConfigOptionInt>("raft_layers");
+        const auto *shield_opt = config->option<ConfigOptionEnum<DraftShield>>("draft_shield");
+        const bool has_raft   = raft_opt != nullptr && raft_opt->value > 0;
+        const bool has_shield = shield_opt != nullptr && shield_opt->value != dsDisabled;
+        if (belt_opt != nullptr && belt_opt->value && (has_raft || has_shield)) {
+            const wxString msg_text = _(L("Raft and draft shield are not available on belt printers.\nThey have been disabled."));
+            MessageDialog dialog(m_msg_dlg_parent, msg_text, "", wxICON_WARNING | wxOK);
+            DynamicPrintConfig new_conf = *config;
+            is_msg_dlg_already_exist = true;
+            dialog.ShowModal();
+            if (has_raft)
+                new_conf.set_key_value("raft_layers", new ConfigOptionInt(0));
+            if (has_shield)
+                new_conf.set_key_value("draft_shield", new ConfigOptionEnum<DraftShield>(dsDisabled));
+            apply(config, &new_conf);
+            is_msg_dlg_already_exist = false;
+        }
+    }
+
     // layer_height shouldn't be equal to zero
     auto layer_height = config->opt_float("layer_height");
     if (layer_height < EPSILON)

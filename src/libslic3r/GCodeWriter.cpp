@@ -1,5 +1,4 @@
 #include "GCodeWriter.hpp"
-#include "FirstLayerPlane.hpp"
 #include "Config.hpp"
 #include "Extruder.hpp"
 #include "Geometry.hpp"
@@ -57,8 +56,8 @@ bool GCodeWriter::must_skip_lift_now() const
 
 bool GCodeWriter::point_on_first_layer(const Vec3d &point_logical) const
 {
-    if (m_first_layer_plane && m_first_layer_plane->is_active())
-        return m_first_layer_plane->is_first_layer(point_logical, m_first_layer_thickness_mm);
+    if (m_first_layer_point_test)
+        return m_first_layer_point_test(point_logical);
     return m_is_first_layer;
 }
 

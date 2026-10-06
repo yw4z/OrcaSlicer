@@ -96,14 +96,12 @@ Transform3d BeltTransformPipeline::build_forward_transform(const PrintConfig &co
 
 BoundingBoxf3 BeltTransformPipeline::remap_bbox(const BoundingBoxf3 &bb, const PrintConfig &config)
 {
+    if (!has_preslice_remap(config))
+        return bb;  // Identity remap, or belt mode off.
+
     int pre_rx = int(config.preslice_remap_x.value);
     int pre_ry = int(config.preslice_remap_y.value);
     int pre_rz = int(config.preslice_remap_z.value);
-
-    if (pre_rx == int(RemapAxis::PosX) &&
-        pre_ry == int(RemapAxis::PosY) &&
-        pre_rz == int(RemapAxis::PosZ))
-        return bb;  // Identity remap.
 
     auto remap_coord = [](int r, const Vec3d &v) -> double {
         int axis = r % 3;

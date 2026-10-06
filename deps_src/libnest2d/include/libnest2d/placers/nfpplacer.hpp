@@ -89,6 +89,18 @@ struct NfpPConfig {
     bool explore_holes = false;
 
     /**
+     * @brief Keep the final pile on the bin.
+     *
+     * The final alignment centres the pile on the alignment target. A target
+     * near an edge (a belt printer starts its parts at the leading end of the
+     * belt) would push part of a pile that is larger than the room around that
+     * point off the bed; with this set the pile stops at the edge instead, and a
+     * pile that does not fit along an axis is centred on it. Off by default, so
+     * the alignment of every other printer is unchanged.
+     */
+    bool clamp_to_bin = false;
+
+    /**
      * @brief If true, use all CPUs available. Run on a single core otherwise.
      */
     bool parallel = true;
@@ -1113,12 +1125,9 @@ private:
 
         auto d = cb - ci;
 
-        // Keep the pile on the bin. A target near an edge (a belt printer starts its parts
-        // at the leading end of the belt) would otherwise centre a pile that is larger than
-        // the room around that point on it and push part of the pile off the bed. The pile
-        // stops at the edge instead; the items' boxes carry their inflation, which is the
-        // margin left there. A pile that does not fit along an axis is centred on it.
-        {
+        // Keep the pile on the bin (see Config::clamp_to_bin). The items' boxes carry
+        // their inflation, which is the margin left at the edge.
+        if (config_.clamp_to_bin) {
             auto on_bin = [](Coord lo, Coord hi, Coord bin_lo, Coord bin_hi, Coord shift) {
                 if (hi - lo >= bin_hi - bin_lo)
                     return (bin_lo + bin_hi) / 2 - (lo + hi) / 2;

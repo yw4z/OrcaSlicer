@@ -14,6 +14,7 @@
 #include <catch2/generators/catch_generators_range.hpp>
 #include <catch2/catch_message.hpp>
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/libslic3r.h"
 #include <cstddef>
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/Config.hpp"
@@ -26,6 +27,10 @@
 
 #include "libslic3r/Print.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/BuildVolume.hpp"
+#include "libslic3r/Support/TreeModelVolumes.hpp"
+#include "libslic3r/Support/TreeSupportCommon.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCodeReader.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -968,4 +973,285 @@ TEST_CASE("Slicing errors are reported per object with the object's name", "[Pri
     }
     CHECK(message.rfind("floating cube: ", 0) == 0);
     CHECK(message.find("empty first layer") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// Belt mode must be invisible when it is off, and must not leave traces behind.
+// ---------------------------------------------------------------------------
+
+// Everything the slicer decided, without the lines that legitimately differ between
+// two exports of the same print: comments (the config block lists every key, the
+// header carries the export time) and the thumbnail blocks.
+static std::string gcode_body(const std::string &gcode)
+{
+    std::string      body;
+    std::istringstream in(gcode);
+    for (std::string line; std::getline(in, line); ) {
+        line.erase(std::min(line.size(), line.find(';')));
+        while (! line.empty() && line.back() == ' ')
+            line.pop_back();
+        if (! line.empty())
+            body += line + '\n';
+    }
+    return body;
+}
+
+static DynamicPrintConfig belt_test_config()
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "belt_printer",               1 },
+        { "belt_slice_rotation",        "x" },
+        { "belt_slice_rotation_angle",  45 },
+        { "belt_slice_rotation_global", 1 },
+        { "gcode_remap_x",              "rev_x" },
+        { "gcode_remap_y",              "pos_z" },
+        { "gcode_remap_z",              "pos_y" },
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "z_hop",                      0 },
+        { "machine_start_gcode",        "T[initial_tool]\n" },
+        { "layer_change_gcode",         "G92 E0\n" },
+    });
+    return config;
+}
+
+TEST_CASE("Belt-only keys at non-default values leave non-belt G-code unchanged", "[Print][belt][Regression]")
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "z_hop",                      0 },
+        { "brim_type",                  "outer_only" },
+        { "brim_width",                 4 },
+        { "enable_support",             1 },
+        { "support_type",               "tree(auto)" },
+        { "support_style",              "organic" },
+        { "sparse_infill_pattern",      "adaptivecubic" },
+        { "machine_start_gcode",        "T[initial_tool]\n" },
+        { "layer_change_gcode",         "G92 E0\n" },
+    });
+    const std::string reference = gcode_body(slice({ TestMesh::overhang }, config));
+    REQUIRE(! reference.empty());
+
+    // Every belt key a profile can carry, at a value that would change a belt print.
+    // belt_printer stays off, so none of them may reach the G-code: the axis remaps are
+    // gated on belt mode, the rest is only read on belt printers. build_plate_tilt_x/y
+    // and an explicit first_layer_plane are features of their own on a flat bed and are
+    // left alone here; "leading_edge_only" prints as an outer brim by design.
+    config.set_deserialize_strict({
+        { "belt_printer",                0 },
+        { "belt_printer_infinite_y",     0 },
+        { "belt_slice_rotation",         "y" },
+        { "belt_slice_rotation_angle",   30 },
+        { "belt_slice_rotation_global",  0 },
+        { "belt_preslice_global",        0 },
+        { "preslice_remap_x",            "pos_x" },
+        { "preslice_remap_y",            "pos_z" },
+        { "preslice_remap_z",            "neg_y" },
+        { "preslice_remap_global",       1 },
+        { "gcode_remap_x",               "rev_x" },
+        { "gcode_remap_y",               "pos_z" },
+        { "gcode_remap_z",               "pos_y" },
+        { "gcode_back_transform",        0 },
+        { "belt_frame_tilt_decouple",    1 },
+        { "belt_frame_tilt_angle",       30 },
+        { "first_layer_plane_offset",    1 },
+        { "first_layer_plane_thickness", 1 },
+        { "belt_support_floor_offset",   -5 },
+        { "belt_support_floor_mode",     "none" },
+        { "belt_support_z_offset_mode",  "raft_only" },
+        { "enable_belt_purge_tower",     1 },
+        { "belt_purge_tower_width",      10 },
+        { "leading_brim_length",         10 },
+        { "extra_brim_width",            5 },
+    });
+    CHECK(gcode_body(slice({ TestMesh::overhang }, config)) == reference);
+}
+
+TEST_CASE("Switching a sliced project from belt to non-belt matches a fresh slice", "[Print][belt][Regression]")
+{
+    // The organic support layers and the adaptive infill octree are placed with the
+    // belt global Z offset, and the mesh with the belt min-Z lift. Both are only
+    // written while belt mode slices, so they used to survive a switch away from it.
+    DynamicPrintConfig flat = DynamicPrintConfig::full_print_config();
+    flat.set_deserialize_strict({
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "z_hop",                      0 },
+        { "enable_support",             1 },
+        { "support_type",               "tree(auto)" },
+        { "support_style",              "organic" },
+        { "sparse_infill_pattern",      "adaptivecubic" },
+        { "machine_start_gcode",        "T[initial_tool]\n" },
+        { "layer_change_gcode",         "G92 E0\n" },
+    });
+    DynamicPrintConfig belt = belt_test_config();
+    belt.set_deserialize_strict({
+        { "enable_support",        1 },
+        { "support_type",          "tree(auto)" },
+        { "support_style",         "organic" },
+        { "sparse_infill_pattern", "adaptivecubic" },
+    });
+
+    // Both prints are placed with the belt config, so only the slicing history differs.
+    auto fresh_slice = [&](const DynamicPrintConfig &target) {
+        Print print;
+        Model model;
+        init_print({ TestMesh::overhang }, print, model, belt);
+        print.apply(model, target);
+        const std::string out = gcode(print);
+        return gcode_body(out);
+    };
+    auto resliced = [&](const DynamicPrintConfig &target) {
+        Print print;
+        Model model;
+        init_print({ TestMesh::overhang }, print, model, belt);
+        REQUIRE(! gcode(print).empty());
+        print.apply(model, target);
+        const std::string out = gcode(print);
+        return gcode_body(out);
+    };
+    SECTION("belt printer to a flat-bed printer") {
+        CHECK(resliced(flat) == fresh_slice(flat));
+    }
+    SECTION("belt tilt axis set to None") {
+        DynamicPrintConfig untilted = belt;
+        untilted.set_deserialize_strict({ { "belt_slice_rotation", "none" } });
+        CHECK(resliced(untilted) == fresh_slice(untilted));
+    }
+}
+
+TEST_CASE("A support-only change on a belt purge print matches a fresh slice", "[Print][belt][PurgeTower][Regression]")
+{
+    // Snapping the purge prism onto the parts' layer grid shifts every object's layers by
+    // up to half a layer. A support-only change reruns support generation without
+    // reslicing, so the cached belt floor and the global Z offset have to carry the
+    // snap too, or the supports land on the pre-snap grid.
+    auto make_config = [](bool support) {
+        DynamicPrintConfig config = multifilament_config(2, {
+            { "belt_printer",               1 },
+            { "belt_slice_rotation",        "x" },
+            { "belt_slice_rotation_angle",  45 },
+            { "belt_slice_rotation_global", 1 },
+            { "gcode_remap_x",              "rev_x" },
+            { "gcode_remap_y",              "pos_z" },
+            { "gcode_remap_z",              "pos_y" },
+            { "layer_height",               0.2 },
+            { "initial_layer_print_height", 0.2 },
+            { "skirt_loops",                0 },
+            { "z_hop",                      0 },
+            { "enable_belt_purge_tower",    1 },
+            { "machine_start_gcode",        "T[initial_tool]\n" },
+            { "layer_change_gcode",         "G92 E0\n" },
+        });
+        config.set_deserialize_strict({
+            { "enable_support", support ? 1 : 0 },
+            { "support_type",   "tree(auto)" },
+            { "support_style",  "organic" },
+        });
+        return config;
+    };
+    const std::vector<std::vector<Slic3r::ConfigBase::SetDeserializeItem>> overrides {
+        { { "extruder", 1 } }, { { "extruder", 2 } },
+    };
+    auto build = [&](Print &print, Model &model, const DynamicPrintConfig &config) {
+        init_print(std::vector<TriangleMesh>{ mesh(TestMesh::overhang), cube(20) }, print, model, config, &overrides);
+        model.objects.back()->config.set_key_value("belt_purge_tower_object", new ConfigOptionBool(true));
+        print.apply(model, config);
+        REQUIRE(print.has_belt_purge_tower());
+    };
+
+    std::string fresh;
+    {
+        Print print;
+        Model model;
+        build(print, model, make_config(true));
+        fresh = gcode_body(gcode(print));
+    }
+    REQUIRE(! fresh.empty());
+
+    Print print;
+    Model model;
+    build(print, model, make_config(false));
+    REQUIRE(! gcode(print).empty());
+    // Support only: posSlice stays valid, posSupportMaterial reruns.
+    print.apply(model, make_config(true));
+    CHECK(gcode_body(gcode(print)) == fresh);
+}
+
+TEST_CASE("Organic tree supports place a support blocker at its own height above a raft", "[Print][Support][Regression]")
+{
+    // TreeModelVolumes consumes the support blockers in the same index space as the
+    // layer outlines, where object layer i sits at num_raft_layers + i, but
+    // slice_support_blockers() returns them in object-layer space. Without the shift
+    // every blocker lands num_raft_layers too low, so branches are kept out of the
+    // wrong layers and may pass through the blocked ones.
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "enable_support",             1 },
+        { "support_type",               "tree(auto)" },
+        { "support_style",              "organic" },
+        { "raft_layers",                3 },
+    });
+    Print print;
+    Model model;
+    init_print({ cube(20) }, print, model, config);
+    // A blocker floating beside the cube, 8 mm to 12 mm above the bed, so a collision at
+    // its centre can only come from the blocker itself (the part keeps its mesh
+    // coordinates in object space, hence the offset relative to the part).
+    ModelObject *object  = model.objects.front();
+    ModelVolume *blocker = object->add_volume(TriangleMesh(its_make_cube(6., 6., 4.)));
+    blocker->set_type(ModelVolumeType::SUPPORT_BLOCKER);
+    const Vec3d part_offset = object->volumes.front()->get_offset();
+    blocker->set_offset(Vec3d(part_offset.x() + 20., part_offset.y(), 10.));
+    print.apply(model, config);
+    print.set_status_silent();
+    print.process();
+
+    const PrintObject &print_object = *print.objects().front();
+    const std::vector<Vec2d> bed = { { 0., 0. }, { 200., 0. }, { 200., 200. }, { 0., 200. } };
+    const BuildVolume build_volume{ bed, print.config().printable_height.value, {}, {} };
+    TreeSupport3D::TreeModelVolumes volumes{ print_object, build_volume, scaled<coord_t>(1.), scaled<coord_t>(0.5), 0, {} };
+
+    // The generator's raft layer count: the raft itself plus the gap layers up to the object.
+    const size_t num_raft = TreeSupport3D::TreeSupportSettings(TreeSupport3D::TreeSupportMeshGroupSettings(print_object),
+                                                               print_object.slicing_parameters()).raft_layers.size();
+    REQUIRE(num_raft >= 3);
+    // Object layers the blocker was sliced into (object-layer space, as the generator
+    // receives them).
+    const std::vector<Polygons> blockers = print_object.slice_support_blockers();
+    size_t first = 0, last = 0;
+    bool   found = false;
+    for (size_t i = 0; i < blockers.size(); ++ i)
+        if (! blockers[i].empty()) {
+            if (! found) { first = i; found = true; }
+            last = i;
+        }
+    REQUIRE(found);
+    REQUIRE(last - first > num_raft);
+    // The blocker's centre in the slicing frame (add_volume centred its mesh on its offset).
+    const Vec3d centre3 = print_object.trafo_sliced() * blocker->get_offset();
+    const Point centre  = Point::new_scale(centre3.x(), centre3.y());
+    auto collides = [&](size_t tree_layer) {
+        for (const Polygon &poly : volumes.getCollision(0, TreeSupport3D::LayerIndex(tree_layer), false))
+            if (poly.contains(centre))
+                return true;
+        return false;
+    };
+    // In TreeModelVolumes' index space the blocker lives at num_raft + object layer.
+    CHECK(collides(num_raft + first));
+    CHECK(collides(num_raft + last));
+    // The layers just below it, where an unshifted blocker would land, are free; the
+    // layers just above the unshifted range, which the blocker does occupy, are not.
+    CHECK_FALSE(collides(first));
+    CHECK_FALSE(collides(first + num_raft - 1));
+    CHECK(collides(last + 1));
+    CHECK(collides(last + num_raft));
 }

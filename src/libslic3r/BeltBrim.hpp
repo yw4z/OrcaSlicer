@@ -91,6 +91,14 @@ inline ExPolygons belt_unflatten(const ExPolygons &src, const BeltBrimFrame &fra
 // t - not when it is wider in its narrowest Euclidean direction.
 ExPolygons sweep_ex(const ExPolygons &src, const Point &t);
 
+// "Leading edge only": keep the part of a brim region (unflattened, slicing XY)
+// at or downhill of the object's first contact with the belt, so the part is
+// supported as it lands and nothing is printed alongside it afterwards.  `u_cut`
+// is the uphill edge of the first layer's contact band along `frame.from_axis`,
+// in mm (BeltFloorContext::cutoff_u of the first layer); downhill is the side
+// `frame.downhill_sign()` points to.
+ExPolygons belt_brim_clip_leading_edge(const ExPolygons &region, const BeltBrimFrame &frame, coordf_t u_cut);
+
 // Brim region for one already-flattened belt footprint.  All lengths are scaled
 // and measured in the flattened (true on-belt) metric.
 //

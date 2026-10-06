@@ -333,6 +333,15 @@ void PrintObject::belt_shift_layer_grid(double delta)
     for (BeltBrimBand &band : m_belt_brim_prologue)
         band.print_z += delta;
     m_slicing_params.belt_floor_z_shift += delta;
+    // The grid stays shifted across a support-only or brim-only change (posSlice does
+    // not rerun), so everything slice() derived from it has to follow: the cached floor
+    // that update_slicing_parameters() restores, and the global offset the organic
+    // support layers and the adaptive infill octree are placed with. Left alone, the
+    // next alignment finds a delta of 0 and the floor and the supports sit up to half
+    // a layer off the grid, unlike a fresh slice.
+    if (m_belt_floor_z_shift_cache_valid)
+        m_belt_floor_z_shift_cached += delta;
+    m_belt_global_z_offset += delta;
 }
 
 // Belt mode: drop layers strictly above z (used to cancel the purge prism early
