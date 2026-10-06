@@ -393,6 +393,8 @@ public:
     void        update_extruder_switch_colors();
     // Whether the variant switch (m_extruder_switch / m_variant_combo) switches nozzle variants.
     bool        variant_switch_active() const;
+    // Orca: whether `page` is the printer tab's single "Extruder" page, which edits the extruder selected on the switch.
+    bool        is_printer_extruder_page(const Page* page) const { return m_type == Preset::TYPE_PRINTER && page && page->title() == "Extruder"; }
     // Shows the variant switch row on variant pages, and on the printer tab's "Extruder" page.
     void        update_variant_sizer_visibility();
     void        update_all_extruder_options_status();
@@ -452,7 +454,7 @@ public:
 	virtual void    on_value_change(const std::string& opt_key, const boost::any& value);
 
     void            update_wiping_button_visibility();
-	void			activate_option(const std::string& opt_key, const wxString& category);
+	virtual void	activate_option(const std::string& opt_key, const wxString& category);
     void			apply_searcher();
 	void			cache_config_diff(const std::vector<std::string>& selected_options, const DynamicPrintConfig* config = nullptr);
 	void			apply_config_from_cache();
@@ -724,13 +726,11 @@ public:
 	Page*		extruder_page() const;
 	// Config index an "Extruder" page field (e.g. "retraction_length#0") currently edits, -1 if not on that page.
 	int			extruder_page_data_index(const std::string& field_id) const;
-	// After the user changed the extruder count: rebuild every tab's variant switch.
-	void		refresh_extruder_switches();
 	// After the config was restored (roll back): follow its extruder count, if it differs.
 	void		sync_extruders_count();
-	// Search jump to "Extruder N" / "key#N": selects extruder N on the switch, and rewrites the
-	// option to the page's own field id and the category to the page title.
-	void		prepare_extruder_option_jump(std::string& opt_key, wxString& category);
+	// Search jump to "Extruder N" / "key#N": selects extruder N on the switch, then activates the
+	// page's own field on the "Extruder" page.
+	void		activate_option(const std::string& opt_key, const wxString& category) override;
 
 protected:
 	// Orca: values of extruders added by raising the extruder count have no saved / system value to

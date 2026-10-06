@@ -198,9 +198,8 @@ private:
         TabCtrl* tabs{nullptr};
         // Printer section with several extruders: the extruder switch shown instead of `tabs`, the
         // same MultiSwitchButton (and option names) as the printer tab's Extruder page. One option
-        // per entry of `categories`; `tabs` stays as the hidden selection model.
+        // per entry of `categories`, named by its title; `tabs` stays as the hidden selection model.
         MultiSwitchButton* variant_switch{nullptr};
-        std::vector<wxString> variant_titles;
         // Second tab strip, below the main one, listing only the mixed-color filament slots.
         // Present on the Material section only (null elsewhere).
         TabCtrl* mixed_tabs{nullptr};
