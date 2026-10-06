@@ -116,6 +116,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <unordered_set>
+#include "slic3r/GUI/GUI_Utils.hpp"
 
 namespace Slic3r {
 
@@ -2663,7 +2664,8 @@ void Tab::update_preset_description_line()
     {
         description_line += "\n\n" + _(L("Additional information:")) + "\n";
         description_line += "\t" + _(L("vendor")) + ": " + (m_type == Slic3r::Preset::TYPE_PRINTER ? "\n\t\t" : "") + parent->vendor->name +
-                            ", ver: " + parent->vendor->config_version.to_string();
+                            // TRN Short for "version"
+                            ", " + _L("ver") + ": " + parent->vendor->config_version.to_string();
         if (m_type == Slic3r::Preset::TYPE_PRINTER) {
             const std::string &printer_model = preset.config.opt_string("printer_model");
             if (! printer_model.empty())
@@ -2926,6 +2928,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("skin_infill_line_width", "strength_settings_patterns#locked-zag");
         optgroup->append_single_option_line("skeleton_infill_line_width", "strength_settings_patterns#locked-zag");
         optgroup->append_single_option_line("symmetric_infill_y_axis", "strength_settings_infill#symmetric-infill-y-axis");
+        optgroup->append_single_option_line("infill_complete_top", "strength_settings_patterns#fill-pattern-tops");
         optgroup->append_single_option_line("infill_shift_step", "strength_settings_patterns#cross-hatch");
         optgroup->append_single_option_line("lateral_lattice_angle_1", "strength_settings_patterns#lateral-lattice");
         optgroup->append_single_option_line("lateral_lattice_angle_2", "strength_settings_patterns#lateral-lattice");
@@ -5177,7 +5180,7 @@ void TabPrinter::build_fff()
             {
                 option = optgroup->get_option("printer_agent");
                 option.opt.gui_type = ConfigOptionDef::GUIType::printer_agent_select;
-                option.opt.width = 3 * Field::def_width_wider() / 2;
+                option.opt.width = Field::def_width_wider();
                 option.opt.tooltip = L("Select the network agent implementation for printer communication. "
                     "Available agents are registered at startup.");
                 optgroup->append_single_option_line(option);
