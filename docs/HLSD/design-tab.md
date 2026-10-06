@@ -303,7 +303,8 @@ The tab is a page of Orca's main window and answers to the same settings as Prep
   not need it either, since the committed object is placed on an empty spot of the current
   plate. What the canvas does read from the plate is moved onto its bed: the exclude areas, the
   plate box the camera orbits about when nothing is picked (`GLCanvas3D::_current_plate_box`),
-  and the first view, which starts as a copy of Prepare's camera.
+  and the first view, which starts from Prepare's camera turned to the tab's iso view: the CAD
+  isometric from the front-right corner that Home returns to, not Prepare's front-left one.
 - **Viewport text.** The status line and the active tool's values are drawn by the canvas in
   its ImGui pass, so they go with the canvas: a top-level window over GL does not follow its
   frame and was left floating over other applications.

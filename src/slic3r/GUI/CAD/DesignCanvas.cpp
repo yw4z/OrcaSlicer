@@ -59,6 +59,16 @@ extern wxPopupWindow* wxCurrentPopupWindow;
 namespace Slic3r {
 namespace GUI {
 
+// The Design tab's iso view is the CAD one: a true isometric from the front-right corner, which
+// shows the navigator's Front, Right and Top faces. Camera's own "iso" looks from the front-left
+// at 45 degrees and stays Prepare's and the thumbnails'.
+static void select_iso_view(Camera& camera)
+{
+    const Vec3d target = camera.get_target();
+    camera.look_at(target + camera.get_distance() * Vec3d(1., -1., 1.).normalized(), target, Vec3d::UnitZ());
+    camera.auto_type(Camera::EType::Perspective);
+}
+
 DesignCanvas::DesignCanvas(wxWindow* parent)
     : wxPanel()
 {
@@ -192,10 +202,12 @@ DesignCanvas::DesignCanvas(wxWindow* parent)
 
     // The view this canvas opens on. Built lazily, on the way into the Design tab, so this
     // is the view the user is looking at right now — moved off the current plate onto the
-    // Design bed, which stays at the printer bed's home whichever plate is current.
+    // Design bed, which stays at the printer bed's home whichever plate is current — turned to
+    // the iso view Home returns to, keeping its target and zoom.
     m_parked_camera = wxGetApp().plater()->get_camera();
     if (PartPlate* plate = wxGetApp().plater()->get_partplate_list().get_curr_plate())
         m_parked_camera.translate_world(-plate->get_origin());
+    select_iso_view(m_parked_camera);
 
     // Before any of this class's own Binds below: wx calls dynamically bound handlers in
     // reverse order of binding, and GLCanvas3D swallows several events without skipping them —
@@ -470,7 +482,10 @@ bool DesignCanvas::zoom_to_box(BoundingBoxf3 box)
 void DesignCanvas::set_view(const std::string& view_name)
 {
     if (m_canvas) {
-        m_canvas->select_view(view_name);
+        if (view_name == "iso")
+            select_iso_view(wxGetApp().plater()->get_camera());   // the Design camera while the tab is shown
+        else
+            m_canvas->select_view(view_name);
         m_canvas->zoom_to_volumes();
         m_canvas->set_as_dirty();
         if (m_canvas_widget)
