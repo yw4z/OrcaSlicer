@@ -1387,7 +1387,11 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     m_viewer.set_dim_previous_layers_brightness(0.01f * std::stoi(get_app_config()->get("preview_dim_previous_layers_brightness")));
 
     // avoid processing if called with the same gcode_result.
-    if (m_last_result_id == gcode_result.id && wxGetApp().is_editor()) {
+    // On a belt printer the toolpath geometry fed to libvgcode also depends on the
+    // designed/raw view state (the back-transform is applied in convert), so the
+    // same result is converted again only when that view has been toggled.
+    const bool same_belt_view = !m_belt_view_enabled || m_last_belt_show_designed == m_belt_show_designed;
+    if (m_last_result_id == gcode_result.id && wxGetApp().is_editor() && same_belt_view) {
         //BBS: add logs
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": the same id %1%, return directly, result %2% ") % m_last_result_id % (&gcode_result);
 
@@ -1429,20 +1433,22 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     }
 
     // convert data from PrusaSlicer format to libvgcode format.
-    // Belt printers: back-transform the toolpath geometry into model/Cartesian
-    // space using the general belt inverse (handles the mesh rotation, shear and
-    // axis remap), so the part is shown upright, the way it was designed.
+    // Belt printers: when the designed (upright) view is active, back-transform
+    // the toolpath geometry into model/Cartesian space using the general belt
+    // inverse (handles the mesh rotation, shear and axis remap). When off, the
+    // raw machine-frame G-code is shown (useful for checking the transform itself).
     const bool is_belt = m_belt_view_enabled && print.config().belt_printer.value;
-    Transform3d belt_inv = is_belt ? compute_belt_back_transform(print.config()) : Transform3d::Identity();
+    Transform3d belt_inv = (is_belt && m_belt_show_designed)
+        ? compute_belt_back_transform(print.config()) : Transform3d::Identity();
     // Belt: move positions are stored as gcode_Z + belt_z_origin (the start G-code's
     // purge-blob advance baked into the machine-Z origin by its G92 Z0 resets). Subtract
     // that constant before the linear back-transform so every toolpath maps to the model's
     // belt coordinate. Without it the back-transform mixes the offset with the gantry-Y
     // term, leaving a per-move designed-Y error that min-corner anchoring cannot remove
     // when a bridge/keel move happens to cancel it at the bbox minimum.
-    if (is_belt && gcode_result.belt_z_origin != 0.0f)
+    if (is_belt && m_belt_show_designed && gcode_result.belt_z_origin != 0.0f)
         belt_inv = belt_inv * Transform3d(Eigen::Translation3d(Vec3d(0.0, 0.0, -double(gcode_result.belt_z_origin))));
-    const bool apply_belt = is_belt
+    const bool apply_belt = is_belt && m_belt_show_designed
         && !belt_inv.matrix().isApprox(Transform3d::Identity().matrix());
     if (apply_belt) {
         // The linear belt back-transform recovers the print's shape and orientation but not
@@ -1679,6 +1685,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
 
     //BBS: move the id to the end of reset
     m_last_result_id = gcode_result.id;
+    m_last_belt_show_designed = m_belt_show_designed;
     m_gcode_result = &gcode_result;
     m_move_type_counts.fill(0);
     for (auto& move_type_times : m_move_type_times)

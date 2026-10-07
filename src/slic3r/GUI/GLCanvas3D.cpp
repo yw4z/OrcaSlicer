@@ -3804,6 +3804,16 @@ bool GLCanvas3D::handle_shortcut(const KeyChord& chord)
         get_gcode_viewer().get_layers_slider()->switch_one_layer_mode();
         m_dirty = true;
         break;
+    case Shortcut::ToggleBeltRawGcode:
+        // Same state as the canvas view menu item. The designed-view back-transform is
+        // baked into the toolpaths at load time, so the preview is re-converted.
+        if (m_gcode_viewer.is_belt_view()) {
+            m_gcode_viewer.toggle_belt_show_designed();
+            if (Plater* plater = wxGetApp().plater())
+                plater->refresh_belt_view();
+            m_dirty = true;
+        }
+        break;
     case Shortcut::GoToLayer:
         if (!m_gizmos.is_enabled()) {
             get_gcode_viewer().get_layers_slider()->show_go_to_layer(true);
@@ -10333,6 +10343,22 @@ void GLCanvas3D::_render_canvas_toolbar()
             p->are_view3D_labels_shown(),
             [p]{p->show_view3D_labels(!p->are_view3D_labels_shown());}
         );
+
+        // Belt printers, G-code preview only: show the raw machine-frame G-code instead of
+        // the designed (upright) view. This menu is the only place the toggle lives (plus
+        // its shortcut); the reload is deferred (CallAfter) so the preview is not rebuilt
+        // mid-render.
+        if (m_canvas_type == ECanvasType::CanvasPreview && m_gcode_viewer.is_belt_view()) {
+            ImGui::Separator();
+            create_menu_item( _utf8(L("Show raw G-code (belt only)")),
+                true,
+                !m_gcode_viewer.is_belt_show_designed(), // eye lit = raw machine-frame G-code (designed view off)
+                [this, p]{
+                    m_gcode_viewer.toggle_belt_show_designed();
+                    p->CallAfter([p]{ p->refresh_belt_view(); });
+                }
+            );
+        }
 
         ImGui::PopItemFlag();
         ImGui::EndPopup();
