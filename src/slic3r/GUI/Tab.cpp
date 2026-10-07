@@ -1161,8 +1161,9 @@ std::string Tab::options_list_storage_key(const std::string& opt_key) const
 
 // Orca: deep_diff() flags every vector entry at or past the reference vector's length as changed,
 // whatever its value (e.g. the values of an extruder added by raising the extruder count). A vector
-// grows by copying its first entry (ConfigOptionVector::resize), so such an entry only counts as
-// changed when it differs from the reference's first entry, as before Orca's deep_diff() change.
+// grows by copying its first entry (ConfigOptionVector::resize), and machine limits by copying their
+// first (normal, silent) pair (set_num_extruders), so such an entry only counts as changed when it
+// differs from the reference entry it was copied from, as before Orca's deep_diff() change.
 // The change of the count itself shows on "extruders_count".
 static void drop_unchanged_added_entries(std::vector<std::string> &options, const DynamicPrintConfig &current, const Preset *reference)
 {
@@ -1171,7 +1172,7 @@ static void drop_unchanged_added_entries(std::vector<std::string> &options, cons
     // deep_diff() lists a key's entries one after another, so serialize each key's vectors once.
     std::string              serialized_key;
     std::vector<std::string> cur_values;
-    std::string              ref_first;
+    std::vector<std::string> ref_values;
     options.erase(std::remove_if(options.begin(), options.end(), [&](const std::string &opt) {
         const auto pos = opt.find('#');
         if (pos == std::string::npos)
@@ -1185,9 +1186,10 @@ static void drop_unchanged_added_entries(std::vector<std::string> &options, cons
         if (key != serialized_key) {
             serialized_key = key;
             cur_values     = cur->vserialize();
-            ref_first      = ref->vserialize().front();
+            ref_values     = ref->vserialize();
         }
-        return cur_values[idx] == ref_first;
+        const size_t copied_from = printer_options_with_variant_2.count(key) > 0 && idx % 2 < ref_values.size() ? idx % 2 : 0;
+        return cur_values[idx] == ref_values[copied_from];
     }), options.end());
 }
 
