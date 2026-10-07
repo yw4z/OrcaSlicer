@@ -807,11 +807,11 @@ TEST_CASE("set_num_extruders gives every printer variant its own pair of machine
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
     auto speed_x = [&config]() { return config.option<ConfigOptionFloats>("machine_max_speed_x")->values; };
 
-    SECTION("a single pair is copied to every extruder") {
+    SECTION("a new extruder's pair is padded with the first value, like the other variant keys") {
         config.option<ConfigOptionFloats>("machine_max_speed_x")->values = {500., 200.};
         config.set_num_extruders(3);
         REQUIRE(config.option<ConfigOptionStrings>("printer_extruder_variant")->size() == 3);
-        REQUIRE(speed_x() == std::vector<double>({500., 200., 500., 200., 500., 200.}));
+        REQUIRE(speed_x() == std::vector<double>({500., 200., 500., 500., 500., 500.}));
     }
 
     SECTION("per-extruder pairs are kept, and removing an extruder removes its pair") {
@@ -822,8 +822,8 @@ TEST_CASE("set_num_extruders gives every printer variant its own pair of machine
         REQUIRE(speed_x() == std::vector<double>({500., 200., 400., 150.}));
     }
 
-    SECTION("a printer with nozzle variants gets a pair per variant column") {
-        // 2 extruders x 2 variants = 4 columns
+    SECTION("a printer with nozzle variants gets a pair per variant") {
+        // 2 extruders x 2 variants each = 4 variants
         config.option<ConfigOptionStrings>("extruder_variant_list", true)->values = {"Direct Drive Standard,Direct Drive High Flow",
                                                                                      "Direct Drive Standard,Direct Drive High Flow"};
         const std::vector<double> per_variant = {500., 200., 510., 210., 520., 220., 530., 230.};
@@ -833,7 +833,7 @@ TEST_CASE("set_num_extruders gives every printer variant its own pair of machine
 
         config.option<ConfigOptionFloats>("machine_max_speed_x")->values = {500., 200.};
         config.set_num_extruders(2);
-        REQUIRE(speed_x() == std::vector<double>({500., 200., 500., 200., 500., 200., 500., 200.}));
+        REQUIRE(speed_x() == std::vector<double>({500., 200., 500., 500., 500., 500., 500., 500.}));
     }
 }
 

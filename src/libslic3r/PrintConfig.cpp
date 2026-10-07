@@ -10030,48 +10030,13 @@ static void extend_extruder_variant(DynamicPrintConfig& config, const unsigned i
             printer_extruder_variant_opt->values.insert(printer_extruder_variant_opt->values.end(), variants_list.begin(), variants_list.end());
         }
     }
-}
 
-// Options in printer_options_with_variant_2 are stored as (normal,silent) pairs per printer variant.
-// Some legacy presets/projects carry a variant list but still store only one pair; normalize to avoid crashes.
-static void normalize_stride2_floats(ConfigOptionFloats &opt, size_t expected_size)
-{
-    auto &v = opt.values;
-    if (expected_size == 0) {
-        v.clear();
-        return;
-    }
-    if (v.empty()) {
-        // Fallback: keep behavior predictable instead of crashing. This should be rare.
-        v.resize(expected_size, 0.0);
-        return;
-    }
-
-    const double first  = v[0];
-    const double second = (v.size() >= 2) ? v[1] : first;
-
-    // Ensure we have at least one (normal,silent) pair to replicate.
-    if (v.size() < 2) {
-        v.resize(2, first);
-        v[1] = second;
-    }
-    // Keep pair alignment if some legacy preset produced odd length.
-    if (v.size() % 2 != 0)
-        v.push_back(second);
-
-    if (v.size() > expected_size) {
-        v.resize(expected_size);
-        return;
-    }
-
-    const size_t have_variants = v.size() / 2;
-    const size_t want_variants = expected_size / 2;
-    v.resize(expected_size);
-    for (size_t vi = have_variants; vi < want_variants; ++vi) {
-        v[vi * 2] = first;
-        if (vi * 2 + 1 < v.size())
-            v[vi * 2 + 1] = second;
-    }
+    // 3. Size the machine limits to the rebuilt variants, padded with their first value like the other variant keys.
+    // They are not extruder option keys, so the resize loop in set_num_extruders skips them.
+    const auto &defaults = FullPrintConfig::defaults();
+    for (const std::string &key : printer_options_with_variant_2)
+        if (auto *opt = config.option<ConfigOptionFloats>(key))
+            opt->resize(config.get_parameter_size(key, num_extruders), defaults.option(key));
 }
 
 void DynamicPrintConfig::set_num_extruders(unsigned int num_extruders)
@@ -10091,11 +10056,6 @@ void DynamicPrintConfig::set_num_extruders(unsigned int num_extruders)
             static_cast<ConfigOptionVectorBase*>(opt)->resize(get_parameter_size(key, num_extruders), defaults.option(key));
         }
     }
-    // Orca: machine limits are not extruder option keys and need a pair-aware resize, so that every
-    // printer variant has its own (normal, silent) pair to edit.
-    for (const std::string &key : printer_options_with_variant_2)
-        if (auto *opt = this->option<ConfigOptionFloats>(key))
-            normalize_stride2_floats(*opt, get_parameter_size(key, num_extruders));
 }
 
 // BBS
@@ -11509,6 +11469,48 @@ void DynamicPrintConfig::update_filament_config_values_for_multiple_extruders(Dy
 }
 
 namespace {
+// Options in printer_options_with_variant_2 are stored as (normal,silent) pairs per printer variant.
+// Some legacy presets/projects carry a variant list but still store only one pair; normalize to avoid crashes.
+static void normalize_stride2_floats(ConfigOptionFloats &opt, size_t expected_size)
+{
+    auto &v = opt.values;
+    if (expected_size == 0) {
+        v.clear();
+        return;
+    }
+    if (v.empty()) {
+        // Fallback: keep behavior predictable instead of crashing. This should be rare.
+        v.resize(expected_size, 0.0);
+        return;
+    }
+
+    const double first  = v[0];
+    const double second = (v.size() >= 2) ? v[1] : first;
+
+    // Ensure we have at least one (normal,silent) pair to replicate.
+    if (v.size() < 2) {
+        v.resize(2, first);
+        v[1] = second;
+    }
+    // Keep pair alignment if some legacy preset produced odd length.
+    if (v.size() % 2 != 0)
+        v.push_back(second);
+
+    if (v.size() > expected_size) {
+        v.resize(expected_size);
+        return;
+    }
+
+    const size_t have_variants = v.size() / 2;
+    const size_t want_variants = expected_size / 2;
+    v.resize(expected_size);
+    for (size_t vi = have_variants; vi < want_variants; ++vi) {
+        v[vi * 2] = first;
+        if (vi * 2 + 1 < v.size())
+            v[vi * 2 + 1] = second;
+    }
+}
+
 static void log_normalize_legacy_vector_size(const char *fn, const std::string &key, int stride, size_t src_size, size_t dest_size, size_t expected_size,
                                             size_t restore_n, int cur_variant_count, int target_variant_count, size_t cur_ids, size_t target_ids,
                                             const ConfigOption *opt_src, const ConfigOption *opt_target)
