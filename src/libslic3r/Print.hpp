@@ -231,12 +231,6 @@ class ConstSupportLayerPtrsAdaptor : public ConstVectorOfPtrsAdaptor<SupportLaye
     ConstSupportLayerPtrsAdaptor(const SupportLayerPtrs *data) : ConstVectorOfPtrsAdaptor<SupportLayer>(data) {}
 };
 
-// The model's raw bounding box, in the frame the belt floor parameters refer to.
-inline BoundingBoxf3 belt_remapped_bbox(const ModelObject &model_object, const PrintConfig & /*config*/)
-{
-    return model_object.raw_bounding_box();
-}
-
 // Single instance of a PrintObject.
 // As multiple PrintObjects may be generated for a single ModelObject (their instances differ in rotation around Z),
 // ModelObject's instancess will be distributed among these multiple PrintObjects.
@@ -721,8 +715,6 @@ private:
     bool                                    m_belt_brim_pending { false };
     // Belt printer: min_z of mesh after belt shear (before Z-shift), for z_offset calc.
     double                                  m_belt_min_z { 0.0 };
-    // Belt printer: XY correction from global pre-slice mode, applied to G-code origin.
-    Vec2d                                   m_belt_global_xy_correction { Vec2d::Zero() };
     // Belt printer: exact belt_floor_z_shift computed during posSlice from a
     // vertex-level scan of the post-transform mesh.  Cached separately from
     // m_slicing_params so that rebuilding m_slicing_params on a non-belt-affecting
@@ -733,8 +725,6 @@ private:
     bool                                    m_belt_floor_z_shift_cache_valid { false };
 public:
     double belt_global_z_offset() const { return m_belt_global_z_offset; }
-    double belt_min_z() const { return m_belt_min_z; }
-    Vec2d  belt_global_xy_correction() const { return m_belt_global_xy_correction; }
 private:
 
 

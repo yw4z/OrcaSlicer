@@ -1023,7 +1023,6 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
                 continue;
             LayerTools &layer_tools = this->tools_for_layer(band.print_z);
             layer_tools.extruders.push_back(brim_filament);
-            layer_tools.has_belt_brim = true;
         }
     }
 
@@ -1042,7 +1041,6 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
                 continue;
             LayerTools &layer_tools = this->tools_for_layer(object.layers()[i]->print_z);
             layer_tools.extruders.push_back(brim_filament);
-            layer_tools.has_belt_brim = true;
         }
     }
 
