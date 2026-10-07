@@ -7321,6 +7321,9 @@ LayerResult GCode::process_layer(
                     m_avoid_crossing_perimeters.use_external_mp_once();
                 m_last_obj_copy = this_object_copy;
                 this->set_origin(unscale(offset));
+                // Same as the main instance loop: a belt printer rotates the origin through
+                // the belt transform (BeltGCode::on_set_origin).
+                this->on_set_origin(&instance_to_print.print_object, offset);
 
                 // --- Build emission plan ---
                 // Each entry represents one travel_to_z + extrude pass. Per-object mode produces
