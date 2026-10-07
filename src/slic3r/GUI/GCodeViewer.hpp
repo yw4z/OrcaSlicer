@@ -201,6 +201,8 @@ private:
     unsigned int m_last_result_id{ 0 };
     // Belt printers: the view the loaded result was converted for (see load_as_gcode).
     bool m_last_belt_show_designed{ true };
+    // Belt printers: the print Z of each viewer layer, in the viewer's layer numbering.
+    std::vector<double> m_belt_layer_zs;
     //BBS: save m_gcode_result as well
     const GCodeProcessorResult* m_gcode_result;
     std::array<unsigned int, static_cast<size_t>(EMoveType::Count)> m_move_type_counts{};
@@ -329,6 +331,10 @@ public:
     const BoundingBoxf3& get_max_bounding_box() const { return m_max_bounding_box; }
     const BoundingBoxf3& get_shell_bounding_box() const { return m_shell_bounding_box; }
     std::vector<double> get_layers_zs() const {
+        // Belt printers: the layer Z the slider labels and the colour-change ticks
+        // use is the layer's print Z (see load_as_gcode), not a toolpath height.
+        if (! m_belt_layer_zs.empty())
+            return m_belt_layer_zs;
         const std::vector<float> zs = m_viewer.get_layers_zs();
         std::vector<double> ret;
         std::transform(zs.begin(), zs.end(), std::back_inserter(ret), [](float z) { return static_cast<double>(z); });

@@ -2440,6 +2440,36 @@ std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> GCode::collec
         layers_to_print.emplace_back(std::move(merged));
     }
 
+    // Belt printers: drop the layers that print nothing at all.  An object's
+    // slicing frame starts at the belt below its leading end, so its first layers
+    // are empty, and with several objects along the belt those empty layers fall
+    // between other objects' printing layers.  A layer change with no moves is
+    // noise in the file, and the preview (libvgcode) numbers its layers from the
+    // moves it sees, so a gap folds every later layer into the one before it.
+    if (print.config().belt_printer.value) {
+        auto prints_something = [](const LayerToPrint &ltp) {
+            if (ltp.object_layer != nullptr && ltp.object_layer->has_extrusions())
+                return true;
+            if (ltp.support_layer != nullptr && ltp.support_layer->has_extrusions())
+                return true;
+            if (ltp.belt_brim_band != nullptr && ! ltp.belt_brim_band->fills.empty())
+                return true;
+            if (ltp.object_layer != nullptr && ltp.original_object != nullptr && ltp.original_object->has_belt_brim()) {
+                const auto  &by_layer = ltp.original_object->belt_brim_by_layer();
+                const size_t id       = ltp.object_layer->id();
+                if (id < by_layer.size() && ! by_layer[id].empty())
+                    return true;
+            }
+            return false;
+        };
+        layers_to_print.erase(
+            std::remove_if(layers_to_print.begin(), layers_to_print.end(),
+                [&prints_something](const std::pair<coordf_t, std::vector<LayerToPrint>> &group) {
+                    return std::none_of(group.second.begin(), group.second.end(), prints_something);
+                }),
+            layers_to_print.end());
+    }
+
     return layers_to_print;
 }
 

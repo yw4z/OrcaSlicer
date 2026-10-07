@@ -4305,6 +4305,15 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
+    // ;Z: -- the layer Z tag non-BBL printers write.  Only read on a belt printer,
+    // where the preview labels its layers with it (GCodeViewer::load_as_gcode);
+    // elsewhere print_z stays unset, as it always was, so nothing downstream of
+    // it changes for other printers.
+    if (m_belt_printer && boost::starts_with(comment, "Z:")) {
+        m_print_z = get_z_height(comment);
+        return;
+    }
+
     if (boost::starts_with(comment, " CONFIG_BLOCK_START")) {
         m_in_config_block = true;
         return;

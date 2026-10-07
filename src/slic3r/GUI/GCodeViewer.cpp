@@ -87,6 +87,7 @@
 
 #include <array>
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <chrono>
 #include <Eigen/Geometry>
@@ -1635,6 +1636,26 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     m_viewer.reset_default_extrusion_roles_colors();
     m_viewer.load(std::move(data));
 
+    // Belt printers: libvgcode labels a layer with the height of its toolpaths, which
+    // on a tilted layer is wherever its last extrusion happened to end, and the layer
+    // slider looks its labels and the colour-change ticks up in that list assuming it
+    // increases.  Give it the layers' print Z instead (the slicer's layer Z, which
+    // increases along the belt), numbered the way libvgcode::convert() numbers the
+    // layers: consecutively over the moves that exist.
+    m_belt_layer_zs.clear();
+    if (is_belt) {
+        unsigned int src_layer_id = std::numeric_limits<unsigned int>::max();
+        for (size_t i = 1; i < gcode_result.moves.size(); ++ i) {
+            const GCodeProcessorResult::MoveVertex &mv = gcode_result.moves[i];
+            if (mv.layer_id != src_layer_id) {
+                src_layer_id = mv.layer_id;
+                m_belt_layer_zs.emplace_back(double(mv.print_z));
+            }
+        }
+        if (m_belt_layer_zs.size() != m_viewer.get_layers_count())
+            m_belt_layer_zs.clear();
+    }
+
 // #if !VGCODE_ENABLE_COG_AND_TOOL_MARKERS
 //     const size_t vertices_count = m_viewer.get_vertices_count();
 //     m_cog.reset();
@@ -1905,6 +1926,7 @@ void GCodeViewer::reset()
     //BBS: should also reset the result id
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": current result id %1% ")%m_last_result_id;
     m_last_result_id = -1;
+    m_belt_layer_zs.clear();
     //BBS: add only gcode mode
     m_only_gcode_in_preview = false;
 

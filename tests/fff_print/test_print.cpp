@@ -1244,6 +1244,68 @@ TEST_CASE("Organic tree supports place a support blocker at its own height above
     CHECK(collides(last + num_raft));
 }
 
+// Two parts along the belt: the second part's slicing frame starts at the belt
+// below its leading end, so its first layers are empty and interleave with the
+// first part's printing layers. Those must not reach the G-code as layer changes
+// that print nothing: the preview numbers its layers from the moves it sees, and
+// a gap folded every later layer into the one before it.
+TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][Regression]")
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "belt_printer",               1 },
+        { "belt_slice_rotation",        "x" },
+        { "belt_slice_rotation_angle",  45 },
+        { "gcode_remap_x",              "rev_x" },
+        { "gcode_remap_y",              "pos_z" },
+        { "gcode_remap_z",              "pos_y" },
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "z_hop",                      0 },
+        { "brim_type",                  "outer_only" },
+        { "brim_width",                 4 },
+        { "machine_start_gcode",        "T[initial_tool]\n" },
+        { "layer_change_gcode",         "G92 E0\n" },
+    });
+    Print print;
+    Model model;
+    TriangleMesh cube_a(its_make_cube(20., 20., 20.));
+    TriangleMesh cube_b(its_make_cube(20., 20., 20.));
+    init_print({ cube_a, cube_b }, print, model, config);
+    // 60 mm apart along the belt: the second cube's lead-in layers fall among the
+    // first cube's layers.
+    model.objects[0]->instances.front()->set_offset(Vec3d(50., 40., 0.));
+    model.objects[1]->instances.front()->set_offset(Vec3d(50., 100., 0.));
+    print.apply(model, config);
+    print.set_status_silent();
+    const std::string gc = gcode(print);
+    REQUIRE(! gc.empty());
+
+    size_t layers = 0, empty = 0, total_header = 0;
+    bool   extruded = true;   // before the first layer change
+    std::istringstream in(gc);
+    std::string line;
+    auto close_layer = [&]() { if (! extruded) ++ empty; };
+    while (std::getline(in, line)) {
+        if (line.rfind(";LAYER_CHANGE", 0) == 0) {
+            close_layer();
+            ++ layers;
+            extruded = false;
+        } else if (line.rfind("; total layer number: ", 0) == 0) {
+            total_header = size_t(std::atoi(line.c_str() + 22));
+        } else if (! extruded && line.rfind("G1 ", 0) == 0 && line.find('E') != std::string::npos
+                   && (line.find('X') != std::string::npos || line.find('Y') != std::string::npos)) {
+            extruded = true;
+        }
+    }
+    close_layer();
+    INFO("layers " << layers << ", header " << total_header << ", layers without extrusion " << empty);
+    CHECK(layers > 150);          // both cubes, 141 layers each, overlapping along the belt
+    CHECK(empty == 0);
+    CHECK(total_header == layers);
+}
+
 // A part with an overhang on its LEADING side (the end that prints first) needs
 // supports below the object's own lowest slicing layer: the belt under that overhang
 // is reached before the object's first contact with it, so the support layers sit at
