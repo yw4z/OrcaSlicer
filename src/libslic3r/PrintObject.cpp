@@ -1767,7 +1767,11 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
         // posSimplifySupportPath is listed with posSupportMaterial: invalidate_steps() does not
         // propagate, so without it a re-slice regenerated the supports but kept the step done,
         // and the new support paths were exported unsimplified, unlike a fresh slice.
-		invalidated |= this->invalidate_steps({ posPerimeters, posPrepareInfill, posInfill, posIroning, posContouring, posSupportMaterial, posSimplifyPath, posSimplifyInfill, posSimplifySupportPath });
+		// posDetectOverhangsForLift reads the layers' overhang regions, which a re-slice
+		// starts over empty: without it here the step stayed done and the lift logic in
+		// GCode::needs_retraction() had no overhangs to test against until something else
+		// invalidated it.
+		invalidated |= this->invalidate_steps({ posPerimeters, posPrepareInfill, posInfill, posIroning, posContouring, posSupportMaterial, posSimplifyPath, posSimplifyInfill, posSimplifySupportPath, posDetectOverhangsForLift });
         invalidated |= m_print->invalidate_steps({ psSkirtBrim });
         m_slicing_params.valid = false;
         // The exact belt_floor_z_shift is recomputed when slice() runs again.
