@@ -6349,6 +6349,10 @@ void TabPrinter::toggle_options()
 
         // Belt printer: show belt-specific settings only when belt_printer is enabled.
         bool is_belt = m_config->opt_bool("belt_printer");
+        // update_fff() derives build_plate_tilt_{x,y} from the belt tilt on a belt
+        // printer, so an edit here would be overwritten; keep them read-only there.
+        toggle_option("build_plate_tilt_x", !is_belt);
+        toggle_option("build_plate_tilt_y", !is_belt);
         bool expert_or_above = (m_mode >= comExpert);
         toggle_line("belt_printer_infinite_y", is_belt);
         // Belt tilt: the sole mesh-side belt transform (visible by default in belt mode).
