@@ -1373,7 +1373,10 @@ bool PrintObject::invalidate_state_by_config_options(
                 const auto* new_brim_type = new_config.option<ConfigOptionEnum<BrimType>>(opt_key);
                 //BBS: When switch to manual brim, the object must have brim, then re-generate perimeter
                 //to make the wall order of first layer to be outer-first
-                if (old_brim_type->value == btOuterOnly || new_brim_type->value == btOuterOnly)
+                // btLeadingEdgeOnly is printed as an outer brim (Brim.cpp, BeltBrim.cpp), so it
+                // takes part in the same first-layer wall order rule.
+                if (old_brim_type->value == btOuterOnly || new_brim_type->value == btOuterOnly ||
+                    old_brim_type->value == btLeadingEdgeOnly || new_brim_type->value == btLeadingEdgeOnly)
                     steps.emplace_back(posPerimeters);
             }
         } else if (
