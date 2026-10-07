@@ -24,7 +24,7 @@
 #include <wx/filename.h>
 #include <sstream>
 #include <string>
-#include "slic3r/GUI/Printer/PrinterFileSystem.h"
+#include <nlohmann/json.hpp>
 #include <functional>
 #include <cstddef>
 #include <wx/dialog.h>
@@ -41,8 +41,10 @@
 #include <wx/webview.h>
 #include <wx/utils.h>
 #include <wx/window.h>
+#include <wx/infobar.h>
 
 namespace pt = boost::property_tree;
+using json = nlohmann::json;
 
 namespace Slic3r {
 namespace GUI {
@@ -974,7 +976,7 @@ void WebViewPanel::OnError(wxWebViewEvent& evt)
         wxLogMessage("%s", "Error; url='" + evt.GetURL() + "', error='" + category + " (" + evt.GetString() + ")'");
 
         // Show the info bar with an error
-        m_info->ShowMessage(_L("An error occurred loading ") + evt.GetURL() + "\n" + "'" + category + "'", wxICON_ERROR);
+        m_info->ShowMessage(wxString::Format(_L("An error occurred loading %s"), evt.GetURL()) + "\n" + "'" + category + "'", wxICON_ERROR);
     }
 
     UpdateState();
