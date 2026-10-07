@@ -87,9 +87,6 @@
 namespace fs = boost::filesystem;
 using json = nlohmann::json;
 
-using namespace Slic3r;
-using namespace Slic3r::GUI;
-
 #define OK_BUTTON_SIZE wxSize(FromDIP(90), FromDIP(24))
 #define CANCEL_BUTTON_SIZE wxSize(FromDIP(58), FromDIP(24))
 #define SyncAmsInfoDialogWidth  FromDIP(675)

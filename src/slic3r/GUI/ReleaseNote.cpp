@@ -78,8 +78,6 @@ using json = nlohmann::json;
 
 namespace Slic3r::GUI { class Plater; }
 
-namespace fs = boost::filesystem;
-
 namespace Slic3r { namespace GUI {
 
 wxDEFINE_EVENT(EVT_SECONDARY_CHECK_CONFIRM, wxCommandEvent);
