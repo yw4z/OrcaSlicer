@@ -17080,9 +17080,15 @@ void Plater::calib_temp(const Calib_Params& params) {
             const std::string calib_dir = Slic3r::resources_dir() + "/calib/temperature_tower/";
             std::string asset = calib_dir + "belt_temp_tower_" + std::to_string(t_start) + "_" + std::to_string(t_end) + ".stl";
             if (!boost::filesystem::exists(asset)) {
-                BOOST_LOG_TRIVIAL(warning) << "[belt_temp] no embossed provini for " << t_start << "->" << t_end
-                                           << ", falling back to 230_190 (embossed numbers will not match)";
-                asset = calib_dir + "belt_temp_tower_230_190.stl";
+                // The embossed numbers are part of the model, so another model's tower would
+                // print numbers that do not match its temperatures.
+                MessageDialog dlg(static_cast<wxWindow *>(wxGetApp().mainframe),
+                                  format_wxstr(_L("No belt temperature tower is available for the range %1% to %2% °C. "
+                                                  "Use a range the tower models cover, for example 230 to 190."),
+                                               t_start, t_end),
+                                  _L("Temperature tower"), wxICON_ERROR | wxOK);
+                dlg.ShowModal();
+                return;
             }
             if (!add_model(false, asset) || model().objects.empty())
                 return;
