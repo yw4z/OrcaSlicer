@@ -4141,7 +4141,17 @@ void PrintObject::update_slicing_parameters()
           BeltTransformPipeline::BeltFloorParams belt_floor;
           const auto &pcfg = this->print()->config();
           if (pcfg.belt_printer.value) {
-              const BoundingBoxf3 bb = this->model_object()->raw_bounding_box();
+              // The box of the mesh in the frame it is sliced in: XY centred and Z as
+              // placed on the bed (trafo_centered()).  raw_bounding_box() has the
+              // instance's Z offset removed, and the belt floor is not invariant to a
+              // Z shift (a point's z and the floor under it move in opposite
+              // directions under the rotation), so an offset box under-estimates the
+              // height by twice the shift and the layers stop part way up the object.
+              BoundingBoxf3     bb;
+              const Transform3d trafo = this->trafo_centered();
+              for (const ModelVolume *v : this->model_object()->volumes)
+                  if (v->is_model_part())
+                      bb.merge(v->mesh().transformed_bounding_box(trafo * v->get_matrix()));
               auto hr = BeltTransformPipeline::compute_belt_height_and_floor(pcfg, bb, object_height);
               object_height = hr.object_height;
               belt_floor    = hr.floor_params;
@@ -4202,6 +4212,13 @@ SlicingParameters PrintObject::slicing_parameters(const DynamicPrintConfig &full
         BoundingBoxf3 bb = model_object.raw_bounding_box();
         object_max_z = (float)bb.size().z();
         if (print_config.belt_printer.value) {
+            // Z as placed on the bed, XY around the instance origin: the belt floor
+            // depends on where the box sits in Z (see update_slicing_parameters()).
+            if (! model_object.instances.empty()) {
+                bb = model_object.instance_bounding_box(0, false);
+                const Vec3d off = model_object.instances.front()->get_offset();
+                bb.translate(-off.x(), -off.y(), 0.);
+            }
             auto hr = BeltTransformPipeline::compute_belt_height_and_floor(print_config, bb, object_max_z);
             object_max_z = (float)hr.object_height;
             belt_floor   = hr.floor_params;

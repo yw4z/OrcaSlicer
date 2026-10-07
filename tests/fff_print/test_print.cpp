@@ -1305,6 +1305,22 @@ TEST_CASE("Belt supports reach the belt under a leading overhang", "[Print][belt
 
         const PrintObject &object = *print.objects().front();
         REQUIRE(! object.layers().empty());
+        // The whole part is sliced: the layers lean at 45 deg, so the part spans
+        // (y + z) / sqrt(2) of slicing Z, and every layer in that span has geometry.
+        {
+            double lo = std::numeric_limits<double>::max(), hi = std::numeric_limits<double>::lowest();
+            for (const stl_vertex &v : mesh.its.vertices) {
+                lo = std::min<double>(lo, v.y() + v.z());
+                hi = std::max<double>(hi, v.y() + v.z());
+            }
+            const double span = (hi - lo) / std::sqrt(2.);
+            size_t nonempty = 0;
+            for (const Layer *layer : object.layers())
+                if (! layer->lslices.empty())
+                    ++ nonempty;
+            INFO("non-empty object layers " << nonempty << ", slicing span " << span << " mm");
+            CHECK(double(nonempty) * 0.2 > span - 0.6);
+        }
         BeltFloorContext floor;
         REQUIRE(floor.init(object.slicing_parameters(), print.config()));
 
