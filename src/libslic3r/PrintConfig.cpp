@@ -7415,7 +7415,7 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Machine-frame tilt angle");
     def->category = L("Printable space");
     def->tooltip = L("Tilt angle (degrees) used to derive the machine-frame shear (cot) and "
-                     "scale (1/sin) applied to G-code. Only used when 'Decouple machine-frame "
+                     "scale (1/|sin|) applied to G-code. Only used when 'Decouple machine-frame "
                      "tilt' is enabled; otherwise the belt tilt angle is used.");
     def->sidetext = L("°");
     def->min = -89.9;
@@ -7477,7 +7477,7 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Belt purge tower width");
     def->category = L("Printable space");
     def->tooltip = L("Width (machine X, across the belt) of the purge prism that is automatically "
-                     "generated on belt printers when the prime tower is enabled and multiple "
+                     "generated on belt printers when the belt purge tower is enabled and multiple "
                      "filaments are used. Filament-change purging is routed into this prism's "
                      "extrusions instead of a classic wipe tower. Its height is computed "
                      "automatically from the worst-case purge volume per layer: a wider prism "

@@ -909,19 +909,10 @@ void PrintObject::slice()
 
     // Belt floor Z-shift: where is the belt surface in final slicer space?
     //
-    // The belt surface is at model_Y=0 (XZ belt plane). After the full
-    // pipeline (trafo_centered → pre_remap → shear → z_shift), the belt
-    // surface equation in slicer space is:
-    //   Z_belt = sf * from_axis + belt_surface_z_centered + z_shift_val
-    //
-    // belt_surface_z_centered = remapped_bbox.min.z() (the Z position of
-    //   the belt surface in centered-pre-shear slicer space, which is 0
-    //   without pre-remap but nonzero when e.g. Y↔Z swap shifts the belt
-    //   surface away from Z=0 by the centering offset).
-    //
-    // z_shift_val = max(0, -m_belt_min_z) (lifts mesh above Z=0).
-    //
-    // So: belt_floor_z_shift = remapped_bb.min.z() + z_shift_val
+    // The belt surface is the model's Z=0 plane.  After the belt rotation and the
+    // Z-shift it is the plane Z_belt = shear_factor * from_axis + z_shift_val in
+    // slicer space, with z_shift_val = max(0, -m_belt_min_z), the lift that starts
+    // the slicing frame at the belt below the footprint.
     if (std::abs(m_slicing_params.belt_floor_shear_factor) > EPSILON) {
         double z_shift_val = (m_belt_min_z < 0.) ? -m_belt_min_z : 0.;
         // The belt surface is at Z=0 in centered slicer space and bb.min.z() is
@@ -967,10 +958,10 @@ void PrintObject::slice()
     if (m_layers.empty())
         throw Slic3r::SlicingError(L("No layers were detected. You might want to repair your STL file(s) or check their size or thickness and retry.\n"));
 
-    // Belt printer global mode: offset all layer Z values so objects at
-    // different bed positions print at different heights on the tilted belt.
-    // This is a post-slicing adjustment — the sliced geometry is identical
-    // regardless of global mode, only the output Z coordinates change.
+    // Belt printer: offset all layer Z values so objects at different positions
+    // along the belt print at different heights on the tilted belt.  This is a
+    // post-slicing adjustment: the sliced geometry is the same, only the output Z
+    // coordinates change.
     {
         const auto &pcfg = this->print()->config();
         BOOST_LOG_TRIVIAL(trace) << "Belt global check: belt_printer=" << pcfg.belt_printer.value

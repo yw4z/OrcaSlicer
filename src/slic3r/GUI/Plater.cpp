@@ -17017,10 +17017,37 @@ void Plater::calib_flowrate(bool is_linear, int pass, InfillPattern pattern) {
 }
 
 
+// The belt provini tower (Calib_Params::test_model 1) is one embossed model per
+// temperature range.
+static std::string belt_temp_tower_asset(const Calib_Params &params)
+{
+    const int t_start = (int) lround(params.start);
+    const int t_end   = (int) lround(params.end);
+    return Slic3r::resources_dir() + "/calib/temperature_tower/belt_temp_tower_" +
+           std::to_string(t_start) + "_" + std::to_string(t_end) + ".stl";
+}
+
 void Plater::calib_temp(const Calib_Params& params) {
     constexpr double base_temp_tower_nozzle_diameter = 0.4;
     constexpr double base_temp_tower_block_height = 10.0;
     constexpr int base_temp_tower_temp_step = 5;
+
+    // A belt provini tower exists only for the ranges it was embossed for, and another
+    // range's model would print numbers that do not match its temperatures.  Refuse
+    // before the current project is replaced.
+    if (params.mode == CalibMode::Calib_Temp_Tower && params.test_model >= 1) {
+        const auto &printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        if (printer_config.has("belt_printer") && printer_config.opt_bool("belt_printer") &&
+            ! boost::filesystem::exists(belt_temp_tower_asset(params))) {
+            MessageDialog dlg(static_cast<wxWindow *>(wxGetApp().mainframe),
+                              format_wxstr(_L("No belt temperature tower is available for the range %1% to %2% °C. "
+                                              "Use a range the tower models cover, for example 230 to 190."),
+                                           (int) lround(params.start), (int) lround(params.end)),
+                              _L("Temperature tower"), wxICON_ERROR | wxOK);
+            dlg.ShowModal();
+            return;
+        }
+    }
 
     const auto calib_temp_name = _L("Nozzle temperature test");
     new_project(false, false, calib_temp_name);
@@ -17077,19 +17104,9 @@ void Plater::calib_temp(const Calib_Params& params) {
                 temps.push_back(t);
             if (temps.empty()) temps.push_back(t_start);
 
-            const std::string calib_dir = Slic3r::resources_dir() + "/calib/temperature_tower/";
-            std::string asset = calib_dir + "belt_temp_tower_" + std::to_string(t_start) + "_" + std::to_string(t_end) + ".stl";
-            if (!boost::filesystem::exists(asset)) {
-                // The embossed numbers are part of the model, so another model's tower would
-                // print numbers that do not match its temperatures.
-                MessageDialog dlg(static_cast<wxWindow *>(wxGetApp().mainframe),
-                                  format_wxstr(_L("No belt temperature tower is available for the range %1% to %2% °C. "
-                                                  "Use a range the tower models cover, for example 230 to 190."),
-                                               t_start, t_end),
-                                  _L("Temperature tower"), wxICON_ERROR | wxOK);
-                dlg.ShowModal();
+            const std::string asset = belt_temp_tower_asset(params);
+            if (!boost::filesystem::exists(asset))   // refused above, before new_project()
                 return;
-            }
             if (!add_model(false, asset) || model().objects.empty())
                 return;
 

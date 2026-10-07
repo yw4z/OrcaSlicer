@@ -1918,10 +1918,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 update_apply_status(this->invalidate_steps({ psSkirtBrim, psWipeTower, psGCodeExport }));
             // A belt brim is clipped against the other objects on the plate (BeltBrim.cpp,
             // belt_brim_obstacles), and it is rebuilt with its object's support step: an
-            // object that arrived or left changes every other object's brim.
+            // object that arrived or left changes every other brim owner's brim.
             if ((new_objects || deleted_objects) && m_config.belt_printer.value)
                 for (PrintObject *object : m_objects)
-                    update_apply_status(object->invalidate_step(posSupportMaterial));
+                    if (object->has_belt_brim())
+                        update_apply_status(object->invalidate_step(posSupportMaterial));
 			if (new_objects)
 	            update_apply_status(false);
             print_regions_reshuffled = true;

@@ -431,10 +431,7 @@ public:
     // the whole list to 0-based afterwards).  Lowest positive outer_wall_filament_id
     // over the printing regions, 1 if none is explicitly set.
     unsigned int                 belt_brim_filament() const;
-    // False when this object's instances sit at different points ALONG the belt, which
-    // would need a separate set of bands each.  Public so validate() can explain it.
     const std::vector<ExtrusionEntityCollection>& belt_brim_by_layer()       const { return m_belt_brim_by_layer; }
-    const std::vector<ExPolygons>&                belt_brim_areas_by_layer() const { return m_belt_brim_areas_by_layer; }
     const std::vector<BeltBrimBand>&              belt_brim_prologue()       const { return m_belt_brim_prologue; }
     void                         clear_belt_brim();
     void                         set_belt_brim(std::vector<ExtrusionEntityCollection> &&by_layer,

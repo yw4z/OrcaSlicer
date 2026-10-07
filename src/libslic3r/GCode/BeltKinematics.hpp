@@ -31,12 +31,6 @@ public:
     explicit BeltKinematics(const PrintConfig &config, bool world_coordinates = false);
 
     Vec3d to_machine(const Vec3d &p) const override;
-    Vec3d to_logical(const Vec3d &machine) const override;
-    // Machine -> build-volume frame. Only the machine-frame shear/scale is undone,
-    // matching what GCodeProcessor's bounds validation wants. This is deliberately
-    // NOT to_logical().
-    Vec3d to_build_volume(const Vec3d &machine) const override
-        { return m_machine_frame.apply_inverse(machine); }
 
     // A belt writer has always emitted full XYZ on every move, whether or not any
     // individual stage reports itself active. Making this conditional would change
@@ -47,14 +41,9 @@ public:
     // coordinates and G2/G3 cannot describe it.
     bool supports_arc_moves() const override { return false; }
 
-    bool world_coordinates() const { return m_world_coordinates; }
-
 private:
     BeltBackTransform     m_back_transform;
     MachineFrameTransform m_machine_frame;
-    // Forward of what m_back_transform inverts, kept so to_logical() can undo it.
-    Transform3d           m_back_forward { Transform3d::Identity() };
-    bool                  m_back_active { false };
     bool                  m_world_coordinates { false };
 };
 

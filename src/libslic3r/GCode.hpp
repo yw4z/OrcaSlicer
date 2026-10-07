@@ -393,13 +393,6 @@ public:
         }
     };
 
-    // Public accessor for the first-layer plane evaluator.  Used by
-    // CoolingBuffer (which is constructed with a GCode reference and needs
-    // to read the plane for per-segment fan re-evaluation).  All other
-    // first-layer-plane access points (on_first_layer overload, effective
-    // index helper) are in the protected section since they're called from
-    // GCode internals only.
-
 protected:
     class GCodeOutputStream {
     public:
@@ -839,12 +832,6 @@ protected:
 
     std::unique_ptr<CoolingBuffer>      m_cooling_buffer;
     std::unique_ptr<SpiralVase>         m_spiral_vase;
-    // First-layer plane evaluator.  Constructed once per print from the
-    // PrintConfig.  is_active() == false on non-belt printers and on belt
-    // printers without a Z-axis shear; in that case all per-path plane
-    // checks short-circuit to the legacy Layer::id() == 0 path.
-    // Plate origin, kept so a writer replaced during export can be given it again.
-
     std::unique_ptr<PressureEqualizer>  m_pressure_equalizer;
     
     std::unique_ptr<AdaptivePAProcessor>      m_pa_processor;

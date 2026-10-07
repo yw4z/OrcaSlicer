@@ -1381,26 +1381,27 @@ TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][
 
     size_t layers = 0, empty = 0, total_header = 0, total_count = 0;
     bool   extruded = true;   // before the first layer change
-    std::istringstream in(gc);
-    std::string line;
     auto close_layer = [&]() { if (! extruded) ++ empty; };
-    while (std::getline(in, line)) {
-        if (line.rfind(";LAYER_CHANGE", 0) == 0) {
+    GCodeReader reader;
+    reader.apply_config(config);
+    reader.parse_buffer(gc, [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
+        const std::string &raw = line.raw();
+        if (raw.rfind(";LAYER_CHANGE", 0) == 0) {
             close_layer();
             ++ layers;
             extruded = false;
-        } else if (line.rfind("; total layer number: ", 0) == 0) {
+        } else if (raw.rfind("; total layer number: ", 0) == 0) {
             // Counted by the G-code processor from the layer changes it saw.
-            total_header = size_t(std::atoi(line.c_str() + 22));
-        } else if (line.rfind("; total layers count = ", 0) == 0) {
+            total_header = size_t(std::atoi(raw.c_str() + 22));
+        } else if (raw.rfind("; total layers count = ", 0) == 0) {
             // GCode::m_layer_count, counted up front from the objects' layers; it also
             // drives the M73 progress and the total_layer_count placeholder.
-            total_count = size_t(std::atoi(line.c_str() + 23));
-        } else if (! extruded && line.rfind("G1 ", 0) == 0 && line.find('E') != std::string::npos
-                   && (line.find('X') != std::string::npos || line.find('Y') != std::string::npos)) {
+            total_count = size_t(std::atoi(raw.c_str() + 23));
+        } else if (! extruded && line.extruding(self) && line.dist_XY(self) > EPSILON) {
+            // Material laid down along a move: a wipe or an unretraction does not count.
             extruded = true;
         }
-    }
+    });
     close_layer();
     INFO("layers " << layers << ", header " << total_header << ", count " << total_count
          << ", layers without extrusion " << empty);

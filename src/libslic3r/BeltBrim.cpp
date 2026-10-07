@@ -376,12 +376,14 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
 // overhang outside the belt footprint and land in the brim ring, which the flattened
 // brim_object_gap - a belt-plane separation - does not cover.
 //
-// SEQUENCING: this reads the layers and support layers of every object on the plate, so
-// it must not overlap with another object's support step, which rebuilds them.
-// Print::process() therefore generates the belt brims one object after the other once the
-// parallel support step is over (PrintObject::generate_belt_brim()), and an object that
-// arrives on or leaves the plate invalidates every other object's support step
-// (PrintApply.cpp) so the brims are clipped against what is there now.
+// SEQUENCING: this reads every object's layers and this object's own support layers.
+// Another object's support step shifts that object's layer Z into the object frame for
+// the duration of the run (PrintObject::_generate_support_material()), so the brims must
+// not overlap with the parallel support step: Print::process() generates them one object
+// after the other once that step is over (PrintObject::generate_belt_brim()), and an
+// object that arrives on or leaves the plate invalidates the other brim owners' support
+// step (PrintApply.cpp) so their brims are clipped against what is there now.  Only this
+// object's supports are dodged; another object's support at the same Z is not.
 // `region_bbox` bounds the brim; anything outside it cannot clip a brim line, so whole
 // objects are skipped without materialising their polygons.  On a typical plate the
 // objects do not overlap and every foreign object drops out here, which matters because
