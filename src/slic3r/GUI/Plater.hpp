@@ -388,7 +388,6 @@ public:
     // Belt printers: re-run the G-code preview conversion so the "designed view" toggle
     // (hotkey B / legend checkbox) takes effect; the back-transform is applied to the
     // toolpath geometry at load time. Keeps the current layer range and only-gcode mode.
-    void refresh_belt_view();
 
     // SoftFever
     void calib_pa(const Calib_Params& params);

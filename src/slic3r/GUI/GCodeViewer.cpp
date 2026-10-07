@@ -1318,13 +1318,11 @@ std::vector<int> GCodeViewer::get_plater_extruder()
 // Belt printers: compute the full machine->model back-transform from the print
 // config, so the "designed" (upright) G-code preview maps each toolpath vertex
 // back to Cartesian space. The G-code forward pipeline is (BeltKinematics::
-// to_machine_coords):  gcode = MachineFrame( AxisRemap( X ) ), with X = model if
-// gcode_back_transform (write already un-rotated to Cartesian) else BeltForward(
-// model). So the inverse is:
-//   model = [BeltForward^-1 if !gcode_back_transform] . AxisRemap^-1 . MachineFrame^-1
-// All parts are config-driven affines -> handles any rotation/shear/scale/axis-
-// remap combination. (origin-snap is a per-instance translation that only shifts
-// position, not orientation, so it is intentionally omitted.)
+// to_machine_coords):  gcode = MachineFrame( AxisRemap( X ) ), with X the model
+// already un-rotated to Cartesian by the back-transform. So the inverse is:
+//   model = AxisRemap^-1 . MachineFrame^-1
+// (origin-snap is a per-instance translation that only shifts position, not
+// orientation, so it is intentionally omitted.)
 static Transform3d compute_belt_back_transform(const PrintConfig& cfg)
 {
     if (!cfg.belt_printer.value)
@@ -1339,10 +1337,9 @@ static Transform3d compute_belt_back_transform(const PrintConfig& cfg)
     // build-volume offset for Rev axes). This is the matrix form of the per-point
     // GCodeWriter::apply_axis_remap (row convention: each OUTPUT axis selects an input
     // axis + sign) and MUST stay in sync with it. The build-volume max matches what the
-    // writer is fed in GCode.cpp (printable_area max + printable_height). NB: this is the
-    // transpose of the column convention used by BeltTransformPipeline::build_preslice_remap
-    // — the two remaps are not interchangeable. (Follow-up: precompute this matrix once in
-    // GCodeWriter and share it with apply_axis_remap to remove the parallel encoding.)
+    // writer is fed in GCode.cpp (printable_area max + printable_height). (Follow-up:
+    // precompute this matrix once in GCodeWriter and share it with apply_axis_remap to
+    // remove the parallel encoding.)
     Transform3d ar = Transform3d::Identity();
     const int rr[3] = { int(cfg.gcode_remap_x.value), int(cfg.gcode_remap_y.value), int(cfg.gcode_remap_z.value) };
     if (rr[0] != 0 || rr[1] != 1 || rr[2] != 2) {
@@ -1361,11 +1358,7 @@ static Transform3d compute_belt_back_transform(const PrintConfig& cfg)
     }
     const Transform3d ar_inv = ar.inverse();
 
-    Transform3d bf_inv = Transform3d::Identity();
-    if (!cfg.gcode_back_transform.value)
-        bf_inv = BeltTransformPipeline::build_forward_transform(cfg).inverse();
-
-    return bf_inv * ar_inv * mf_inv;
+    return ar_inv * mf_inv;
 }
 
 //BBS: always load shell at preview
@@ -1394,11 +1387,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     m_viewer.set_dim_previous_layers_brightness(0.01f * std::stoi(get_app_config()->get("preview_dim_previous_layers_brightness")));
 
     // avoid processing if called with the same gcode_result.
-    // On a belt printer the toolpath geometry fed to libvgcode also depends on the
-    // designed/raw view state (the back-transform is applied in convert), so the
-    // same result is converted again only when that view has been toggled.
-    const bool same_belt_view = !m_belt_view_enabled || m_last_belt_show_designed == m_belt_show_designed;
-    if (m_last_result_id == gcode_result.id && wxGetApp().is_editor() && same_belt_view) {
+    if (m_last_result_id == gcode_result.id && wxGetApp().is_editor()) {
         //BBS: add logs
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": the same id %1%, return directly, result %2% ") % m_last_result_id % (&gcode_result);
 
@@ -1440,22 +1429,20 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
     }
 
     // convert data from PrusaSlicer format to libvgcode format.
-    // Belt printers: when the "designed (upright) view" is active, back-transform
-    // the toolpath geometry into model/Cartesian space using the general belt
-    // inverse (handles any mesh rotation + shear + axis remap). When off, the raw
-    // machine-frame G-code is shown (useful for debugging the transform itself).
+    // Belt printers: back-transform the toolpath geometry into model/Cartesian
+    // space using the general belt inverse (handles the mesh rotation, shear and
+    // axis remap), so the part is shown upright, the way it was designed.
     const bool is_belt = m_belt_view_enabled && print.config().belt_printer.value;
-    Transform3d belt_inv = (is_belt && m_belt_show_designed)
-        ? compute_belt_back_transform(print.config()) : Transform3d::Identity();
+    Transform3d belt_inv = is_belt ? compute_belt_back_transform(print.config()) : Transform3d::Identity();
     // Belt: move positions are stored as gcode_Z + belt_z_origin (the start G-code's
     // purge-blob advance baked into the machine-Z origin by its G92 Z0 resets). Subtract
     // that constant before the linear back-transform so every toolpath maps to the model's
     // belt coordinate. Without it the back-transform mixes the offset with the gantry-Y
     // term, leaving a per-move designed-Y error that min-corner anchoring cannot remove
     // when a bridge/keel move happens to cancel it at the bbox minimum.
-    if (is_belt && m_belt_show_designed && gcode_result.belt_z_origin != 0.0f)
+    if (is_belt && gcode_result.belt_z_origin != 0.0f)
         belt_inv = belt_inv * Transform3d(Eigen::Translation3d(Vec3d(0.0, 0.0, -double(gcode_result.belt_z_origin))));
-    const bool apply_belt = is_belt && m_belt_show_designed
+    const bool apply_belt = is_belt
         && !belt_inv.matrix().isApprox(Transform3d::Identity().matrix());
     if (apply_belt) {
         // The linear belt back-transform recovers the print's shape and orientation but not
@@ -1692,7 +1679,6 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
 
     //BBS: move the id to the end of reset
     m_last_result_id = gcode_result.id;
-    m_last_belt_show_designed = m_belt_show_designed;
     m_gcode_result = &gcode_result;
     m_move_type_counts.fill(0);
     for (auto& move_type_times : m_move_type_times)
@@ -5147,33 +5133,6 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     if (m_nozzle_nums > 1 && (m_viewer.get_view_type() == libvgcode::EViewType::Summary || m_viewer.get_view_type() == libvgcode::EViewType::ColorPrint)) // ORCA show only on summary and filament tab
         render_legend_color_arr_recommen(window_padding);
 
-    // Belt printer: toggle for viewing designed (upright) vs. machine-frame G-code.
-    // Rendered with a separator and hint text so users can find it easily.
-    if (m_belt_view_enabled) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::Dummy({ window_padding, 0 });
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.f, 0.59f, 0.53f, 1.f), "%s", _u8L("Belt printer").c_str());
-        ImGui::Dummy({ window_padding, 0 });
-        ImGui::SameLine();
-        // Checked = show the raw machine-frame G-code (designed/upright view off). Worded to
-        // match the canvas-toolbar menu item "Show raw G-code (belt only)". m_belt_show_designed
-        // is the inverse of this checkbox, so bind a temporary and flip it on change.
-        bool              show_raw = !m_belt_show_designed;
-        const std::string key      = wxGetApp().shortcuts().display(Shortcut::ToggleBeltRawGcode);
-        const std::string label    = _u8L("Show raw G-code (belt only)") + (key.empty() ? std::string() : " [" + key + "]");
-        if (ImGui::Checkbox(label.c_str(), &show_raw)) {
-            m_belt_show_designed = !show_raw;
-            // The designed-view back-transform is baked into the toolpath geometry at load
-            // time, so the toggle only takes effect once the preview is re-converted. Defer
-            // the refresh to the next event-loop tick (CallAfter) to avoid re-entering the
-            // preview load from inside legend rendering.
-            if (Plater* plater = wxGetApp().plater())
-                plater->CallAfter([plater]() { plater->refresh_belt_view(); });
-        }
-    }
 
     legend_height = ImGui::GetCurrentWindow()->Size.y;
     imgui.end();

@@ -56,8 +56,6 @@ TEST_CASE("Belt machine coordinates retain a non-45-degree slicing angle", "[GCo
     config.belt_printer.value               = true;
     config.belt_slice_rotation.value        = BeltRotationAxis::X;
     config.belt_slice_rotation_angle.value  = 30.;
-    config.belt_slice_rotation_global.value = true;
-    config.gcode_back_transform.value       = true;
     config.gcode_remap_x.value              = RemapAxis::PosX;
     config.gcode_remap_y.value              = RemapAxis::PosZ;
     config.gcode_remap_z.value              = RemapAxis::PosY;
@@ -1027,11 +1025,8 @@ SCENARIO("Belt: the first travel does not lift through the uninitialised origin"
         // Machine-frame + slicer->world back-transform config (X tilt, 45 deg).
         PrintConfig belt_config;
         belt_config.belt_printer.value               = true;
-        belt_config.gcode_back_transform.value       = true;
         belt_config.belt_slice_rotation.value        = BeltRotationAxis::X;
         belt_config.belt_slice_rotation_angle.value  = 45.0;
-        belt_config.belt_slice_rotation_global.value = true;
-        belt_config.belt_preslice_global.value       = true;
         belt_config.belt_frame_tilt_decouple.value   = false;
         belt_config.belt_frame_tilt_angle.value      = 45.0;
 

@@ -5250,77 +5250,24 @@ void TabPrinter::build_fff()
         // Belt tilt: the sole mesh-side transform and the single source of truth for
         // the physical tilt (drives bed rendering and support gravity tilt too).
         // Isometric rotation, no distortion; the back-transform inverts it before the
-        // machine-frame remap.
-        {
-            Line line = { L("Belt tilt"),
-                          L("Belt tilt axis and angle, applied as a mesh rotation before "
-                            "slicing. Also drives bed rendering and support gravity tilt. "
-                            "Isometric (no distortion); the back-transform inverts it before "
-                            "the machine-frame remap.") };
-            line.label_path = "printer_basic_information_belt_printer#belt-tilt";
-            line.append_option(belt_og->get_option("belt_slice_rotation"));
-            line.append_option(belt_og->get_option("belt_slice_rotation_angle"));
-            line.append_option(belt_og->get_option("belt_slice_rotation_global"));
-            belt_og->append_line(line);
-        }
-        {
-            Line line = { L("Pre-slice axis remap"),
-                          L("Remap model axes before slicing so the slicer's coordinate system matches "
-                            "the physical bed orientation. For belt printers whose bed is NOT in the XY plane, "
-                            "use this to swap axes so layers are stacked in the correct physical direction.") };
-            line.label_path = "printer_basic_information_belt_printer#pre-slice-axis-remap";
-            line.append_option(belt_og->get_option("preslice_remap_x"));
-            line.append_option(belt_og->get_option("preslice_remap_y"));
-            line.append_option(belt_og->get_option("preslice_remap_z"));
-            line.append_option(belt_og->get_option("preslice_remap_global"));
-            belt_og->append_line(line);
-        }
-        belt_og->append_single_option_line("belt_preslice_global", "printer_basic_information_belt_printer#global-mesh-transforms");
-        belt_og->append_single_option_line("gcode_back_transform", "printer_basic_information_belt_printer#g-code-back-transform");
-        {
-            Line line = { L("First layer plane"),
-                          L("Reference plane used to decide which extrusions get first-layer "
-                            "settings (no fan, slow speed, deferred temperature drop). On belt "
-                            "printers, Auto resolves to the tilted belt-shear plane so that "
-                            "first-layer treatment follows perpendicular distance from the belt "
-                            "surface, not slicing layer index.") };
-            line.label_path = "printer_basic_information_belt_printer#first-layer-plane";
-            line.append_option(belt_og->get_option("first_layer_plane"));
-            line.append_option(belt_og->get_option("first_layer_plane_offset"));
-            line.append_option(belt_og->get_option("first_layer_plane_thickness"));
-            belt_og->append_line(line);
-        }
-        // Support floor: split across lines so each setting's own mode controls
-        // its visibility (floor_mode = Develop, floor_offset = Advanced, z_offset_mode = Expert).
+        // machine-frame remap.  The angle is what a user checks against the machine;
+        // the axis is a profile-level kinematics choice, so it is Develop-only.  They
+        // are separate rows because a shared line is shown by its first option's mode.
+        belt_og->append_single_option_line("belt_slice_rotation_angle", "printer_basic_information_belt_printer#tilt-angle");
+        belt_og->append_single_option_line("belt_slice_rotation", "printer_basic_information_belt_printer#tilt-axis");
         belt_og->append_single_option_line("belt_support_floor_offset", "printer_basic_information_belt_printer#support-floor-z-offset");
-        belt_og->append_single_option_line("belt_support_z_offset_mode", "printer_basic_information_belt_printer#z-offset-mode");
-        belt_og->append_single_option_line("belt_support_floor_mode", "printer_basic_information_belt_printer#floor-mode");
 
-        // Machine-frame transform: the shear (tan) + scale (1/cos) that map
+        // Machine-frame transform: the shear (cot) + scale (1/sin) that map
         // Cartesian G-code into the printer's physical machine frame are derived
         // from the belt tilt angle.  Only the post-slice axis remap and the expert
-        // decouple override are exposed here.
+        // decouple override are exposed here, one option per row.
         {
             auto mf = page->new_optgroup(L("Machine frame transforms"), L"param_advanced");
-            {
-                Line line = { L("G-code axis remap (post-slice)"), L("Remap slicing-frame axes to machine axes in G-code output. Applied AFTER slicing, during G-code generation.") };
-                line.label_path = "printer_basic_information_machine_frame_transforms#g-code-axis-remap";
-                line.append_option(mf->get_option("gcode_remap_x"));
-                line.append_option(mf->get_option("gcode_remap_y"));
-                line.append_option(mf->get_option("gcode_remap_z"));
-                mf->append_line(line);
-            }
-            {
-                Line line = { L("Machine-frame tilt"),
-                              L("The machine-frame shear (tan) and scale (1/cos) are derived from "
-                                "the belt tilt angle. Enable 'Decouple' to set an independent "
-                                "machine-frame angle when the physical gantry tilt differs from "
-                                "the slicing rotation.") };
-                line.label_path = "printer_basic_information_machine_frame_transforms#machine-frame-tilt";
-                line.append_option(mf->get_option("belt_frame_tilt_decouple"));
-                line.append_option(mf->get_option("belt_frame_tilt_angle"));
-                mf->append_line(line);
-            }
+            mf->append_single_option_line("gcode_remap_x", "printer_basic_information_machine_frame_transforms#g-code-axis-remap");
+            mf->append_single_option_line("gcode_remap_y", "printer_basic_information_machine_frame_transforms#g-code-axis-remap");
+            mf->append_single_option_line("gcode_remap_z", "printer_basic_information_machine_frame_transforms#g-code-axis-remap");
+            mf->append_single_option_line("belt_frame_tilt_decouple", "printer_basic_information_machine_frame_transforms#machine-frame-tilt");
+            mf->append_single_option_line("belt_frame_tilt_angle", "printer_basic_information_machine_frame_transforms#machine-frame-tilt");
         }
 
         option = optgroup->get_option("thumbnails");
@@ -6366,41 +6313,30 @@ void TabPrinter::toggle_options()
         bool expert_or_above = (m_mode >= comExpert);
         toggle_line("belt_printer_infinite_y", is_belt);
         // Belt tilt: the sole mesh-side belt transform (visible by default in belt mode).
+        toggle_line("belt_slice_rotation_angle", is_belt);
         toggle_line("belt_slice_rotation", is_belt);
 
         // Remap, back-transform, and global mesh-transforms toggles are gated by belt
         // mode here; finer mode-based visibility is handled by each option's
-        // ConfigOptionMode in PrintConfig.cpp. Both axis remaps are Develop-only: a
-        // printer profile sets them once for its kinematics, and a wrong value sends
+        // ConfigOptionMode in PrintConfig.cpp. The axis remap is Develop-only: a
+        // printer profile sets it once for its kinematics, and a wrong value sends
         // the gantry outside the machine.
-        for (auto el : {"preslice_remap_x", "gcode_remap_x", "gcode_back_transform"})
+        for (auto el : {"gcode_remap_x", "gcode_remap_y", "gcode_remap_z"})
             toggle_line(el, is_belt);
-        toggle_line("belt_preslice_global", is_belt);
 
-        bool belt_global = is_belt && m_config->opt_bool("belt_preslice_global");
-
-        // preslice_remap_global: superseded by belt_preslice_global
-        toggle_option("preslice_remap_global", is_belt && !belt_global);
-
-        // Rotation is the only mesh-side belt transform.  Gray out its angle/global
-        // sub-options when no rotation axis is selected.
+        // Rotation is the only mesh-side belt transform.  Gray out its angle when no
+        // rotation axis is selected.
         auto rot_axis = m_config->option<ConfigOptionEnum<BeltRotationAxis>>("belt_slice_rotation")->value;
         toggle_option("belt_slice_rotation_angle",  is_belt && rot_axis != BeltRotationAxis::None);
-        toggle_option("belt_slice_rotation_global", is_belt && rot_axis != BeltRotationAxis::None);
 
         // Machine-frame transform: derived from the belt tilt.  Only the expert
-        // decouple override is exposed; its angle is enabled only when decoupled.
+        // decouple override is exposed; its angle is shown only when decoupled.
         toggle_line("belt_frame_tilt_decouple", is_belt && expert_or_above);
-        toggle_option("belt_frame_tilt_angle",
-                      is_belt && expert_or_above && m_config->opt_bool("belt_frame_tilt_decouple"));
+        toggle_line("belt_frame_tilt_angle",
+                    is_belt && expert_or_above && m_config->opt_bool("belt_frame_tilt_decouple"));
 
-        // First-layer plane: visible alongside the rest of belt-printer settings.
-        toggle_line("first_layer_plane", is_belt);
-        toggle_option("first_layer_plane_offset",    is_belt);
-        toggle_option("first_layer_plane_thickness", is_belt);
 
-        for (auto el : {"belt_support_floor_mode", "belt_support_floor_offset", "belt_support_z_offset_mode"})
-            toggle_line(el, is_belt);
+        toggle_line("belt_support_floor_offset", is_belt);
         const bool support_parallel_printheads = printer_cfg.opt_bool("support_parallel_printheads");
         toggle_line("parallel_printheads_count", support_parallel_printheads);
 

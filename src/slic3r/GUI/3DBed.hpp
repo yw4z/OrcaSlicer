@@ -116,6 +116,7 @@ private:
     GLModel m_model;
     Vec3d m_model_offset{ Vec3d::Zero() };
     GLModel m_gravity_arrow;
+    float   m_gravity_arrow_length{ 0.f };
     Axes m_axes;
 
     float m_scale_factor{ 1.0f };

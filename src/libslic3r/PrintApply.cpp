@@ -1842,14 +1842,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         for (ModelObject *model_object : m_model.objects) {
             ModelObjectStatus &model_object_status = const_cast<ModelObjectStatus&>(model_object_status_db.reuse(*model_object));
             // Orca: Updated for XYZ filament shrink compensation
-            // Belt global mode: force each instance into its own PrintObject
-            // so each gets independent layer Z values.
-            bool belt_force_separate = m_config.belt_printer.value && (
-                (m_config.belt_slice_rotation_global.value
-                    && m_config.belt_slice_rotation.value != BeltRotationAxis::None
-                    && std::abs(m_config.belt_slice_rotation_angle.value) > EPSILON)
-                || m_config.belt_preslice_global.value
-                || (m_config.preslice_remap_global.value && BeltTransformPipeline::has_preslice_remap(m_config)));
+            // Belt printers: force each instance into its own PrintObject so each
+            // gets independent layer Z values (its bed position is folded into them).
+            bool belt_force_separate = m_config.belt_printer.value;
             model_object_status.print_instances = print_objects_from_model_object(*model_object, this->shrinkage_compensation(), belt_force_separate);
             std::vector<const PrintObjectStatus*> old;
             old.reserve(print_object_status_db.count(*model_object));
@@ -1938,13 +1933,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         // Belt printer global mode: when any object's instances shifted,
         // recompute m_belt_global_z_offset for ALL objects (it depends on
         // min_shift across all objects, so one move affects everyone).
-        if (belt_instances_shifted
-            && m_config.belt_printer.value
-            && ((m_config.belt_slice_rotation_global.value
-                    && m_config.belt_slice_rotation.value != BeltRotationAxis::None
-                    && std::abs(m_config.belt_slice_rotation_angle.value) > EPSILON)
-                || m_config.belt_preslice_global.value
-                || (m_config.preslice_remap_global.value && BeltTransformPipeline::has_preslice_remap(m_config)))) {
+        if (belt_instances_shifted && m_config.belt_printer.value) {
             for (PrintObject *object : m_objects)
                 update_apply_status(object->invalidate_step(posSlice));
         }

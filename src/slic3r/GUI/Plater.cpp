@@ -17885,11 +17885,6 @@ void Plater::reload_print()
     p->preview->reload_print();
 }
 
-void Plater::refresh_belt_view()
-{
-    p->preview->refresh_belt_view();
-}
-
 // BBS
 wxString Plater::get_project_name()
 {

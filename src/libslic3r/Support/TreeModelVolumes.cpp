@@ -117,58 +117,20 @@ TreeModelVolumes::TreeModelVolumes(
         m_increase_until_radius = config.increase_radius_until_radius;
         m_radius_0 = config.getRadius(0);
         m_raft_layers = config.raft_layers;
-        // Belt printer: add virtual belt raft layers below the object, matching
-        // the extra layers added in generate_support_areas() so both use the
-        // same layer indexing.
-        {
-            const auto &sp2   = print_object.slicing_parameters();
-            const auto &pcfg2 = print_object.print()->config();
-            double belt_sf = sp2.belt_floor_shear_factor;
-            if (std::abs(belt_sf) > EPSILON && std::abs(print_object.belt_global_z_offset()) > EPSILON
-                && pcfg2.belt_support_floor_mode.value == BeltSupportFloorMode::GeneratorOnly) {
-                double bb_min_z    = std::abs(belt_remapped_bbox(*print_object.model_object(), pcfg2).min.z());
-                double extra_depth = bb_min_z + 10.;
-                int    num_extra   = std::max(0, (int)std::ceil(extra_depth / sp2.layer_height));
-                if (num_extra > 0) {
-                    std::vector<coordf_t> belt_layers;
-                    belt_layers.reserve(num_extra);
-                    for (int i = num_extra; i >= 1; --i)
-                        belt_layers.push_back(sp2.first_object_layer_height - i * sp2.layer_height);
-                    m_raft_layers.insert(m_raft_layers.begin(), belt_layers.begin(), belt_layers.end());
-                }
-            }
-        }
-        // Belt floor: add belt surface polygons to anti_overhang so support is
-        // never generated inside the belt.
+        // Support blockers are consumed in the same index space as m_layer_outlines
+        // (object layer i lives at index num_raft_layers + i), but
+        // slice_support_blockers() returns them in object-layer space.  Shift them.
         //
-        // This MUST run after m_raft_layers is final. m_anti_overhang is consumed
-        // in the same index space as m_layer_outlines -- object layer i lives at
-        // index num_raft_layers + i -- but slice_support_blockers() returns it in
-        // object-layer space. Without the shift below, every entry lands
-        // num_raft_layers too low: with the belt raft that is tens of layers, so
-        // the belt suppression is applied to the wrong layers entirely and the
-        // topmost object layers get none at all.
+        // The belt surface is deliberately NOT a blocker.  A blocker is a collision,
+        // and a branch descending onto a collision slides off it: on a belt that
+        // walks the branch down the tilted surface, ahead of the part, until it
+        // reaches the bottom layer floating in mid-air.  The belt is where branches
+        // END: organic_draw_branches() clips their slices with m_belt_floor and the
+        // first clipped slice is the contact.
         {
             const size_t num_raft = m_raft_layers.size();
-            const size_t num_obj  = print_object.layer_count();
             if (num_raft > 0 && ! m_anti_overhang.empty())
-                // Shift the support blockers into the same space.
                 m_anti_overhang.insert(m_anti_overhang.begin(), num_raft, Polygons{});
-            const auto &sp   = print_object.slicing_parameters();
-            const auto &pcfg = print_object.print()->config();
-            BeltFloorContext ctx;
-            ctx.init_local(sp, pcfg, print_object.belt_global_z_offset());
-            if (ctx.is_active()
-                && std::abs(print_object.belt_global_z_offset()) > EPSILON
-                && pcfg.belt_support_floor_mode.value == BeltSupportFloorMode::GeneratorOnly) {
-                if (m_anti_overhang.size() < num_raft + num_obj)
-                    m_anti_overhang.resize(num_raft + num_obj, Polygons{});
-                for (size_t i = 0; i < num_obj; ++i) {
-                    const double print_z = print_object.get_layer(i)->print_z
-                                         - print_object.belt_global_z_offset();
-                    append(m_anti_overhang[num_raft + i], ctx.surface_polygon(print_z));
-                }
-            }
         }
         m_current_outline_idx = 0;
 
@@ -192,8 +154,7 @@ TreeModelVolumes::TreeModelVolumes(
             const auto &pcfg2 = print_object.print()->config();
             BeltFloorContext ctx;
             ctx.init_local(slicing_params, pcfg2, print_object.belt_global_z_offset());
-            if (ctx.is_active()
-                && pcfg2.belt_support_floor_mode.value == BeltSupportFloorMode::GeneratorOnly) {
+            if (ctx.is_active()) {
                 m_belt_floor = ctx.compute_per_layer_floors(num_layers, [&](size_t layer_idx) -> double {
                     // Object layers: local print_z (subtract global offset).
                     if (layer_idx >= num_raft_layers)

@@ -231,11 +231,10 @@ class ConstSupportLayerPtrsAdaptor : public ConstVectorOfPtrsAdaptor<SupportLaye
     ConstSupportLayerPtrsAdaptor(const SupportLayerPtrs *data) : ConstVectorOfPtrsAdaptor<SupportLayer>(data) {}
 };
 
-// Returns the model's raw bounding box with pre-slice axis remap applied.
-// When no remap is active, returns the unmodified raw_bounding_box().
-inline BoundingBoxf3 belt_remapped_bbox(const ModelObject &model_object, const PrintConfig &config)
+// The model's raw bounding box, in the frame the belt floor parameters refer to.
+inline BoundingBoxf3 belt_remapped_bbox(const ModelObject &model_object, const PrintConfig & /*config*/)
 {
-    return BeltTransformPipeline::remap_bbox(model_object, config);
+    return model_object.raw_bounding_box();
 }
 
 // Single instance of a PrintObject.
@@ -440,7 +439,6 @@ public:
     unsigned int                 belt_brim_filament() const;
     // False when this object's instances sit at different points ALONG the belt, which
     // would need a separate set of bands each.  Public so validate() can explain it.
-    bool                         belt_brim_instances_compatible() const;
     const std::vector<ExtrusionEntityCollection>& belt_brim_by_layer()       const { return m_belt_brim_by_layer; }
     const std::vector<ExPolygons>&                belt_brim_areas_by_layer() const { return m_belt_brim_areas_by_layer; }
     const std::vector<BeltBrimBand>&              belt_brim_prologue()       const { return m_belt_brim_prologue; }
@@ -584,7 +582,13 @@ private:
     void ironing();
     bool need_z_contouring() const;
     void contour_z();
-    void generate_support_material();
+    // with_belt_brim = false leaves the belt brim to generate_belt_brim(), for a
+    // caller that runs the support step of several objects in parallel.
+    void generate_support_material(bool with_belt_brim = true);
+    // The belt brim keeps clear of every object's layers and support layers, so
+    // it has to run after all support steps finished.  A no-op unless a support
+    // step left it pending.
+    void generate_belt_brim();
     void estimate_curled_extrusions();
     void simplify_extrusion_path();
 
@@ -713,6 +717,8 @@ private:
 
     // Belt printer: global Z offset applied to this object's layers for shear positioning.
     double                                  m_belt_global_z_offset { 0.0 };
+    // generate_support_material(false) finished and generate_belt_brim() has not run yet.
+    bool                                    m_belt_brim_pending { false };
     // Belt printer: min_z of mesh after belt shear (before Z-shift), for z_offset calc.
     double                                  m_belt_min_z { 0.0 };
     // Belt printer: XY correction from global pre-slice mode, applied to G-code origin.

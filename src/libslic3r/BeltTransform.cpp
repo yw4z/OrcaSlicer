@@ -16,50 +16,6 @@ namespace Slic3r {
 
 // ---- Matrix builders ------------------------------------------------------
 
-Transform3d BeltTransformPipeline::build_preslice_remap(const PrintConfig &config)
-{
-    Transform3d pre_remap = Transform3d::Identity();
-    if (!has_preslice_remap(config))
-        return pre_remap;
-
-    int pre_rx = int(config.preslice_remap_x.value);
-    int pre_ry = int(config.preslice_remap_y.value);
-    int pre_rz = int(config.preslice_remap_z.value);
-
-    // Each remap value selects a source axis and sign.
-    auto remap_column = [](int r) -> Vec3d {
-        int axis = r % 3;
-        Vec3d col = Vec3d::Zero();
-        if (r < 3)      col[axis] =  1.0;  // +axis
-        else if (r < 6) col[axis] = -1.0;  // -axis
-        else            col[axis] = -1.0;  // Rev: max - pos = -(pos - max)
-        return col;
-    };
-
-    Matrix3d remap_lin;
-    remap_lin.col(0) = remap_column(pre_rx);
-    remap_lin.col(1) = remap_column(pre_ry);
-    remap_lin.col(2) = remap_column(pre_rz);
-    pre_remap.linear() = remap_lin;
-
-    // Translation for Rev modes (needs build volume extents).
-    if (pre_rx >= 6 || pre_ry >= 6 || pre_rz >= 6) {
-        BoundingBoxf bbox_bed(config.printable_area.values);
-        Vec3d vol_max(bbox_bed.max.x(), bbox_bed.max.y(),
-                      config.printable_height.value);
-        Vec3d remap_trans = Vec3d::Zero();
-        auto add_rev = [&](int r, int out) {
-            if (r >= 6) remap_trans[out] = vol_max[r % 3];
-        };
-        add_rev(pre_rx, 0);
-        add_rev(pre_ry, 1);
-        add_rev(pre_rz, 2);
-        pre_remap.translation() = remap_trans;
-    }
-
-    return pre_remap;
-}
-
 Matrix3d BeltTransformPipeline::build_rotation_matrix(const PrintConfig &config, bool *has_rot_out)
 {
     BeltRotationAxis axis = config.belt_slice_rotation.value;
@@ -81,50 +37,11 @@ Matrix3d BeltTransformPipeline::build_rotation_matrix(const PrintConfig &config,
 
 Transform3d BeltTransformPipeline::build_forward_transform(const PrintConfig &config)
 {
-    // Mesh-side belt transform: rotation applied after the pre-slice axis remap.
-    // (Shear & scale are a g-code-side stage, not part of the mesh transform.)
-    Transform3d pre_remap = build_preslice_remap(config);
-    Matrix3d    rot       = build_rotation_matrix(config);
-
+    // Mesh-side belt transform: the rotation. (Shear & scale are a g-code-side
+    // stage, not part of the mesh transform.)
     Transform3d combined = Transform3d::Identity();
-    combined.linear() = rot;
-    combined = combined * pre_remap;
+    combined.linear() = build_rotation_matrix(config);
     return combined;
-}
-
-// ---- Bounding box remap ---------------------------------------------------
-
-BoundingBoxf3 BeltTransformPipeline::remap_bbox(const BoundingBoxf3 &bb, const PrintConfig &config)
-{
-    if (!has_preslice_remap(config))
-        return bb;  // Identity remap, or belt mode off.
-
-    int pre_rx = int(config.preslice_remap_x.value);
-    int pre_ry = int(config.preslice_remap_y.value);
-    int pre_rz = int(config.preslice_remap_z.value);
-
-    auto remap_coord = [](int r, const Vec3d &v) -> double {
-        int axis = r % 3;
-        if (r < 3) return v[axis];
-        return -v[axis];
-    };
-
-    Vec3d mn = bb.min.cast<double>(), mx = bb.max.cast<double>();
-    BoundingBoxf3 rbb;
-    for (int i = 0; i < 8; ++i) {
-        Vec3d c((i & 1) ? mx.x() : mn.x(),
-                (i & 2) ? mx.y() : mn.y(),
-                (i & 4) ? mx.z() : mn.z());
-        Vec3d rc(remap_coord(pre_rx, c), remap_coord(pre_ry, c), remap_coord(pre_rz, c));
-        if (i == 0) rbb = BoundingBoxf3(rc, rc);
-        else rbb.merge(rc);
-    }
-    return rbb;
-}
-
-BoundingBoxf3 BeltTransformPipeline::remap_bbox(const ModelObject &model_object, const PrintConfig &config)
-{
-    return remap_bbox(model_object.raw_bounding_box(), config);
 }
 
 // ---- Belt floor parameters ------------------------------------------------
@@ -132,6 +49,37 @@ BoundingBoxf3 BeltTransformPipeline::remap_bbox(const ModelObject &model_object,
 // Shared implementation for both PrintConfig and DynamicPrintConfig.
 // Template avoids duplicating the math for the two config types.
 namespace {
+
+// Belt floor in the rotated slicer frame: the image of z_machine = 0 under R.
+//   R(+α, X): point (·, y, 0) → (·, cos α · y, sin α · y) ⇒ z = tan(α) · y_s
+//   R(+α, Y): point (x, ·, 0) → (cos α · x, ·, -sin α · x) ⇒ z = -tan(α) · x_s
+//   R(+α, Z): point (·, ·, 0) → (·, ·, 0); no tilt → no floor
+void belt_floor_shear(BeltRotationAxis rot_axis, double angle_rad, BeltTransformPipeline::BeltFloorParams &out)
+{
+    double sin_a = std::sin(angle_rad), cos_a = std::cos(angle_rad);
+    switch (rot_axis) {
+    case BeltRotationAxis::X:
+        out.shear_factor = (std::abs(cos_a) > EPSILON) ?  sin_a / cos_a : 0.;
+        out.from_axis    = 1; // Y
+        break;
+    case BeltRotationAxis::Y:
+        out.shear_factor = (std::abs(cos_a) > EPSILON) ? -sin_a / cos_a : 0.;
+        out.from_axis    = 0; // X
+        break;
+    case BeltRotationAxis::Z:
+    default:
+        out.shear_factor = 0.0;
+        out.from_axis    = 1;
+        break;
+    }
+}
+
+// Z of the belt floor directly under a point of the rotated (unshifted) frame.
+inline double belt_floor_z(const BeltTransformPipeline::BeltFloorParams &fp, const Vec3d &pt)
+{
+    return fp.shear_factor * (fp.from_axis == 0 ? pt.x() : pt.y());
+}
+
 
 template<typename Config>
 BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
@@ -176,38 +124,28 @@ BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
     default:                  unit_axis = Vec3d::UnitX(); break;
     }
     Matrix3d R = Eigen::AngleAxisd(angle_rad, unit_axis).toRotationMatrix();
+    belt_floor_shear(rot_axis, angle_rad, result.floor_params);
+    // The slicing frame starts at the lowest point of the support region: the
+    // lowest belt-floor point under the footprint, not the lowest vertex.  The
+    // belt under the leading end of an overhang lies below every vertex of the
+    // part, and supports have to be able to reach it (see
+    // BeltSliceStrategy::apply_preslice_transforms for the exact vertex-scan
+    // counterpart of this bbox estimate).
     double min_rz = std::numeric_limits<double>::max();
     double max_rz = std::numeric_limits<double>::lowest();
     for (int i = 0; i < 8; ++i) {
         Vec3d c((i & 1) ? bb.max.x() : bb.min.x(),
                 (i & 2) ? bb.max.y() : bb.min.y(),
                 (i & 4) ? bb.max.z() : bb.min.z());
-        double z = (R * c).z();
+        Vec3d  rc = R * c;
+        double z  = rc.z();
         min_rz = std::min(min_rz, z);
         max_rz = std::max(max_rz, z);
+        min_rz = std::min(min_rz, belt_floor_z(result.floor_params, rc));
     }
+    min_rz -= BeltTransformPipeline::frame_margin(result.floor_params);
     result.object_height = max_rz - min_rz;
 
-    // Belt floor in slicer-frame is the image of z_machine = 0 under R.
-    //   R(+α, X): point (·, y, 0) → (·, cos α · y, sin α · y) ⇒ z = tan(α) · y_s
-    //   R(+α, Y): point (x, ·, 0) → (cos α · x, ·, -sin α · x) ⇒ z = -tan(α) · x_s
-    //   R(+α, Z): point (·, ·, 0) → (·, ·, 0); no tilt → no floor
-    double sin_a = std::sin(angle_rad), cos_a = std::cos(angle_rad);
-    switch (rot_axis) {
-    case BeltRotationAxis::X:
-        result.floor_params.shear_factor = (std::abs(cos_a) > EPSILON) ?  sin_a / cos_a : 0.;
-        result.floor_params.from_axis    = 1; // Y
-        break;
-    case BeltRotationAxis::Y:
-        result.floor_params.shear_factor = (std::abs(cos_a) > EPSILON) ? -sin_a / cos_a : 0.;
-        result.floor_params.from_axis    = 0; // X
-        break;
-    case BeltRotationAxis::Z:
-    default:
-        result.floor_params.shear_factor = 0.0;
-        result.floor_params.from_axis    = 1;
-        break;
-    }
     result.floor_params.z_shift = bb.min.z() + ((min_rz < 0.) ? -min_rz : 0.);
 
     return result;
@@ -216,15 +154,26 @@ BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
 } // anonymous namespace
 
 BeltTransformPipeline::BeltHeightResult BeltTransformPipeline::compute_belt_height_and_floor(
-    const PrintConfig &config, const BoundingBoxf3 &remapped_bbox, double original_height)
+    const PrintConfig &config, const BoundingBoxf3 &bbox, double original_height)
 {
-    return compute_belt_height_and_floor_impl(config, remapped_bbox, original_height);
+    return compute_belt_height_and_floor_impl(config, bbox, original_height);
 }
 
 BeltTransformPipeline::BeltHeightResult BeltTransformPipeline::compute_belt_height_and_floor(
-    const DynamicPrintConfig &config, const BoundingBoxf3 &remapped_bbox, double original_height)
+    const DynamicPrintConfig &config, const BoundingBoxf3 &bbox, double original_height)
 {
-    return compute_belt_height_and_floor_impl(config, remapped_bbox, original_height);
+    return compute_belt_height_and_floor_impl(config, bbox, original_height);
+}
+
+bool BeltTransformPipeline::floor_shear(const PrintConfig &config, BeltFloorParams &out)
+{
+    out = BeltFloorParams{};
+    const BeltRotationAxis rot_axis  = config.belt_slice_rotation.value;
+    const double           rot_angle = config.belt_slice_rotation_angle.value;
+    if (rot_axis == BeltRotationAxis::None || std::abs(rot_angle) <= EPSILON)
+        return false;
+    belt_floor_shear(rot_axis, Geometry::deg2rad(rot_angle), out);
+    return std::abs(out.shear_factor) > EPSILON;
 }
 
 } // namespace Slic3r

@@ -36,6 +36,7 @@
 #include <tuple>
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/Config.hpp"
+#include <Eigen/Geometry>
 
 #if BOOST_VERSION >= 107800
 #include <boost/timer/timer.hpp>
@@ -766,25 +767,25 @@ void Bed3D::render_gravity_arrow(const Transform3d& view_matrix, const Transform
         m_gravity_arrow.reset();
         return;
     }
-    const Vec3d gravity_dir = -up_dir;
 
-    // Build the arrow model (same dimensions as the axis arrows)
-    if (!m_gravity_arrow.is_initialized()) {
-        const float stem_length = Axes::DefaultStemLength;
-        const float tip_radius  = Axes::DefaultTipRadius;
-        const float tip_length  = Axes::DefaultTipLength;
-        const float stem_radius = stem_length / 75.f; // same ratio as axis cylinders
-        m_gravity_arrow.init_from(stilized_arrow(16, tip_radius, tip_length, stem_radius, stem_length));
+    // A plain line along the tilted "up" direction -- the way the layers lean, i.e.
+    // the gantry -- drawn like the bed axes (no tip: the other direction is not
+    // possible) and shorter than them, so it reads as a hint inside the YZ corner.
+    const float length = 0.6f * m_axes.get_total_length();
+    if (!m_gravity_arrow.is_initialized() || m_gravity_arrow_length != length) {
+        m_gravity_arrow.reset();
+        m_gravity_arrow.init_from(smooth_cylinder(16, /*Radius*/ length / 75.f, length));
+        m_gravity_arrow_length = length;
     }
 
-    // The arrow model points along +Z by default. Compute rotation to align with gravity_dir.
-    // Rotation axis = cross(+Z, gravity_dir), angle = acos(dot(+Z, gravity_dir))
+    // The cylinder model points along +Z. Compute the rotation that aligns it with
+    // up_dir: rotation axis = cross(+Z, up_dir), angle = acos(dot(+Z, up_dir)).
     Vec3d from = Vec3d::UnitZ();
-    Vec3d to   = gravity_dir;
+    Vec3d to   = up_dir;
     double dot  = from.dot(to);
     Transform3d rot = Transform3d::Identity();
     if (dot < -0.9999) {
-        // Nearly opposite — rotate 180° around X
+        // Nearly opposite -- rotate 180 degrees around X
         rot = Eigen::AngleAxisd(M_PI, Vec3d::UnitX()) * rot;
     } else if (dot < 0.9999) {
         Vec3d axis  = from.cross(to).normalized();
@@ -800,7 +801,7 @@ void Bed3D::render_gravity_arrow(const Transform3d& view_matrix, const Transform
     shader->start_using();
 
     const Camera& camera = wxGetApp().plater()->get_camera();
-    Transform3d model_matrix = rot;
+    Transform3d model_matrix = Eigen::Translation3d(m_axes.get_origin()) * rot;
     shader->set_uniform("view_model_matrix", camera.get_view_matrix() * model_matrix);
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 

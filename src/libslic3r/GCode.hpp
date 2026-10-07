@@ -8,7 +8,6 @@
 #include "libslic3r.h"
 #include "GCodeWriter.hpp"
 #include "GCode/BeltKinematics.hpp"
-#include "FirstLayerPlane.hpp"
 #include "Layer.hpp"
 #include "Point.hpp"
 #include "PlaceholderParser.hpp"
@@ -400,7 +399,6 @@ public:
     // first-layer-plane access points (on_first_layer overload, effective
     // index helper) are in the protected section since they're called from
     // GCode internals only.
-    const FirstLayerPlane *first_layer_plane() const { return m_first_layer_plane.get(); }
 
 protected:
     class GCodeOutputStream {
@@ -845,7 +843,6 @@ protected:
     // PrintConfig.  is_active() == false on non-belt printers and on belt
     // printers without a Z-axis shear; in that case all per-path plane
     // checks short-circuit to the legacy Layer::id() == 0 path.
-    std::unique_ptr<FirstLayerPlane>    m_first_layer_plane;
     // Plate origin, kept so a writer replaced during export can be given it again.
 
     std::unique_ptr<PressureEqualizer>  m_pressure_equalizer;
@@ -938,45 +935,32 @@ protected:
     // On the first printing layer. This flag triggers first layer speeds.
     //BBS
     bool    on_first_layer() const { return m_layer != nullptr && m_layer->id() == 0 && abs(m_layer->bottom_z()) < EPSILON; }
-    // Per-point first-layer test.  When the FirstLayerPlane evaluator is
-    // active, the result depends on the supplied slicing-frame point;
-    // otherwise we delegate to the legacy per-layer test.  This is the
-    // entry point used by per-path call sites in _extrude.
+    // Per-point first-layer test.  On a belt printer the result depends on the
+    // supplied slicing-frame point (its height above the belt); otherwise we
+    // delegate to the legacy per-layer test.  This is the entry point used by
+    // per-path call sites in _extrude.
     bool on_first_layer(const Vec3d &point_slicing_mm) const {
-        // Belt printers: measure height above the belt surface itself, in the
-        // slicing frame. See belt_height_above_floor() for why this does not go
-        // through FirstLayerPlane.
         double h;
         if (this->belt_height_above_floor(point_slicing_mm, h))
             return h <= m_config.initial_layer_print_height.value + EPSILON;
-        if (m_first_layer_plane && m_first_layer_plane->is_active())
-            return m_first_layer_plane->is_first_layer(
-                point_slicing_mm, m_config.initial_layer_print_height.value);
         return on_first_layer();
     }
     // "Effective layer index" used to drive layer-count thresholds like
-    // slow_down_layers.  When the evaluator is active this returns the
-    // perpendicular distance to the plane in band_thickness_mm units;
-    // otherwise it returns the legacy slicing layer index.
+    // slow_down_layers.  On a belt printer this is the height above the belt in
+    // first_layer_band_mm() units; otherwise it is the legacy slicing layer index.
     int effective_layer_index_for_point(const Vec3d &point_slicing_mm) const {
         double h;
         if (this->belt_height_above_floor(point_slicing_mm, h)) {
             const double lh = this->first_layer_band_mm();
             return h <= 0. ? 0 : int(std::floor(h / lh));
         }
-        if (m_first_layer_plane && m_first_layer_plane->is_active())
-            return m_first_layer_plane->effective_layer_index(point_slicing_mm);
         return on_first_layer() ? 0 : layer_id();
     }
 
-    // Band thickness for the *effective layer index* only.  FirstLayerPlane keeps
-    // two separate thresholds and so must this path: is_first_layer() tests
-    // against initial_layer_print_height, while effective_layer_index() counts
-    // bands of first_layer_plane_thickness.  Conflating them would apply
-    // first-layer treatment through a whole 1mm band on a 0.2mm first layer.
+    // Band thickness for the *effective layer index*: one first layer height, so
+    // "the first N layers" means the same height above the belt as on a flat bed.
     double first_layer_band_mm() const {
-        double band = m_config.first_layer_plane_thickness.value;
-        if (band <= 0.) band = m_config.initial_layer_print_height.value;
+        const double band = m_config.initial_layer_print_height.value;
         return band > 0. ? band : 0.2;
     }
 
@@ -985,13 +969,8 @@ protected:
     //
     // The belt surface is known exactly in the slicing frame from the slicing
     // parameters (belt_floor_shear_factor / _from_axis / _z_shift) -- the same
-    // description the support generator uses. FirstLayerPlane instead derives its
-    // plane by composing gcode_remap_* with the g-code back-transform, so its
-    // answer changes with the machine's *output* axis convention: on a printer
-    // with a non-identity remap it reported ~86mm of clearance for geometry
-    // sitting directly on the belt, and no extrusion was ever classified as
-    // first-layer. Measuring against the belt itself is independent of every
-    // remap and back-transform.
+    // description the support generator uses, independent of every remap and
+    // back-transform.
     bool belt_height_above_floor(const Vec3d &point_slicing_mm, double &height_mm) const;
     // 1 / 0 / -1: the object layer is entirely past the first-layer band above the
     // belt / reaches into it / the belt surface is not known for it.

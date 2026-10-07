@@ -343,8 +343,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                 // pushes those layers into the parallel_for path below, which handles multi-volume
                 // clipping per layer without relying on the bbox Z range.
                 const bool bbox_z_in_layer_frame = !(print_config.belt_printer.value &&
-                    (BeltTransformPipeline::has_rotation(print_config)
-                        || BeltTransformPipeline::has_preslice_remap(print_config)));
+                    BeltTransformPipeline::has_rotation(print_config));
                 // Belt-transform addendum: with bbox-Z untrusted, the simple path's
                 // "first model_part wins" logic drops subsequent volumes' slices unless
                 // they XY-overlap with the first.  Assemblies whose volumes are stacked
@@ -926,14 +925,9 @@ void PrintObject::slice()
     // So: belt_floor_z_shift = remapped_bb.min.z() + z_shift_val
     if (std::abs(m_slicing_params.belt_floor_shear_factor) > EPSILON) {
         double z_shift_val = (m_belt_min_z < 0.) ? -m_belt_min_z : 0.;
-        // With pre-remap, the belt surface (model_Y=0) may not be at Z=0 in
-        // centered slicer space — add the remapped bbox min Z to compensate.
-        // Without pre-remap, the belt surface IS at Z=0 and bb.min.z() is
-        // already folded into m_belt_min_z, so use 0.
-        const auto &pcfg = this->print()->config();
-        double belt_surface_z = BeltTransformPipeline::has_preslice_remap(pcfg)
-            ? BeltTransformPipeline::remap_bbox(*this->model_object(), pcfg).min.z() : 0.;
-        m_slicing_params.belt_floor_z_shift = belt_surface_z + z_shift_val;
+        // The belt surface is at Z=0 in centered slicer space and bb.min.z() is
+        // already folded into m_belt_min_z.
+        m_slicing_params.belt_floor_z_shift = z_shift_val;
     }
 
     int firstLayerReplacedBy = 0;
@@ -982,8 +976,6 @@ void PrintObject::slice()
         const auto &pcfg = this->print()->config();
         BOOST_LOG_TRIVIAL(trace) << "Belt global check: belt_printer=" << pcfg.belt_printer.value
             << " belt_slice_rotation=" << int(pcfg.belt_slice_rotation.value)
-            << " belt_slice_rotation_global=" << pcfg.belt_slice_rotation_global.value
-            << " belt_preslice_global=" << pcfg.belt_preslice_global.value
             << " object=" << this->model_object()->name;
         if (pcfg.belt_printer.value) {
 
@@ -1003,8 +995,7 @@ void PrintObject::slice()
             // couples slicer_z back into both machine_y and machine_z.  Compensating
             // layer.print_z by belt_z_shift here makes the back-transform produce
             // correct machine-frame coordinates whether or not a global mode is active.
-            double belt_surface_z = BeltTransformPipeline::has_preslice_remap(pcfg)
-                ? BeltTransformPipeline::remap_bbox(*this->model_object(), pcfg).min.z() : 0.;
+            const double belt_surface_z = 0.;   // the belt surface is Z=0 in centered slicer space
             // The compensation must mirror the Z-shift actually applied, which
             // is max(0, -m_belt_min_z): when the transformed mesh starts ABOVE
             // slicer Z=0 (m_belt_min_z > 0 — possible for counter-rotated or
@@ -1034,9 +1025,11 @@ void PrintObject::slice()
                 global_z_offset += centering_z_corr;
             }
 
-            if (pcfg.belt_preslice_global.value) {
+            {
                 // Global pre-slice mode: compute full correction c = (T.linear() - I) * d
-                // where T is the belt forward transform and d is the bed position.
+                // where T is the belt forward transform and d is the bed position, so
+                // objects at different bed positions print at different machine Z values
+                // along the inclined belt.
                 Transform3d T = BeltTransformPipeline::build_forward_transform(pcfg);
                 Vec3d d(unscale<double>(inst_shift.x()), unscale<double>(inst_shift.y()), 0.);
                 Vec3d c = T.linear() * d - d;
@@ -1046,31 +1039,6 @@ void PrintObject::slice()
                 BOOST_LOG_TRIVIAL(trace) << "Belt preslice_global: correction=("
                     << c.x() << ", " << c.y() << ", " << c.z() << ")"
                     << " belt_z_shift=" << belt_z_shift << " (m_belt_min_z=" << m_belt_min_z << ")";
-            } else {
-                // Slicing rotation in global mode: bed-position-dependent Z offset.
-                // For R(α, X): c.z = sin(α)*d.y so objects at different bed-Y
-                // values print at different machine Z values along the inclined belt.
-                if (pcfg.belt_slice_rotation_global.value
-                    && pcfg.belt_slice_rotation.value != BeltRotationAxis::None
-                    && std::abs(pcfg.belt_slice_rotation_angle.value) > EPSILON) {
-                    Transform3d T = BeltTransformPipeline::build_forward_transform(pcfg);
-                    Vec3d d(unscale<double>(inst_shift.x()), unscale<double>(inst_shift.y()), 0.);
-                    Vec3d c = T.linear() * d - d;
-                    global_z_offset += c.z();
-                    m_belt_global_xy_correction = Vec2d(c.x(), c.y());
-                }
-
-                // Pre-slice remap global mode: when on, the remap accounts for the
-                // instance bed position. The Z component of the correction
-                // (R - I) * d shifts layer print_z so e.g. a Y↔Z swap with an
-                // object at Y=50 prints at Z=50.
-                if (pcfg.preslice_remap_global.value
-                    && BeltTransformPipeline::has_preslice_remap(pcfg)) {
-                    Transform3d R = BeltTransformPipeline::build_preslice_remap(pcfg);
-                    Vec3d d(unscale<double>(inst_shift.x()), unscale<double>(inst_shift.y()), 0.);
-                    Vec3d remap_correction = R.linear() * d - d;
-                    global_z_offset += remap_correction.z();
-                }
             }
 
             BOOST_LOG_TRIVIAL(trace) << "Belt global: z_offset=" << global_z_offset
