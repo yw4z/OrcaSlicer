@@ -199,6 +199,8 @@ private:
     std::vector<int> m_plater_extruder;
     bool m_gl_data_initialized{ false };
     unsigned int m_last_result_id{ 0 };
+    // Belt printers: the view the loaded result was converted for (see load_as_gcode).
+    bool m_last_belt_show_designed{ true };
     //BBS: save m_gcode_result as well
     const GCodeProcessorResult* m_gcode_result;
     std::array<unsigned int, static_cast<size_t>(EMoveType::Count)> m_move_type_counts{};
@@ -262,6 +264,8 @@ mutable bool m_no_render_path { false };
     bool m_is_dark = false;
 
     bool  m_belt_view_enabled = false;
+    bool  m_belt_show_designed = true;   // Designed (upright, back-transformed) view by default; off shows
+                                         // the raw machine-frame G-code (canvas view menu, hotkey B).
     float m_belt_angle_deg = 0.f;
 
     libvgcode::Viewer m_viewer;
@@ -402,6 +406,8 @@ public:
 
     void set_belt_printer(bool enabled, float angle_deg) { m_belt_view_enabled = enabled; m_belt_angle_deg = angle_deg; }
     bool is_belt_view() const { return m_belt_view_enabled && m_belt_angle_deg > 0.f; }
+    void toggle_belt_show_designed() { if (m_belt_view_enabled) m_belt_show_designed = !m_belt_show_designed; }
+    bool is_belt_show_designed() const { return m_belt_show_designed; }
 
     size_t get_extruders_count() { return m_extruders_count; }
     void push_combo_style();
