@@ -236,8 +236,8 @@ protected:
     Vec3d apply_axis_remap(const Vec3d &pos) const;
 
     // Motion uses the global/base process variant until a filament becomes active.
-    // Protected so subclasses index the per-extruder speed options (travel_speed,
-    // travel_speed_z, initial_layer_travel_speed) exactly as the base writer does.
+    // Indexes the per-extruder speed options (travel_speed, travel_speed_z,
+    // initial_layer_travel_speed).
     size_t     m_cached_extruder_idx;
 
 private:

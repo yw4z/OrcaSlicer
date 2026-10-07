@@ -896,8 +896,7 @@ void CalibPressureAdvancePattern::_refresh_writer(bool is_bbl_machine, const Mod
         }
         m_writer = std::move(belt_writer);
     } else if (m_writer && dynamic_cast<const BeltKinematics *>(&m_writer->kinematics()) != nullptr) {
-        // Previously configured for a belt printer; drop back to a plain writer,
-        // exactly as the old dynamic_cast<BeltGCodeWriter*> check did.
+        // Previously configured for a belt printer; drop back to a plain writer.
         m_writer = std::make_shared<GCodeWriter>();
     }
 
