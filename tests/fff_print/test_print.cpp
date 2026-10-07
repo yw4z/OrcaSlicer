@@ -31,10 +31,12 @@
 #include "libslic3r/Support/TreeModelVolumes.hpp"
 #include "libslic3r/Support/TreeSupportCommon.hpp"
 #include "libslic3r/Support/BeltFloorContext.hpp"
+#include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Polyline.hpp"
 #include <limits>
 #include <cmath>
+#include <map>
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCodeReader.hpp"
@@ -1242,6 +1244,98 @@ TEST_CASE("Organic tree supports place a support blocker at its own height above
     CHECK_FALSE(collides(first + num_raft - 1));
     CHECK(collides(last + 1));
     CHECK(collides(last + num_raft));
+}
+
+// organic_draw_branches() trims every branch slice against the collision volume (the
+// part grown by the support XY distance), the bed and, on a belt, the belt plane before
+// it becomes support, so a branch never runs into the part it supports.  Not a belt
+// feature: this is the generator every printer uses.
+TEST_CASE("Organic tree supports keep their distance from the part", "[Print][Support]")
+{
+    // A 20 mm cube carrying a 60 x 60 mm plate: a 20 mm wide ceiling all around the
+    // cube, 16 mm above the bed, with the cube's four corners in the way of the branches
+    // that drop from it.  The plate reaches into the cube so the two shells overlap
+    // instead of sharing a face.
+    indexed_triangle_set its   = its_make_cube(20., 20., 20.);
+    indexed_triangle_set plate = its_make_cube(60., 60., 4.);
+    its_translate(its, Vec3f(20.f, 20.f, 0.f));
+    its_translate(plate, Vec3f(0.f, 0.f, 16.f));
+    its_merge(its, plate);
+    TriangleMesh mesh(std::move(its));
+
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "enable_support",             1 },
+        { "support_type",               "tree(auto)" },
+        { "support_style",              "organic" },
+        { "support_threshold_angle",    30 },
+    });
+    Print print;
+    Model model;
+    init_print({ mesh }, print, model, config);
+    // On the bed, not at its corner (the fixture leaves the object at the origin).
+    model.objects.front()->instances.front()->set_offset(Vec3d(100., 100., 0.));
+    print.apply(model, config);
+    print.set_status_silent();
+    print.process();
+
+    const PrintObject &object = *print.objects().front();
+    INFO("object layers " << object.layers().size() << ", support layers " << object.support_layers().size());
+    REQUIRE(! object.support_layers().empty());
+    // Support exists under the plate at all.
+    size_t support_layers_with_fills = 0;
+    for (const SupportLayer *layer : object.support_layers())
+        if (! layer->support_fills.empty())
+            ++ support_layers_with_fills;
+    INFO("support layers with extrusions " << support_layers_with_fills);
+    CHECK(support_layers_with_fills > 20);
+
+    // Object layers by print_z, to look up the part's slice at a support layer's height.
+    std::map<coord_t, const Layer *> object_layers;
+    for (const Layer *layer : object.layers())
+        object_layers[scaled<coord_t>(layer->print_z)] = layer;
+    auto contains = [](const ExPolygons &expolys, const Point &pt) {
+        for (const ExPolygon &ex : expolys)
+            if (ex.contains(pt))
+                return true;
+        return false;
+    };
+    // No support extrusion may run closer to the part's slice than half a line width:
+    // the generator keeps the support XY distance (0.35 mm by default) plus the line's
+    // own half width away from it.
+    const float min_gap = scaled<float>(0.2);
+    size_t too_close = 0, points = 0, layers_checked = 0, layers_unmatched = 0;
+    for (const SupportLayer *layer : object.support_layers()) {
+        if (layer->support_fills.empty())
+            continue;
+        // The object layer whose slab spans this support layer's height.
+        auto it = object_layers.lower_bound(scaled<coord_t>(layer->print_z - EPSILON));
+        if (it == object_layers.end()) {
+            ++ layers_unmatched;
+            continue;
+        }
+        ++ layers_checked;
+        const ExPolygons grown = offset_ex(it->second->lslices, min_gap);
+        for (const ExtrusionEntity *entity : layer->support_fills.flatten().entities)
+            for (const Slic3r::Polyline &pl : entity->as_polylines())
+                for (size_t i = 0; i < pl.points.size(); ++ i) {
+                    // The vertices and the midpoints of the segments between them.
+                    ++ points;
+                    if (contains(grown, pl.points[i]))
+                        ++ too_close;
+                    if (i + 1 < pl.points.size() && contains(grown, (pl.points[i] + pl.points[i + 1]) / 2))
+                        ++ too_close;
+                }
+    }
+    INFO("support layers checked " << layers_checked << " (unmatched " << layers_unmatched << "), support points " << points
+         << ", within 0.2 mm of the part " << too_close);
+    CHECK(layers_checked > 20);
+    CHECK(layers_unmatched == 0);
+    REQUIRE(points > 0);
+    CHECK(too_close == 0);
 }
 
 // Two parts along the belt: the second part's slicing frame starts at the belt
