@@ -34,6 +34,7 @@
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Polyline.hpp"
 #include <limits>
+#include <cmath>
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCodeReader.hpp"
