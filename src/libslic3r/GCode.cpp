@@ -3192,8 +3192,11 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     if (print.config().belt_printer.value) {
         m_writer.set_first_layer_point_test([this](const Vec3d &point_logical) {
             const Vec2d extruder_offset = m_writer.filament() != nullptr ? EXTRUDER_CONFIG(extruder_offset) : Vec2d::Zero();
-            return this->on_first_layer(Vec3d(point_logical.x() - m_origin.x() + extruder_offset.x(),
-                                              point_logical.y() - m_origin.y() + extruder_offset.y(),
+            // The writer hands over the point with the plate origin (its XY offset) already
+            // taken off, while m_origin still carries it: take off the instance part only.
+            const Vec2d plate_offset = m_writer.get_xy_offset().cast<double>();
+            return this->on_first_layer(Vec3d(point_logical.x() - (m_origin.x() - plate_offset.x()) + extruder_offset.x(),
+                                              point_logical.y() - (m_origin.y() - plate_offset.y()) + extruder_offset.y(),
                                               point_logical.z()));
         });
     }
