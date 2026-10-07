@@ -7414,8 +7414,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("belt_frame_tilt_angle", coFloat);
     def->label = L("Machine-frame tilt angle");
     def->category = L("Printable space");
-    def->tooltip = L("Tilt angle (degrees) used to derive the machine-frame shear (tan) and "
-                     "scale (1/cos) applied to G-code. Only used when 'Decouple machine-frame "
+    def->tooltip = L("Tilt angle (degrees) used to derive the machine-frame shear (cot) and "
+                     "scale (1/sin) applied to G-code. Only used when 'Decouple machine-frame "
                      "tilt' is enabled; otherwise the belt tilt angle is used.");
     def->sidetext = L("°");
     def->min = -89.9;
@@ -7423,23 +7423,29 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionFloat(45.));
 
-    // G-code axis remap with sign. Each field is its own row in the settings tab.
-    auto add_belt_remap = [this](const char *key, const char *label, const char *tooltip,
-                                  RemapAxis default_axis, ConfigOptionMode mode = comSimple) {
+    // G-code axis remap with sign. Each field is its own row in the settings tab.  The
+    // labels and tooltips are literals in L() so they are extracted for translation.
+    auto add_belt_remap = [this](const char *key, const std::string &label, const std::string &tooltip,
+                                  RemapAxis default_axis, ConfigOptionMode mode) {
         auto def = this->add(key, coEnum);
-        def->label = L(label);
+        def->label = label;
         def->category = L("Printable space");
-        def->tooltip = L(tooltip);
+        def->tooltip = tooltip;
         def->enum_keys_map = &ConfigOptionEnum<RemapAxis>::get_enum_values();
         def->enum_values  = {"pos_x", "pos_y", "pos_z", "neg_x", "neg_y", "neg_z", "rev_x", "rev_y", "rev_z"};
         def->enum_labels  = {L("+X"), L("+Y"), L("+Z"), L("-X"), L("-Y"), L("-Z"), L("Rev X"), L("Rev Y"), L("Rev Z")};
         def->mode = mode;  // Visibility may also be gated by toggle_line in Tab.cpp
         def->set_default_value(new ConfigOptionEnum<RemapAxis>(default_axis));
     };
-
-    add_belt_remap("gcode_remap_x", "G-code remap X", "Which slicing axis maps to machine X in G-code output. Applied AFTER slicing, during G-code generation.", RemapAxis::PosX, comDevelop);
-    add_belt_remap("gcode_remap_y", "G-code remap Y", "Which slicing axis maps to machine Y in G-code output. Applied AFTER slicing, during G-code generation.", RemapAxis::PosY, comDevelop);
-    add_belt_remap("gcode_remap_z", "G-code remap Z", "Which slicing axis maps to machine Z in G-code output. Applied AFTER slicing, during G-code generation.", RemapAxis::PosZ, comDevelop);
+    add_belt_remap("gcode_remap_x", L("G-code remap X"),
+                   L("Which slicing axis maps to machine X in G-code output. Applied AFTER slicing, during G-code generation."),
+                   RemapAxis::PosX, comDevelop);
+    add_belt_remap("gcode_remap_y", L("G-code remap Y"),
+                   L("Which slicing axis maps to machine Y in G-code output. Applied AFTER slicing, during G-code generation."),
+                   RemapAxis::PosY, comDevelop);
+    add_belt_remap("gcode_remap_z", L("G-code remap Z"),
+                   L("Which slicing axis maps to machine Z in G-code output. Applied AFTER slicing, during G-code generation."),
+                   RemapAxis::PosZ, comDevelop);
 
     // The machine-frame G-code transform (shear + scale) is no longer configured
     // by per-axis keys: it is derived from the belt tilt (belt_slice_rotation axis
