@@ -2768,8 +2768,7 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
     //const auto   expansion_to_slice = m_support_material_flow.scaled_spacing() / 2 + 25;
     const SupportGridParams grid_params(*m_object_config, m_support_params.support_material_flow);
     const bool buildplate_only = ! buildplate_covered.empty();
-    const bool has_belt_floor  = std::abs(m_slicing_params.belt_floor_shear_factor) > EPSILON
-        && m_print_config->belt_support_floor_mode.value == BeltSupportFloorMode::GeneratorOnly;
+    const bool has_belt_floor  = std::abs(m_slicing_params.belt_floor_shear_factor) > EPSILON;
 
     // Allocate empty surface areas, one per object layer.
     layer_support_areas.assign(object.total_layer_count(), Polygons());
@@ -3310,8 +3309,6 @@ static void trim_support_layers_by_belt_floor(
 {
     BeltFloorContext ctx;
     if (!ctx.init(slicing_params, print_config))
-        return;
-    if (print_config.belt_support_floor_mode.value != BeltSupportFloorMode::GeneratorOnly)
         return;
 
     tbb::parallel_for(tbb::blocked_range<size_t>(0, support_layers.size()),

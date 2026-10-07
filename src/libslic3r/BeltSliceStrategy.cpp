@@ -38,6 +38,20 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
     // coordinates rather than object-space coordinates, so volumes translated along
     // the slicer's Z axis would be silently excluded from the bound check.
 
+    //
+    // The lift is measured to the lowest point of the SUPPORT region, not of the
+    // mesh: the belt floor (z = shear * u in this rotated frame, u the from-axis
+    // coordinate) runs below every vertex, and under the leading end of an
+    // overhang it lies below the lowest vertex by up to the overhang's length
+    // times the shear.  Supports have to reach that floor, and every support
+    // generator works in layers at z >= 0, so z = 0 has to be the lowest floor
+    // point under the footprint.  The layers between it and the first vertex
+    // come out empty, which belt slicing already tolerates (the bottom corner
+    // of a tilted part is a point).  Vertices on the belt have z == floor, so
+    // for a part resting on the belt this is simply the floor at its leading
+    // extreme, less the frame margin (see BeltTransformPipeline::frame_margin).
+    BeltTransformPipeline::BeltFloorParams floor;
+    const bool has_floor = BeltTransformPipeline::floor_shear(config, floor);
     double min_z = std::numeric_limits<double>::max();
     for (const ModelVolume *mv : model_volumes) {
         if (!mv->is_model_part()) continue;
@@ -47,8 +61,12 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
             Vec3d vm = v.cast<double>();
             Vec3d pt = vol_trafo * vm;
             min_z = std::min(min_z, pt.z());
+            if (has_floor)
+                min_z = std::min(min_z, floor.shear_factor * (floor.from_axis == 0 ? pt.x() : pt.y()));
         }
     }
+    if (has_floor && min_z != std::numeric_limits<double>::max())
+        min_z -= BeltTransformPipeline::frame_margin(floor);
     const double z_shift_val = (min_z < 0. && min_z != std::numeric_limits<double>::max()) ? -min_z : 0.;
     if (z_shift_val > 0.) {
         Transform3d z_shift = Transform3d::Identity();

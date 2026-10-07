@@ -957,14 +957,10 @@ protected:
         return on_first_layer() ? 0 : layer_id();
     }
 
-    // Band thickness for the *effective layer index* only.  Two separate
-    // thresholds: on_first_layer(point) tests against initial_layer_print_height,
-    // while effective_layer_index_for_point() counts bands of
-    // first_layer_plane_thickness.  Conflating them would apply first-layer
-    // treatment through a whole 1mm band on a 0.2mm first layer.
+    // Band thickness for the *effective layer index*: one first layer height, so
+    // "the first N layers" means the same height above the belt as on a flat bed.
     double first_layer_band_mm() const {
-        double band = m_config.first_layer_plane_thickness.value;
-        if (band <= 0.) band = m_config.initial_layer_print_height.value;
+        const double band = m_config.initial_layer_print_height.value;
         return band > 0. ? band : 0.2;
     }
 

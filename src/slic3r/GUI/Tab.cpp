@@ -5250,25 +5250,12 @@ void TabPrinter::build_fff()
         // Belt tilt: the sole mesh-side transform and the single source of truth for
         // the physical tilt (drives bed rendering and support gravity tilt too).
         // Isometric rotation, no distortion; the back-transform inverts it before the
-        // machine-frame remap.
-        {
-            Line line = { L("Belt tilt"),
-                          L("Belt tilt axis and angle, applied as a mesh rotation before "
-                            "slicing. Also drives bed rendering and support gravity tilt. "
-                            "Isometric (no distortion); the back-transform inverts it before "
-                            "the machine-frame remap.") };
-            line.label_path = "printer_basic_information_belt_printer#belt-tilt";
-            line.append_option(belt_og->get_option("belt_slice_rotation"));
-            line.append_option(belt_og->get_option("belt_slice_rotation_angle"));
-            belt_og->append_line(line);
-        }
-        belt_og->append_single_option_line("belt_preslice_global", "printer_basic_information_belt_printer#global-mesh-transforms");
-        belt_og->append_single_option_line("gcode_back_transform", "printer_basic_information_belt_printer#g-code-back-transform");
-        belt_og->append_single_option_line("first_layer_plane_thickness", "printer_basic_information_belt_printer#first-layer-band-thickness");
-        // Support floor: split across lines so each setting's own mode controls
-        // its visibility (floor_mode = Develop, floor_offset = Advanced).
+        // machine-frame remap.  The angle is what a user checks against the machine;
+        // the axis is a profile-level kinematics choice, so it is Develop-only.  They
+        // are separate rows because a shared line is shown by its first option's mode.
+        belt_og->append_single_option_line("belt_slice_rotation_angle", "printer_basic_information_belt_printer#tilt-angle");
+        belt_og->append_single_option_line("belt_slice_rotation", "printer_basic_information_belt_printer#tilt-axis");
         belt_og->append_single_option_line("belt_support_floor_offset", "printer_basic_information_belt_printer#support-floor-z-offset");
-        belt_og->append_single_option_line("belt_support_floor_mode", "printer_basic_information_belt_printer#floor-mode");
 
         // Machine-frame transform: the shear (cot) + scale (1/sin) that map
         // Cartesian G-code into the printer's physical machine frame are derived
@@ -6326,6 +6313,7 @@ void TabPrinter::toggle_options()
         bool expert_or_above = (m_mode >= comExpert);
         toggle_line("belt_printer_infinite_y", is_belt);
         // Belt tilt: the sole mesh-side belt transform (visible by default in belt mode).
+        toggle_line("belt_slice_rotation_angle", is_belt);
         toggle_line("belt_slice_rotation", is_belt);
 
         // Remap, back-transform, and global mesh-transforms toggles are gated by belt
@@ -6333,9 +6321,8 @@ void TabPrinter::toggle_options()
         // ConfigOptionMode in PrintConfig.cpp. The axis remap is Develop-only: a
         // printer profile sets it once for its kinematics, and a wrong value sends
         // the gantry outside the machine.
-        for (auto el : {"gcode_remap_x", "gcode_remap_y", "gcode_remap_z", "gcode_back_transform"})
+        for (auto el : {"gcode_remap_x", "gcode_remap_y", "gcode_remap_z"})
             toggle_line(el, is_belt);
-        toggle_line("belt_preslice_global", is_belt);
 
         // Rotation is the only mesh-side belt transform.  Gray out its angle when no
         // rotation axis is selected.
@@ -6348,10 +6335,8 @@ void TabPrinter::toggle_options()
         toggle_line("belt_frame_tilt_angle",
                     is_belt && expert_or_above && m_config->opt_bool("belt_frame_tilt_decouple"));
 
-        toggle_line("first_layer_plane_thickness", is_belt);
 
-        for (auto el : {"belt_support_floor_mode", "belt_support_floor_offset"})
-            toggle_line(el, is_belt);
+        toggle_line("belt_support_floor_offset", is_belt);
         const bool support_parallel_printheads = printer_cfg.opt_bool("support_parallel_printheads");
         toggle_line("parallel_printheads_count", support_parallel_printheads);
 

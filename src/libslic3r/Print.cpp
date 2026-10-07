@@ -176,8 +176,6 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "gcode_remap_z",
         // Machine-frame transform (derived from belt tilt; only affects G-code output).
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
-        "gcode_back_transform",
-        "first_layer_plane_thickness",
         // Only inflates the GUI bed volume, like printable_area.
         "belt_printer_infinite_y",
         //BBS
@@ -388,12 +386,10 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
             // Belt printer transform options change the mesh geometry before slicing.
             || opt_key == "belt_printer"
             || opt_key == "belt_slice_rotation"
-            || opt_key == "belt_slice_rotation_angle"
-            || opt_key == "belt_preslice_global") {
+            || opt_key == "belt_slice_rotation_angle") {
             osteps.emplace_back(posSlice);
         } else if (
-               opt_key == "belt_support_floor_offset"
-            || opt_key == "belt_support_floor_mode") {
+               opt_key == "belt_support_floor_offset") {
             osteps.emplace_back(posSupportMaterial);
         } else if (
                opt_key == "print_sequence"
@@ -1908,14 +1904,6 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
                        "which is the edge it is meant to anchor. Set the gap to 0 when using leading "
                        "brim length."),
                      "brim_object_gap", object->model_object());
-
-            // Unconditional: this suppresses the WHOLE belt brim, not just the apron, so a
-            // user asking for any brim at all needs to be told they are getting none.
-            if (! object->belt_brim_instances_compatible())
-                warn(L("This object's copies are spaced along the belt, so they would each need "
-                       "their own brim and none is generated. Print them as separate objects, or "
-                       "arrange the copies side by side across the belt."),
-                     "brim_type", object->model_object());
         }
         if (this->has_belt_brim() && m_objects.size() > 1)
             warn(L("Leading brim length extends ahead of each object along the belt, and Arrange does "
@@ -3061,7 +3049,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     std::set<PrintObject*> re_slicing_objects;
     // Belt global modes couple each object's bed position into its layer Z values,
     // so sharing layers between "identical" objects is wrong.
-    bool belt_no_share = m_config.belt_printer.value && m_config.belt_preslice_global.value;
+    bool belt_no_share = m_config.belt_printer.value;
     if (!use_cache) {
         for (int index = 0; index < object_count; index++)
         {
@@ -3221,7 +3209,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 for (int i = range.begin(); i < range.end(); i++) {
                     PrintObject* obj = m_objects[i];
                     if (need_slicing_objects.count(obj) != 0) {
-                        obj->generate_support_material();
+                        // The belt brim follows sequentially below.
+                        obj->generate_support_material(false);
                     }
                     else {
                         if (obj->set_started(posSupportMaterial))
@@ -3230,6 +3219,10 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 }
             }
         );
+        // The belt brim keeps clear of every object's layers and support layers,
+        // so it runs once no support step is rebuilding them any more.
+        for (PrintObject *obj : m_objects)
+            obj->generate_belt_brim();
 
         if (m_pipeline_plugin_active)
             for (size_t i = 0; i < m_objects.size(); ++i)

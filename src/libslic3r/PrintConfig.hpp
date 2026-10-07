@@ -294,12 +294,6 @@ enum class RemapAxis
     RevX = 6, RevY = 7, RevZ = 8,  // Reversed: max - pos
 };
 
-enum class BeltSupportFloorMode
-{
-    None,           // No belt floor awareness
-    GeneratorOnly,  // Only in tree support drop_nodes/contact_points
-};
-
 enum SupportMaterialPattern {
     smpDefault,
     smpRectilinear, smpRectilinearGrid, smpHoneycomb,
@@ -746,7 +740,6 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(IroningType)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SlicingMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(BeltRotationAxis)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(RemapAxis)
-CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(BeltSupportFloorMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialPattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialStyle)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialInterfacePattern)
@@ -1875,11 +1868,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_x))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_y))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_z))
-    ((ConfigOptionBool,                 gcode_back_transform))
-    ((ConfigOptionBool,                 belt_preslice_global))
-    ((ConfigOptionFloat,                first_layer_plane_thickness))
     ((ConfigOptionFloat,                          belt_support_floor_offset))
-    ((ConfigOptionEnum<BeltSupportFloorMode>,     belt_support_floor_mode))
     // Width (machine X, across the belt) of the auto-generated belt purge prism.
     ((ConfigOptionFloat,                          belt_purge_tower_width))
     // Belt-printer-only "type" of purge tower: enables the auto-generated belt

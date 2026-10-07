@@ -715,14 +715,39 @@ static double first_role_z(const std::string &gcode, const std::string &role)
     return z;
 }
 
-// Number of object layers that carry a belt brim band.  Each such band is emitted as one
-// contiguous brim pass, so for a single object whose first-contact layer carries a band
-// (the apron prologue folds into that layer's pass) this equals role_passes(gcode, "brim").
+// Number of object layers that carry a belt brim band.  Every band prints at its own
+// layer Z, so this equals role_layers(gcode, "brim") (plus any apron bands below the
+// first object layer).  It is not a pass count: the bands on the empty lead-in layers
+// ahead of the object's first contact print back to back, so they fold into one pass.
 static int nonempty_belt_brim_layers(const PrintObject &object)
 {
     int n = 0;
     for (const ExtrusionEntityCollection &band : object.belt_brim_by_layer())
         if (! band.empty())
+            ++ n;
+    return n;
+}
+
+// Number of distinct Z heights at which `role` extrudes: one per layer that prints it.
+static int role_layers(const std::string &gcode, const std::string &role)
+{
+    std::set<long> zs;
+    GCodeReader reader;
+    reader.parse_buffer(gcode, [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
+        if (! line.extruding(self) || line.dist_XY(self) <= EPSILON)
+            return;
+        if (line.comment().find(role) != std::string_view::npos)
+            zs.insert(std::lround(self.z() * 1000.));
+    });
+    return int(zs.size());
+}
+
+// Apron bands below the object's first layer that print something.
+static int belt_brim_apron_bands(const PrintObject &object)
+{
+    int n = 0;
+    for (const BeltBrimBand &band : object.belt_brim_prologue())
+        if (! band.fills.empty())
             ++ n;
     return n;
 }
@@ -801,12 +826,15 @@ TEST_CASE("Belt brim on an object layer precedes its perimeters, once", "[SkirtB
     CHECK(seq[0] == "brim");
     CHECK(seq[1] == "perimeter");
 
-    // Exactly once: every band is one contiguous pass (the apron prologue folds into the
-    // first layer's), so the pass count equals the number of layers carrying a band - not
-    // twice it, which double-emission would give, nor fewer, which a dropped band would.
-    const int bands = nonempty_belt_brim_layers(*print.objects().front());
+    // Exactly once: every band prints at its own layer Z, so the number of Z heights with
+    // brim equals the number of bands - not fewer, which a dropped band would give.  (A
+    // double emission would print twice at one Z: the pass count below catches that for
+    // the bands that sit on layers with perimeters.)
+    const PrintObject &object = *print.objects().front();
+    const int bands = nonempty_belt_brim_layers(object);
     REQUIRE(bands > 0);
-    CHECK(role_passes(gc, "brim") == bands);
+    CHECK(role_layers(gc, "brim") == bands + belt_brim_apron_bands(object));
+    CHECK(role_passes(gc, "brim") <= bands);
 }
 
 // B - single extruder (filament id 1).  Every band must survive the 1-based -> 0-based
@@ -826,9 +854,10 @@ TEST_CASE("Belt brim on a single extruder emits every band once", "[SkirtBrim][b
     init_print({ cube(20) }, print, model, config);
     const std::string gc = gcode(print);
 
-    const int expected = nonempty_belt_brim_layers(*print.objects().front());
+    const PrintObject &object = *print.objects().front();
+    const int expected = nonempty_belt_brim_layers(object) + belt_brim_apron_bands(object);
     REQUIRE(expected > 0);
-    CHECK(role_passes(gc, "brim") == expected);
+    CHECK(role_layers(gc, "brim") == expected);
     CHECK(belt_tools_for_role(gc, "brim") == std::set<int>{ 0 });   // filament 1 -> tool 0
 }
 
@@ -1229,49 +1258,6 @@ TEST_CASE("Belt apron survives another object printing at the same Z", "[SkirtBr
     // else is printing that early, so only the second object's apron goes missing.
     // Requiring close to 2x is what actually detects the dropped bands.
     CHECK(two >= 1.8 * one);
-}
-
-TEST_CASE("Belt brim allows instances placed across the belt", "[SkirtBrim][belt]")
-{
-    // Only movement ALONG the belt changes an instance's belt-floor Z, so copies placed
-    // side by side ACROSS it share one set of bands and must still get a brim.  The first
-    // version of this guard refused every multi-instance object outright, silently
-    // dropping the brim.
-    //
-    // The global belt flags are off here so the instances stay in one PrintObject; with
-    // them on, PrintApply splits each instance into its own object and the case cannot
-    // arise at all.
-    auto multi_instance_has_brim = [](double dx, double dy) {
-        DynamicPrintConfig config = belt_brim_config();
-        config.set_deserialize_strict({
-            { "belt_preslice_global",       0 },
-            { "brim_type",                  "outer_only" },
-            { "brim_width",                 4 },
-            { "brim_object_gap",            0 },
-        });
-        Print  print;
-        Model  model;
-        ModelObject *object = model.add_object();
-        object->name += "object.stl";
-        object->add_volume(cube(20));
-        object->add_instance()->set_offset(Vec3d(80., 80., 0.));
-        object->add_instance()->set_offset(Vec3d(80. + dx, 80. + dy, 0.));
-        object->ensure_on_bed();
-        print.auto_assign_extruders(object);
-        print.apply(model, config);
-        print.validate();
-        print.set_status_silent();
-        print.process();
-        REQUIRE(print.objects().size() == 1);
-        REQUIRE(print.objects().front()->instances().size() == 2);
-        return print.objects().front()->has_belt_brim();
-    };
-
-    // X is across the belt when the tilt is about X, since the shear then runs along Y.
-    CHECK(multi_instance_has_brim(40., 0.));
-    // Y is along the belt: the copies sit at different belt heights and would each need
-    // their own bands, so the brim is refused (and validate() warns).
-    CHECK_FALSE(multi_instance_has_brim(0., 40.));
 }
 
 TEST_CASE("Belt brim coexists with support material", "[SkirtBrim][belt]")

@@ -3220,8 +3220,8 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         const auto *belt = config.option<ConfigOptionBool>("belt_printer");
         if (belt != nullptr) {
             static const char *belt_keys[] = {
-                "belt_printer", "belt_slice_rotation", "belt_slice_rotation_angle", "belt_preslice_global",
-                "gcode_remap_x", "gcode_remap_y", "gcode_remap_z", "gcode_back_transform",
+                "belt_printer", "belt_slice_rotation", "belt_slice_rotation_angle",
+                "gcode_remap_x", "gcode_remap_y", "gcode_remap_z",
                 "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
             };
             for (const char *key : belt_keys)

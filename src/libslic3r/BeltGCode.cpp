@@ -25,7 +25,6 @@ void BeltGCode::write_belt_header(GCodeOutputStream &file, const Print &print)
     // for the physical tilt the G-code viewer uses to enable belt view.
     file.write_format("; belt_slice_rotation = %s\n", full_cfg.opt_serialize("belt_slice_rotation").c_str());
     file.write_format("; belt_slice_rotation_angle = %.1f\n", print.config().belt_slice_rotation_angle.value);
-    file.write_format("; belt_preslice_global = %d\n", print.config().belt_preslice_global.value ? 1 : 0);
     // Machine-frame transform: shear (tan) + scale (1/cos) derived from the belt
     // tilt angle (or belt_frame_tilt_angle when decoupled).
     file.write_format("; belt_frame_tilt_decouple = %d\n", print.config().belt_frame_tilt_decouple.value ? 1 : 0);
@@ -34,13 +33,10 @@ void BeltGCode::write_belt_header(GCodeOutputStream &file, const Print &print)
 
 void BeltGCode::on_set_origin(const PrintObject * /*obj*/, const Point & /*inst_shift*/)
 {
-    // Global pre-slice mode (matches the per-instance Z-offset added in
-    // PrintObjectSlice.cpp): transform the origin through the belt pipeline so
-    // that back_transform(T * origin) = origin (correct machine position). The
-    // back_transform applied during G-code emission is the inverse of the
-    // forward transform.
-    if (!m_config.belt_preslice_global.value)
-        return;
+    // Matches the per-instance Z-offset added in PrintObjectSlice.cpp: transform
+    // the origin through the belt pipeline so that back_transform(T * origin) =
+    // origin (correct machine position). The back_transform applied during
+    // G-code emission is the inverse of the forward transform.
 
     // Adjust origin: transform through belt forward pipeline so that
     // the back-transform correctly recovers model-space positions.

@@ -398,12 +398,6 @@ static t_config_enum_values s_keys_map_RemapAxis {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(RemapAxis)
 
-static t_config_enum_values s_keys_map_BeltSupportFloorMode {
-    { "none",           int(BeltSupportFloorMode::None) },
-    { "generator_only", int(BeltSupportFloorMode::GeneratorOnly) },
-};
-CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(BeltSupportFloorMode)
-
 static t_config_enum_values s_keys_map_SupportMaterialPattern {
     { "rectilinear",        smpRectilinear },
     { "rectilinear-grid",   smpRectilinearGrid },
@@ -7390,7 +7384,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_keys_map = &ConfigOptionEnum<BeltRotationAxis>::get_enum_values();
     def->enum_values  = {"none", "x", "y", "z"};
     def->enum_labels  = {L("None"), L("X"), L("Y"), L("Z")};
-    def->mode = comAdvanced;
+    def->mode = comDevelop;
     def->set_default_value(new ConfigOptionEnum<BeltRotationAxis>(BeltRotationAxis::X));
 
     def = this->add("belt_slice_rotation_angle", coFloat);
@@ -7451,38 +7445,6 @@ void PrintConfigDef::init_fff_params()
     // by per-axis keys: it is derived from the belt tilt (belt_slice_rotation axis
     // + angle, or belt_frame_tilt_angle when decoupled) in MachineFrameTransform.
 
-    def = this->add("gcode_back_transform", coBool);
-    def->label = L("G-code back-transform");
-    def->category = L("Printable space");
-    def->tooltip = L("Undo the pre-slice mesh transform before applying the G-code axis remap "
-                      "and machine-frame shear/scale. Required for the standard belt-printer "
-                      "rotation pipeline.");
-    def->mode = comExpert;
-    def->set_default_value(new ConfigOptionBool(true));
-
-    def = this->add("belt_preslice_global", coBool);
-    def->label = L("Global mesh transforms");
-    def->category = L("Printable space");
-    def->tooltip = L("When enabled, pre-slice belt transforms (remap, shear, scale) account for "
-                      "each object's bed position, producing correct machine coordinates without "
-                      "relying on origin snap. Each instance gets its own PrintObject.");
-    def->mode = comExpert;
-    def->set_default_value(new ConfigOptionBool(true));
-
-    def = this->add("first_layer_plane_thickness", coFloat);
-    def->label = L("First layer band thickness");
-    def->category = L("Printable space");
-    def->tooltip = L("Belt printers only. Every tilted layer touches the belt, so the first-layer "
-                     "settings apply to a band above the belt surface rather than to the first "
-                     "slicing layer. This is the thickness of one band, in mm: the unit by which "
-                     "'No cooling for the first N layers' and similar layer-count thresholds are "
-                     "multiplied. -1 means use the first layer height.");
-    def->sidetext = L("mm");
-    def->min = -1;
-    def->max = 100;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(-1.0));
-
     // Belt support floor debug controls
     def = this->add("belt_support_floor_offset", coFloat);
     def->label = L("Support Floor Z offset");
@@ -7493,19 +7455,6 @@ void PrintConfigDef::init_fff_params()
     def->max = 500;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
-
-    {
-        auto def = this->add("belt_support_floor_mode", coEnum);
-        def->label = L("Floor mode");
-        def->category = L("Printable space");
-        def->tooltip = L("Controls belt floor awareness for supports. 'None' disables belt floor logic. "
-                         "'Generator only' stops support generation at the belt floor plane.");
-        def->enum_keys_map = &ConfigOptionEnum<BeltSupportFloorMode>::get_enum_values();
-        def->enum_values  = {"none", "generator_only"};
-        def->enum_labels  = {L("None"), L("Generator only")};
-        def->mode = comDevelop;
-        def->set_default_value(new ConfigOptionEnum<BeltSupportFloorMode>(BeltSupportFloorMode::GeneratorOnly));
-    }
 
     def = this->add("enable_belt_purge_tower", coBool);
     def->label = L("Enable belt purge tower");
@@ -9440,9 +9389,6 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
     //BBS: handle legacy options
     if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";
-    } else if (opt_key == "belt_support_floor_mode" && (value == "clip_only" || value == "both")) {
-        // Never implemented; both behaved like "none".
-        value = "none";
     } else if (opt_key == "enable_wipe_tower") {
         opt_key = "enable_prime_tower";
     } else if (opt_key == "wipe_tower_width") {
@@ -9682,11 +9628,13 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
         "smooth_coefficient", "overhang_totally_speed", "silent_mode",
         "overhang_speed_classic",
         "anisotropic_surfaces", // superseded by top_surface_fill_order / bottom_surface_fill_order
-        // Belt printer keys retired before the first release: the global switches collapsed
-        // into belt_preslice_global, the pre-slice axis remap and the support Z offset mode
-        // were removed.
+        // Belt printer keys retired before the first release: the global-mode and
+        // back-transform switches are presumed on, and the pre-slice axis remap, the
+        // support Z offset mode, the support floor mode (always on) and the first-layer
+        // plane evaluator were removed.
         "belt_slice_rotation_global", "preslice_remap_x", "preslice_remap_y", "preslice_remap_z", "preslice_remap_global",
         "belt_support_z_offset_mode", "first_layer_plane", "first_layer_plane_offset",
+        "belt_preslice_global", "gcode_back_transform", "belt_support_floor_mode", "first_layer_plane_thickness",
     };
 
     if (ignore.find(opt_key) != ignore.end()) {

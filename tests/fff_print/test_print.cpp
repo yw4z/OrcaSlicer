@@ -30,6 +30,10 @@
 #include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/Support/TreeModelVolumes.hpp"
 #include "libslic3r/Support/TreeSupportCommon.hpp"
+#include "libslic3r/Support/BeltFloorContext.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Polyline.hpp"
+#include <limits>
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCodeReader.hpp"
@@ -1041,16 +1045,12 @@ TEST_CASE("Belt-only keys at non-default values leave non-belt G-code unchanged"
         { "belt_printer_infinite_y",     0 },
         { "belt_slice_rotation",         "y" },
         { "belt_slice_rotation_angle",   30 },
-        { "belt_preslice_global",        0 },
         { "gcode_remap_x",               "rev_x" },
         { "gcode_remap_y",               "pos_z" },
         { "gcode_remap_z",               "pos_y" },
-        { "gcode_back_transform",        0 },
         { "belt_frame_tilt_decouple",    1 },
         { "belt_frame_tilt_angle",       30 },
-        { "first_layer_plane_thickness", 1 },
         { "belt_support_floor_offset",   -5 },
-        { "belt_support_floor_mode",     "none" },
         { "enable_belt_purge_tower",     1 },
         { "belt_purge_tower_width",      10 },
         { "leading_brim_length",         10 },
@@ -1241,4 +1241,98 @@ TEST_CASE("Organic tree supports place a support blocker at its own height above
     CHECK_FALSE(collides(first + num_raft - 1));
     CHECK(collides(last + 1));
     CHECK(collides(last + num_raft));
+}
+
+// A part with an overhang on its LEADING side (the end that prints first) needs
+// supports below the object's own lowest slicing layer: the belt under that overhang
+// is reached before the object's first contact with it, so the support layers sit at
+// a lower slicing Z than any object layer. A generator that stops at the object's
+// first layer, or at global Z = 0, leaves those supports floating above the belt.
+TEST_CASE("Belt supports reach the belt under a leading overhang", "[Print][belt][Support][Regression]")
+{
+    // default resolves to organic for tree support; tree_hybrid is the classic tree.
+    const char *support_type  = GENERATE("normal(auto)", "tree(auto)");
+    const char *support_style = GENERATE("default", "organic", "tree_hybrid");
+    if (std::string(support_type) == "normal(auto)" && std::string(support_style) != "default")
+        return;   // organic and tree_hybrid are tree styles
+    DYNAMIC_SECTION(support_type << " / " << support_style) {
+        // A 20 mm cube with a 2 mm thick fin that leaves its top edge and reaches
+        // 20 mm toward -Y, the end of the part that prints first, climbing at 45 deg
+        // as it goes (from z = 18 at the cube to z = 38 at the tip).  With the layers
+        // leaning toward -Y at 45 deg the fin's underside is parallel to the layers:
+        // a ceiling 20 x 28 mm in one layer, with nothing but air between it and the
+        // belt, which lies up to 41 mm (of slicing Z) below the object's own lowest
+        // point.  Support has to span all of it.
+        indexed_triangle_set its = its_make_cube(20., 20., 20.);
+        indexed_triangle_set fin = its_make_cube(20., 20., 2.);
+        Transform3d shear = Transform3d::Identity();
+        shear.matrix() << 1., 0., 0.,   0.,
+                          0., 1., 0., -20.,
+                          0., -1., 1., 38.,
+                          0., 0., 0.,   1.;
+        its_transform(fin, shear);
+        its_merge(its, fin);
+        TriangleMesh mesh(std::move(its));
+
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_deserialize_strict({
+            { "belt_printer",               1 },
+            { "belt_slice_rotation",        "x" },
+            { "belt_slice_rotation_angle",  45 },
+            { "gcode_remap_x",              "rev_x" },
+            { "gcode_remap_y",              "pos_z" },
+            { "gcode_remap_z",              "pos_y" },
+            { "layer_height",               0.2 },
+            { "initial_layer_print_height", 0.2 },
+            { "skirt_loops",                0 },
+            { "z_hop",                      0 },
+            { "enable_support",             1 },
+            { "support_type",               support_type },
+            { "support_style",              support_style },
+            { "support_threshold_angle",    30 },
+            { "machine_start_gcode",        "T[initial_tool]\n" },
+            { "layer_change_gcode",         "G92 E0\n" },
+        });
+        Print print;
+        Model model;
+        init_print({ mesh }, print, model, config);
+        // On the bed, not at its corner: organic tree support clips its branches to
+        // the bed outline, and the fixture leaves the object at the origin.
+        model.objects.front()->instances.front()->set_offset(Vec3d(100., 100., 0.));
+        print.apply(model, config);
+        print.set_status_silent();
+        print.process();
+
+        const PrintObject &object = *print.objects().front();
+        REQUIRE(! object.layers().empty());
+        BeltFloorContext floor;
+        REQUIRE(floor.init(object.slicing_parameters(), print.config()));
+
+        // The lowest support layer that prints anything, and the belt floor beneath it.
+        const SupportLayer *lowest = nullptr;
+        for (const SupportLayer *layer : object.support_layers())
+            if (! layer->support_fills.empty() && (lowest == nullptr || layer->print_z < lowest->print_z))
+                lowest = layer;
+        REQUIRE(lowest != nullptr);
+        double floor_under_lowest = std::numeric_limits<double>::max();
+        for (const ExtrusionEntity *entity : lowest->support_fills.flatten().entities)
+            for (const Polyline &pl : entity->as_polylines())
+                for (const Point &pt : pl.points)
+                    floor_under_lowest = std::min(floor_under_lowest, floor.floor_print_z(pt));
+        // The object's lowest geometry.  The slicing frame starts at the lowest
+        // belt-floor point under the footprint, so the layers below the leading
+        // tip of the overhang are empty.
+        double first_object_z = std::numeric_limits<double>::max();
+        for (const Layer *layer : object.layers())
+            if (! layer->lslices.empty()) { first_object_z = layer->print_z; break; }
+        REQUIRE(first_object_z < std::numeric_limits<double>::max());
+        INFO("lowest support z " << lowest->print_z << ", floor under it " << floor_under_lowest
+             << ", first object layer " << first_object_z);
+        // Well below the object's own lowest layer (the belt under the tip of the fin
+        // is ~41 mm of slicing Z below the cube's leading edge, which rests on it)...
+        CHECK(lowest->print_z < first_object_z - 5.);
+        // ...and resting on the belt: within a few layers of the floor beneath its own lines.
+        CHECK(lowest->print_z - floor_under_lowest < 4. * 0.2 + EPSILON);
+        CHECK(lowest->print_z - floor_under_lowest > -0.2 - EPSILON);
+    }
 }

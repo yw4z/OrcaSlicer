@@ -320,7 +320,13 @@ SupportGeneratorLayersPtr generate_raft_base(
 
     // How much to inflate the support columns to be stable. This also applies to the 1st layer, if no raft layers are to be printed.
     const float inflate_factor_fine      = float(scale_((slicing_params.raft_layers() > 1) ? 0.5 : EPSILON));
-    const float inflate_factor_1st_layer = std::max(0.f, float(scale_(object.config().raft_first_layer_expansion)) - inflate_factor_fine);
+    // On a belt the first support layer is the leading tip of the support, a sliver
+    // where the belt crosses the layer, not a flange on a flat bed: inflating it
+    // puts lines in the air ahead of the belt crossing (and into the belt behind
+    // it).  The belt brim takes the adhesion role instead.
+    const bool  belt_floor_active        = std::abs(slicing_params.belt_floor_shear_factor) > EPSILON;
+    const float inflate_factor_1st_layer = belt_floor_active ? 0.f :
+        std::max(0.f, float(scale_(object.config().raft_first_layer_expansion)) - inflate_factor_fine);
     SupportGeneratorLayer       *contacts         = top_contacts         .empty() ? nullptr : top_contacts         .front();
     SupportGeneratorLayer       *interfaces       = interface_layers     .empty() ? nullptr : interface_layers     .front();
     SupportGeneratorLayer       *base_interfaces  = base_interface_layers.empty() ? nullptr : base_interface_layers.front();

@@ -984,7 +984,7 @@ void PrintObject::detect_overhangs_for_lift()
     }
 }
 
-void PrintObject::generate_support_material()
+void PrintObject::generate_support_material(bool with_belt_brim)
 {
     if (this->set_started(posSupportMaterial)) {
         this->clear_support_layers();
@@ -1032,10 +1032,23 @@ void PrintObject::generate_support_material()
         // those must exist before ToolOrdering is built at psWipeTower - one step
         // ahead of psSkirtBrim.  The brim options already invalidate
         // posSupportMaterial, so this needs no extra invalidation edges.
-        make_belt_brim(*this);
-        m_print->throw_if_canceled();
+        m_belt_brim_pending = true;
+        if (with_belt_brim)
+            this->generate_belt_brim();
         this->set_done(posSupportMaterial);
     }
+}
+
+void PrintObject::generate_belt_brim()
+{
+    if (! m_belt_brim_pending)
+        return;
+    // belt_brim_obstacles() looks up the layers and support layers of every object
+    // on the plate by print_z.  Another object's support step rebuilds those (and
+    // temporarily shifts its layer Z values), so this must not overlap with it.
+    make_belt_brim(*this);
+    m_print->throw_if_canceled();
+    m_belt_brim_pending = false;
 }
 
 void PrintObject::estimate_curled_extrusions()
@@ -1245,8 +1258,6 @@ bool PrintObject::has_belt_brim() const
     // this keeps it brimless whatever its config says, so a brim on the parts never blocks purging.
     if (m_config.belt_purge_tower_object.value)
         return false;
-    if (! this->belt_brim_instances_compatible())
-        return false;
     if (m_config.brim_type == btNoBrim)
         return false;
     // An inner-only brim has no leading/extra geometry: leading_brim_length and
@@ -1278,30 +1289,6 @@ unsigned int PrintObject::belt_brim_filament() const
             brim_filament = f;
     }
     return brim_filament == 0 ? 1u : brim_filament;
-}
-
-bool PrintObject::belt_brim_instances_compatible() const
-{
-    // One set of bands is shared by every instance of this object, so they must all sit at
-    // the same height on the belt.  Moving an instance ALONG the belt axis changes its
-    // physical belt-floor Z and would put its brim at the wrong height; moving it ACROSS
-    // the belt does not, so side-by-side copies are fine.
-    //
-    // belt_force_separate() in PrintApply.cpp already gives one instance per PrintObject
-    // whenever a global belt flag is set, which the shipped belt profiles do - this only
-    // matters for configurations that do not.
-    if (m_instances.size() <= 1)
-        return true;
-    // From the config, not m_slicing_params: this runs while those can be stale. A tilt
-    // about Y runs the belt along X, any other tilt along Y (see compute_belt_height_and_floor).
-    const int    axis = m_print->config().belt_slice_rotation.value == BeltRotationAxis::Y ? 0 : 1;
-    const Point &ref  = m_instances.front().shift;
-    for (const PrintInstance &inst : m_instances) {
-        const coord_t along = axis == 0 ? inst.shift.x() - ref.x() : inst.shift.y() - ref.y();
-        if (std::abs(along) > SCALED_EPSILON)
-            return false;
-    }
-    return true;
 }
 
 void PrintObject::clear_belt_brim()
@@ -4741,11 +4728,41 @@ void PrintObject::_generate_support_material()
         tree_support.generate();
     }
     else {
-        PrintObjectSupportMaterial support_material(this, m_slicing_params);
-        support_material.generate(*this);
+        // The normal generator anchors its layer grid at the slicing frame origin
+        // (SlicingParameters: first layer at first_print_layer_height, raft at
+        // z = 0), so it has to see the object layers in that frame.  On a belt the
+        // object layers carry the global Z offset (PrintObject::slice()), which is
+        // negative for the leading half of the belt: a top contact below z = 0
+        // then turns the intermediate-layer count negative and the generator
+        // allocates layers until memory runs out.  Lift the offset off the object
+        // layers and the belt floor for the duration of the run and put it back
+        // on everything, including the new support layers, afterwards (organic
+        // tree support is shifted the same way below).
+        const double global_z = m_belt_global_z_offset;
+        const bool   unshift  = std::abs(global_z) > EPSILON;
+        auto shift_object_frame = [this, global_z](double sign) {
+            for (Layer *layer : m_layers)
+                layer->print_z += sign * global_z;
+            m_slicing_params.belt_floor_z_shift += sign * global_z;
+        };
+        if (unshift)
+            shift_object_frame(-1.);
+        try {
+            PrintObjectSupportMaterial support_material(this, m_slicing_params);
+            support_material.generate(*this);
+        } catch (...) {
+            if (unshift)
+                shift_object_frame(1.);
+            throw;
+        }
+        if (unshift) {
+            shift_object_frame(1.);
+            for (SupportLayer *sl : m_support_layers)
+                sl->print_z += global_z;
+        }
     }
     // Global Z offset for support layers:
-    // - Normal support: layers already inherit global_z_offset from object layers.
+    // - Normal support: generated in the object frame above and shifted afterwards.
     // - Non-organic tree support (slim/strong/hybrid): plan_layer_heights() reads
     //   from globally-offset object layers, so support layers already have it.
     // - Organic tree support: generate_tree_support_3D() computes its own Z values

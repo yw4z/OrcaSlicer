@@ -108,6 +108,19 @@ public:
         double z_shift      = 0.0;
     };
 
+    // Shear factor and from-axis of the belt floor in the rotated slicer frame
+    // (z_floor = shear_factor * u, u = the from-axis coordinate), for the
+    // rotation the config selects.  z_shift is left at 0.  Returns false (and
+    // zero shear) when the config has no tilt.
+    static bool floor_shear(const PrintConfig &config, BeltFloorParams &out);
+
+    // How far below the lowest belt-floor point under the footprint the slicing
+    // frame starts, in slicing Z.  A support column meeting the belt is wider at
+    // its base than at its tip, so under a leading overhang the base reaches ahead
+    // of the part along the belt, and the layers that trim it to the belt plane
+    // lie below that lowest point: 10 mm along the belt.
+    static double frame_margin(const BeltFloorParams &fp) { return 10. * std::abs(fp.shear_factor); }
+
     // Result of computing belt height + floor params.
     struct BeltHeightResult {
         double          object_height;  // Effective object height after shear/scale

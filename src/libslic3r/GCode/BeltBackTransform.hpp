@@ -14,7 +14,7 @@ namespace Slic3r {
 // Initialized once from PrintConfig, then applied per-point in
 // BeltKinematics::to_machine() before axis remapping.
 //
-// Active when gcode_back_transform and belt_preslice_global are both set.
+// Active on belt printers with a non-identity pre-slice rotation.
 class BeltBackTransform
 {
 public:

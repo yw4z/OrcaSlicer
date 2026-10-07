@@ -976,7 +976,6 @@ void PrintObject::slice()
         const auto &pcfg = this->print()->config();
         BOOST_LOG_TRIVIAL(trace) << "Belt global check: belt_printer=" << pcfg.belt_printer.value
             << " belt_slice_rotation=" << int(pcfg.belt_slice_rotation.value)
-            << " belt_preslice_global=" << pcfg.belt_preslice_global.value
             << " object=" << this->model_object()->name;
         if (pcfg.belt_printer.value) {
 
@@ -1026,7 +1025,7 @@ void PrintObject::slice()
                 global_z_offset += centering_z_corr;
             }
 
-            if (pcfg.belt_preslice_global.value) {
+            {
                 // Global pre-slice mode: compute full correction c = (T.linear() - I) * d
                 // where T is the belt forward transform and d is the bed position, so
                 // objects at different bed positions print at different machine Z values

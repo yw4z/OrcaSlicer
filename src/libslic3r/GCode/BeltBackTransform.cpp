@@ -10,12 +10,7 @@ bool BeltBackTransform::init_from_config(const PrintConfig &config)
     m_active  = false;
     m_inverse = Transform3d::Identity();
 
-    if (!config.belt_printer.value || !config.gcode_back_transform.value)
-        return false;
-
-    // The back-transform undoes the global pre-slice rotation; without global
-    // mode the slicing frame is not a common frame to undo.
-    if (!config.belt_preslice_global.value)
+    if (!config.belt_printer.value)
         return false;
 
     // Build the forward pipeline (the rotation) and store its inverse.
