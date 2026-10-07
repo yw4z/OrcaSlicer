@@ -15,7 +15,7 @@
 #include "libslic3r/Utils.hpp"
 #include <string>
 #include "slic3r/GUI/BBLStatusBarPrint.hpp"
-#include "slic3r/GUI/Printer/PrinterFileSystem.h"
+#include <nlohmann/json.hpp>
 #include <cassert>
 #include "libslic3r/PrintConfig.hpp"
 #include <cstdlib>
@@ -85,9 +85,7 @@
 #include "slic3r/Utils/NetworkAgent.hpp"
 
 namespace fs = boost::filesystem;
-
-using namespace Slic3r;
-using namespace Slic3r::GUI;
+using json = nlohmann::json;
 
 #define OK_BUTTON_SIZE wxSize(FromDIP(90), FromDIP(24))
 #define CANCEL_BUTTON_SIZE wxSize(FromDIP(58), FromDIP(24))

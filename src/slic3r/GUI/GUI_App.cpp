@@ -309,8 +309,10 @@ typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS2)(
     #include <gtk/gtk.h>
 #endif
 
+namespace fs = boost::filesystem;
 using namespace std::literals;
 namespace pt = boost::property_tree;
+using json = nlohmann::json;
 
 struct StaticBambuLib
 {
@@ -3112,8 +3114,11 @@ bool GUI_App::on_init_inner()
     // A quit request from the Dock, a logout or a restart ends with AppKit calling exit() right after this event, so
     // OnExit() and ~GUI_App() never run. Shut the plugins and Python down here as ~GUI_App() does. Left to
     // PluginManager's static destructor, the shutdown locks hook state that has already been destroyed and aborts.
-    wxGetApp().Bind(wxEVT_END_SESSION, [](wxCloseEvent &e) {
+    // Unload the Bambu network plugin too. Its static destructors abort if its agent's threads are still running.
+    wxGetApp().Bind(wxEVT_END_SESSION, [this](wxCloseEvent &e) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "received wxEVT_END_SESSION";
+        stop_sync_user_preset();
+        Slic3r::NetworkAgent::unload_network_module();
         Slic3r::PluginManager::instance().shutdown();
         Slic3r::PythonInterpreter::instance().shutdown();
         e.Skip();

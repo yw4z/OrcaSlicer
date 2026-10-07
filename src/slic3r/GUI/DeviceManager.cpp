@@ -1,5 +1,5 @@
 #include "PrinterNetworkTypes.hpp"
-#include "json_diff.hpp"
+#include <nlohmann/json.hpp>
 #include "DeviceManager.hpp"
 #include "HMS.hpp"
 #include "I18N.hpp"
@@ -105,6 +105,8 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "slic3r/GUI/Jobs/SendJob.hpp"
 
+using json = nlohmann::json;
+
 class wxWindow;
 
 namespace fs = boost::filesystem;
@@ -114,8 +116,6 @@ namespace fs = boost::filesystem;
 #define TIME_OUT  5000       //ms
 
 #define ORCA_NETWORK_DEBUG
-
-namespace pt = boost::property_tree;
 
 float string_to_float(const std::string& str_value) {
     float value = 0.0;

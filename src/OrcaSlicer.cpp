@@ -23,7 +23,6 @@
 #include <map>
 #include <vector>
 #include "libslic3r/PrintBase.hpp"
-#include "slic3r/Utils/json_diff.hpp"
 #include <boost/date_time/posix_time/posix_time_duration.hpp>
 #include <cerrno>
 #include <utility>
@@ -78,11 +77,9 @@
 #include <condition_variable>
 #include <mutex>
 #include <boost/thread.hpp>
-//add json logic
-#include "nlohmann/json.hpp"
-
-using namespace nlohmann;
 #endif
+
+#include "nlohmann/json.hpp"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
@@ -157,6 +154,7 @@ using namespace nlohmann;
 #include <stdio.h>
 
 namespace fs = boost::filesystem;
+using json = nlohmann::json;
 
 #ifdef __WXGTK__
 #if __has_include(<X11/Xlib.h>)
@@ -3524,7 +3522,7 @@ int CLI::run(int argc, char **argv)
             ConfigOptionStrings *curr_variant_opt = m_print_config.option<ConfigOptionStrings>("filament_extruder_variant");
             if (!curr_variant_opt) {
                 curr_variant_opt = m_print_config.option<ConfigOptionStrings>("filament_extruder_variant", true);
-                std::vector<string>& filament_variants = curr_variant_opt->values;
+                std::vector<std::string>& filament_variants = curr_variant_opt->values;
                 filament_variants.resize(filament_count, get_extruder_variant_string(etDirectDrive, nvtStandard));
             }
             const ConfigOptionStrings *new_variant_opt = dynamic_cast<const ConfigOptionStrings*>(config.option("filament_extruder_variant", true));
@@ -6554,7 +6552,7 @@ int CLI::run(int argc, char **argv)
                                                 std::vector<int> result_filaments;
                                                 //result_filaments.reserve(conflict_filaments.size());
                                                 std::set_intersection(conflict_filament_vector.begin(), conflict_filament_vector.end(), unprintable_filament_vec[index].begin(),
-                                                    unprintable_filament_vec[index].end(), insert_iterator<vector<int>>(result_filaments, result_filaments.begin()));
+                                                    unprintable_filament_vec[index].end(), std::insert_iterator<std::vector<int>>(result_filaments, result_filaments.begin()));
                                                 conflict_filament_vector = result_filaments;
                                             }
                                         }

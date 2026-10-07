@@ -36,7 +36,7 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PresetCacheFormat.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/Printer/PrinterFileSystem.h"
+#include <nlohmann/json.hpp>
 #include "libslic3r_version.h"
 
 #include <string>
@@ -78,11 +78,8 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "slic3r/Utils/NetworkAgent.hpp"
 #include "slic3r/Utils/PresetUpdater.hpp"
-#include "slic3r/Utils/json_diff.hpp"
 
 class wxWindow;
-
-namespace fs = boost::filesystem;
 
 using namespace nlohmann;
 
