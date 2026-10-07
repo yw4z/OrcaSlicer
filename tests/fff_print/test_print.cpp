@@ -1362,6 +1362,9 @@ TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][
         { "machine_start_gcode",        "T[initial_tool]\n" },
         { "layer_change_gcode",         "G92 E0\n" },
     });
+    // Both export paths drop the empty layers and count the layers the same way.
+    SECTION("by layer")  { config.set_deserialize_strict({{ "print_sequence", "by layer" }}); }
+    SECTION("by object") { config.set_deserialize_strict({{ "print_sequence", "by object" }}); }
     Print print;
     Model model;
     TriangleMesh cube_a(its_make_cube(20., 20., 20.));
@@ -1376,7 +1379,7 @@ TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][
     const std::string gc = gcode(print);
     REQUIRE(! gc.empty());
 
-    size_t layers = 0, empty = 0, total_header = 0;
+    size_t layers = 0, empty = 0, total_header = 0, total_count = 0;
     bool   extruded = true;   // before the first layer change
     std::istringstream in(gc);
     std::string line;
@@ -1387,17 +1390,24 @@ TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][
             ++ layers;
             extruded = false;
         } else if (line.rfind("; total layer number: ", 0) == 0) {
+            // Counted by the G-code processor from the layer changes it saw.
             total_header = size_t(std::atoi(line.c_str() + 22));
+        } else if (line.rfind("; total layers count = ", 0) == 0) {
+            // GCode::m_layer_count, counted up front from the objects' layers; it also
+            // drives the M73 progress and the total_layer_count placeholder.
+            total_count = size_t(std::atoi(line.c_str() + 23));
         } else if (! extruded && line.rfind("G1 ", 0) == 0 && line.find('E') != std::string::npos
                    && (line.find('X') != std::string::npos || line.find('Y') != std::string::npos)) {
             extruded = true;
         }
     }
     close_layer();
-    INFO("layers " << layers << ", header " << total_header << ", layers without extrusion " << empty);
+    INFO("layers " << layers << ", header " << total_header << ", count " << total_count
+         << ", layers without extrusion " << empty);
     CHECK(layers > 150);          // both cubes, 141 layers each, overlapping along the belt
     CHECK(empty == 0);
     CHECK(total_header == layers);
+    CHECK(total_count == layers);
 }
 
 // A part with an overhang on its LEADING side (the end that prints first) needs
