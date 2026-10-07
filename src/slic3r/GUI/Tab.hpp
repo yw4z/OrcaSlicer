@@ -331,9 +331,9 @@ public:
     MultiSwitchButton *  m_variant_combo   = nullptr;
     ScalableButton *m_extruder_sync   = nullptr;
 	wxPanel *       m_extruder_sync_box  = nullptr;
-    // Orca: whether m_extruder_switch switches nozzle variants (it is then shown on the variant pages).
+    // Orca: whether m_extruder_switch switches nozzle variants (it then offers sync between them).
     // The printer tab also enables the switch for printers without variants, to choose the extruder
-    // its single "Extruder" page edits.
+    // its Extruder and Motion ability pages edit.
     bool            m_extruder_switch_variants = false;
     std::vector<NozzleVolumeType> m_actual_nozzle_volumes;
 
@@ -391,11 +391,12 @@ public:
     void        update_changed_tree_ui();
 	void		update_undo_buttons();
     void        update_extruder_switch_colors();
-    // Whether the variant switch (m_extruder_switch / m_variant_combo) switches nozzle variants.
+    // Whether the variant switch (m_extruder_switch / m_variant_combo) is enabled: on the printer tab for
+    // any multi-extruder printer, on the other tabs when it switches nozzle variants.
     bool        variant_switch_active() const;
     // Orca: whether `page` is the printer tab's single "Extruder" page, which edits the extruder selected on the switch.
     bool        is_printer_extruder_page(const Page* page) const { return m_type == Preset::TYPE_PRINTER && page && page->title() == "Extruder"; }
-    // Shows the variant switch row on variant pages, and on the printer tab's "Extruder" page.
+    // Shows the variant switch row on pages with options that follow it.
     void        update_variant_sizer_visibility();
     void        update_all_extruder_options_status();
     void        check_extruder_options_status(int index, bool &sys_extruder, bool &modified_extruder, const std::vector<PageShp>& pages_to_check);

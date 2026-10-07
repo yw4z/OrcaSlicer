@@ -8279,9 +8279,9 @@ void Tab::update_extruder_variants(int extruder_id, bool reload)
         m_actual_nozzle_volumes.resize(extruder_nums, NozzleVolumeType::nvtStandard);
         for (int i = 0; i < extruder_nums; i++) m_actual_nozzle_volumes[i] = (NozzleVolumeType)nozzle_volumes->values[i];
 
-        // Orca: a non-Bambu dual-nozzle printer has two extruders but a single variant column, so
-        // the nozzle switch and sync button have nothing to act on on the variant pages. The printer
-        // tab still enables the switch to choose the extruder its single "Extruder" page edits.
+        // Orca: when every extruder uses the same variant (e.g. a non-Bambu dual-nozzle printer), the
+        // switch has no nozzle variants to select and nothing to sync. The printer tab still enables it
+        // to choose the extruder its Extruder and Motion ability pages edit.
         m_extruder_switch_variants = extruder_nums >= 2 && m_preset_bundle->support_different_extruders();
         if (m_extruder_switch_variants || (m_type == Preset::TYPE_PRINTER && extruder_nums >= 2)) {
             auto options = generate_extruder_options();
@@ -8573,7 +8573,7 @@ bool Tab::get_extruder_sync_enable_state(int extruder_id)
 bool Tab::variant_switch_active() const
 {
     if (m_extruder_switch)
-        return m_extruder_switch->IsThisEnabled() && m_extruder_switch_variants;
+        return m_extruder_switch->IsThisEnabled();
     return m_variant_combo && m_variant_combo->IsThisEnabled();
 }
 
@@ -8581,15 +8581,13 @@ void Tab::update_variant_sizer_visibility()
 {
     if (!m_variant_sizer)
         return;
-    // Orca: the single Extruder page edits the extruder selected on the switch.
-    const bool on_extruder_page = is_printer_extruder_page(m_active_page);
-    const bool show = on_extruder_page ? m_extruder_switch && m_extruder_switch->IsThisEnabled() && m_extruder_switch->GetCount() > 1 :
-                                         variant_switch_active() && m_active_page && !m_active_page->m_opt_id_map.empty();
+    const bool show = variant_switch_active() && m_active_page && !m_active_page->m_opt_id_map.empty();
     m_main_sizer->Show(m_variant_sizer, show);
     if (m_extruder_sync) {
         m_extruder_sync->Show(show);
-        // Copying between extruders is offered on the variant pages only.
-        m_extruder_sync->Enable(!on_extruder_page && variant_switch_active() && get_extruder_sync_enable_state(get_current_active_extruder()));
+        // Orca: copying between extruders is offered only between nozzle variants, and not on the Extruder page.
+        m_extruder_sync->Enable(m_extruder_switch_variants && !is_printer_extruder_page(m_active_page) &&
+                                get_extruder_sync_enable_state(get_current_active_extruder()));
     }
     GetParent()->Layout();
 }
@@ -8600,15 +8598,16 @@ void Tab::switch_excluder(int extruder_id, bool reload)
     auto nozzle_volumes = m_preset_bundle->project_config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
     auto extruders      = printer_preset.config.option<ConfigOptionEnumsGeneric>("extruder_type");
 
+    // Orca: the printer tab re-targets its pages to the extruder selected on the switch. Resolved before
+    // the range check below, which keeps the extruder_type read in get_index_for_extruder in range.
+    if (m_type == Preset::TYPE_PRINTER && extruder_id == -1)
+        extruder_id = get_current_active_extruder();
     if (!m_variant_combo && (extruder_id >= (int)nozzle_volumes->size() || extruder_id >= (int)extruders->size()))
         extruder_id = 0;
-    // Orca: the printer's single Extruder page follows the switch for any multi-extruder printer;
-    // the other pages only when the switch selects nozzle variants.
-    const bool on_extruder_page = is_printer_extruder_page(m_active_page);
     if (m_extruder_switch) {
         int current_extruder = get_current_active_extruder();
         bool sync_enable = get_extruder_sync_enable_state(current_extruder);
-        m_extruder_sync->Enable(variant_switch_active() && sync_enable && !on_extruder_page);
+        m_extruder_sync->Enable(m_extruder_switch_variants && sync_enable && !is_printer_extruder_page(m_active_page));
         m_extruder_sync->Show();
         if (m_type != Preset::TYPE_PRINTER) {
             if (extruder_id == -1)
@@ -8630,11 +8629,7 @@ void Tab::switch_excluder(int extruder_id, bool reload)
         return m_config->get_index_for_extruder(extruder_id + 1, variant_keys.first,
             ExtruderType(extruders->values[extruder_id]), get_actual_nozzle_volume_type(extruder_id), variant_keys.second, stride);
     };
-    // Extruder of the printer's Extruder page, and of the other pages (the first one when the switch
-    // does not select variants).
-    const int page_extruder   = extruder_id == -1 ? get_current_active_extruder() : extruder_id;
-    const int common_extruder = (m_type == Preset::TYPE_PRINTER && !m_extruder_switch_variants) || extruder_id == -1 ? 0 : extruder_id;
-    auto index = m_variant_combo ? extruder_id : get_index_for_extruder(common_extruder);
+    auto index = m_variant_combo ? extruder_id : get_index_for_extruder(extruder_id == -1 ? 0 : extruder_id);
     if (index < 0)
         return;
     if (m_extruder_switch) m_extruder_switch->SetClientData(reinterpret_cast<void*>(static_cast<std::uintptr_t>(index)));
@@ -8643,12 +8638,10 @@ void Tab::switch_excluder(int extruder_id, bool reload)
         bool is_extruder = false;
         int  page_index  = index;
         if (m_type == Preset::TYPE_PRINTER) {
-            if (page->title() == "Extruder") {
+            if (page->title() == "Extruder")
                 is_extruder = true;
-                page_index  = static_cast<TabPrinter *>(this)->extruder_variant_index(page_extruder);
-            } else if (page->title().StartsWith("Motion ability")) {
-                page_index = get_index_for_extruder(common_extruder, 2);
-            }
+            else if (page->title().StartsWith("Motion ability"))
+                page_index = get_index_for_extruder(extruder_id == -1 ? 0 : extruder_id, 2);
         }
         page->m_opt_id_map.clear();
         for (auto group : page->m_optgroups) {
@@ -8656,7 +8649,7 @@ void Tab::switch_excluder(int extruder_id, bool reload)
                 if (is_extruder && opt.second.second >= 0) {
                     // Per-variant options use the variant column, the others (nozzle_diameter,
                     // extruder_offset, ...) are sized by the extruder count and use the extruder.
-                    const int idx = printer_options_with_variant_1.count(opt.second.first) > 0 ? page_index : page_extruder;
+                    const int idx = printer_options_with_variant_1.count(opt.second.first) > 0 ? page_index : extruder_id;
                     const_cast<int &>(opt.second.second) = idx;
                     page->m_opt_id_map.insert({opt.second.first + "#" + std::to_string(idx), opt.first});
                     continue;
