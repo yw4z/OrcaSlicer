@@ -2370,8 +2370,13 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
             PrintStateBase::WarningLevel::CRITICAL, warning, PrintStateBase::SlicingEmptyGcodeLayers);
     }
 
-    // Belt printers: drop the layers that print nothing (see the by-layer overload), so
-    // the by-object export writes the same layer changes as the by-layer one.
+    // Belt printers: drop the layers that print nothing at all.  An object's slicing
+    // frame starts at the belt below its leading end, so its first layers are empty,
+    // and with several objects along the belt those empty layers fall between other
+    // objects' printing layers.  A layer change with no moves is noise in the file, and
+    // the preview (libvgcode) numbers its layers from the moves it sees, so a gap folds
+    // every later layer into the one before it.  Both print sequences collect their
+    // layers here, so neither writes such a layer.
     if (object.print()->config().belt_printer.value)
         layers_to_print.erase(
             std::remove_if(layers_to_print.begin(), layers_to_print.end(), [&object](const LayerToPrint &ltp) {
@@ -2444,31 +2449,6 @@ std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> GCode::collec
             merged.second[oi.object_idx] = std::move(per_object[oi.object_idx][oi.layer_idx]);
         }
         layers_to_print.emplace_back(std::move(merged));
-    }
-
-    // Belt printers: drop the layers that print nothing at all.  An object's
-    // slicing frame starts at the belt below its leading end, so its first layers
-    // are empty, and with several objects along the belt those empty layers fall
-    // between other objects' printing layers.  A layer change with no moves is
-    // noise in the file, and the preview (libvgcode) numbers its layers from the
-    // moves it sees, so a gap folds every later layer into the one before it.
-    if (print.config().belt_printer.value) {
-        auto prints_something = [](const LayerToPrint &ltp) {
-            if (ltp.object_layer != nullptr && ltp.original_object != nullptr &&
-                belt_object_layer_prints_something(*ltp.original_object, *ltp.object_layer))
-                return true;
-            if (ltp.support_layer != nullptr && ltp.support_layer->has_extrusions())
-                return true;
-            if (ltp.belt_brim_band != nullptr && ! ltp.belt_brim_band->fills.empty())
-                return true;
-            return false;
-        };
-        layers_to_print.erase(
-            std::remove_if(layers_to_print.begin(), layers_to_print.end(),
-                [&prints_something](const std::pair<coordf_t, std::vector<LayerToPrint>> &group) {
-                    return std::none_of(group.second.begin(), group.second.end(), prints_something);
-                }),
-            layers_to_print.end());
     }
 
     return layers_to_print;
@@ -3193,8 +3173,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     if (print.config().belt_printer.value) {
         m_writer.set_first_layer_point_test([this](const Vec3d &point_logical) {
             const Vec2d extruder_offset = m_writer.filament() != nullptr ? EXTRUDER_CONFIG(extruder_offset) : Vec2d::Zero();
-            // The writer hands over the point with the plate origin (its XY offset) already
-            // taken off, while m_origin still carries it: take off the instance part only.
+            // Undo what point_to_gcode() added (m_origin, minus the extruder offset) and
+            // what the writer then took off (its XY offset, the plate origin).
             const Vec2d plate_offset = m_writer.get_xy_offset().cast<double>();
             return this->on_first_layer(Vec3d(point_logical.x() - (m_origin.x() - plate_offset.x()) + extruder_offset.x(),
                                               point_logical.y() - (m_origin.y() - plate_offset.y()) + extruder_offset.y(),

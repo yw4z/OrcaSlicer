@@ -443,6 +443,8 @@ void make_belt_brim(PrintObject &object)
     //    own contact band.  This is the object's bottom face, which on a belt is
     //    spread over every layer instead of sitting in layer 0.
     ExPolygons footprint_acc;
+    // The first layer that touches the belt: where the leading-edge brim is cut.
+    const Layer *first_contact = nullptr;
     for (size_t i = 0; i < nlayers; ++ i) {
         const Layer &layer = *object.layers()[i];
         if (layer.lslices.empty())
@@ -458,7 +460,12 @@ void make_belt_brim(PrintObject &object)
         const Polygon band = band_box(bb, bc.frame.from_axis, u_lo, u_hi);
         if (band.empty())
             continue;
-        expolygons_append(footprint_acc, intersection_ex(layer.lslices, Polygons{ band }));
+        ExPolygons contact = intersection_ex(layer.lslices, Polygons{ band });
+        if (contact.empty())
+            continue;
+        if (first_contact == nullptr)
+            first_contact = &layer;
+        expolygons_append(footprint_acc, std::move(contact));
     }
     const ExPolygons footprint = union_ex(footprint_acc);
     if (footprint.empty())
@@ -488,19 +495,13 @@ void make_belt_brim(PrintObject &object)
                          width, gap, leading, lateral, bc.frame),
         bc.frame);
 
-    if (bt == btLeadingEdgeOnly && ! bc.region.empty()) {
+    if (bt == btLeadingEdgeOnly && first_contact != nullptr && ! bc.region.empty())
         // The cut is the uphill edge of the first contact's band: everything past it
-        // belongs to later contacts.  The first contact is the first layer with
-        // geometry, not layers().front(): the slicing frame starts at the belt below
-        // the footprint, so the leading layers are empty and their contact lies ahead
-        // of the part.
-        const Layer *first_contact = nullptr;
-        for (const Layer *layer : object.layers())
-            if (! layer->lslices.empty()) { first_contact = layer; break; }
-        if (first_contact == nullptr)
-            return;
+        // belongs to later contacts.  The first contact is the first layer that touches
+        // the belt (step 1), neither layers().front(), an empty lead-in layer, nor the
+        // first layer with geometry, which is an overhang's tip when the part overhangs
+        // its leading end: both lie ahead of the part.
         bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame, bc.ctx.cutoff_u(first_contact->print_z));
-    }
 
     if (bc.region.empty())
         return;
