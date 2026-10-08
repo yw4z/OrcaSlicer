@@ -390,7 +390,7 @@ TroubleshootDialog::TroubleshootDialog()
     left_sizer->Add(sys_panel         , 0, wxEXPAND       | wxTOP, FromDIP(15));
     left_sizer->AddStretchSpacer();
     left_sizer->Add(sys_btn_sizer     , 0, wxEXPAND       | wxTOP, FromDIP(15));
-    left_sizer->Add(link_btn_sizer    , 0, wxEXPAND       | wxTOP, FromDIP(15));
+    left_sizer->Add(link_btn_sizer    , 0, wxALIGN_CENTER | wxTOP, FromDIP(15));
     
     wxBoxSizer *right_sizer  = new wxBoxSizer(wxVERTICAL);
 
