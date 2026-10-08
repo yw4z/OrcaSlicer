@@ -2222,6 +2222,22 @@ void GCode::PlaceholderParserIntegration::validate_output_vector_variables()
 
 // Collect pairs of object_layer + support_layer sorted by print_z.
 // object_layer & support_layer are considered to be on the same print_z, if they are not further than EPSILON.
+// Belt printers: whether an object layer writes anything, its own extrusions or a belt
+// brim band riding on it.  Shared by collect_layers_to_print() (which drops the layers
+// that do not) and the layer count.
+static bool belt_object_layer_prints_something(const PrintObject &object, const Layer &layer)
+{
+    if (layer.has_extrusions())
+        return true;
+    if (object.has_belt_brim()) {
+        const auto  &by_layer = object.belt_brim_by_layer();
+        const size_t id       = layer.id();
+        if (id < by_layer.size() && ! by_layer[id].empty())
+            return true;
+    }
+    return false;
+}
+
 std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObject& object, bool skip_empty_first_layer)
 {
     std::vector<GCode::LayerToPrint> layers_to_print;
@@ -2378,6 +2394,17 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
             PrintStateBase::WarningLevel::CRITICAL, warning, PrintStateBase::SlicingEmptyGcodeLayers);
     }
 
+    // Belt printers: drop the layers that print nothing (see the by-layer overload), so
+    // the by-object export writes the same layer changes as the by-layer one.
+    if (object.print()->config().belt_printer.value)
+        layers_to_print.erase(
+            std::remove_if(layers_to_print.begin(), layers_to_print.end(), [&object](const LayerToPrint &ltp) {
+                return ! ((ltp.object_layer != nullptr && belt_object_layer_prints_something(object, *ltp.object_layer)) ||
+                          (ltp.support_layer != nullptr && ltp.support_layer->has_extrusions()) ||
+                          (ltp.belt_brim_band != nullptr && ! ltp.belt_brim_band->fills.empty()));
+            }),
+            layers_to_print.end());
+
     return layers_to_print;
 }
 
@@ -2404,6 +2431,9 @@ std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> GCode::collec
             errors.push_back(e);
             continue;
         }
+        // On a belt an object may be left without a layer to print at all.
+        if (per_object[i].empty())
+            continue;
         OrderingItem ordering_item;
         ordering_item.object_idx = i;
         ordering.reserve(ordering.size() + per_object[i].size());
@@ -2448,18 +2478,13 @@ std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> GCode::collec
     // moves it sees, so a gap folds every later layer into the one before it.
     if (print.config().belt_printer.value) {
         auto prints_something = [](const LayerToPrint &ltp) {
-            if (ltp.object_layer != nullptr && ltp.object_layer->has_extrusions())
+            if (ltp.object_layer != nullptr && ltp.original_object != nullptr &&
+                belt_object_layer_prints_something(*ltp.original_object, *ltp.object_layer))
                 return true;
             if (ltp.support_layer != nullptr && ltp.support_layer->has_extrusions())
                 return true;
             if (ltp.belt_brim_band != nullptr && ! ltp.belt_brim_band->fills.empty())
                 return true;
-            if (ltp.object_layer != nullptr && ltp.original_object != nullptr && ltp.original_object->has_belt_brim()) {
-                const auto  &by_layer = ltp.original_object->belt_brim_by_layer();
-                const size_t id       = ltp.object_layer->id();
-                if (id < by_layer.size() && ! by_layer[id].empty())
-                    return true;
-            }
             return false;
         };
         layers_to_print.erase(
@@ -3192,8 +3217,11 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     if (print.config().belt_printer.value) {
         m_writer.set_first_layer_point_test([this](const Vec3d &point_logical) {
             const Vec2d extruder_offset = m_writer.filament() != nullptr ? EXTRUDER_CONFIG(extruder_offset) : Vec2d::Zero();
-            return this->on_first_layer(Vec3d(point_logical.x() - m_origin.x() + extruder_offset.x(),
-                                              point_logical.y() - m_origin.y() + extruder_offset.y(),
+            // The writer hands over the point with the plate origin (its XY offset) already
+            // taken off, while m_origin still carries it: take off the instance part only.
+            const Vec2d plate_offset = m_writer.get_xy_offset().cast<double>();
+            return this->on_first_layer(Vec3d(point_logical.x() - (m_origin.x() - plate_offset.x()) + extruder_offset.x(),
+                                              point_logical.y() - (m_origin.y() - plate_offset.y()) + extruder_offset.y(),
                                               point_logical.z()));
         });
     }
@@ -3201,18 +3229,26 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // How many times will be change_layer() called?
     // change_layer() in turn increments the progress bar status.
     m_layer_count = 0;
+    // On a belt, collect_layers_to_print() drops the layers that print nothing (an
+    // object's empty lead-in), so they must not be counted here either or the layer
+    // count in the file disagrees with its layer changes.
+    const bool belt = print.config().belt_printer.value;
     if (print.config().print_sequence == PrintSequence::ByObject) {
         // Add each of the object's layers separately.
         for (auto object : print.objects()) {
             std::vector<coordf_t> zs;
             zs.reserve(object->layers().size() + object->support_layers().size());
             for (auto layer : object->layers())
-                zs.push_back(layer->print_z);
+                if (! belt || belt_object_layer_prints_something(*object, *layer))
+                    zs.push_back(layer->print_z);
             for (auto layer : object->support_layers())
-                zs.push_back(layer->print_z);
+                if (! belt || layer->has_extrusions())
+                    zs.push_back(layer->print_z);
             // Belt brim apron bands each get their own change_layer() call.
             for (const BeltBrimBand &band : object->belt_brim_prologue())
                 zs.push_back(band.print_z);
+            if (zs.empty())
+                continue;
             std::sort(zs.begin(), zs.end());
             //BBS: merge numerically very close Z values.
             auto end_it = std::unique(zs.begin(), zs.end());
@@ -3229,9 +3265,11 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         for (auto object : print.objects()) {
             zs.reserve(zs.size() + object->layers().size() + object->support_layers().size());
             for (auto layer : object->layers())
-                zs.push_back(layer->print_z);
+                if (! belt || belt_object_layer_prints_something(*object, *layer))
+                    zs.push_back(layer->print_z);
             for (auto layer : object->support_layers())
-                zs.push_back(layer->print_z);
+                if (! belt || layer->has_extrusions())
+                    zs.push_back(layer->print_z);
             // See the ByObject branch: apron bands are real printed layers.
             for (const BeltBrimBand &band : object->belt_brim_prologue())
                 zs.push_back(band.print_z);
@@ -4173,6 +4211,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 // Reset the cooling buffer internal state (the current position, feed rate, accelerations).
                 m_cooling_buffer->set_current_extruder(initial_extruder_id, get_extruder_id(initial_extruder_id));
                 m_cooling_buffer->reset(this->writer().get_position());
+                // The belt first-layer band is tracked per object as well: if the previous
+                // object ended inside the band, this one has to open its own.
+                m_belt_in_band = false;
                 // Process all layers of a single object instance (sequential mode) with a parallel pipeline:
                 // Generate G-code, run the filters (vase mode, cooling buffer), run the G-code analyser
                 // and export G-code into file.
@@ -7318,6 +7359,9 @@ LayerResult GCode::process_layer(
                     m_avoid_crossing_perimeters.use_external_mp_once();
                 m_last_obj_copy = this_object_copy;
                 this->set_origin(unscale(offset));
+                // Same as the main instance loop: a belt printer rotates the origin through
+                // the belt transform (BeltGCode::on_set_origin).
+                this->on_set_origin(&instance_to_print.print_object, offset);
 
                 // --- Build emission plan ---
                 // Each entry represents one travel_to_z + extrude pass. Per-object mode produces

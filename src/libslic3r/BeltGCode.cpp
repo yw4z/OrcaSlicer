@@ -25,7 +25,7 @@ void BeltGCode::write_belt_header(GCodeOutputStream &file, const Print &print)
     // for the physical tilt the G-code viewer uses to enable belt view.
     file.write_format("; belt_slice_rotation = %s\n", full_cfg.opt_serialize("belt_slice_rotation").c_str());
     file.write_format("; belt_slice_rotation_angle = %.1f\n", print.config().belt_slice_rotation_angle.value);
-    // Machine-frame transform: shear (tan) + scale (1/cos) derived from the belt
+    // Machine-frame transform: shear (cot) + scale (1/|sin|) derived from the belt
     // tilt angle (or belt_frame_tilt_angle when decoupled).
     file.write_format("; belt_frame_tilt_decouple = %d\n", print.config().belt_frame_tilt_decouple.value ? 1 : 0);
     file.write_format("; belt_frame_tilt_angle = %.1f\n", print.config().belt_frame_tilt_angle.value);

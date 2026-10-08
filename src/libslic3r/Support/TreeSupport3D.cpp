@@ -3952,6 +3952,13 @@ void organic_draw_branches(
                     const double tiny_area = tiny_area_threshold();
                     //FIXME parallelize?
                     for (LayerIndex i = 0; i < LayerIndex(slices.size()); ++i) {
+                        // ORCA: safety offset when trimming collision/bed to improve robustness.
+                        slices[i] = diff_clipped(slices[i], volumes.getCollision(0, layer_begin + i, true), ApplySafetyOffset::Yes); // FIXME parent_uses_min || draw_area.element->state.use_min_xy_dist);
+                        slices[i] = intersection(slices[i], volumes.m_bed_area, ApplySafetyOffset::Yes);
+                        // Belt floor: clip branch slices against the belt surface plane.
+                        LayerIndex belt_idx = layer_begin + i;
+                        if (belt_idx < LayerIndex(volumes.m_belt_floor.size()) && !volumes.m_belt_floor[belt_idx].empty())
+                            slices[i] = diff(slices[i], volumes.m_belt_floor[belt_idx]);
                         remove_small(slices[i], tiny_area);
                     }
 

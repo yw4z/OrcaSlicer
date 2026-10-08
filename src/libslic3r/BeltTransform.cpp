@@ -46,8 +46,6 @@ Transform3d BeltTransformPipeline::build_forward_transform(const PrintConfig &co
 
 // ---- Belt floor parameters ------------------------------------------------
 
-// Shared implementation for both PrintConfig and DynamicPrintConfig.
-// Template avoids duplicating the math for the two config types.
 namespace {
 
 // Belt floor in the rotated slicer frame: the image of z_machine = 0 under R.
@@ -81,33 +79,15 @@ inline double belt_floor_z(const BeltTransformPipeline::BeltFloorParams &fp, con
 }
 
 
-template<typename Config>
 BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
-    const Config &config, const BoundingBoxf3 &bb, double original_height)
+    const PrintConfig &config, const BoundingBoxf3 &bb, double original_height)
 {
     BeltTransformPipeline::BeltHeightResult result;
     result.object_height = original_height;
 
-    // Extract the mesh rotation from config (the sole mesh-side belt transform).
-    BeltRotationAxis rot_axis;
-    double           rot_angle;
-
-    if constexpr (std::is_same_v<Config, PrintConfig>) {
-        rot_axis  = config.belt_slice_rotation.value;
-        rot_angle = config.belt_slice_rotation_angle.value;
-    } else {
-        // DynamicPrintConfig path
-        auto get_float = [&](const char *key) {
-            auto *opt = config.template option<ConfigOptionFloat>(key);
-            return opt ? opt->value : 0.0;
-        };
-        auto get_rot_axis = [&](const char *key) {
-            auto *opt = config.template option<ConfigOptionEnum<BeltRotationAxis>>(key);
-            return opt ? opt->value : BeltRotationAxis::None;
-        };
-        rot_axis  = get_rot_axis("belt_slice_rotation");
-        rot_angle = get_float("belt_slice_rotation_angle");
-    }
+    // The mesh rotation (the sole mesh-side belt transform).
+    const BeltRotationAxis rot_axis  = config.belt_slice_rotation.value;
+    const double           rot_angle = config.belt_slice_rotation_angle.value;
 
     bool has_rotation = rot_axis != BeltRotationAxis::None && std::abs(rot_angle) > EPSILON;
     if (!has_rotation)
@@ -155,12 +135,6 @@ BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
 
 BeltTransformPipeline::BeltHeightResult BeltTransformPipeline::compute_belt_height_and_floor(
     const PrintConfig &config, const BoundingBoxf3 &bbox, double original_height)
-{
-    return compute_belt_height_and_floor_impl(config, bbox, original_height);
-}
-
-BeltTransformPipeline::BeltHeightResult BeltTransformPipeline::compute_belt_height_and_floor(
-    const DynamicPrintConfig &config, const BoundingBoxf3 &bbox, double original_height)
 {
     return compute_belt_height_and_floor_impl(config, bbox, original_height);
 }

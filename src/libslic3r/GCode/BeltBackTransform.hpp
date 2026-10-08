@@ -28,9 +28,6 @@ public:
     // no back-transform is active.
     Vec3d apply(const Vec3d &pos) const;
 
-    // True if a non-identity back-transform is active.
-    bool is_active() const { return m_active; }
-
 private:
     bool       m_active  = false;
     Transform3d m_inverse = Transform3d::Identity();

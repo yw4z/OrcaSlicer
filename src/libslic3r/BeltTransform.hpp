@@ -82,12 +82,6 @@ public:
         return t;
     }
 
-    static PhysicalTilt physical_tilt(const PrintConfig &config)
-    {
-        return physical_tilt(config.belt_slice_rotation.value,
-                             config.belt_slice_rotation_angle.value);
-    }
-
     // ---- Matrix builders --------------------------------------------------
 
     // Build the 3x3 rotation matrix from belt_slice_rotation* config.
@@ -132,11 +126,6 @@ public:
     // (bb.size().z() or model_object.max_z()).
     static BeltHeightResult compute_belt_height_and_floor(
         const PrintConfig &config, const BoundingBoxf3 &bbox,
-        double original_height);
-
-    // Overload for DynamicPrintConfig (used by static slicing_parameters).
-    static BeltHeightResult compute_belt_height_and_floor(
-        const DynamicPrintConfig &config, const BoundingBoxf3 &bbox,
         double original_height);
 };
 

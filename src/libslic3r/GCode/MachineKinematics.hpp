@@ -24,17 +24,6 @@ public:
     // Logical placed point -> emitted machine point.
     virtual Vec3d to_machine(const Vec3d &p) const = 0;
 
-    // Inverse of to_machine(), back to the logical placed frame.  Intended for
-    // consumers that must reconstruct model coordinates from emitted G-code
-    // (the G-code viewer's upright preview).
-    virtual Vec3d to_logical(const Vec3d &machine) const = 0;
-
-    // Machine point -> build-volume frame, for bounds validation only.  This is
-    // deliberately NOT to_logical(): the build-volume check wants the physical
-    // frame the printable area is expressed in, not the model frame.  Keeping
-    // them separate stops the two contracts from being confused.
-    virtual Vec3d to_build_volume(const Vec3d &machine) const = 0;
-
     // True when a move must emit X, Y and Z because omitting a word would be
     // wrong under this mapping.  Deliberately not called "couples_axes": a pure
     // axis permutation forces full emission without physically coupling axes.
@@ -72,8 +61,6 @@ class CartesianKinematics : public MachineKinematics
 {
 public:
     Vec3d to_machine(const Vec3d &p) const override;
-    Vec3d to_logical(const Vec3d &machine) const override;
-    Vec3d to_build_volume(const Vec3d &machine) const override { return machine; }
 
     bool must_emit_all_axes() const override { return this->has_axis_remap(); }
     bool suppress_lift_at_unknown_position() const override { return this->has_axis_remap(); }
@@ -93,7 +80,6 @@ public:
 
 protected:
     Vec3d apply_axis_remap(const Vec3d &pos) const;
-    Vec3d apply_axis_remap_inverse(const Vec3d &pos) const;
 
     int   m_remap_x { 0 };
     int   m_remap_y { 1 };

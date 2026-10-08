@@ -902,7 +902,6 @@ void PrintObject::slice()
     // them.
     m_belt_min_z              = 0.;
     m_belt_global_z_offset    = 0.;
-    m_belt_global_xy_correction = Vec2d::Zero();
     this->clear_layers();
     m_layers = new_layers(this, generate_object_layers(m_slicing_params, layer_height_profile, m_config.precise_z_height.value));
     this->slice_volumes();
@@ -910,19 +909,10 @@ void PrintObject::slice()
 
     // Belt floor Z-shift: where is the belt surface in final slicer space?
     //
-    // The belt surface is at model_Y=0 (XZ belt plane). After the full
-    // pipeline (trafo_centered → pre_remap → shear → z_shift), the belt
-    // surface equation in slicer space is:
-    //   Z_belt = sf * from_axis + belt_surface_z_centered + z_shift_val
-    //
-    // belt_surface_z_centered = remapped_bbox.min.z() (the Z position of
-    //   the belt surface in centered-pre-shear slicer space, which is 0
-    //   without pre-remap but nonzero when e.g. Y↔Z swap shifts the belt
-    //   surface away from Z=0 by the centering offset).
-    //
-    // z_shift_val = max(0, -m_belt_min_z) (lifts mesh above Z=0).
-    //
-    // So: belt_floor_z_shift = remapped_bb.min.z() + z_shift_val
+    // The belt surface is the model's Z=0 plane.  After the belt rotation and the
+    // Z-shift it is the plane Z_belt = shear_factor * from_axis + z_shift_val in
+    // slicer space, with z_shift_val = max(0, -m_belt_min_z), the lift that starts
+    // the slicing frame at the belt below the footprint.
     if (std::abs(m_slicing_params.belt_floor_shear_factor) > EPSILON) {
         double z_shift_val = (m_belt_min_z < 0.) ? -m_belt_min_z : 0.;
         // The belt surface is at Z=0 in centered slicer space and bb.min.z() is
@@ -968,10 +958,10 @@ void PrintObject::slice()
     if (m_layers.empty())
         throw Slic3r::SlicingError(L("No layers were detected. You might want to repair your STL file(s) or check their size or thickness and retry.\n"));
 
-    // Belt printer global mode: offset all layer Z values so objects at
-    // different bed positions print at different heights on the tilted belt.
-    // This is a post-slicing adjustment — the sliced geometry is identical
-    // regardless of global mode, only the output Z coordinates change.
+    // Belt printer: offset all layer Z values so objects at different positions
+    // along the belt print at different heights on the tilted belt.  This is a
+    // post-slicing adjustment: the sliced geometry is the same, only the output Z
+    // coordinates change.
     {
         const auto &pcfg = this->print()->config();
         BOOST_LOG_TRIVIAL(trace) << "Belt global check: belt_printer=" << pcfg.belt_printer.value
@@ -995,7 +985,6 @@ void PrintObject::slice()
             // couples slicer_z back into both machine_y and machine_z.  Compensating
             // layer.print_z by belt_z_shift here makes the back-transform produce
             // correct machine-frame coordinates whether or not a global mode is active.
-            const double belt_surface_z = 0.;   // the belt surface is Z=0 in centered slicer space
             // The compensation must mirror the Z-shift actually applied, which
             // is max(0, -m_belt_min_z): when the transformed mesh starts ABOVE
             // slicer Z=0 (m_belt_min_z > 0 — possible for counter-rotated or
@@ -1003,7 +992,7 @@ void PrintObject::slice()
             // no lift was applied, and an unclamped m_belt_min_z here would
             // leak straight into the layer Z values, floating the whole object
             // off the belt by exactly that amount.
-            double belt_z_shift = std::min(m_belt_min_z, 0.) - belt_surface_z;
+            double belt_z_shift = std::min(m_belt_min_z, 0.);   // the belt surface is Z=0 in centered slicer space
             double global_z_offset = belt_z_shift;
 
             // Centering correction: trafo_centered pretranslates by
@@ -1034,7 +1023,6 @@ void PrintObject::slice()
                 Vec3d d(unscale<double>(inst_shift.x()), unscale<double>(inst_shift.y()), 0.);
                 Vec3d c = T.linear() * d - d;
                 global_z_offset += c.z();
-                m_belt_global_xy_correction = Vec2d(c.x(), c.y());
 
                 BOOST_LOG_TRIVIAL(trace) << "Belt preslice_global: correction=("
                     << c.x() << ", " << c.y() << ", " << c.z() << ")"
@@ -1042,7 +1030,7 @@ void PrintObject::slice()
             }
 
             BOOST_LOG_TRIVIAL(trace) << "Belt global: z_offset=" << global_z_offset
-                << " (relative to min across " << this->print()->objects().size() << " objects)";
+                << " (" << this->print()->objects().size() << " objects on the plate)";
             m_belt_global_z_offset = global_z_offset;
             if (std::abs(global_z_offset) > EPSILON) {
                 for (Layer *layer : m_layers)

@@ -376,15 +376,14 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
 // overhang outside the belt footprint and land in the brim ring, which the flattened
 // brim_object_gap - a belt-plane separation - does not cover.
 //
-// THREADING: this runs inside posSupportMaterial, which Print::process() executes for all
-// objects in a tbb::parallel_for (Print.cpp).  Object slices are finished by then and safe
-// to read across objects, but SUPPORT layers are not: another object's thread may be
-// inside clear_support_layers() - which deletes the SupportLayer pointers - right now, so
-// touching a foreign object's support_layers() here is a use-after-free.  Only this
-// object's own supports are consulted; they are complete, because make_belt_brim() runs at
-// the tail of this object's own generate_support_material().  The cost is that the brim
-// does not dodge a *different* object's support at the same Z, which needs the objects to
-// overlap in the belt direction in the first place.
+// SEQUENCING: this reads every object's layers and this object's own support layers.
+// Another object's support step shifts that object's layer Z into the object frame for
+// the duration of the run (PrintObject::_generate_support_material()), so the brims must
+// not overlap with the parallel support step: Print::process() generates them one object
+// after the other once that step is over (PrintObject::generate_belt_brim()), and an
+// object that arrives on or leaves the plate invalidates the other brim owners' support
+// step (PrintApply.cpp) so their brims are clipped against what is there now.  Only this
+// object's supports are dodged; another object's support at the same Z is not.
 // `region_bbox` bounds the brim; anything outside it cannot clip a brim line, so whole
 // objects are skipped without materialising their polygons.  On a typical plate the
 // objects do not overlap and every foreign object drops out here, which matters because
@@ -489,11 +488,19 @@ void make_belt_brim(PrintObject &object)
                          width, gap, leading, lateral, bc.frame),
         bc.frame);
 
-    if (bt == btLeadingEdgeOnly && ! bc.region.empty())
-        // The cut is the uphill edge of the first layer's contact band: everything
-        // past it belongs to later contacts.
-        bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame,
-                                                bc.ctx.cutoff_u(object.layers().front()->print_z));
+    if (bt == btLeadingEdgeOnly && ! bc.region.empty()) {
+        // The cut is the uphill edge of the first contact's band: everything past it
+        // belongs to later contacts.  The first contact is the first layer with
+        // geometry, not layers().front(): the slicing frame starts at the belt below
+        // the footprint, so the leading layers are empty and their contact lies ahead
+        // of the part.
+        const Layer *first_contact = nullptr;
+        for (const Layer *layer : object.layers())
+            if (! layer->lslices.empty()) { first_contact = layer; break; }
+        if (first_contact == nullptr)
+            return;
+        bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame, bc.ctx.cutoff_u(first_contact->print_z));
+    }
 
     if (bc.region.empty())
         return;

@@ -73,8 +73,7 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
         z_shift.matrix()(2, 3) = z_shift_val;
         trafo = z_shift * trafo;
     }
-    // out_belt_min_z is only meaningful in belt mode; the standalone-remap path
-    // never reported it.
+    // out_belt_min_z is only meaningful in belt mode.
     if (out_belt_min_z && config.belt_printer.value) {
         *out_belt_min_z = (min_z != std::numeric_limits<double>::max()) ? min_z : 0.;
     }

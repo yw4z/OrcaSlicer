@@ -31,10 +31,12 @@
 #include "libslic3r/Support/TreeModelVolumes.hpp"
 #include "libslic3r/Support/TreeSupportCommon.hpp"
 #include "libslic3r/Support/BeltFloorContext.hpp"
+#include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Polyline.hpp"
 #include <limits>
 #include <cmath>
+#include <map>
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCodeReader.hpp"
@@ -1244,6 +1246,98 @@ TEST_CASE("Organic tree supports place a support blocker at its own height above
     CHECK(collides(last + num_raft));
 }
 
+// organic_draw_branches() trims every branch slice against the collision volume (the
+// part grown by the support XY distance), the bed and, on a belt, the belt plane before
+// it becomes support, so a branch never runs into the part it supports.  Not a belt
+// feature: this is the generator every printer uses.
+TEST_CASE("Organic tree supports keep their distance from the part", "[Print][Support]")
+{
+    // A 20 mm cube carrying a 60 x 60 mm plate: a 20 mm wide ceiling all around the
+    // cube, 16 mm above the bed, with the cube's four corners in the way of the branches
+    // that drop from it.  The plate reaches into the cube so the two shells overlap
+    // instead of sharing a face.
+    indexed_triangle_set its   = its_make_cube(20., 20., 20.);
+    indexed_triangle_set plate = its_make_cube(60., 60., 4.);
+    its_translate(its, Vec3f(20.f, 20.f, 0.f));
+    its_translate(plate, Vec3f(0.f, 0.f, 16.f));
+    its_merge(its, plate);
+    TriangleMesh mesh(std::move(its));
+
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict({
+        { "layer_height",               0.2 },
+        { "initial_layer_print_height", 0.2 },
+        { "skirt_loops",                0 },
+        { "enable_support",             1 },
+        { "support_type",               "tree(auto)" },
+        { "support_style",              "organic" },
+        { "support_threshold_angle",    30 },
+    });
+    Print print;
+    Model model;
+    init_print({ mesh }, print, model, config);
+    // On the bed, not at its corner (the fixture leaves the object at the origin).
+    model.objects.front()->instances.front()->set_offset(Vec3d(100., 100., 0.));
+    print.apply(model, config);
+    print.set_status_silent();
+    print.process();
+
+    const PrintObject &object = *print.objects().front();
+    INFO("object layers " << object.layers().size() << ", support layers " << object.support_layers().size());
+    REQUIRE(! object.support_layers().empty());
+    // Support exists under the plate at all.
+    size_t support_layers_with_fills = 0;
+    for (const SupportLayer *layer : object.support_layers())
+        if (! layer->support_fills.empty())
+            ++ support_layers_with_fills;
+    INFO("support layers with extrusions " << support_layers_with_fills);
+    CHECK(support_layers_with_fills > 20);
+
+    // Object layers by print_z, to look up the part's slice at a support layer's height.
+    std::map<coord_t, const Layer *> object_layers;
+    for (const Layer *layer : object.layers())
+        object_layers[scaled<coord_t>(layer->print_z)] = layer;
+    auto contains = [](const ExPolygons &expolys, const Point &pt) {
+        for (const ExPolygon &ex : expolys)
+            if (ex.contains(pt))
+                return true;
+        return false;
+    };
+    // No support extrusion may run closer to the part's slice than half a line width:
+    // the generator keeps the support XY distance (0.35 mm by default) plus the line's
+    // own half width away from it.
+    const float min_gap = scaled<float>(0.2);
+    size_t too_close = 0, points = 0, layers_checked = 0, layers_unmatched = 0;
+    for (const SupportLayer *layer : object.support_layers()) {
+        if (layer->support_fills.empty())
+            continue;
+        // The object layer whose slab spans this support layer's height.
+        auto it = object_layers.lower_bound(scaled<coord_t>(layer->print_z - EPSILON));
+        if (it == object_layers.end()) {
+            ++ layers_unmatched;
+            continue;
+        }
+        ++ layers_checked;
+        const ExPolygons grown = offset_ex(it->second->lslices, min_gap);
+        for (const ExtrusionEntity *entity : layer->support_fills.flatten().entities)
+            for (const Slic3r::Polyline &pl : entity->as_polylines())
+                for (size_t i = 0; i < pl.points.size(); ++ i) {
+                    // The vertices and the midpoints of the segments between them.
+                    ++ points;
+                    if (contains(grown, pl.points[i]))
+                        ++ too_close;
+                    if (i + 1 < pl.points.size() && contains(grown, (pl.points[i] + pl.points[i + 1]) / 2))
+                        ++ too_close;
+                }
+    }
+    INFO("support layers checked " << layers_checked << " (unmatched " << layers_unmatched << "), support points " << points
+         << ", within 0.2 mm of the part " << too_close);
+    CHECK(layers_checked > 20);
+    CHECK(layers_unmatched == 0);
+    REQUIRE(points > 0);
+    CHECK(too_close == 0);
+}
+
 // Two parts along the belt: the second part's slicing frame starts at the belt
 // below its leading end, so its first layers are empty and interleave with the
 // first part's printing layers. Those must not reach the G-code as layer changes
@@ -1268,6 +1362,9 @@ TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][
         { "machine_start_gcode",        "T[initial_tool]\n" },
         { "layer_change_gcode",         "G92 E0\n" },
     });
+    // Both export paths drop the empty layers and count the layers the same way.
+    SECTION("by layer")  { config.set_deserialize_strict({{ "print_sequence", "by layer" }}); }
+    SECTION("by object") { config.set_deserialize_strict({{ "print_sequence", "by object" }}); }
     Print print;
     Model model;
     TriangleMesh cube_a(its_make_cube(20., 20., 20.));
@@ -1282,28 +1379,36 @@ TEST_CASE("Belt G-code has no layer that prints nothing", "[Print][belt][GCode][
     const std::string gc = gcode(print);
     REQUIRE(! gc.empty());
 
-    size_t layers = 0, empty = 0, total_header = 0;
+    size_t layers = 0, empty = 0, total_header = 0, total_count = 0;
     bool   extruded = true;   // before the first layer change
-    std::istringstream in(gc);
-    std::string line;
     auto close_layer = [&]() { if (! extruded) ++ empty; };
-    while (std::getline(in, line)) {
-        if (line.rfind(";LAYER_CHANGE", 0) == 0) {
+    GCodeReader reader;
+    reader.apply_config(config);
+    reader.parse_buffer(gc, [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
+        const std::string &raw = line.raw();
+        if (raw.rfind(";LAYER_CHANGE", 0) == 0) {
             close_layer();
             ++ layers;
             extruded = false;
-        } else if (line.rfind("; total layer number: ", 0) == 0) {
-            total_header = size_t(std::atoi(line.c_str() + 22));
-        } else if (! extruded && line.rfind("G1 ", 0) == 0 && line.find('E') != std::string::npos
-                   && (line.find('X') != std::string::npos || line.find('Y') != std::string::npos)) {
+        } else if (raw.rfind("; total layer number: ", 0) == 0) {
+            // Counted by the G-code processor from the layer changes it saw.
+            total_header = size_t(std::atoi(raw.c_str() + 22));
+        } else if (raw.rfind("; total layers count = ", 0) == 0) {
+            // GCode::m_layer_count, counted up front from the objects' layers; it also
+            // drives the M73 progress and the total_layer_count placeholder.
+            total_count = size_t(std::atoi(raw.c_str() + 23));
+        } else if (! extruded && line.extruding(self) && line.dist_XY(self) > EPSILON) {
+            // Material laid down along a move: a wipe or an unretraction does not count.
             extruded = true;
         }
-    }
+    });
     close_layer();
-    INFO("layers " << layers << ", header " << total_header << ", layers without extrusion " << empty);
+    INFO("layers " << layers << ", header " << total_header << ", count " << total_count
+         << ", layers without extrusion " << empty);
     CHECK(layers > 150);          // both cubes, 141 layers each, overlapping along the belt
     CHECK(empty == 0);
     CHECK(total_header == layers);
+    CHECK(total_count == layers);
 }
 
 // A part with an overhang on its LEADING side (the end that prints first) needs
