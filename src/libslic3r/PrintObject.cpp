@@ -848,7 +848,7 @@ void PrintObject::infill()
             [this](const tbb::blocked_range<size_t>& range) {
                 for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx) {
                     m_print->throw_if_canceled();
-                    m_layers[layer_idx]->make_fills(&m_adaptive_fill_octrees.first, &m_adaptive_fill_octrees.second, this->m_lightning_generator.get());
+                    m_layers[layer_idx]->make_fills(&m_adaptive_fill_octrees, this->m_lightning_generator.get());
                 }
             }
         );
@@ -1168,14 +1168,27 @@ static std::vector<indexed_triangle_set> split_mesh_by_body(const PrintObject &o
     return bodies;
 }
 
-std::pair<FillAdaptive::Octrees, FillAdaptive::Octrees> PrintObject::prepare_adaptive_infill_data(
+FillAdaptive::RegionOctrees PrintObject::prepare_adaptive_infill_data(
     const std::vector<std::pair<const Surface *, const Layer *>> &surfaces_w_layer) const
 {
     using namespace FillAdaptive;
 
-    auto [adaptive_line_spacing, support_line_spacing] = adaptive_fill_line_spacing(*this);
-    if ((adaptive_line_spacing == 0. && support_line_spacing == 0.) || this->layers().empty())
+    // Orca: Each region fills with the octrees of its own line spacing, shared by the regions of equal spacing.
+    const std::vector<double>            line_spacing = adaptive_fill_line_spacing(*this);
+    std::vector<std::pair<double, bool>> spacings; // Line spacing, support cubic.
+    RegionOctrees                        octrees;
+    octrees.region_set.assign(line_spacing.size(), -1);
+    for (size_t region_id = 0; region_id < line_spacing.size(); ++ region_id)
+        if (line_spacing[region_id] > 0.) {
+            const std::pair<double, bool> spacing(line_spacing[region_id], this->printing_region(region_id).config().sparse_infill_pattern == ipSupportCubic);
+            const auto                    it = std::find(spacings.begin(), spacings.end(), spacing);
+            octrees.region_set[region_id]    = int(it - spacings.begin());
+            if (it == spacings.end())
+                spacings.push_back(spacing);
+        }
+    if (spacings.empty() || this->layers().empty())
         return {};
+    octrees.sets.resize(spacings.size());
 
     indexed_triangle_set mesh = this->model_object()->raw_indexed_triangle_set();
     // Rotate mesh and build octree on it with axis-aligned (standart base) cubes.
@@ -1198,44 +1211,50 @@ std::pair<FillAdaptive::Octrees, FillAdaptive::Octrees> PrintObject::prepare_ada
             }
         });
 
-    // Orca: Each body gets the octree it has when sliced on its own, from its own triangles.
-    std::pair<Octrees, Octrees> octrees;
-    const size_t                num_bodies  = m_separated_body_bboxes.size();
-    bool                        need_object = num_bodies <= 1;
+    // Orca: Each body gets the octree it has when sliced on its own, from its own triangles, for each line spacing
+    // its regions fill with. Body num_bodies stands for the whole object, which serves an object of a single body
+    // and the surfaces of bodies that have no octree of their own.
+    const size_t                           num_bodies = m_separated_body_bboxes.size();
+    std::vector<std::pair<size_t, size_t>> to_build; // Set, body.
+    std::vector<indexed_triangle_set>      body_meshes;
+    std::vector<std::vector<Vec3d>>        body_overhangs(num_bodies);
     if (num_bodies > 1) {
-        const std::vector<indexed_triangle_set> body_meshes = split_mesh_by_body(*this, mesh, num_bodies);
-        need_object = std::any_of(body_meshes.begin(), body_meshes.end(), [](const indexed_triangle_set &its) { return its.indices.empty(); });
-        std::vector<std::vector<Vec3d>>         body_overhangs(num_bodies);
+        body_meshes = split_mesh_by_body(*this, mesh, num_bodies);
         for (size_t i = 0; i < surfaces_w_layer.size(); ++ i)
             if (const int body = separated_body_at(*surfaces_w_layer[i].second, surfaces_w_layer[i].first->expolygon.contour.points.front()); body >= 0)
                 append(body_overhangs[body], overhangs[i]);
-        if (adaptive_line_spacing)
-            octrees.first.bodies.resize(num_bodies);
-        if (support_line_spacing)
-            octrees.second.bodies.resize(num_bodies);
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, num_bodies), [&, adaptive_spacing = adaptive_line_spacing, support_spacing = support_line_spacing](
-                                                                        const tbb::blocked_range<size_t> &range) {
-            for (size_t body = range.begin(); body < range.end(); ++ body) {
-                m_print->throw_if_canceled();
-                if (body_meshes[body].indices.empty())
-                    continue;
-                if (adaptive_spacing)
-                    octrees.first.bodies[body] = build_octree(body_meshes[body], body_overhangs[body], adaptive_spacing, false);
-                if (support_spacing)
-                    octrees.second.bodies[body] = build_octree(body_meshes[body], body_overhangs[body], support_spacing, true);
-            }
-        });
-    }
+        std::vector<std::vector<char>> fills(spacings.size(), std::vector<char>(num_bodies + 1, false));
+        for (const Layer *layer : m_layers)
+            for (size_t region_id = 0; region_id < layer->regions().size() && region_id < octrees.region_set.size(); ++ region_id)
+                if (const int set = octrees.region_set[region_id]; set >= 0)
+                    for (const Surface &surface : layer->regions()[region_id]->fill_surfaces) {
+                        const int body = separated_body_at(*layer, surface.expolygon.contour.points.front());
+                        fills[set][body >= 0 && ! body_meshes[body].indices.empty() ? size_t(body) : num_bodies] = true;
+                    }
+        for (size_t set = 0; set < spacings.size(); ++ set) {
+            octrees.sets[set].bodies.resize(num_bodies);
+            for (size_t body = 0; body <= num_bodies; ++ body)
+                if (fills[set][body])
+                    to_build.emplace_back(set, body);
+        }
+    } else
+        for (size_t set = 0; set < spacings.size(); ++ set)
+            to_build.emplace_back(set, num_bodies);
 
     // and gather them.
     for (size_t i = 1; i < overhangs.size(); ++ i)
         append(overhangs.front(), std::move(overhangs[i]));
 
-    // Orca: The object's octree only serves bodies that have none of their own.
-    if (need_object && adaptive_line_spacing)
-        octrees.first.object = build_octree(mesh, overhangs.front(), adaptive_line_spacing, false);
-    if (need_object && support_line_spacing)
-        octrees.second.object = build_octree(mesh, overhangs.front(), support_line_spacing, true);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, to_build.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++ i) {
+            m_print->throw_if_canceled();
+            const auto [set, body] = to_build[i];
+            const bool object      = body == num_bodies;
+            (object ? octrees.sets[set].object : octrees.sets[set].bodies[body]) =
+                build_octree(object ? mesh : body_meshes[body], object ? overhangs.front() : body_overhangs[body], spacings[set].first,
+                             spacings[set].second);
+        }
+    });
     return octrees;
 }
 
@@ -3077,8 +3096,7 @@ void PrintObject::bridge_over_infill()
             for (size_t job_idx = r.begin(); job_idx < r.end(); job_idx++) {
                 size_t lidx = layers_to_generate_infill[job_idx];
                 infill_lines.at(
-                    lidx) = po->get_layer(lidx)->generate_sparse_infill_polylines_for_anchoring(&po->m_adaptive_fill_octrees.first,
-                                                                                                &po->m_adaptive_fill_octrees.second,
+                    lidx) = po->get_layer(lidx)->generate_sparse_infill_polylines_for_anchoring(&po->m_adaptive_fill_octrees,
                                                                                                 po->m_lightning_generator.get());
             }
         });
