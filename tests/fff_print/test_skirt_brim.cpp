@@ -1158,9 +1158,10 @@ TEST_CASE("Every brim type slices on a belt printer", "[SkirtBrim][belt]")
 }
 
 // The leading-edge-only brim is the outer brim cut down to the part's first contact
-// with the belt.  The cut has to be taken at the first layer with geometry: the slicing
-// frame starts at the belt below the footprint, so layers().front() is an empty lead-in
-// layer whose contact lies ahead of the part, and a cut taken there left no brim at all.
+// with the belt.  The cut has to be taken at the first layer that touches the belt: the
+// slicing frame starts at the belt below the footprint, so layers().front() is an empty
+// lead-in layer whose contact lies ahead of the part, and a cut taken there left no brim
+// at all.
 TEST_CASE("Leading-edge-only brim is laid at the first contact and nowhere else", "[SkirtBrim][belt][Regression]")
 {
     auto brim_gcode = [](const char *brim_type) {
@@ -1189,6 +1190,44 @@ TEST_CASE("Leading-edge-only brim is laid at the first contact and nowhere else"
     INFO("brim layers: leading-edge " << leading_layers << ", outer " << outer_layers);
     CHECK(leading_layers > 0);
     CHECK(leading_layers < outer_layers);
+}
+
+// An overhang on the leading side is sliced before the part reaches the belt, so the
+// first layer with geometry is the overhang's tip, above the belt.  A leading-edge cut
+// taken there lies ahead of the part: the brim shrank to a sliver well ahead of it, or
+// vanished once the overhang reached further forward than the brim.  The overhang does
+// not touch the belt, so it must not change the brim at all.
+TEST_CASE("Leading-edge-only brim ignores an overhang ahead of the part", "[SkirtBrim][belt][Regression]")
+{
+    const double fin_length = GENERATE(30., 40.);
+    CAPTURE(fin_length);
+    // A 20 mm cube, with or without a 2 mm thick fin leaving its top edge and reaching
+    // `fin` toward -Y, the end of the part that prints first.  The fin overlaps the cube
+    // by 1 mm so the two shells merge instead of sharing a face.
+    auto brim_layers = [](double fin) {
+        indexed_triangle_set its = its_make_cube(20., 20., 20.);
+        if (fin > 0.) {
+            indexed_triangle_set fin_its = its_make_cube(20., fin + 1., 2.);
+            its_translate(fin_its, Vec3f(0.f, float(-fin), 18.f));
+            its_merge(its, fin_its);
+        }
+        DynamicPrintConfig config = belt_brim_config();
+        config.set_deserialize_strict({
+            { "brim_type",           "leading_edge_only" },
+            { "brim_width",          5 },
+            { "leading_brim_length", 10 },
+            { "extra_brim_width",    0 },
+            { "brim_object_gap",     0 },
+        });
+        return role_layers(slice({ TriangleMesh(std::move(its)) }, config), "brim");
+    };
+    const int plain    = brim_layers(0.);
+    const int with_fin = brim_layers(fin_length);
+    INFO("leading-edge brim layers: plain cube " << plain << ", with the fin " << with_fin);
+    REQUIRE(plain > 0);
+    // One layer of slack: the fin widens the part's footprint on the plate, which can
+    // move the layer grid by a fraction of a layer.
+    CHECK(std::abs(with_fin - plain) <= 1);
 }
 
 TEST_CASE("An untilted belt printer gets no brim", "[SkirtBrim][belt]")
