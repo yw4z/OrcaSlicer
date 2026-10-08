@@ -488,11 +488,19 @@ void make_belt_brim(PrintObject &object)
                          width, gap, leading, lateral, bc.frame),
         bc.frame);
 
-    if (bt == btLeadingEdgeOnly && ! bc.region.empty())
-        // The cut is the uphill edge of the first layer's contact band: everything
-        // past it belongs to later contacts.
-        bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame,
-                                                bc.ctx.cutoff_u(object.layers().front()->print_z));
+    if (bt == btLeadingEdgeOnly && ! bc.region.empty()) {
+        // The cut is the uphill edge of the first contact's band: everything past it
+        // belongs to later contacts.  The first contact is the first layer with
+        // geometry, not layers().front(): the slicing frame starts at the belt below
+        // the footprint, so the leading layers are empty and their contact lies ahead
+        // of the part.
+        const Layer *first_contact = nullptr;
+        for (const Layer *layer : object.layers())
+            if (! layer->lslices.empty()) { first_contact = layer; break; }
+        if (first_contact == nullptr)
+            return;
+        bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame, bc.ctx.cutoff_u(first_contact->print_z));
+    }
 
     if (bc.region.empty())
         return;

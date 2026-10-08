@@ -1140,7 +1140,7 @@ TEST_CASE("Every brim type slices on a belt printer", "[SkirtBrim][belt]")
     // Auto / Mouse ear / Painted collapse to outer-only rather than crashing or
     // silently producing nothing.
     const char *brim_type = GENERATE("auto_brim", "brim_ears", "painted", "outer_only",
-                                     "inner_only", "outer_and_inner", "no_brim");
+                                     "inner_only", "outer_and_inner", "leading_edge_only", "no_brim");
     DYNAMIC_SECTION("brim_type " << brim_type) {
         DynamicPrintConfig config = belt_brim_config();
         config.set_deserialize_strict({
@@ -1155,6 +1155,40 @@ TEST_CASE("Every brim type slices on a belt printer", "[SkirtBrim][belt]")
             // A solid cube has no holes, so inner_only legitimately yields nothing.
             CHECK(role_passes(gcode, "brim") > 0);
     }
+}
+
+// The leading-edge-only brim is the outer brim cut down to the part's first contact
+// with the belt.  The cut has to be taken at the first layer with geometry: the slicing
+// frame starts at the belt below the footprint, so layers().front() is an empty lead-in
+// layer whose contact lies ahead of the part, and a cut taken there left no brim at all.
+TEST_CASE("Leading-edge-only brim is laid at the first contact and nowhere else", "[SkirtBrim][belt][Regression]")
+{
+    auto brim_gcode = [](const char *brim_type) {
+        DynamicPrintConfig config = belt_brim_config();
+        config.set_deserialize_strict({
+            { "brim_type",           brim_type },
+            { "brim_width",          5 },
+            { "leading_brim_length", 10 },
+            { "extra_brim_width",    0 },
+            { "brim_object_gap",     0 },
+        });
+        return slice({ cube(20) }, config);
+    };
+    const std::string leading = brim_gcode("leading_edge_only");
+    const std::string outer   = brim_gcode("outer_only");
+
+    const double brim_z = first_role_z(leading, "brim");
+    const double peri_z = first_role_z(leading, "perimeter");
+    REQUIRE(brim_z < std::numeric_limits<double>::max());
+    REQUIRE(peri_z < std::numeric_limits<double>::max());
+    // At the first contact: the brim starts no later than the part does...
+    CHECK(brim_z <= peri_z + EPSILON);
+    // ...and stops there, while the outer brim keeps following the footprint.
+    const int leading_layers = role_layers(leading, "brim");
+    const int outer_layers   = role_layers(outer, "brim");
+    INFO("brim layers: leading-edge " << leading_layers << ", outer " << outer_layers);
+    CHECK(leading_layers > 0);
+    CHECK(leading_layers < outer_layers);
 }
 
 TEST_CASE("An untilted belt printer gets no brim", "[SkirtBrim][belt]")
