@@ -8282,7 +8282,7 @@ void Tab::update_extruder_variants(int extruder_id, bool reload)
             auto options = generate_extruder_options();
             m_extruder_switch->SetOptions(options);
             int item_n = options.empty() ? 0 : options.size();
-            int h_pad  = item_n > 6 ? 6 : (item_n > 4 ? 8 : (item_n > 2 ? 10 : 16));
+            int h_pad  = item_n > 6 ? 6 : (item_n > 4 ? 10 : (item_n > 2 ? 20 : 36));
             m_extruder_switch->SetButtonPadding(FromDIP(wxSize(h_pad,3)));
 
             int selection_index;
@@ -8311,7 +8311,7 @@ void Tab::update_extruder_variants(int extruder_id, bool reload)
         auto      options   = generate_extruder_options();
         m_variant_combo->SetOptions(options);
         int item_n = options.empty() ? 0 : options.size();
-        int h_pad  = item_n > 6 ? 6 : (item_n > 4 ? 8 : (item_n > 2 ? 10 : 16));
+        int h_pad  = item_n > 6 ? 6 : (item_n > 4 ? 8 : (item_n > 2 ? 20 : 36));
         m_variant_combo->SetButtonPadding(FromDIP(wxSize(h_pad,3)));
 
         if (!options.empty())
