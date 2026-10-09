@@ -109,6 +109,7 @@
 #include <boost/uuid/uuid_io.hpp>
 
 #include <wx/colour.h>
+#include <wx/font.h>
 #include <wx/aui/framemanager.h>
 #include <wx/gdicmn.h>
 #include <wx/anybutton.h>
@@ -761,6 +762,10 @@ struct ExtruderGroup : StaticBox
     // of the group.
     struct NozzleRow
     {
+        // Fonts of the prefix and the diameter readout, applied when the row is created and again by Rescale().
+        static wxFont prefix_font()   { return Label::Body_12.Bold(); }
+        static wxFont diameter_font() { return Label::Body_12; }
+
         Label *    prefix         = nullptr;
         Label *    diameter_label = nullptr; // read-only nozzle diameter of this extruder
         ComboBox * flow           = nullptr;
@@ -833,8 +838,8 @@ struct ExtruderGroup : StaticBox
         btn_down->msw_rescale();
         combo_diameter->Rescale();
         for (const NozzleRow &row : rows) {
-            row.prefix->SetFont(Label::Body_10.Bold());
-            row.diameter_label->SetFont(Label::Body_10);
+            row.prefix->SetFont(NozzleRow::prefix_font());
+            row.diameter_label->SetFont(NozzleRow::diameter_font());
             row.flow->Rescale();
         }
         update_row_widths();
@@ -1653,12 +1658,12 @@ ExtruderGroup::NozzleRow ExtruderGroup::create_nozzle_row()
     const size_t row_index = rows.size();
     NozzleRow row;
 
-    row.prefix = new Label(this, Label::Body_12.Bold());
+    row.prefix = new Label(this, NozzleRow::prefix_font());
     row.prefix->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
     row.prefix->SetLabelText(wxString::Format("T%d", int(row_index) + 1));
     row.prefix->Hide();
 
-    row.diameter_label = new Label(this, Label::Body_12);
+    row.diameter_label = new Label(this, NozzleRow::diameter_font());
     row.diameter_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
     row.diameter_label->Hide();
 
