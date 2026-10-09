@@ -8,6 +8,7 @@
 #include "ColorSpaceConvert.hpp"
 #include "libslic3r/AABBTreeIndirect.hpp"
 #include "libslic3r/Color.hpp"
+#include "libslic3r/FilamentMixer.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/MeshBoolean.hpp"
 #include "libslic3r/Model.hpp"
@@ -69,6 +70,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <queue>
 #include <set>
 #include <vector>
@@ -257,11 +259,54 @@ TriangleSelector::TriangleSplittingData remap_texture_paint_spatial(
 // entry to fill.
 constexpr int PALETTE_LUT_EDGE = 24;
 
-// Ceiling on the printable palette, which bounds that fill cost (and the shader's uniform array).
+// The shaded preview shader's palette arrays. The palette itself stays within the paint mask's
+// EnforcerBlockerType::ExtruderMax states, since every entry has to become a filament.
 constexpr int PALETTE_MAX_ENTRIES = 64;
-// Ceiling on the filaments the palette's entries can refer to (the shaded preview shader's filament_rgb[]);
-// mmu segmentation stops at Extruder16 anyway.
-constexpr int PALETTE_MAX_FILAMENTS = 16;
+
+// A mix is an interleave that only reads as its colour from a distance; up close it is stripes. So it
+// is spent only where it beats the nearest single filament by this much (CIEDE2000). Two is about
+// where a side-by-side difference stops being arguable; a margin of ten already turns most of a
+// greyscale ramp - the shape a height texture actually traces - back into single filaments. The
+// quantizer, the mix ranking and the shaded preview shader all apply it, so they agree on where a mix
+// is used.
+constexpr float PREFER_PURE_DE = 2.f;
+
+// mix_targets(): the most pixels read per layer, and the histogram bins kept over all layers. Together
+// they bound rank_mixes() to candidates x MIX_TARGET_BINS colour differences, the same order as filling
+// the quantizer's lookup cube.
+constexpr size_t MIX_TARGET_SAMPLES = size_t(1) << 20;
+constexpr size_t MIX_TARGET_BINS    = 256;
+// rank_mixes() stops once the best remaining mix would improve the match by less than this, in
+// CIEDE2000 averaged over every pixel of the colouring layers (see mix_targets()): a mix that only
+// touches a few stray pixels is not worth a filament slot.
+constexpr float MIN_MIX_GAIN = 0.05f;
+
+// The project's mixed filament slots, one string each, as the palette cache compares them: anything
+// that changes which of them a mix can reuse changes this.
+std::vector<std::string> mixed_slot_signature(const DynamicPrintConfig &project_config)
+{
+    std::vector<std::string> out;
+    const auto *is_mixed = project_config.option<ConfigOptionBools>("filament_is_mixed");
+    const auto *comps    = project_config.option<ConfigOptionStrings>("filament_mixed_components");
+    const auto *ratios   = project_config.option<ConfigOptionStrings>("filament_mixed_sublayer_ratios");
+    const auto *gradient = project_config.option<ConfigOptionBools>("filament_mixed_gradient");
+    if (is_mixed == nullptr || comps == nullptr || ratios == nullptr)
+        return out;
+    for (size_t i = 0; i < is_mixed->values.size(); ++i)
+        if (is_mixed->values[i])
+            out.push_back(std::to_string(i) + ':' + (i < comps->values.size() ? comps->values[i] : std::string()) + '|' +
+                          (i < ratios->values.size() ? ratios->values[i] : std::string()) + '|' +
+                          (gradient != nullptr && i < gradient->values.size() && gradient->values[i] ? "g" : ""));
+    return out;
+}
+
+// Whether two palettes would draw and print the same.
+bool same_palette(const std::vector<PrintableColor> &l, const std::vector<PrintableColor> &r)
+{
+    return std::equal(l.begin(), l.end(), r.begin(), r.end(), [](const PrintableColor &x, const PrintableColor &y) {
+        return x.a == y.a && x.b == y.b && x.num == y.num && x.den == y.den && x.rgb == y.rgb;
+    });
+}
 
 // sRGB (0..1) <-> CIELAB, D65. Exactly what the preview shader's srgb_to_lab() computes, so the CPU
 // quantizer, the mixed-palette entries and the per-fragment preview all match in the same space.
@@ -469,6 +514,15 @@ void GLGizmoTextureDisplacement::on_shutdown()
     // progress poll, and its completion handler then finds nothing to do.
     m_preview_generation->fetch_add(1);
     m_preview_job_pending = false;
+    // The palette caches hold the last volume's images; a closed gizmo should not keep them alive.
+    m_palette_cache.clear();
+    m_palette_quantizer      = nullptr;
+    m_palette_pure_quantizer = nullptr;
+    m_palette_filaments.clear();
+    m_palette_images.clear();
+    m_mix_ranking.reset();
+    m_palette_slots.clear();
+    m_palette_changed = false;
     m_uvcheck_glmodel.reset();
     m_wireframe_overlay_glmodel.reset();
     m_wireframe_overlay_vcount = 0;
@@ -1495,10 +1549,9 @@ void GLGizmoTextureDisplacement::render_shaded_preview_mesh()
     shader->set_uniform("patch_center", m_shaded_patch_center);
     shader->set_uniform("patch_axis", m_shaded_patch_axis);
 
-    // The filament palette the mesh's per-triangle indices refer to. Count 0 means "no layer is
-    // colouring", and the shader keeps the model's own colour for every fragment.
-    // The printable palette, in RGB for display and in Lab for the match. Uploaded rather than
-    // matched on the CPU because the quantization is per fragment here.
+    // The printable palette, in RGB for display and in Lab for the match. Uploaded rather than matched
+    // on the CPU because the quantization is per fragment here. Count 0 means "no layer is colouring",
+    // and the shader keeps the model's own colour for every fragment.
     const GLTexture *color_tex = get_layer_color_texture(*layer);
     const int        palette_count =
         (color_tex != nullptr) ? int(std::min(m_shaded_preview_palette.size(), size_t(PALETTE_MAX_ENTRIES))) : 0;
@@ -1506,23 +1559,16 @@ void GLGizmoTextureDisplacement::render_shaded_preview_mesh()
     shader->set_uniform("has_color_tex", color_tex != nullptr);
     // A flat-colour image is matched against single filaments only, as the bake does.
     shader->set_uniform("pure_only", color_tex != nullptr && analyze_texture_detail(*layer).flat_colors);
+    shader->set_uniform("prefer_pure_de", PREFER_PURE_DE);
     for (int i = 0; i < palette_count; ++i) {
         const PaletteEntry &e   = m_shaded_preview_palette[size_t(i)];
         const std::string   idx = "[" + std::to_string(i) + "]";
+        // An entry's colour is what it prints as: its filament's, or for a mix its mixed filament slot's.
         shader->set_uniform(("palette_rgb" + idx).c_str(), e.rgb);
         shader->set_uniform(("palette_lab" + idx).c_str(), srgb_to_lab(e.rgb));
-        // How the entry prints: its filament, or for a mix the two it interleaves and in what ratio.
+        // Only so the shader can tell a mix (a != b) from a single filament.
         shader->set_uniform(("palette_a" + idx).c_str(), e.a);
         shader->set_uniform(("palette_b" + idx).c_str(), e.b);
-    }
-    // The filaments those indices refer to, and the interleave the shader resolves a mix with - the
-    // the mix's smooth average colour. m_palette_filaments is what m_shaded_preview_palette was built from.
-    const int filament_count =
-        (palette_count > 0) ? int(std::min(m_palette_filaments.size(), size_t(PALETTE_MAX_FILAMENTS))) : 0;
-    shader->set_uniform("filament_count", filament_count);
-    for (int i = 0; i < filament_count; ++i) {
-        const ColorRGBA &c = m_palette_filaments[size_t(i)];
-        shader->set_uniform(("filament_rgb[" + std::to_string(i) + "]").c_str(), Vec3f(c.r(), c.g(), c.b()));
     }
     if (color_tex != nullptr) {
         shader->set_uniform("color_tex", 1);
@@ -1991,6 +2037,9 @@ void GLGizmoTextureDisplacement::rebuild_preview()
     // finishes after the job queued below - and, since the counter is shared with the worker, that
     // job also notices mid-run and aborts rather than computing a result nobody will use.
     m_preview_generation->fetch_add(1);
+    // Everything rebuilt from here on reads the current palette. Cleared before any of the early returns
+    // below, which would otherwise leave it set and re-run this every frame.
+    m_palette_changed = false;
     update_uv_editor();
     rebuild_shaded_preview_mesh();
     rebuild_paint_overlay();
@@ -2061,25 +2110,21 @@ void GLGizmoTextureDisplacement::queue_preview_job()
     input.volume_to_world = texture_displacement_volume_to_world(*mv);
     for (int i = 0; i < int(TEXTURE_DISPLACEMENT_MAX_LAYERS); ++i)
         input.facets_data[size_t(i)] = mv->texture_displacement_facet(i).get_data();
-    // Captured here rather than read in the handler: get_extruders_colors() is main-thread state and
-    // the preview has to be grouped against the same palette it was computed with, not whatever is
-    // loaded by the time it lands.
+    // Captured here rather than read in the handler: the palette is main-thread state, and the preview
+    // has to be grouped against the same palette it was computed with, not whatever it is by the time
+    // the result lands.
     input.color = color_settings_for(*mv);
-    // The filament list the result's indices refer to, captured with the job rather than read back
-    // when it lands - loading a filament meanwhile must not recolour a preview computed against a
-    // different list.
-    // Every extruder, not the palette's physical-only list: the bake writes the filament it resolved
-    // to, and a mix resolves to a *mixed filament slot*, which is an extruder past the physical ones.
-    // Grouping against the shorter list dropped every triangle carrying such a slot out of the mesh
-    // entirely - the relief vanished and left only the few triangles that happened to print in a plain
-    // filament. The palette still has to be built from physical filaments alone (see filament_palette()),
-    // which is why these two are not the same list.
-    const std::vector<ColorRGBA> filaments = wxGetApp().plater()->get_extruders_colors();
+    // The result names a palette entry per triangle (index + 1), so these are the colours to draw it in:
+    // a single filament's own, or for a mix the colour its slot will show once a bake creates it.
+    std::vector<ColorRGBA> entry_colors;
+    entry_colors.reserve(input.color.palette.size());
+    for (const PrintableColor &e : input.color.palette)
+        entry_colors.emplace_back(e.rgb.x(), e.rgb.y(), e.rgb.z(), 1.f);
 
     m_preview_job_running = true;
     auto &worker = wxGetApp().plater()->get_ui_job_worker();
     queue_job(worker, std::make_unique<TextureDisplacementPreviewJob>(std::move(input), generation, m_preview_generation,
-        [this, filaments](TextureDisplacementPreviewResult result, uint64_t result_generation) {
+        [this, entry_colors](TextureDisplacementPreviewResult result, uint64_t result_generation) {
             indexed_triangle_set its = std::move(result.mesh);
             m_preview_job_running = false;
             if (result_generation != m_preview_generation->load()) {
@@ -2093,14 +2138,11 @@ void GLGizmoTextureDisplacement::queue_preview_job()
             } else {
                 m_preview_glmodel.reset();
                 m_preview_color_runs.clear();
-                if (result.triangle_color.size() == its.indices.size() && !filaments.empty()) {
-                    // Group by *filament*, not by palette entry: what the bake wrote is the resolved
-                    // filament, interleaving already applied, so this shows the real banding rather
-                    // than the flat average the eye will turn it into.
+                if (result.triangle_color.size() == its.indices.size() && !entry_colors.empty()) {
                     indexed_triangle_set sorted;
                     sorted.vertices = its.vertices;
                     sorted.indices.reserve(its.indices.size());
-                    for (int want = 0; want <= int(filaments.size()); ++want) {
+                    for (int want = 0; want <= int(entry_colors.size()); ++want) {
                         const size_t first = sorted.indices.size();
                         for (size_t i = 0; i < its.indices.size(); ++i)
                             if (int(result.triangle_color[i]) == want)
@@ -2109,7 +2151,7 @@ void GLGizmoTextureDisplacement::queue_preview_job()
                             continue;
                         m_preview_color_runs.push_back(
                             { { first * 3, sorted.indices.size() * 3 },
-                              want == 0 ? GLVolume::NEUTRAL_COLOR : filaments[size_t(want - 1)] });
+                              want == 0 ? GLVolume::NEUTRAL_COLOR : entry_colors[size_t(want - 1)] });
                     }
                     m_preview_glmodel.init_from(sorted);
                 } else {
@@ -4271,79 +4313,96 @@ bool GLGizmoTextureDisplacement::any_layer_colors(const ModelVolume &mv)
     return false;
 }
 
-void GLGizmoTextureDisplacement::bind_mixes_to_filament_slots(std::vector<PaletteEntry> &palette)
-{
-    Sidebar *sidebar = &wxGetApp().plater()->sidebar();
-    if (sidebar == nullptr)
-        return;
-    for (PaletteEntry &e : palette) {
-        if (!e.is_mix())
-            continue;
-        // Components are 1-based in the config; the ratios are percentages summing to 100, which is the
-        // form create_mixed_filament_from_result() normalises from.
-        const int a_pct = int(std::lround(100.0 * double(e.num) / double(e.den)));
-        const int slot  = sidebar->ensure_mixed_filament({ unsigned(e.a + 1), unsigned(e.b + 1) },
-                                                         { a_pct, 100 - a_pct });
-        if (slot >= 0) {
-            e.a = e.b = slot;
-            e.num = e.den = 1;
-        } else {
-            // No room for another slot. Collapse to the component that dominates the blend, which is what
-            // the old per-triangle path did on a surface it could not band anyway.
-            const int dominant = (e.num * 2 >= e.den) ? e.a : e.b;
-            e.a = e.b = dominant;
-            e.num = e.den = 1;
-        }
-    }
-}
-
 TextureColorSettings GLGizmoTextureDisplacement::color_settings_for(const ModelVolume &mv)
 {
     TextureColorSettings out;
     if (!any_layer_colors(mv))
         return out; // nothing is colouring: every colour path stays switched off
     out.palette          = cached_palette();
-    out.palette_pure     = make_palette(m_palette_filaments, /* mixing */ false, PALETTE_MAX_ENTRIES);
-    // Done here rather than in cached_palette(): this runs when a preview or a bake is queued, off a
-    // user action, while that one is also touched from the render path - and creating filament slots
-    // there would mutate the project mid-frame.
-    bind_mixes_to_filament_slots(out.palette);
+    out.palette_pure     = make_palette(m_palette_filaments, {});
     out.despeckle_passes = mv.texture_displacement_options.color_despeckle;
     return out;
 }
 
 const std::vector<GLGizmoTextureDisplacement::PaletteEntry> &GLGizmoTextureDisplacement::cached_palette()
 {
-    // Rebuilt only when the loaded filaments or the mixing setting actually change. The shaded preview
-    // rebuilds on every paint stroke and the subdivide preview on every slider frame, and filling the
-    // quantizer's lookup cube for a 64-entry palette is tens of milliseconds - paying that per stroke
-    // is the difference between painting that keeps up and painting that stutters.
-    const ModelVolume *mv     = texture_volume();
-    const bool         mixing = mv != nullptr && mv->texture_displacement_options.color_mix_enabled;
+    // Rebuilt only when something it depends on actually changes. The shaded preview rebuilds on every
+    // paint stroke and the panel asks every frame, while ranking the mixes and filling the quantizer's
+    // lookup cube each take tens of milliseconds - paying that per stroke is the difference between
+    // painting that keeps up and painting that stutters.
+    //
+    // Two levels. The ranking depends only on the filaments and the images, so dragging the count, or a
+    // bake creating slots, re-picks from it without ranking again; the palette and its quantizers depend
+    // on that pick as well.
+    const ModelVolume     *mv        = texture_volume();
+    const bool             mixing    = mv != nullptr && mv->texture_displacement_options.color_mix_enabled;
+    const int              mix_count = mv != nullptr ? std::max(0, mv->texture_displacement_options.color_mix_count) : 0;
     std::vector<ColorRGBA> filaments = filament_palette();
-    // Every mix costs a filament slot once they are bound to one, and the mask can name only so many
-    // states, so the palette has to leave room beside the physical filaments it already counts.
-    const int cap = int(EnforcerBlockerType::ExtruderMax);
-    if (m_palette_cache.empty() || filaments != m_palette_filaments || mixing != m_palette_mixing ||
-        cap != m_palette_cap) {
+    // The images themselves rather than their addresses, so a freed and reallocated image can never
+    // pass for the old one. Whether one has colour, and whether its colours are flat, follows from it.
+    std::vector<std::shared_ptr<std::vector<unsigned char>>> images;
+    if (mv != nullptr)
+        for (const TextureDisplacementLayer &layer : mv->texture_displacement_layers)
+            if (layer.color_enabled && !layer.empty())
+                images.push_back(layer.image_data);
+
+    const bool ranking_stale = filaments != m_palette_filaments || images != m_palette_images;
+    if (ranking_stale) {
         m_palette_filaments = std::move(filaments);
-        m_palette_mixing    = mixing;
-        m_palette_cap       = cap;
-        m_palette_cache     = make_palette(m_palette_filaments, mixing, cap);
-        m_palette_quantizer = make_palette_quantizer(m_palette_cache);
+        m_palette_images    = std::move(images);
+        m_mix_ranking.reset();
+    }
+    if (mixing && !m_mix_ranking)
+        m_mix_ranking = rank_mixes(m_palette_filaments, mix_targets(mv->texture_displacement_layers),
+                                   int(EnforcerBlockerType::ExtruderMax) - int(m_palette_filaments.size()));
+
+    // Which mixes the project can still print: those it has a fixed slot for, plus as many new ones as
+    // there are free slots.
+    const PresetBundle            &bundle     = *wxGetApp().preset_bundle;
+    const int                      free_slots = std::max(0, int(EnforcerBlockerType::ExtruderMax) - int(bundle.filament_presets.size()));
+    const std::vector<std::string> slots      = mixed_slot_signature(bundle.project_config);
+    if (ranking_stale || m_palette_cache.empty() || mixing != m_palette_mixing || mix_count != m_palette_mix_count ||
+        free_slots != m_palette_free_slots || slots != m_palette_slots) {
+        m_palette_mixing     = mixing;
+        m_palette_mix_count  = mix_count;
+        m_palette_free_slots = free_slots;
+        m_palette_slots      = slots;
+        std::vector<PaletteEntry> mixes;
+        if (mixing && m_mix_ranking)
+            mixes = pick_mixes(*m_mix_ranking, mix_count, free_slots, [&bundle](const PaletteEntry &e) {
+                return find_fixed_mixed_filament(bundle.project_config, {unsigned(e.a + 1), unsigned(e.b + 1)},
+                                                 {e.a_percent(), 100 - e.a_percent()}) >= 0;
+            });
+        std::vector<PaletteEntry> palette = make_palette(m_palette_filaments, mixes);
+        // The previews keep what they were drawn with, so a palette that really changed under them -
+        // a filament or a mixed slot edited in the sidebar - has to send them round again.
+        m_palette_changed        = m_palette_changed || (!m_palette_cache.empty() && !same_palette(palette, m_palette_cache));
+        m_palette_cache          = std::move(palette);
+        m_palette_quantizer      = nullptr;
+        m_palette_pure_quantizer = nullptr;
     }
     return m_palette_cache;
+}
+
+std::pair<ColorQuantizeFn, ColorQuantizeFn> GLGizmoTextureDisplacement::palette_quantizers()
+{
+    cached_palette();
+    if (!m_palette_quantizer) {
+        m_palette_quantizer      = make_palette_quantizer(m_palette_cache);
+        const bool has_mixes     = m_palette_cache.size() > m_palette_filaments.size();
+        m_palette_pure_quantizer = has_mixes ? make_palette_quantizer(make_palette(m_palette_filaments, {})) : m_palette_quantizer;
+    }
+    return { m_palette_quantizer, m_palette_pure_quantizer };
 }
 
 std::vector<ColorRGBA> GLGizmoTextureDisplacement::filament_palette()
 {
     std::vector<ColorRGBA> all = wxGetApp().plater()->get_extruders_colors();
 
-    // Physical filaments only. The mixes this palette produces each become a mixed filament slot of
-    // their own (see bind_mixes_to_filament_slots()), and those slots are extruders too - so taking the
-    // list as it comes meant the next rebuild mixed *them* again, and handed components naming a
-    // virtual slot to a blend that can only name physical ones. That is what left entries reading
-    // "filament 1 plus nothing" and raised "Mixed filament has invalid or mismatched components".
+    // Physical filaments only. A mix bakes into a mixed filament slot of its own, and those slots are
+    // extruders too - mixing them again would hand a blend components naming a virtual slot, where it
+    // can only name physical ones ("Mixed filament has invalid or mismatched components"). Mixed slots
+    // are kept after the physical ones, so filament i here is extruder i.
     const auto *is_mixed = wxGetApp().preset_bundle->project_config.option<ConfigOptionBools>("filament_is_mixed");
     std::vector<ColorRGBA> palette;
     palette.reserve(all.size());
@@ -4357,44 +4416,211 @@ std::vector<ColorRGBA> GLGizmoTextureDisplacement::filament_palette()
     return palette;
 }
 
-
-std::vector<GLGizmoTextureDisplacement::PaletteEntry> GLGizmoTextureDisplacement::make_palette(
-    const std::vector<ColorRGBA> &filaments, bool mixing, int max_entries)
+std::vector<GLGizmoTextureDisplacement::MixTarget> GLGizmoTextureDisplacement::mix_targets(
+    const std::vector<TextureDisplacementLayer> &layers)
 {
-    std::vector<PaletteEntry> out;
-    const int                 n = int(filaments.size());
-    for (int i = 0; i < n; ++i)
-        out.push_back({ Vec3f(filaments[size_t(i)].r(), filaments[size_t(i)].g(), filaments[size_t(i)].b()),
-                        i, i, 1, 1 });
-    if (!mixing || n < 2)
-        return out;
+    // Each layer's bins, weighted by their share of that layer's pixels.
+    std::vector<std::vector<MixTarget>> per_layer;
+    for (const TextureDisplacementLayer &layer : layers) {
+        if (!layer.color_enabled || layer.empty() || analyze_texture_detail(layer).flat_colors)
+            continue;
+        TextureDisplacementLayer raw = layer;
+        raw.smoothing                = 0.f;
+        const DecodedHeightTexture tex = decode_height_texture(raw);
+        if (!tex.has_color())
+            continue;
 
-    // How many intermediate steps each pair gets, chosen so the whole palette stays under
-    // PALETTE_MAX_ENTRIES. Fewer filaments means more room for mixes, which is also what you want:
-    // with two filaments the mixes are the only way to get anywhere, and with sixteen there is little
-    // point mixing at all. `den` is also the band/dither repeat, so a small one is a short pattern.
-    const int pairs = n * (n - 1) / 2;
-    int       steps = 0;
-    for (int s = 5; s >= 1; --s)
-        if (n + pairs * s <= max_entries) {
-            steps = s;
-            break;
+        // 16 levels per channel, each bin keeping the mean of the colours that fell in it: a coarse grid
+        // to gather on, without snapping every colour to a bin corner.
+        struct Bin
+        {
+            double   r = 0., g = 0., b = 0.;
+            uint32_t n = 0;
+        };
+        std::vector<Bin> bins(size_t(16 * 16 * 16));
+        // Past the budget, one pixel from each run of `stride`, at an offset jittered by a fixed-seed
+        // generator. A fixed step would sample a lattice that a striped texture can line up with, so
+        // that only one of its colours is ever seen; jittered, stripes of any period or orientation are
+        // sampled in proportion, and the same image still always gives the same targets. The offset
+        // comes from the generator's high bits: a power-of-two LCG's low bits repeat every 2, 4, 8...
+        // steps, and the stride is a power of two for exactly the images large enough to need this.
+        const size_t npx     = size_t(tex.width) * size_t(tex.height);
+        const size_t stride  = std::max<size_t>(1, npx / MIX_TARGET_SAMPLES);
+        uint64_t     state   = 0x9E3779B97F4A7C15ull;
+        size_t       sampled = 0;
+        for (size_t start = 0; start < npx; start += stride) {
+            state          = state * 6364136223846793005ull + 1442695040888963407ull;
+            const size_t i = start + size_t((uint64_t(uint32_t(state >> 32)) * uint64_t(stride)) >> 32);
+            if (i >= npx)
+                break;
+            const uint8_t *px  = &tex.rgb[i * 3];
+            Bin           &bin = bins[size_t(px[0] >> 4) * 256 + size_t(px[1] >> 4) * 16 + size_t(px[2] >> 4)];
+            bin.r += px[0];
+            bin.g += px[1];
+            bin.b += px[2];
+            ++bin.n;
+            ++sampled;
         }
-    if (steps == 0)
-        return out;
-    const int den = steps + 1;
+        std::vector<MixTarget> targets;
+        for (const Bin &bin : bins)
+            if (bin.n > 0) {
+                const double inv = 1. / (255. * double(bin.n));
+                targets.push_back({ srgb_to_lab(Vec3f(float(bin.r * inv), float(bin.g * inv), float(bin.b * inv))),
+                                    float(double(bin.n) / double(sampled)) });
+            }
+        per_layer.push_back(std::move(targets));
+    }
 
+    // The layers weigh the same and together 1, settled before the pruning below: what rank_mixes() sums
+    // over the kept bins is then a mean over every pixel of the colouring layers, with the pixels of a
+    // dropped bin counted as no better off.
+    std::vector<MixTarget> out;
+    for (std::vector<MixTarget> &targets : per_layer)
+        for (MixTarget &t : targets) {
+            t.weight /= float(per_layer.size());
+            out.push_back(t);
+        }
+    if (out.size() > MIX_TARGET_BINS) {
+        std::partial_sort(out.begin(), out.begin() + MIX_TARGET_BINS, out.end(),
+                          [](const MixTarget &l, const MixTarget &r) { return l.weight > r.weight; });
+        out.resize(MIX_TARGET_BINS);
+    }
+    return out;
+}
+
+std::vector<GLGizmoTextureDisplacement::PaletteEntry> GLGizmoTextureDisplacement::rank_mixes(
+    const std::vector<ColorRGBA> &filaments, const std::vector<MixTarget> &targets, int limit)
+{
+    const int n = int(filaments.size());
+    if (n < 2 || targets.empty() || limit <= 0)
+        return {};
+
+    // Every pair at every short-cycle ratio, coloured as its slot will be.
+    std::vector<std::string> hex(filaments.size());
     for (int i = 0; i < n; ++i)
-        for (int j = i + 1; j < n; ++j) {
-            const Vec3f lab_i = srgb_to_lab(Vec3f(filaments[size_t(i)].r(), filaments[size_t(i)].g(), filaments[size_t(i)].b()));
-            const Vec3f lab_j = srgb_to_lab(Vec3f(filaments[size_t(j)].r(), filaments[size_t(j)].g(), filaments[size_t(j)].b()));
-            for (int k = 1; k <= steps; ++k) {
-                // k/den of filament i, the rest of j - averaged in Lab, which is what the eye does
-                // when the two are interleaved too finely to resolve.
-                const float t = float(k) / float(den);
-                out.push_back({ lab_to_srgb(lab_i * t + lab_j * (1.f - t)), i, j, k, den });
+        hex[size_t(i)] = encode_color(filaments[size_t(i)]);
+    std::vector<PaletteEntry> candidates;
+    for (int i = 0; i < n; ++i)
+        for (int j = i + 1; j < n; ++j)
+            for (int den = 2; den <= 6; ++den)
+                for (int num = 1; num < den; ++num) {
+                    if (std::gcd(num, den) != 1)
+                        continue; // 2/4 is 1/2, already there
+                    PaletteEntry e{ Vec3f::Zero(), i, j, num, den };
+                    ColorRGB     blended;
+                    if (!decode_color(blend_color_multi({ hex[size_t(i)], hex[size_t(j)] },
+                                                        { e.a_percent(), 100 - e.a_percent() }),
+                                      blended))
+                        continue;
+                    e.rgb = Vec3f(blended.r(), blended.g(), blended.b());
+                    candidates.push_back(e);
+                }
+
+    // How far each target is from the nearest single filament, and from every candidate.
+    const size_t       nt = targets.size(), nc = candidates.size();
+    std::vector<Vec3f> filament_lab(size_t(n), Vec3f::Zero());
+    for (int i = 0; i < n; ++i)
+        filament_lab[size_t(i)] = srgb_to_lab(Vec3f(filaments[size_t(i)].r(), filaments[size_t(i)].g(), filaments[size_t(i)].b()));
+    const auto de = [](const Vec3f &l, const Vec3f &r) { return DeltaE00(l.x(), l.y(), l.z(), r.x(), r.y(), r.z()); };
+    std::vector<float> pure_d(nt, std::numeric_limits<float>::max());
+    for (size_t t = 0; t < nt; ++t)
+        for (const Vec3f &lab : filament_lab)
+            pure_d[t] = std::min(pure_d[t], de(targets[t].lab, lab));
+    std::vector<float> dist(nc * nt);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, nc), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t c = range.begin(); c < range.end(); ++c) {
+            const Vec3f lab = srgb_to_lab(candidates[c].rgb);
+            for (size_t t = 0; t < nt; ++t)
+                dist[c * nt + t] = de(targets[t].lab, lab);
+        }
+    });
+
+    // Greedy: each round takes the candidate that lowers the weighted error the most. A candidate only
+    // counts where it beats the single filament by PREFER_PURE_DE, since everywhere else the quantizer
+    // picks the filament anyway.
+    std::vector<float>        current = pure_d;
+    std::vector<char>         taken(nc, 0);
+    std::vector<PaletteEntry> out;
+    const auto                counts = [&](size_t c, size_t t) {
+        const float d = dist[c * nt + t];
+        return d < current[t] && d <= pure_d[t] - PREFER_PURE_DE;
+    };
+    while (int(out.size()) < limit) {
+        size_t best      = nc;
+        double best_gain = 0.;
+        for (size_t c = 0; c < nc; ++c) {
+            if (taken[c])
+                continue;
+            double gain = 0.;
+            for (size_t t = 0; t < nt; ++t)
+                if (counts(c, t))
+                    gain += double(targets[t].weight) * double(current[t] - dist[c * nt + t]);
+            if (gain > best_gain) {
+                best_gain = gain;
+                best      = c;
             }
         }
+        if (best == nc || best_gain < double(MIN_MIX_GAIN))
+            break;
+        taken[best] = 1;
+        out.push_back(candidates[best]);
+        for (size_t t = 0; t < nt; ++t)
+            if (counts(best, t))
+                current[t] = dist[best * nt + t];
+    }
+    return out;
+}
+
+std::vector<GLGizmoTextureDisplacement::PaletteEntry> GLGizmoTextureDisplacement::pick_mixes(
+    const std::vector<PaletteEntry> &ranking, int count, int free_slots, const std::function<bool(const PaletteEntry &)> &reusable)
+{
+    std::vector<PaletteEntry> out;
+    for (const PaletteEntry &e : ranking) {
+        if (int(out.size()) >= count)
+            break;
+        // Out of free slots, a later mix that already has one still fits.
+        if (reusable && reusable(e)) {
+            out.push_back(e);
+        } else if (free_slots > 0) {
+            out.push_back(e);
+            --free_slots;
+        }
+    }
+    return out;
+}
+
+std::vector<GLGizmoTextureDisplacement::PaletteEntry> GLGizmoTextureDisplacement::make_palette(
+    const std::vector<ColorRGBA> &filaments, const std::vector<PaletteEntry> &mixes)
+{
+    std::vector<PaletteEntry> out;
+    out.reserve(filaments.size() + mixes.size());
+    for (int i = 0; i < int(filaments.size()); ++i)
+        out.push_back({ Vec3f(filaments[size_t(i)].r(), filaments[size_t(i)].g(), filaments[size_t(i)].b()), i, i, 1, 1 });
+    out.insert(out.end(), mixes.begin(), mixes.end());
+    return out;
+}
+
+std::vector<int> GLGizmoTextureDisplacement::palette_filaments(const std::vector<PaletteEntry>                &palette,
+                                                               const std::vector<uint8_t>                     &triangle_color,
+                                                               const std::function<int(const PaletteEntry &)> &slot_for_mix)
+{
+    std::vector<char> used(palette.size(), 0);
+    for (const uint8_t v : triangle_color)
+        if (v > 0 && size_t(v) <= palette.size())
+            used[size_t(v) - 1] = 1;
+
+    std::vector<int> out(palette.size(), -1);
+    for (size_t i = 0; i < palette.size(); ++i) {
+        const PaletteEntry &e = palette[i];
+        if (!e.is_mix()) {
+            out[i] = e.a;
+        } else if (used[i]) {
+            const int slot = slot_for_mix ? slot_for_mix(e) : -1;
+            // No room for another slot: the component that dominates the blend is the nearest the print
+            // can come.
+            out[i] = slot >= 0 ? slot : (e.num * 2 >= e.den ? e.a : e.b);
+        }
+    }
     return out;
 }
 
@@ -4434,15 +4660,7 @@ ColorQuantizeFn GLGizmoTextureDisplacement::make_palette_quantizer(const std::ve
                             best_pure   = int(i);
                         }
                     }
-                    // A mix is an interleave that only reads as its colour from a distance; up close it is
-                    // stripes. So it is spent only where it buys a better match than the nearest single
-                    // filament - but "better" was set at ten Delta E, which is not a visible step, it is a
-                    // different colour. Measured over the whole cube that threshold turned 94% of the
-                    // lookups that wanted a mix back into a pure filament, leaving 38%; along a greyscale
-                    // ramp, the shape a height texture actually traces, it cut 80% to 66%. Two Delta E is
-                    // about where a side-by-side difference stops being arguable, which is the right place
-                    // to start paying for stripes.
-                    constexpr float PREFER_PURE_DE = 2.f;
+                    // A mix only where it clearly beats the nearest single filament, see PREFER_PURE_DE.
                     if (best_pure >= 0 && palette[size_t(best)].is_mix() && best_pure_d - best_d < PREFER_PURE_DE)
                         best = best_pure;
                     (*lut)[(size_t(r) * E + size_t(g)) * E + size_t(b)] = uint8_t(best);
@@ -4461,7 +4679,7 @@ ColorQuantizeFn GLGizmoTextureDisplacement::make_palette_quantizer(const std::ve
 TextureDisplacementPrepareResult GLGizmoTextureDisplacement::prepare_mesh(
     const indexed_triangle_set &base, const TextureDisplacementFacetsData &masks,
     const std::vector<TextureDisplacementLayer> &layers, const TextureDisplacementPrepareParams &params,
-    const std::vector<PrintableColor> &palette, const DisplacementProgressFn &progress,
+    const TextureColorSettings &color_settings, const DisplacementProgressFn &progress,
     BakeStageRecorder *debug)
 {
     TextureDisplacementPrepareResult out;
@@ -4539,10 +4757,13 @@ TextureDisplacementPrepareResult GLGizmoTextureDisplacement::prepare_mesh(
             // Colour boundaries need triangles of their own - the chord test cannot see them, since
             // the height field is perfectly smooth across a change of filament.
             ColorFieldSampler color;
-            if (params.subdiv_color_edge_mm > 0.f && !palette.empty())
-                color = make_combined_color_sampler(mesh.its, layers, current, make_palette_quantizer(palette));
-            // Note the sampler is built on the *quantizer* alone - the refinement follows perceived
-            // colour, never the interleaving that realises a mix - the slicer does that per layer.
+            // A flat-colour layer is matched against single filaments only, as the bake does, so its
+            // boundaries are refined where the bake will actually change filament.
+            if (params.subdiv_color_edge_mm > 0.f && !color_settings.empty())
+                color = make_combined_color_sampler(mesh.its, layers, current, make_palette_quantizer(color_settings.palette),
+                                                    make_palette_quantizer(color_settings.palette_pure));
+            // The refinement follows perceived colour: a mix is one colour here, however the slicer
+            // interleaves its filaments layer by layer.
             // "Min edge" is a feature-mode control (it is the floor the curvature test refines down
             // to); in plain adaptive mode the target edge length is the only criterion, so the floor
             // must not be allowed to silently override a target the user set below it.
@@ -4830,9 +5051,9 @@ void GLGizmoTextureDisplacement::rebuild_subdivide_preview()
         // Same colour criterion Apply will use, so the previewed wireframe is the mesh that commits.
         ColorFieldSampler color;
         if (m_subdivide_color_mm > 0.f && any_layer_colors(*mv)) {
-            cached_palette(); // refreshes m_palette_quantizer if the filaments changed
-            color = make_combined_color_sampler(mv->mesh().its, mv->texture_displacement_layers, facets,
-                                                m_palette_quantizer);
+            const auto [quantize, quantize_pure] = palette_quantizers();
+            color = make_combined_color_sampler(mv->mesh().its, mv->texture_displacement_layers, facets, quantize,
+                                                quantize_pure);
         }
         its = subdivide_mesh_adaptive(mv->mesh().its, region, m_subdivide_target_mm,
                                       int(mv->mesh().its.indices.size()) + m_subdivide_budget_k * 1000,
@@ -5343,6 +5564,12 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
     if (!mo)
         return;
     ModelVolume *mv = texture_volume();
+
+    // The palette also follows project state nobody tells this gizmo about - the filaments and mixed
+    // slots in the sidebar - so it is checked once a frame, and a change re-runs the previews.
+    cached_palette();
+    if (m_palette_changed)
+        m_preview_params_dirty = true;
 
     float  scale = m_parent.get_scale();
     #ifdef WIN32
@@ -6127,6 +6354,15 @@ void GLGizmoTextureDisplacement::on_render_input_window(float x, float y, float 
                                        "of filaments can cover a photo or a gradient. An image of flat colors "
                                        "prints the same either way. Off uses one filament per area."));
                         if (opts.color_mix_enabled) {
+                            cached_palette(); // brings m_palette_filaments up to date
+                            // Every mix can become a filament slot, and there are only so many beside the
+                            // physical filaments.
+                            const int max_mixes = std::max(1, int(EnforcerBlockerType::ExtruderMax) - int(m_palette_filaments.size()));
+                            if (int_row("##color_mix_count", _L("Mixed colors"), &opts.color_mix_count, 1, max_mixes, "%d", card_pad))
+                                m_preview_params_dirty = true;
+                            hover_tip(_u8L("The most mixed filaments a bake may add. They are picked from the "
+                                           "texture's colors, and only the ones the bake actually uses are created."));
+                            // After the slider, so a change shows in the same frame.
                             ImGui::TextDisabled("%s", Slic3r::format(_u8L("%1% printable colors from %2% filaments"),
                                                                      int(cached_palette().size()), int(m_palette_filaments.size())).c_str());
                         }
