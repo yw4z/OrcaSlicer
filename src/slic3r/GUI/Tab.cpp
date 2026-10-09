@@ -8282,8 +8282,14 @@ void Tab::update_extruder_variants(int extruder_id, bool reload)
             auto options = generate_extruder_options();
             m_extruder_switch->SetOptions(options);
             int item_n = options.empty() ? 0 : options.size();
-            int h_pad  = item_n > 6 ? 6 : (item_n > 4 ? 10 : (item_n > 2 ? 20 : 36));
-            m_extruder_switch->SetButtonPadding(FromDIP(wxSize(h_pad,3)));
+            if (m_type == Preset::TYPE_PRINTER){ // we are on printer settings dialog and larger padding can be used
+                int h_pad  = item_n > 14 ? 6 : item_n > 12 ? 8 : item_n > 10 ? 16 : item_n > 8 ? 20 : item_n > 6 ? 24 : (item_n > 4 ? 36 : (item_n > 2 ? 48 : 64));
+                m_extruder_switch->SetButtonPadding(FromDIP(wxSize(h_pad,3)));
+            }
+            else {
+                int h_pad  = item_n > 6 ? 6 : (item_n > 4 ? 10 : (item_n > 2 ? 20 : 36));
+                m_extruder_switch->SetButtonPadding(FromDIP(wxSize(h_pad,3)));
+            }
 
             int selection_index;
             if (extruder_id >= 0) {
