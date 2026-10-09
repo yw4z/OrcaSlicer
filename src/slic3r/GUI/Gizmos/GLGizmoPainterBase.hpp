@@ -48,6 +48,9 @@ public:
     virtual ~TriangleSelectorGUI() = default;
 
     virtual void render(ImGuiWrapper* imgui, const Transform3d& matrix);
+    // The seed-fill contour alone, as render() last built it - for a gizmo that draws over the selector
+    // and has to put the contour back on top.
+    void         render_paint_contour(const Transform3d& matrix);
     //void         render(const Transform3d& matrix) { this->render(nullptr, matrix); }
     void         set_wireframe_needed(bool need_wireframe) { m_need_wireframe = need_wireframe; }
     bool         get_wireframe_needed() { return m_need_wireframe; }
@@ -90,7 +93,6 @@ protected:
     GLModel                      m_paint_contour;
 
     void update_paint_contour();
-    void render_paint_contour(const Transform3d& matrix);
 
     bool                                m_need_wireframe {false};
 };

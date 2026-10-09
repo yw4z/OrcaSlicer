@@ -510,6 +510,12 @@ void GLGizmoTextureDisplacement::on_shutdown()
     m_shaded_preview_glmodel.reset();
     m_paint_overlay_glmodel.reset();
     m_paint_overlay_dirty = false;
+    m_painted_colors = PaintedColors{};
+    m_painted_colors_key.clear();
+    m_painted_colors_glmodel.reset();
+    m_painted_colors_drawn_key.clear();
+    m_painted_colors_runs.clear();
+    m_seed_fill_last_mesh_id = -1; // a hover from this session must not count in the next
     // Any preview still in flight is superseded: raising the shared counter makes it abort at its next
     // progress poll, and its completion handler then finds nothing to do.
     m_preview_generation->fetch_add(1);
@@ -652,10 +658,13 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     const bool stack_colors  = color_view && mv != nullptr && any_layer_colors(*mv);
     const bool active_colors = color_view && al != nullptr && layer_shows_color(*al);
 
+    // Whether the textured volume's selector - and with it a fill tool's contour - is drawn this frame.
+    bool textured_selector_drawn = true;
     if (use_shaded) {
         render_shaded_preview_mesh();
         // The shaded mesh is the textured volume alone, so the other model parts are still the selectors' to draw.
         render_triangles(selection, mv);
+        textured_selector_drawn = false;
     } else if (use_true_preview) {
         render_preview_mesh();
 
@@ -666,6 +675,7 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
             render_triangles(selection, stack_colors ? mv : nullptr);
             glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
         }
+        textured_selector_drawn = show_paint_overlay && !stack_colors;
     } else {
         // render_triangles() *is* the model in a painter gizmo (it draws every model-part volume with the
         // selector's colours), not an overlay on top of one - so it still has to run under a UV-check
@@ -676,6 +686,10 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
         render_triangles(selection);
     }
 
+    // The model's colour paint, over whichever surface was drawn, left out where that surface's preview shows
+    // paint of its own: every layer's for the Normal mesh, the active layer's otherwise.
+    const bool painted_colors_drawn = show_paint_overlay && m_debug_stage < 0 && render_painted_colors(use_true_preview);
+
     // Every other layer's paint, in muted grey, so all layers stay visible while one of them is edited. Drawn
     // before the active layer's tint so that one reads on top where the two overlap.
     if (show_paint_overlay)
@@ -684,9 +698,31 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     // The translucent paint tint. Needed in the shaded view because the opaque highlight above is
     // skipped there, and in the true-displacement view because the displaced surface rises *above*
     // the undisplaced overlay geometry and hides it exactly where the relief is strongest - in both
-    // cases leaving an erase stroke with no visible effect until the next full preview rebuild.
-    if (show_paint_overlay && (use_shaded || use_true_preview) && !active_colors)
+    // cases leaving an erase stroke with no visible effect until the next full preview rebuild. With no
+    // preview, the highlight is the selectors' own, except during a stroke over the colour paint: the paint
+    // there is not flushed yet, so the colours are still drawn over the stroke's highlight.
+    const bool preview_drawn = use_shaded || use_true_preview;
+    if (show_paint_overlay && (preview_drawn ? !active_colors : painted_colors_drawn && is_painting()))
         render_paint_overlay(m_paint_overlay_glmodel);
+
+    // A fill tool's contour is drawn with the selectors, under the colour paint drawn since - which covers it
+    // on a steep face, where the paint's slope-scaled offset outruns the contour's fixed one. Put it back on top,
+    // at the depth its first draw stored, hence LEQUAL. Only where the selector was drawn this frame: drawing it
+    // is what rebuilds the contour. The tool test matters because the base keeps the last hovered mesh when the
+    // tool changes.
+    const bool fill_tool = m_tool_type == ToolType::SMART_FILL || m_tool_type == ToolType::BUCKET_FILL ||
+                           (m_tool_type == ToolType::BRUSH && m_cursor_type == TriangleSelector::CursorType::POINTER);
+    const int  textured_mesh_id = texture_volume_raycaster_index();
+    if (painted_colors_drawn && textured_selector_drawn && fill_tool && textured_mesh_id >= 0 &&
+        textured_mesh_id == m_seed_fill_last_mesh_id && size_t(textured_mesh_id) < m_triangle_selectors.size()) {
+        const ModelObject *mo = m_c->selection_info()->model_object();
+        GLint depth_func = GL_LESS;
+        glsafe(::glGetIntegerv(GL_DEPTH_FUNC, &depth_func));
+        glsafe(::glDepthFunc(GL_LEQUAL));
+        m_triangle_selectors[size_t(textured_mesh_id)]->render_paint_contour(
+            mo->instances[selection.get_instance_idx()]->get_transformation().get_matrix() * mv->get_matrix());
+        glsafe(::glDepthFunc(GLenum(depth_func)));
+    }
 
     // The UV editor's island selection, shown on the model. Polled here rather than pushed: the pane
     // changes its selection in its own mouse handling, and a compare of a few ints per frame is free.
@@ -1675,6 +1711,151 @@ void GLGizmoTextureDisplacement::rebuild_other_paint_overlay()
     m_other_paint_glmodel.init_from(std::move(init_data));
     // Neutral grey: painted, but not the layer the brush is working on.
     m_other_paint_glmodel.set_color(ColorRGBA(0.55f, 0.58f, 0.60f, 0.35f));
+}
+
+std::vector<size_t> GLGizmoTextureDisplacement::PaintedColors::outside(const std::vector<bool> &excluded) const
+{
+    std::vector<size_t> out;
+    out.reserve(source.size());
+    for (size_t i = 0; i < source.size(); ++i)
+        if (size_t(source[i]) >= excluded.size() || !excluded[size_t(source[i])])
+            out.push_back(i);
+    return out;
+}
+
+GLGizmoTextureDisplacement::PaintedColors GLGizmoTextureDisplacement::painted_colors(const TriangleMesh &mesh,
+                                                                                     const TriangleSelector::TriangleSplittingData &paint)
+{
+    PaintedColors out;
+    TriangleSelector selector(mesh);
+    selector.deserialize(paint, false);
+    for (const EnforcerBlockerType state : TriangleSelector::extract_used_facet_states(paint)) {
+        if (state == EnforcerBlockerType::NONE)
+            continue;
+        std::vector<int>           source;
+        const indexed_triangle_set part = selector.get_facets_strict(state, &source);
+        // Every state comes back over the same vertex array, only the triangles differ.
+        if (out.facets.vertices.empty())
+            out.facets.vertices = part.vertices;
+        out.facets.indices.insert(out.facets.indices.end(), part.indices.begin(), part.indices.end());
+        out.source.insert(out.source.end(), source.begin(), source.end());
+        out.state.resize(out.facets.indices.size(), int(state));
+    }
+    return out;
+}
+
+void GLGizmoTextureDisplacement::rebuild_painted_colors(bool whole_stack)
+{
+    const ModelVolume *mv    = texture_volume();
+    const bool         shown = mv != nullptr && any_layer_colors(*mv) && !mv->mmu_segmentation_facets.empty();
+
+    // The sub-triangles, keyed on what they were read from: the volume, its mesh and the paint.
+    std::string key;
+    if (shown)
+        key = std::to_string(mv->id().id) + ":" + std::to_string(reinterpret_cast<uintptr_t>(mv->mesh_ptr().get())) + ":" +
+              std::to_string(mv->mmu_segmentation_facets.timestamp());
+    if (key != m_painted_colors_key) {
+        m_painted_colors_key = std::move(key);
+        m_painted_colors     = shown ? painted_colors(mv->mesh(), mv->mmu_segmentation_facets.get_data()) : PaintedColors{};
+        m_painted_colors_drawn_key.clear();
+        m_painted_colors_glmodel.reset();
+        m_painted_colors_runs.clear();
+    }
+    if (m_painted_colors.state.empty())
+        return;
+
+    // The part drawn, keyed on whose paint is left out and on that paint.
+    std::string drawn_key = m_painted_colors_key + (whole_stack ? std::string(":all") : ":" + std::to_string(m_active_layer_slot));
+    for (const TextureDisplacementLayer &l : mv->texture_displacement_layers)
+        if (l.slot >= 0 && l.slot < int(TEXTURE_DISPLACEMENT_MAX_LAYERS))
+            drawn_key += "|" + std::to_string(l.slot) + "@" + std::to_string(mv->texture_displacement_facet(l.slot).timestamp());
+    if (drawn_key == m_painted_colors_drawn_key)
+        return;
+    m_painted_colors_drawn_key = std::move(drawn_key);
+    m_painted_colors_glmodel.reset();
+    m_painted_colors_runs.clear();
+
+    // Whole model triangles, as the facets record what they touch: a triangle the paint only partly covers
+    // is left to the preview.
+    std::vector<bool> excluded(mv->mesh().its.indices.size(), false);
+    for (const TextureDisplacementLayer &l : mv->texture_displacement_layers) {
+        if (l.slot < 0 || l.slot >= int(TEXTURE_DISPLACEMENT_MAX_LAYERS) || (!whole_stack && l.slot != m_active_layer_slot))
+            continue;
+        for (const TriangleSelector::TriangleBitStreamMapping &m : mv->texture_displacement_facet(l.slot).get_data().triangles_to_split)
+            if (m.triangle_idx >= 0 && size_t(m.triangle_idx) < excluded.size())
+                excluded[size_t(m.triangle_idx)] = true;
+    }
+
+    // One model, its triangles in filament order (painted_colors() groups them), drawn a range per filament.
+    const std::vector<size_t> kept = m_painted_colors.outside(excluded);
+    GLModel::Geometry         init_data;
+    init_data.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    init_data.reserve_vertices(kept.size() * 3);
+    init_data.reserve_indices(kept.size() * 3);
+    unsigned n = 0;
+    for (const size_t t : kept) {
+        const int state = m_painted_colors.state[t];
+        if (m_painted_colors_runs.empty() || m_painted_colors_runs.back().first != state)
+            m_painted_colors_runs.push_back({ state, { size_t(n), size_t(n) } });
+        for (int i = 0; i < 3; ++i)
+            init_data.add_vertex(m_painted_colors.facets.vertices[size_t(m_painted_colors.facets.indices[t][i])]);
+        init_data.add_triangle(n, n + 1, n + 2);
+        n += 3;
+        m_painted_colors_runs.back().second.second = size_t(n);
+    }
+    if (!init_data.is_empty())
+        m_painted_colors_glmodel.init_from(std::move(init_data));
+}
+
+bool GLGizmoTextureDisplacement::render_painted_colors(bool whole_stack)
+{
+    rebuild_painted_colors(whole_stack);
+    const ModelObject *mo     = m_c->selection_info()->model_object();
+    const ModelVolume *mv     = texture_volume();
+    GLShaderProgram   *shader = wxGetApp().get_shader("mm_gouraud");
+    if (mo == nullptr || mv == nullptr || shader == nullptr || !m_painted_colors_glmodel.is_initialized())
+        return false;
+
+    const Selection             &selection    = m_parent.get_selection();
+    const Transform3d            trafo_matrix = mo->instances[selection.get_instance_idx()]->get_transformation().get_matrix() * mv->get_matrix();
+    const Camera                &camera       = wxGetApp().plater()->get_camera();
+    const Transform3d           &view_matrix  = camera.get_view_matrix();
+    const Matrix3d               normal_matrix = trafo_matrix.matrix().block(0, 0, 3, 3).inverse().transpose();
+    const std::vector<ColorRGBA> colors        = wxGetApp().plater()->get_extruders_colors();
+
+    shader->start_using();
+    // Set up as render_triangles() sets it up, so the colours are lit, clipped and slope-marked exactly as the
+    // neutral surface they cover.
+    const ClippingPlaneDataWrapper clp_data = get_clipping_plane_data();
+    shader->set_uniform("clipping_plane", clp_data.clp_dataf);
+    shader->set_uniform("z_range", clp_data.z_range);
+    shader->set_uniform("view_model_matrix", view_matrix * trafo_matrix);
+    shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+    shader->set_uniform("view_normal_matrix", Matrix3d(view_matrix.matrix().block(0, 0, 3, 3) * normal_matrix));
+    shader->set_uniform("volume_world_matrix", trafo_matrix);
+    shader->set_uniform("volume_mirrored", trafo_matrix.matrix().determinant() < 0.);
+    shader->set_uniform("slope.actived", m_parent.is_using_slope());
+    shader->set_uniform("slope.volume_world_normal_matrix", Matrix3f(normal_matrix.cast<float>()));
+    shader->set_uniform("slope.normal_z", float(-std::cos(Geometry::deg2rad(m_highlight_by_angle_threshold_deg))));
+    shader->set_uniform("slope.up_direction", get_tilt_up_direction());
+    shader->set_uniform("show_wireframe", false);
+    // A full depth unit in front of the selectors' highlight at -1 in the Normal view, the least OpenGL
+    // guarantees to tell apart. Depth writes off, as for the tint: the wireframe and seam overlays drawn later
+    // test against the real surface, and the tint drawn after this shows on top of it.
+    glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
+    glsafe(::glPolygonOffset(-2.f, -2.f));
+    glsafe(::glDepthMask(GL_FALSE));
+    bool drawn = false;
+    for (const auto &[state, range] : m_painted_colors_runs)
+        if (state >= 1 && size_t(state) <= colors.size()) {
+            m_painted_colors_glmodel.set_color(adjust_color_for_rendering(colors[size_t(state - 1)]));
+            m_painted_colors_glmodel.render(range, shader);
+            drawn = true;
+        }
+    glsafe(::glDepthMask(GL_TRUE));
+    glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
+    shader->stop_using();
+    return drawn;
 }
 
 void GLGizmoTextureDisplacement::rebuild_paint_overlay()
@@ -3423,6 +3604,9 @@ void GLGizmoTextureDisplacement::update_from_model_object(bool first_update)
 
     const ModelObject *mo = m_c->selection_info()->model_object();
     m_triangle_selectors.clear();
+    // The base keeps the last mesh a fill tool hovered, and render_painter_gizmo() reads it as a hover that is
+    // still on: a new set of selectors has none.
+    m_seed_fill_last_mesh_id = -1;
 
     std::vector<ColorRGBA> ebt_colors;
     ebt_colors.push_back(GLVolume::NEUTRAL_COLOR);

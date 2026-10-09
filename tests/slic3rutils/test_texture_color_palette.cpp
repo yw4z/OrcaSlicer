@@ -31,6 +31,8 @@
 #include "libslic3r/PNGReadWrite.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/TextureDisplacement.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/TriangleSelector.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoTextureDisplacement.hpp"
 #include "slic3r/Utils/ColorSpaceConvert.hpp"
 #include "test_utils.hpp"
@@ -253,5 +255,40 @@ TEST_CASE("a baked mix paints the slot it was given, wherever that slot sits", "
         const std::vector<int> fallback = Gizmo::palette_filaments(palette, { 3, 4 }, [](const Entry &) { return -1; });
         CHECK(fallback[2] == 0); // 1:1 - the first component
         CHECK(fallback[3] == 1); // 1 part black in 3 - white dominates
+    }
+}
+
+TEST_CASE("the model's colour paint is drawn by filament, and only where no layer paint covers it", "[TextureColorPalette][TextureDisplacement]")
+{
+    // A strip of four triangles: filament 2 on the first and last, filament 5 on the second, and the third
+    // left to the volume's own filament.
+    indexed_triangle_set strip;
+    strip.vertices = { Vec3f(0, 0, 0), Vec3f(1, 0, 0), Vec3f(0, 1, 0), Vec3f(1, 1, 0), Vec3f(0, 2, 0), Vec3f(1, 2, 0) };
+    strip.indices  = { stl_triangle_vertex_indices(0, 1, 2), stl_triangle_vertex_indices(1, 3, 2), stl_triangle_vertex_indices(2, 3, 4),
+                       stl_triangle_vertex_indices(3, 5, 4) };
+    const TriangleMesh mesh(strip);
+    TriangleSelector   paint(mesh);
+    paint.set_facet(0, EnforcerBlockerType(2));
+    paint.set_facet(1, EnforcerBlockerType(5));
+    paint.set_facet(3, EnforcerBlockerType(2));
+
+    const Gizmo::PaintedColors colors = Gizmo::painted_colors(mesh, paint.serialize());
+    // Grouped by filament; the triangle in the volume's own filament is never drawn.
+    REQUIRE(colors.facets.indices.size() == 3);
+    REQUIRE(colors.source.size() == 3);
+    REQUIRE(colors.state.size() == 3);
+    CHECK(colors.state == std::vector<int>{ 2, 2, 5 });
+    CHECK(colors.source == std::vector<int>{ 0, 3, 1 });
+
+    SECTION("A model triangle a layer's paint covers is left to the preview") {
+        std::vector<bool> excluded(mesh.its.indices.size(), false);
+        excluded[3] = true;
+        const std::vector<size_t> kept = colors.outside(excluded);
+        REQUIRE(kept.size() == 2);
+        CHECK(colors.source[kept[0]] == 0);
+        CHECK(colors.source[kept[1]] == 1);
+    }
+    SECTION("A mask shorter than the model leaves the rest drawn") {
+        CHECK(colors.outside({ true }).size() == 2);
     }
 }

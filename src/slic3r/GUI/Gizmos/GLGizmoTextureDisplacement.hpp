@@ -16,6 +16,8 @@
 #include "libslic3r/Color.hpp"
 #include <cstddef>
 #include "libslic3r/TriangleSelector.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "admesh/stl.h"
 #include <cstdint>
 #include <functional>
 #include "libslic3r/Point.hpp"
@@ -181,6 +183,21 @@ public:
     // True if any of the volume's layers would. What decides whether a palette is captured into a job at
     // all, and so whether the colour criterion and the mmu write ever run.
     static bool any_layer_colors(const ModelVolume &mv);
+
+    // The model's own colour paint (mmu_segmentation_facets) as the gizmo draws it over its surface: the
+    // sub-triangles painted in a filament, grouped by that filament. NONE - the volume's own filament - is
+    // left out, so those triangles keep the gizmo's neutral, as they do in the preview.
+    struct PaintedColors
+    {
+        indexed_triangle_set facets; // over the paint's whole vertex array
+        std::vector<int>     source; // per triangle of `facets`: the model triangle it lies in
+        std::vector<int>     state;  // per triangle of `facets`: its filament state, 1-based
+
+        // The triangles of `facets` outside the model triangles `excluded` marks, in order. A model
+        // triangle past the end of `excluded` is not excluded.
+        std::vector<size_t> outside(const std::vector<bool> &excluded) const;
+    };
+    static PaintedColors painted_colors(const TriangleMesh &mesh, const TriangleSelector::TriangleSplittingData &paint);
 
     void render_painter_gizmo() override;
 
@@ -734,6 +751,23 @@ private:
     GLModel     m_other_paint_glmodel;
     std::string m_other_paint_key;
     void        rebuild_other_paint_overlay();
+    // The model's colour paint, drawn over the surface so the colours a bake wrote stay visible - the
+    // canvas draws no volume while a paint gizmo is open, and the selectors hold only displacement paint.
+    // Left out wherever the preview on screen shows paint of its own (`whole_stack`: every layer's, as the
+    // Normal preview does; otherwise the active layer's), since an opaque overlay there would hide that
+    // preview. Only while a layer colours: it is the colour workflow's result, and every other paint gizmo
+    // shows the model neutral.
+    //
+    // Two levels: the paint's sub-triangles, which take a selector over the whole mesh and change only with
+    // the paint itself, and the part drawn, which follows every flushed stroke.
+    PaintedColors m_painted_colors;
+    std::string   m_painted_colors_key;
+    GLModel       m_painted_colors_glmodel;
+    std::string   m_painted_colors_drawn_key;
+    std::vector<std::pair<int, std::pair<size_t, size_t>>> m_painted_colors_runs; // filament state, index range
+    void          rebuild_painted_colors(bool whole_stack);
+    // False when there was nothing to draw.
+    bool          render_painted_colors(bool whole_stack);
     // Whether render_shaded_preview_mesh() would actually draw something. Checked before the real volume
     // is hidden: with no layer, no texture or no shader the shaded path draws nothing, and hiding the
     // volume for it left the model invisible.
