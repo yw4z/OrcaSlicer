@@ -8,7 +8,6 @@
 #include <wx/gdicmn.h>
 #include <wx/panel.h>
 #include <wx/stattext.h>
-#include "slic3r/GUI/wxExtensions.hpp"
 #include <cmath>
 #include <wx/event.h>
 #include <vector>
@@ -816,12 +815,10 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord h_pos, wxCoord v_pos)
     if (is_multi_extruder) {
         if (!ctrl->m_bmp_multi_extruder.bmp().IsOk())
             ctrl->m_bmp_multi_extruder = ScalableBitmap(ctrl, "multi_extruder");
-        const wxBitmap& bmp = ctrl->m_bmp_multi_extruder.bmp();
-        // use logical size. GetWidth() returns physical pixels on macOS retina which pushes icon outside of control
-        const wxSize  bmp_sz = get_bitmap_size(bmp);
-        const wxCoord icon_x = std::max(0, h_pos - bmp_sz.GetWidth() - ctrl->m_h_gap);
-        const wxCoord icon_y = v_pos + lround((height - bmp_sz.GetHeight()) / 2);
-        // draw directly to keep h_pos unchanged and avoid overwriting undo icon rects
+        const wxBitmap& bmp    = ctrl->m_bmp_multi_extruder.bmp();
+        const wxSize    bmp_sz = get_bitmap_size(bmp); // Logical size. GetWidth() returns physical pixels on macOS retina which pushes icon outside of control
+        const wxCoord   icon_x = std::max(0, h_pos - bmp_sz.GetWidth() - ctrl->m_h_gap);
+        const wxCoord   icon_y = v_pos + lround((height - bmp_sz.GetHeight()) / 2);
         dc.DrawBitmap(bmp, icon_x, icon_y, true);
     }
 

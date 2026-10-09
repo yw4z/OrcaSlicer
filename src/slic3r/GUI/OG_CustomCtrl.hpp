@@ -20,6 +20,8 @@
 
 #include "libslic3r/Config.hpp"
 
+#include "slic3r/GUI/wxExtensions.hpp"
+
 #include "OptionsGroup.hpp"
 
 class wxColour;
@@ -51,8 +53,7 @@ class OG_CustomCtrl :public wxPanel
     wxSize  m_bmp_mode_sz;
     wxSize  m_bmp_blinking_sz;
 
-    // ORCA multi extruder icon drawn on left margin of variant options. created lazily on first use
-    ScalableBitmap m_bmp_multi_extruder;
+    ScalableBitmap m_bmp_multi_extruder; // ORCA multi extruder icon drawn on left margin for variant options
 
     int     m_max_win_width{0};
 
