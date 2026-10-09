@@ -8,6 +8,7 @@
 #include <wx/gdicmn.h>
 #include <wx/panel.h>
 #include <wx/stattext.h>
+#include "slic3r/GUI/wxExtensions.hpp"
 #include <cmath>
 #include <wx/event.h>
 #include <vector>
