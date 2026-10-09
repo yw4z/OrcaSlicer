@@ -32,7 +32,6 @@
 #include <boost/spirit/home/qi/numeric/int.hpp>
 #include <cstdlib>
 #include <cstddef>
-#include <tuple>
 #include <boost/algorithm/string/constants.hpp>
 #include <algorithm>
 #include <boost/thread/lock_types.hpp>
@@ -5076,39 +5075,39 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
 
     bool _BBS_3MF_Importer::_generate_current_object_list(std::vector<Component> &sub_objects, Id object_id, IdToCurrentObjectMap &current_objects)
     {
-        // A chain of component references longer than the number of objects has to visit an object
-        // twice, so the component graph contains a cycle and the expansion below would not stop.
-        const size_t max_depth = current_objects.size();
-        // An acyclic graph may still expand exponentially, so bound the number of expanded components
-        // as well. Way above the number of parts of any real object.
+        // A cycle in the component graph would expand forever, and an acyclic graph can still expand
+        // exponentially, so bound the number of component references queued. Checking before they are
+        // queued bounds the work list itself, whatever the fan-out. A valid file over the budget is
+        // rejected too, but the budget is way above the component references of any real object.
         static constexpr size_t max_components = 100000;
 
-        std::list<std::tuple<Component, Transform3d, size_t>> id_list;
-        id_list.push_back(std::make_tuple(Component(object_id, Transform3d::Identity()), Transform3d::Identity(), 0));
+        std::list<std::pair<Component, Transform3d>> id_list;
+        id_list.push_back(std::make_pair(Component(object_id, Transform3d::Identity()), Transform3d::Identity()));
 
         size_t num_components = 0;
         while (!id_list.empty())
         {
             auto current_item = id_list.front();
-            Component current_id = std::get<0>(current_item);
+            Component current_id = current_item.first;
             id_list.pop_front();
-            if (std::get<2>(current_item) > max_depth || ++ num_components > max_components) {
-                add_error("invalid 3mf: cyclic or too deeply nested components");
-                sub_objects.clear();
-                return false;
-            }
             IdToCurrentObjectMap::iterator current_object = current_objects.find(current_id.object_id);
             if (current_object != current_objects.end()) {
                 //found one
                 if (!current_object->second.components.empty()) {
+                    num_components += current_object->second.components.size();
+                    if (num_components > max_components) {
+                        add_error("invalid 3mf: cyclic or too many component references");
+                        sub_objects.clear();
+                        return false;
+                    }
                     for (const Component &comp : current_object->second.components) {
-                        id_list.push_back(std::make_tuple(comp, std::get<1>(current_item) * comp.transform, std::get<2>(current_item) + 1));
+                        id_list.push_back(std::pair(comp, current_item.second * comp.transform));
                     }
                 }
                 else if (!(current_object->second.geometry.empty())) {
                     //CurrentObject* ptr = &(current_objects[current_id]);
                     //CurrentObject* ptr2 = &(current_object->second);
-                    sub_objects.push_back({ current_object->first, std::get<1>(current_item)});
+                    sub_objects.push_back({ current_object->first, current_item.second});
                 }
             }
         }
