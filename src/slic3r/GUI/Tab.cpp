@@ -5856,8 +5856,9 @@ if (is_marlin_flavor)
                 auto* cb = new ::CheckBox(parent);
                 const bool enabled = wxGetApp().app_config->get("imex_pre_slice_warnings") != "false";
                 cb->SetValue(enabled);
-                cb->Bind(wxEVT_TOGGLEBUTTON, [cb](wxCommandEvent&) {
+                cb->Bind(wxEVT_TOGGLEBUTTON, [cb](wxCommandEvent& e) {
                     wxGetApp().app_config->set("imex_pre_slice_warnings", cb->GetValue() ? "true" : "false");
+                    e.Skip(); // CheckBox's own handler redraws the tick
                 });
                 auto* s = new wxBoxSizer(wxHORIZONTAL);
                 s->Add(cb, 0, wxALIGN_CENTER_VERTICAL);
