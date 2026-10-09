@@ -569,16 +569,16 @@ void Tab::create_preset_tab()
         m_extruder_sync_box = new wxPanel(panel, wxID_ANY);
         m_extruder_sync_box->SetBackgroundColour(panel->GetBackgroundColour());
         m_extruder_sync_box->SetToolTip(_L("Synchronization of different extruder drives or nozzle volume types is not supported."));
-        m_extruder_sync = new ScalableButton(m_extruder_sync_box, wxID_ANY, "extruder_sync");
+        m_extruder_sync = nullptr;
+        add_scaled_button(m_extruder_sync_box, &m_extruder_sync, "extruder_sync");
         m_extruder_sync->SetToolTip(_L("Synchronize the modification of parameters to the corresponding parameters of another extruder."));
         m_extruder_sync->Bind(wxEVT_BUTTON, [this](auto &evt) {
             evt.Skip();
             sync_excluder();
         });
 
-        static ScalableBitmap multi_extruder;
-        add_scaled_bitmap(panel, multi_extruder, "multi_extruder");
-        auto icon = new wxStaticBitmap(panel, wxID_ANY, multi_extruder.bmp());
+        ScalableButton* icon = nullptr;
+        add_scaled_button(panel, &icon, "multi_extruder");
         icon->SetToolTip(_L("Parameters with this icon can be configurable per nozzle."));
 
         auto sync_box_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -613,11 +613,9 @@ void Tab::create_preset_tab()
             m_page_view->GetParent()->Layout();
         });
 
-        static ScalableBitmap multi_extruder;
-        add_scaled_bitmap(panel, multi_extruder, "multi_extruder");
-        auto icon = new wxStaticBitmap(panel, wxID_ANY, multi_extruder.bmp());
+        ScalableButton* icon = nullptr;
+        add_scaled_button(panel, &icon, "multi_extruder");
         icon->SetToolTip(_L("Parameters with this icon can be configurable per nozzle."));
-
 
         wxBoxSizer *combo_sizer = new wxBoxSizer(wxHORIZONTAL);
         combo_sizer->Add(m_variant_combo, 1, wxEXPAND);
@@ -1738,8 +1736,6 @@ void Tab::sys_color_changed()
         bmp->msw_rescale();
     if (m_detach_preset_btn)
         m_detach_preset_btn->msw_rescale();
-    if (m_extruder_sync)
-        m_extruder_sync->msw_rescale();
 
     // update icons for tree_ctrl
     for (ScalableBitmap& bmp : m_scaled_icons_list)
