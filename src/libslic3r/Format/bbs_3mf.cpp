@@ -32,6 +32,7 @@
 #include <boost/spirit/home/qi/numeric/int.hpp>
 #include <cstdlib>
 #include <cstddef>
+#include <tuple>
 #include <boost/algorithm/string/constants.hpp>
 #include <algorithm>
 #include <boost/thread/lock_types.hpp>
