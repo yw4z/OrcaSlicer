@@ -662,7 +662,7 @@ MultiSwitchButton::MultiSwitchButton(wxWindow *parent, wxWindowID id, const wxPo
           std::make_pair(0xF1754E, (int) StateColor::NotChecked),
           std::make_pair(0xFFFFFE, (int) StateColor::Normal)))
     , m_button_radius(10.0)
-    , m_button_padding(FromDIP(wxSize(11, 3)))
+    , m_button_padding(11, 3)
 {
     SetCornerRadius(m_button_radius);
     SetBorderWidth(0);
@@ -785,7 +785,7 @@ int MultiSwitchButton::AppendOption(const wxString &option, void *clientData)
     btn->SetBorderColor(m_bg_color);
     btn->SetTextColor(m_text_color);
     btn->SetCornerRadius(m_button_radius);
-    btn->SetPaddingSize(m_button_padding);
+    btn->SetPaddingSize(FromDIP(m_button_padding));
     btn->SetClientData(clientData);
 
     btns.push_back(btn);
@@ -908,7 +908,7 @@ void MultiSwitchButton::SetButtonPadding(const wxSize &padding)
 {
     m_button_padding = padding;
     for (auto *btn : btns)
-        btn->SetPaddingSize(padding);
+        btn->SetPaddingSize(FromDIP(padding));
     update_scroll_range();
     Layout();
     Refresh();
@@ -923,8 +923,10 @@ void MultiSwitchButton::SetModified(int index, bool modified){
 
 void MultiSwitchButton::Rescale()
 {
-    for (auto *btn : btns)
+    for (auto *btn : btns) {
+        btn->SetPaddingSize(FromDIP(m_button_padding));
         btn->Rescale();
+    }
     // Rescaling can change how the labels measure, and the scrollbar range follows the buttons.
     update_scroll_range();
 }

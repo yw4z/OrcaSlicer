@@ -172,6 +172,8 @@ public:
     }
     void SetModified(int index, bool modified);
     void SetButtonCornerRadius(double radius);
+    // Padding around each button's label, in DIP. The switch converts it for the current DPI when it
+    // applies it, and again in Rescale().
     void SetButtonPadding(const wxSize &padding);
 
     // Keep the switch exactly as wide as the buttons need instead of letting the layout stretch it.
@@ -208,7 +210,7 @@ private:
     StateColor m_br_color_modified;
     StateColor m_fg_color_modified;
     double     m_button_radius;
-    wxSize     m_button_padding;
+    wxSize     m_button_padding; // in DIP
 };
 
 #endif // !slic3r_GUI_SwitchButton_hpp_
