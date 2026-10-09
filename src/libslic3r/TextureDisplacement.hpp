@@ -485,6 +485,10 @@ struct DecodedHeightTexture
 // DecodedHeightTexture if image_data is empty or is not a PNG at all.
 DecodedHeightTexture decode_height_texture(const TextureDisplacementLayer &layer);
 
+// decode_height_texture(layer).has_color(), answered from the decode cache rather than from a copy of the
+// texture - cheap enough to ask every frame. Smoothing does not change it, so the raw decode is what is read.
+bool height_texture_has_color(const TextureDisplacementLayer &layer);
+
 // Maps a linear RGB colour in [0, 1] to an index into the caller's palette, or -1 for "no colour".
 //
 // Deliberately a callback rather than a function here: matching a colour to a filament is a

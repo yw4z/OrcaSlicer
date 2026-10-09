@@ -231,7 +231,8 @@ public:
     bool on_mouse(const wxMouseEvent &mouse_event) override;
 
 protected:
-    virtual void render_triangles(const Selection& selection) const;
+    // Draws every model part's selector, except `skip`'s when given.
+    virtual void render_triangles(const Selection& selection, const ModelVolume* skip = nullptr) const;
     void render_cursor();
     void render_cursor_circle();
     void render_cursor_sphere(const Transform3d& trafo) const;
@@ -327,6 +328,9 @@ protected:
     ClippingPlaneDataWrapper get_clipping_plane_data() const;
 
     TriangleSelector::ClippingPlane get_clipping_plane_in_volume_coordinates(const Transform3d &trafo) const;
+
+    // True while a paint or erase stroke is under way.
+    bool is_painting() const { return m_button_down != Button::None; }
 
 private:
     std::vector<std::vector<ProjectedMousePosition>> get_projected_mouse_positions(const Vec2d &mouse_position, double resolution, const std::vector<Transform3d> &trafo_matrices) const;
