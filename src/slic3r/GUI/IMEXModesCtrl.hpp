@@ -103,7 +103,19 @@ public:
     // a load_from_config() that detaches the textbox the user is typing in.
     bool matches_config(const DynamicPrintConfig& cfg) const;
 
+    // Whether the printer is an IMEX printer. The grid sits in an options group that shows or hides
+    // everything in it by mode, so Show() keeps it hidden on other printers whatever the group asks.
+    void set_applicable(bool applicable)
+    {
+        m_applicable = applicable;
+        if (!applicable)
+            wxPanel::Show(false); // showing is left to the group, which knows the mode
+    }
+    bool Show(bool show = true) override { return wxPanel::Show(show && m_applicable); }
+
 private:
+    bool m_applicable = true;
+
     // map<physical tool idx, role> for one `imex_mode_active_tools` entry. A tool absent
     // from the map is Inactive — the same convention the serialized string uses, so the
     // round trip needs no separate "off" value.

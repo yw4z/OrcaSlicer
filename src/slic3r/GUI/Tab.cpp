@@ -5845,6 +5845,7 @@ if (is_marlin_flavor)
             // activate_line to return early before build_field.
             ConfigOptionDef placeholder_def;
             placeholder_def.label   = L("Pre-slice warnings");
+            placeholder_def.mode    = comAdvanced;
             placeholder_def.tooltip = L("Show a warning dialog before slicing if IDEX/IQEX parallel mode "
                                         "concerns are detected (bed temperature conflicts, filament type "
                                         "mismatches, multi-material conflicts). Can be suppressed from the "
@@ -5866,7 +5867,8 @@ if (is_marlin_flavor)
         }
         optgroup->append_single_option_line("imex_viz_theme");
         {
-            auto modes_og = page->new_optgroup(L("IDEX/IQEX Parallel Modes"), L"param_advanced");
+            // In the configuration group rather than a group of its own: a full-width widget line
+            // records no mode, so a group holding only this line would show in every mode.
             auto line = Line{ L("Modes"), L("") };
             line.full_width = 1;
             line.widget = [this](wxWindow* parent) -> wxSizer* {
@@ -5938,7 +5940,7 @@ if (is_marlin_flavor)
                 };
                 auto* sizer = new wxBoxSizer(wxHORIZONTAL);
                 // Align the left edge with the option-line labels above. A full-width line's
-                // widget is inset by 15 (OptionsGroup::append_line), while an ordinary line's
+                // widget is inset by 15 (OptionsGroup::activate_line), while an ordinary line's
                 // custom control is inset by 10 and then paints its label further in again, so
                 // the two do not line up without this. One number, tuned against the settings
                 // page. Unscaled on purpose: the 15 and 10 it compensates for are raw pixels too,
@@ -5946,7 +5948,7 @@ if (is_marlin_flavor)
                 sizer->Add(m_imex_modes_ctrl, 1, wxEXPAND | wxLEFT, 8);
                 return sizer;
             };
-            modes_og->append_line(line);
+            optgroup->append_line(line);
         }
 
         m_pages.insert(m_pages.end() - n_after_single_extruder_MM, page);
@@ -6454,7 +6456,7 @@ void TabPrinter::toggle_options()
         toggle_option("imex_tool_layout", is_imex);
         toggle_option("imex_viz_theme",   is_imex);
         toggle_option("imex_firmware_managed_zones", is_imex);
-        if (m_imex_modes_ctrl) m_imex_modes_ctrl->Show(is_imex);
+        if (m_imex_modes_ctrl) m_imex_modes_ctrl->set_applicable(is_imex);
 
         // IDEX/IQEX: the tool_layout dropdown carries 4 corner values
         // (front-left / front-right / rear-left / rear-right) in storage, but front/rear
