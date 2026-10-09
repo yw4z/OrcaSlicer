@@ -620,6 +620,8 @@ void OG_CustomCtrl::msw_rescale()
 
     //m_bmp_mode_sz = create_scaled_bitmap("mode_simple", this, wxOSX ? 10 : 12).GetSize();
     m_bmp_blinking_sz = create_scaled_bitmap("blank_16", this).GetSize();
+    if (m_bmp_multi_extruder.bmp().IsOk())
+        m_bmp_multi_extruder.msw_rescale();
 
     m_max_win_width = 0;
 
@@ -649,6 +651,8 @@ void OG_CustomCtrl::msw_rescale()
 
 void OG_CustomCtrl::sys_color_changed()
 {
+    if (m_bmp_multi_extruder.bmp().IsOk())
+        m_bmp_multi_extruder.msw_rescale();
 }
 
 OG_CustomCtrl::CtrlLine::CtrlLine(  wxCoord         height,
@@ -810,8 +814,15 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord h_pos, wxCoord v_pos)
         for (const Option& opt : option_set)
             is_multi_extruder |= opt.opt_id.find_last_of('#') != std::string::npos;
     if (is_multi_extruder) {
-        static ScalableBitmap multi_extruder(ctrl, "multi_extruder");
-        h_pos = draw_act_bmps(dc, wxPoint(h_pos - multi_extruder.bmp().GetWidth() - ctrl->m_h_gap, v_pos), multi_extruder.bmp(), multi_extruder.bmp(), false, 0, true).x + ctrl->m_h_gap;
+        if (!ctrl->m_bmp_multi_extruder.bmp().IsOk())
+            ctrl->m_bmp_multi_extruder = ScalableBitmap(ctrl, "multi_extruder");
+        const wxBitmap& bmp = ctrl->m_bmp_multi_extruder.bmp();
+        // use logical size. GetWidth() returns physical pixels on macOS retina which pushes icon outside of control
+        const wxSize  bmp_sz = get_bitmap_size(bmp);
+        const wxCoord icon_x = std::max(0, h_pos - bmp_sz.GetWidth() - ctrl->m_h_gap);
+        const wxCoord icon_y = v_pos + lround((height - bmp_sz.GetHeight()) / 2);
+        // draw directly to keep h_pos unchanged and avoid overwriting undo icon rects
+        dc.DrawBitmap(bmp, icon_x, icon_y, true);
     }
 
     if (og_line.near_label_widget_win)
