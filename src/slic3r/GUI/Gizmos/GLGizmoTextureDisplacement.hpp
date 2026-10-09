@@ -208,6 +208,9 @@ public:
 protected:
     void        on_render_input_window(float x, float y, float bottom_limit) override;
     std::string on_get_name() const override;
+    // Never in the assemble view: its toolbar does not offer this gizmo, and every preview here is drawn
+    // with the main canvas's instance transform. The base alone would let the keyboard shortcut open it there.
+    bool        on_is_activable() const override;
 
     wxString handle_snapshot_action_name(bool shift_down, Button button_down) const override;
 

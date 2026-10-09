@@ -503,6 +503,11 @@ std::string GLGizmoTextureDisplacement::on_get_name() const
     return _u8L("Texture displacement");
 }
 
+bool GLGizmoTextureDisplacement::on_is_activable() const
+{
+    return m_parent.get_canvas_type() != GLCanvas3D::CanvasAssembleView && GLGizmoPainterBase::on_is_activable();
+}
+
 void GLGizmoTextureDisplacement::on_shutdown()
 {
     m_parent.toggle_model_objects_visibility(true);
