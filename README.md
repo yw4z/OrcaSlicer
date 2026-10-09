@@ -68,6 +68,8 @@ If you come across any of these in search results, please <b>report them</b> as 
   Regular updates fueled by continuous community contributions.
 - **Wide Printer Compatibility**  
   Supports a broad range of printers: Bambu Lab, Prusa, Creality, Voron, and more.
+- **[Belt Printer Support](https://www.orcaslicer.com/wiki/belt_printing)**  
+  Slice for belt / conveyor (infinite-Z) printers, with belt-aware supports and a tilted-bed preview. Contributed by [Joseph Robertson (@HarrierPigeon)](https://github.com/HarrierPigeon).
 - Additional features can be found in the [change notes](https://github.com/OrcaSlicer/OrcaSlicer/releases/).
 
 # Wiki
