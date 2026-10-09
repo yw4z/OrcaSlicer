@@ -821,7 +821,7 @@ wxString Tab::translate_category(const wxString& title, Preset::Type preset_type
             if (title == "Extruder 1") return _("Left Extruder");
             if (title == "Extruder 2") return _("Right Extruder");
         }
-        return _("T") + title.SubString(9, title.Last()); // ORCA use T1,T2... instead "Extruder 1" .. to make printer settings usable for toolchangers
+        return _("Extruder") + title.SubString(8, title.Last());
     }
     // Orca: one "Extruder" page serves all extruders; name it "Extruders" when there are several.
     if (preset_type == Preset::TYPE_PRINTER && title == "Extruder") {
@@ -8455,7 +8455,7 @@ void Tab::update_extruder_variants(int extruder_id, bool reload)
             m_extruder_switch->SetOptions(options);
             int item_n = options.empty() ? 0 : options.size();
             if (m_type == Preset::TYPE_PRINTER){ // we are on printer settings dialog and larger padding can be used
-                int h_pad  = item_n > 14 ? 6 : item_n > 12 ? 8 : item_n > 10 ? 16 : item_n > 8 ? 20 : item_n > 6 ? 24 : (item_n > 4 ? 36 : (item_n > 2 ? 48 : 64));
+                int h_pad  = item_n > 8 ? 6 : (item_n > 6 ? 9 : (item_n > 5 ? 12 : (item_n > 4 ? 18 : (item_n > 3 ? 24 : (item_n > 2 ? 36 : 48)))));
                 m_extruder_switch->SetButtonPadding(wxSize(h_pad, 3));
             }
             else {
