@@ -109,6 +109,7 @@
 #include <boost/uuid/uuid_io.hpp>
 
 #include <wx/colour.h>
+#include <wx/font.h>
 #include <wx/aui/framemanager.h>
 #include <wx/gdicmn.h>
 #include <wx/anybutton.h>
@@ -735,8 +736,8 @@ static void use_nozzle_row_font(ComboBox *combo)
 {
     // A read-only combo draws its value with the font of the TextInput it is built on, and its
     // dropped list carries a font of its own.
-    combo->SetFont(Label::Body_10);
-    combo->GetDropDown().SetFont(Label::Body_10);
+    combo->SetFont(Label::Body_13);
+    combo->GetDropDown().SetFont(Label::Body_13);
 
     // A row is as tall as the tags of the variant switch: a line of Body_10 text plus the 3 points of
     // padding they put above and below it. TextInput::messureSize() instead sizes a combo as its
@@ -746,7 +747,7 @@ static void use_nozzle_row_font(ComboBox *combo)
     // arithmetic landing on the small box however often it re-measures.
     const int row_height = combo->GetTextExtent("0.4 mm").y + 2 * combo->FromDIP(3);
     auto *text_ctrl = combo->GetTextCtrl();
-    text_ctrl->SetFont(Label::Body_10);
+    text_ctrl->SetFont(Label::Body_13);
     text_ctrl->SetInitialSize(wxSize(text_ctrl->GetBestSize().x, row_height - 8));
 
     combo->SetMinSize(wxSize(combo->GetMinSize().x, row_height));
@@ -761,6 +762,10 @@ struct ExtruderGroup : StaticBox
     // of the group.
     struct NozzleRow
     {
+        // Fonts of the prefix and the diameter readout, applied when the row is created and again by Rescale().
+        static wxFont prefix_font()   { return Label::Body_12.Bold(); }
+        static wxFont diameter_font() { return Label::Body_12; }
+
         Label *    prefix         = nullptr;
         Label *    diameter_label = nullptr; // read-only nozzle diameter of this extruder
         ComboBox * flow           = nullptr;
@@ -833,8 +838,8 @@ struct ExtruderGroup : StaticBox
         btn_down->msw_rescale();
         combo_diameter->Rescale();
         for (const NozzleRow &row : rows) {
-            row.prefix->SetFont(Label::Body_10.Bold());
-            row.diameter_label->SetFont(Label::Body_10);
+            row.prefix->SetFont(NozzleRow::prefix_font());
+            row.diameter_label->SetFont(NozzleRow::diameter_font());
             row.flow->Rescale();
         }
         update_row_widths();
@@ -1541,12 +1546,12 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
     ams_panel->SetBackgroundColour(*wxWHITE);
 
     ams_label  = new wxStaticText(ams_panel, wxID_ANY, _L("AMS"));
-    ams_label->SetFont(Label::Body_14);
+    ams_label->SetFont(Label::Body_13);
     ams_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
 
     // AMS not installed message
     ams_not_installed_msg = new wxStaticText(ams_panel, wxID_ANY, _L("Not installed"));
-    ams_not_installed_msg->SetFont(Label::Body_14);
+    ams_not_installed_msg->SetFont(Label::Body_13);
     ams_not_installed_msg->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#6B6B6B")));
 
     if (index >= 0) {
@@ -1636,9 +1641,9 @@ ExtruderGroup::ExtruderGroup(wxWindow * parent, int index, wxString const &title
     auto rows_sizer = new wxBoxSizer(wxHORIZONTAL);
     for (wxBoxSizer *&column : row_columns) {
         column = new wxBoxSizer(wxVERTICAL);
-        rows_sizer->Add(column, 1, wxEXPAND);
+        rows_sizer->Add(column, 1, wxEXPAND | wxLEFT , FromDIP(5));
     }
-    vsizer->Add(rows_sizer, 0, wxEXPAND);
+    vsizer->Add(rows_sizer, 0, wxEXPAND | wxRIGHT, FromDIP(5));
     sizer = vsizer; // the floating filament-switch icon positions itself against this card
     SetSizer(vsizer);
     SetNozzleRowCount(1);
@@ -1653,12 +1658,12 @@ ExtruderGroup::NozzleRow ExtruderGroup::create_nozzle_row()
     const size_t row_index = rows.size();
     NozzleRow row;
 
-    row.prefix = new Label(this, Label::Body_10.Bold());
+    row.prefix = new Label(this, NozzleRow::prefix_font());
     row.prefix->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
     row.prefix->SetLabelText(wxString::Format("T%d", int(row_index) + 1));
     row.prefix->Hide();
 
-    row.diameter_label = new Label(this, Label::Body_10);
+    row.diameter_label = new Label(this, NozzleRow::diameter_font());
     row.diameter_label->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#363636")));
     row.diameter_label->Hide();
 
@@ -1690,7 +1695,7 @@ ExtruderGroup::NozzleRow ExtruderGroup::create_nozzle_row()
     row_sizer->Add(row.diameter_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(5));
     row_sizer->Add(row.flow, 1);
     // Row-major: T1 T2 on the first line, T3 T4 on the second, and so on.
-    row_columns[row_index % 2]->Add(row_sizer, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(5));
+    row_columns[row_index % 2]->Add(row_sizer, 0, wxEXPAND | wxBOTTOM, FromDIP(5));
 
     return row;
 }
@@ -1717,9 +1722,9 @@ void ExtruderGroup::SetRowDiameters(const std::vector<double> &diameters)
 {
     for (size_t i = 0; i < std::min(nozzle_row_count, diameters.size()); ++i) {
         // Spelled like the calibration dialogs spell a nozzle diameter, "0.4 mm".
-        const wxString text = from_u8(get_diameter_string(diameters[i])) + " mm";
+        const wxString text = from_u8(get_diameter_string(diameters[i]));
         rows[i].diameter_label->SetLabelText(text);
-        rows[i].diameter_label->SetToolTip(text);
+        rows[i].diameter_label->SetToolTip(text + " mm");
     }
     update_row_widths();
     Layout();
