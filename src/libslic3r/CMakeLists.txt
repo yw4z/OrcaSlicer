@@ -112,6 +112,8 @@ set(lisbslic3r_sources
     CommonDefs.hpp
     Config.cpp
     Config.hpp
+    ConnectedBodies.cpp
+    ConnectedBodies.hpp
     ContourZ.cpp
     CustomGCode.cpp
     CustomGCode.hpp
@@ -180,6 +182,8 @@ set(lisbslic3r_sources
     Fill/FillPlanePath.hpp
     Fill/FillRectilinear.cpp
     Fill/FillRectilinear.hpp
+    Fill/FillTpmsAdaptive.cpp
+    Fill/FillTpmsAdaptive.hpp
     Fill/FillTpmsD.cpp
     Fill/FillTpmsD.hpp
     Fill/FillTpmsFK.cpp

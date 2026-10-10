@@ -900,10 +900,16 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, f
     auto update_lines = [this](uint64_t start_id, uint64_t end_id) {
         std::vector<Line> ret;
         ret.reserve(end_id - start_id + 1);
+        // Orca: m_lines_ends indexes into a memory mapping, so it must be clamped to the mapping. If the
+        // file was modified behind our back (an in-place post-processing script that shrank it), an
+        // unchecked read is an access violation, which the caller's try/catch cannot catch on Windows.
+        const size_t file_size = m_file.size();
         for (uint64_t id = start_id; id <= end_id; ++id) {
             // read line from file
-            const size_t start        = id == 1 ? 0 : m_lines_ends[id - 2];
-            const size_t original_len = m_lines_ends[id - 1] - start;
+            // Keep one entry per id: render() indexes m_lines by (id - start_id).
+            const size_t start = id == 1 ? 0 : std::min(m_lines_ends[id - 2], file_size);
+            const size_t end   = std::min(m_lines_ends[id - 1], file_size);
+            const size_t original_len = end > start ? end - start : 0;
             // A character is four bytes at most, so 55 of them always fit in 220.
             const size_t len          = std::min(original_len, (size_t) 55 * 4);
             std::string  gline(m_file.data() + start, len);
@@ -1445,6 +1451,10 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
         wxGetApp().plater()->schedule_background_process();
         return;
     }
+    m_plate_mass    = gcode_result.plate_mass;
+    m_object_masses = gcode_result.object_masses;
+    m_body_masses   = gcode_result.body_masses;
+    m_support_masses = gcode_result.support_masses;
 
     // convert data from PrusaSlicer format to libvgcode format.
     // Belt printers: when the designed (upright) view is active, back-transform
@@ -1880,6 +1890,10 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
 void GCodeViewer::load_as_preview(libvgcode::GCodeInputData&& data)
 {
     m_loaded_as_preview = true;
+    m_plate_mass = {};
+    m_object_masses.clear();
+    m_body_masses.clear();
+    m_support_masses.clear();
 
     m_move_type_counts.fill(0);
     for (auto& move_type_times : m_move_type_times)
@@ -1959,6 +1973,10 @@ void GCodeViewer::reset()
     m_move_type_distances.fill(0.0f);
     m_print_statistics.reset();
     m_custom_gcode_per_print_z = std::vector<CustomGCode::Item>();
+    m_plate_mass = {};
+    m_object_masses.clear();
+    m_body_masses.clear();
+    m_support_masses.clear();
     m_left_extruder_filament.clear();
     m_right_extruder_filament.clear();
     m_sequential_view.gcode_window.reset();
