@@ -5,6 +5,7 @@
 #include "libslic3r/MTUtils.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/ModelArrange.hpp"
+#include "libslic3r/IMEXArrange.hpp"
 
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
@@ -537,6 +538,36 @@ void ArrangeJob::prepare_partplate() {
     prepare_belt_regions(current_plate_index + 1);
 }
 
+// Snapshot each plate's IMEX zones on the main thread, so process() never has to touch
+// PartPlate's IMEX cache; see the members' declaration for why that matters. The beds are the
+// arranger's: arranging one plate packs into bed 0, and arranging all of them numbers the beds
+// over the unlocked plates, as postprocess_bed_index_for_selected() maps them back.
+void ArrangeJob::prepare_imex_zones()
+{
+    m_imex = {};
+    PartPlateList& plate_list = m_plater->get_partplate_list();
+    std::vector<PartPlate*> plates;
+    if (only_on_partplate)
+        plates.push_back(plate_list.get_curr_plate());
+    else
+        for (int i = 0; i < plate_list.get_plate_count(); ++i)
+            if (!plate_list.get_plate(i)->is_locked())
+                plates.push_back(plate_list.get_plate(i));
+
+    for (PartPlate* plate : plates) {
+        std::optional<ImexArrangeZones> zones;
+        if (const std::optional<BoundingBoxf> pz = plate ? plate->imex_primary_zone() : std::nullopt) {
+            const Vec2d o = plate->get_origin().head<2>();
+            zones = ImexArrangeZones{BoundingBoxf(Vec2d(pz->min - o), Vec2d(pz->max - o)), {}};
+            for (const BoundingBoxf3& strip : plate->imex_collision_zones())
+                zones->collision_zones.emplace_back(Vec2d(strip.min.head<2>() - o), Vec2d(strip.max.head<2>() - o));
+        }
+        m_imex.beds.push_back(std::move(zones));
+    }
+    m_imex.adds_plates = !only_on_partplate;
+    m_imex.read_config(wxGetApp().preset_bundle->full_config());
+}
+
 //BBS: add partplate logic
 void ArrangeJob::prepare()
 {
@@ -555,22 +586,6 @@ void ArrangeJob::prepare()
     Model::setExtruderParams(config, numExtruders);
     Model::setPrintSpeedTable(config, print_config);
 
-    // Snapshot the IMEX zones here, on the main thread, so process() never has to touch
-    // PartPlate's IMEX cache. See the members' declaration for why that matters.
-    m_imex_primary_zone_local.reset();
-    m_imex_collision_zones_local.clear();
-    if (PartPlate* curr_plate = m_plater->get_partplate_list().get_curr_plate()) {
-        if (auto pz = curr_plate->imex_primary_zone()) {
-            const Vec3d  plate_origin = curr_plate->get_origin();
-            const double ox = plate_origin.x(), oy = plate_origin.y();
-            m_imex_primary_zone_local = BoundingBoxf(Vec2d(pz->min.x() - ox, pz->min.y() - oy),
-                                                     Vec2d(pz->max.x() - ox, pz->max.y() - oy));
-            for (const BoundingBoxf3& cz : curr_plate->imex_collision_zones())
-                m_imex_collision_zones_local.emplace_back(Vec2d(cz.min.x() - ox, cz.min.y() - oy),
-                                                         Vec2d(cz.max.x() - ox, cz.max.y() - oy));
-        }
-    }
-
     int state = m_plater->get_prepare_state();
     if (state == Job::JobPrepareState::PREPARE_STATE_DEFAULT) {
         only_on_partplate = false;
@@ -580,6 +595,9 @@ void ArrangeJob::prepare()
         only_on_partplate = true;   // only arrange items on current plate
         prepare_partplate();
     }
+
+    // After prepare_all(), which locks the plates it must leave alone.
+    prepare_imex_zones();
 
 
 #if SAVE_ARRANGE_POLY
@@ -662,38 +680,10 @@ void ArrangeJob::process(Ctl &ctl)
 
     Points      bedpts = get_shrink_bedpts(m_plater->config(),params);
 
-    // When an IDEX/IQEX parallel mode is active, constrain auto-arrange to the primary zone only
-    // and treat carriage collision strips as hard excluded regions.
-    // NOTE: the plate's zone boxes are in global (world) coordinates because they derive from
-    // m_shape, which includes the plate origin offset. The arranger works in plate-local space
-    // (origin = 0,0), so the plate origin is subtracted when the snapshot is taken in prepare();
-    // m_imex_primary_zone_local / m_imex_collision_zones_local are already plate-local here.
-    if (const auto& pz = m_imex_primary_zone_local) {
-        BoundingBox scaled_pz = scaled(*pz);
-        bedpts = {
-            { scaled_pz.min.x(), scaled_pz.min.y() },
-            { scaled_pz.max.x(), scaled_pz.min.y() },
-            { scaled_pz.max.x(), scaled_pz.max.y() },
-            { scaled_pz.min.x(), scaled_pz.max.y() },
-        };
-        for (const BoundingBoxf& cz : m_imex_collision_zones_local) {
-            Polygon poly({
-                { scaled(cz.min.x()), scaled(cz.min.y()) },
-                { scaled(cz.max.x()), scaled(cz.min.y()) },
-                { scaled(cz.max.x()), scaled(cz.max.y()) },
-                { scaled(cz.min.x()), scaled(cz.max.y()) },
-            });
-            arrangement::ArrangePolygon ap;
-            ap.poly.contour  = poly;
-            ap.translation   = Vec2crd(0, 0);
-            ap.rotation      = 0.0;
-            ap.is_virt_object = true;
-            ap.bed_idx       = current_plate_index;
-            ap.height        = 1;
-            ap.name          = "IMEXCollisionZone";
-            m_unselected.emplace_back(std::move(ap));
-        }
-    }
+    // Keep the parts on IDEX/IQEX plates in their primary zones; see ImexArranger.
+    const ImexArranger imex(m_imex, params, bedpts);
+    bedpts = imex.bed_shape();
+    imex.add_keep_outs(m_unselected);
 
     bool   enable_wrapping = global_config.option<ConfigOptionBool>("enable_wrapping_detection")->value;
     partplate_list.preprocess_exclude_areas(params.excluded_regions, enable_wrapping, 1, scale_(1));
@@ -719,7 +709,10 @@ void ArrangeJob::process(Ctl &ctl)
             <<", bbox:"<<get_extents(item.poly).min.transpose()<<","<<get_extents(item.poly).max.transpose();
     }
 
+    const ArrangePolygons before = imex.active() ? m_selected : ArrangePolygons();
     arrangement::arrange(m_selected, m_unselected, bedpts, params);
+    if (!ctl.was_canceled())
+        imex.finish(m_selected, before, m_unselected, params);
 
     // sort by item id
     std::sort(m_selected.begin(), m_selected.end(), [](auto a, auto b) {return a.itemid < b.itemid; });

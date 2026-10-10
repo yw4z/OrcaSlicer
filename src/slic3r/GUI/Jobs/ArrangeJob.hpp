@@ -11,6 +11,7 @@
 #include "Job.hpp"
 #include "libslic3r/Arrange.hpp"
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/IMEXArrange.hpp"
 
 namespace Slic3r {
 
@@ -43,10 +44,9 @@ class ArrangeJob : public Job
     // cannot be moved off the main thread on its own.) Snapshotting plain geometry here keeps
     // every one of those touches on the main thread.
     //
-    // Both are stored already converted to plate-local coordinates, which is the space the
+    // The zones are stored already converted to plate-local coordinates, which is the space the
     // arranger works in.
-    std::optional<BoundingBoxf> m_imex_primary_zone_local;
-    std::vector<BoundingBoxf>   m_imex_collision_zones_local;
+    ImexArrangeInput m_imex;
 
     arrangement::ArrangeParams params;
     int current_plate_index = 0;
@@ -69,6 +69,7 @@ class ArrangeJob : public Job
     void prepare_partplate();
     void prepare_wipe_tower();
     void prepare_belt_regions(int num_plates);
+    void prepare_imex_zones();
 
     ArrangePolygon prepare_arrange_polygon(void* instance);
 
