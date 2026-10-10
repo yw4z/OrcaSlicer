@@ -592,26 +592,17 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     glsafe(::glEnable(GL_DEPTH_TEST));
 
     // Once anything is painted, m_preview_glmodel holds the true displaced result (same algorithm
-    // Bake uses). The untouched original topology (what render_triangles() draws) coincides
-    // exactly with it everywhere except the painted/displaced area, so both are drawn: the real
-    // preview geometry first, then the usual selection-highlight overlay with a small depth bias
-    // so it wins the depth test on the coincident (unpainted) surface - keeping the familiar
-    // enforcer/blocker highlight for precise brush editing there. Where the surface has actually
-    // been displaced, the raised preview geometry legitimately occludes the flat overlay - that
-    // visible relief is itself the "this is painted" indicator in that area.
+    // Bake uses). The untouched original topology (what render_triangles() draws) coincides exactly
+    // with it everywhere except the displaced area, so both can be drawn: the real preview geometry
+    // first, then the selectors' highlight with a small depth bias so it wins the depth test on the
+    // coincident surface. Where the surface has actually been displaced, the raised preview geometry
+    // legitimately occludes the flat highlight - that visible relief is itself the "this is painted"
+    // indicator in that area.
     //
-    // The shaded preview is different: it never actually moves geometry (it only shades), so
-    // its depth is identical to the overlay's *everywhere*, not just in the unpainted area - the
-    // depth-biased opaque overlay would win the depth test across the whole surface and hide the relief
-    // shading entirely. So render_triangles() leaves the textured volume out there. What is *not* skipped is
-    // render_paint_overlay(): leaving the shading as the only paint feedback meant a stroke that
-    // erased paint, or added it with no texture picked, changed nothing on screen until the whole
-    // preview rebuilt at stroke end - and in the true-displacement view the opaque overlay is hidden
-    // by the raised surface for the same reason. The translucent tint covers both cases.
-    //
-    // A colour preview is the exception to both: the opaque overlay buries its colours under a flat plane
-    // wherever the relief does not rise, and the tint washes them green. Both are what the user steers by
-    // while painting, though, so they give way only between strokes.
+    // The shaded preview never actually moves geometry (it only shades), so its depth is identical to
+    // the highlight's *everywhere*: the depth-biased opaque highlight would win the depth test across the
+    // whole surface and hide the shading entirely. So render_triangles() leaves the textured volume out
+    // there, and the translucent tint drawn further down is the paint feedback instead.
     // Coalesced shaded-preview rebuild from an in-progress UV island drag (see on_island_edited): done here, at
     // most once per drawn frame, rather than synchronously in the UV canvas's mouse-move handler.
     if (m_use_shaded_preview && m_shaded_preview_dirty) {
@@ -654,14 +645,12 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
         m_parent.toggle_model_objects_visibility(false, m_c->selection_info()->model_object(),
                                                   m_c->selection_info()->get_active_instance(), mv);
 
-    // Which colour preview is on screen decides what the highlight gives way to: the Normal mesh colours
-    // from every layer, the shaded one from the active layer only. Only a stroke brings it back - a fill
-    // tool's hover does not, so the colours stay on screen until the click. The debug view shows a captured
-    // stage, not a colour preview, so it keeps its highlight.
-    const TextureDisplacementLayer *al         = active_layer();
-    const bool                      color_view = !is_painting() && m_debug_stage < 0;
-    const bool stack_colors  = color_view && mv != nullptr && any_layer_colors(*mv);
-    const bool active_colors = color_view && al != nullptr && layer_shows_color(*al);
+    // Over a preview, the paint feedback - the selectors' highlight in the Normal view, the tint in both -
+    // is drawn only while a mouse button is down: during a stroke, a fill click included. Between strokes
+    // it would cover the preview: the highlight buries it under a flat plane wherever the relief does not
+    // rise, and the tint washes it green. The debug view shows a captured stage rather than a preview, so
+    // it keeps the feedback.
+    const bool paint_feedback = is_painting() || m_debug_stage >= 0;
 
     // Whether the textured volume's selector - and with it a fill tool's contour - is drawn this frame.
     bool textured_selector_drawn = true;
@@ -672,15 +661,12 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
         textured_selector_drawn = false;
     } else if (use_true_preview) {
         render_preview_mesh();
-
-        if (show_paint_overlay) {
-            glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
-            glsafe(::glPolygonOffset(-1.0f, -1.0f));
-            // Over a colour preview only the other model parts: render_preview_mesh() draws the textured one.
-            render_triangles(selection, stack_colors ? mv : nullptr);
-            glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
-        }
-        textured_selector_drawn = show_paint_overlay && !stack_colors;
+        glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
+        glsafe(::glPolygonOffset(-1.0f, -1.0f));
+        // Without paint feedback, only the other model parts: render_preview_mesh() draws the textured one.
+        render_triangles(selection, paint_feedback ? nullptr : mv);
+        glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
+        textured_selector_drawn = paint_feedback;
     } else {
         // render_triangles() *is* the model in a painter gizmo (it draws every model-part volume with the
         // selector's colours), not an overlay on top of one - so it still has to run under a UV-check
@@ -707,7 +693,7 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     // preview, the highlight is the selectors' own, except during a stroke over the colour paint: the paint
     // there is not flushed yet, so the colours are still drawn over the stroke's highlight.
     const bool preview_drawn = use_shaded || use_true_preview;
-    if (show_paint_overlay && (preview_drawn ? !active_colors : painted_colors_drawn && is_painting()))
+    if (show_paint_overlay && (preview_drawn ? paint_feedback : painted_colors_drawn && is_painting()))
         render_paint_overlay(m_paint_overlay_glmodel);
 
     // A fill tool's contour is drawn with the selectors, under the colour paint drawn since - which covers it
@@ -732,7 +718,8 @@ void GLGizmoTextureDisplacement::render_painter_gizmo()
     // The UV editor's island selection, shown on the model. Polled here rather than pushed: the pane
     // changes its selection in its own mouse handling, and a compare of a few ints per frame is free.
     {
-        const UVEditorCanvas *uv_canvas = wxGetApp().plater()->get_uv_editor_canvas();
+        const TextureDisplacementLayer *al = active_layer();
+        const UVEditorCanvas           *uv_canvas = wxGetApp().plater()->get_uv_editor_canvas();
         if (m_show_uv_editor && al != nullptr && al->projection_method == TextureProjectionMethod::LSCM &&
             uv_canvas != nullptr && !m_uv_editor_unwrap.empty()) {
             if (uv_canvas->selected_islands() != m_island_overlay_selection)
@@ -1844,9 +1831,8 @@ bool GLGizmoTextureDisplacement::render_painted_colors(bool whole_stack)
     shader->set_uniform("slope.normal_z", float(-std::cos(Geometry::deg2rad(m_highlight_by_angle_threshold_deg))));
     shader->set_uniform("slope.up_direction", get_tilt_up_direction());
     shader->set_uniform("show_wireframe", false);
-    // A full depth unit in front of the selectors' highlight at -1 in the Normal view, the least OpenGL
-    // guarantees to tell apart. Depth writes off, as for the tint: the wireframe and seam overlays drawn later
-    // test against the real surface, and the tint drawn after this shows on top of it.
+    // Pulled forward and without depth writes, as the tint is (see render_paint_overlay()). The tint is
+    // drawn after this, so it shows on top.
     glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
     glsafe(::glPolygonOffset(-2.f, -2.f));
     glsafe(::glDepthMask(GL_FALSE));
@@ -4509,14 +4495,12 @@ TextureDisplacementFacetsData GLGizmoTextureDisplacement::facets_data_of(const M
     return out;
 }
 
-bool GLGizmoTextureDisplacement::layer_shows_color(const TextureDisplacementLayer &layer)
-{
-    return layer.color_enabled && !layer.empty() && height_texture_has_color(layer);
-}
-
 bool GLGizmoTextureDisplacement::any_layer_colors(const ModelVolume &mv)
 {
-    return std::any_of(mv.texture_displacement_layers.begin(), mv.texture_displacement_layers.end(), layer_shows_color);
+    for (const TextureDisplacementLayer &layer : mv.texture_displacement_layers)
+        if (layer.color_enabled && !layer.empty() && height_texture_has_color(layer))
+            return true;
+    return false;
 }
 
 TextureColorSettings GLGizmoTextureDisplacement::color_settings_for(const ModelVolume &mv)

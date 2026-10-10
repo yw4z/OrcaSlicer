@@ -177,11 +177,9 @@ public:
         ColorRGBA                 color;
     };
     std::vector<PreviewColorRun> m_preview_color_runs;
-    // True if the layer would actually colour something: colour turned on, and a texture that has colour
-    // to give.
-    static bool layer_shows_color(const TextureDisplacementLayer &layer);
-    // True if any of the volume's layers would. What decides whether a palette is captured into a job at
-    // all, and so whether the colour criterion and the mmu write ever run.
+    // True if any of the volume's layers would actually colour something: colour turned on, and a
+    // texture that has colour to give. What decides whether a palette is captured into a job at all,
+    // and so whether the colour criterion and the mmu write ever run.
     static bool any_layer_colors(const ModelVolume &mv);
 
     // The model's own colour paint (mmu_segmentation_facets) as the gizmo draws it over its surface: the
@@ -729,14 +727,9 @@ private:
     bool    m_shaded_preview_dirty = false;
     GLModel m_shaded_preview_glmodel;
 
-    // Translucent tint over the active layer's painted triangles, drawn on top of whichever preview
-    // is showing - except, between strokes, the active layer's own colour preview, which it would wash
-    // green (see render_painter_gizmo()). The base painter's own opaque paint highlight
-    // (render_triangles()) cannot be used in either preview mode - it is coincident with the surface
-    // and simply covers it - so the only paint feedback the gizmo had was the relief itself, which
-    // meant erasing showed nothing at all until the stroke ended and the whole preview rebuilt. This
-    // is that feedback: cheap (the painted patch only), translucent (the preview stays visible through
-    // it) and rebuilt live during a stroke.
+    // Translucent tint over the active layer's painted triangles: the paint feedback over a preview (see
+    // render_painter_gizmo()). Cheap (the painted patch only), translucent so the preview shows through,
+    // and rebuilt live during a stroke.
     GLModel m_paint_overlay_glmodel;
     // The islands selected in the UV editor, tinted on the model so the pane's selection can be seen
     // in place. Rebuilt whenever the pane's selection differs from the one it was built for.
