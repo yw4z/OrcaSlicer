@@ -5912,14 +5912,14 @@ if (is_marlin_flavor)
 
         // IDEX/IQEX (IMEX) parallel printing configuration
         optgroup = page->new_optgroup(L("IDEX/IQEX Configuration"), L"param_advanced");
-        optgroup->append_single_option_line("is_imex");
-        optgroup->append_single_option_line("imex_firmware_managed_zones");
-        optgroup->append_single_option_line("imex_gantry_count");
-        optgroup->append_single_option_line("imex_tools_per_gantry");
-        optgroup->append_single_option_line("imex_tool_layout");
-        optgroup->append_single_option_line("imex_nozzle_clearance_x");
-        optgroup->append_single_option_line("imex_nozzle_clearance_y");
-        optgroup->append_single_option_line("imex_carriage_margin");
+        optgroup->append_single_option_line("is_imex", "printer_multimaterial_idex_iqex#idexiqex-printer");
+        optgroup->append_single_option_line("imex_firmware_managed_zones", "printer_multimaterial_idex_iqex#firmware-managed-zones");
+        optgroup->append_single_option_line("imex_gantry_count", "printer_multimaterial_idex_iqex#gantry-count");
+        optgroup->append_single_option_line("imex_tools_per_gantry", "printer_multimaterial_idex_iqex#tools-per-gantry");
+        optgroup->append_single_option_line("imex_tool_layout", "printer_multimaterial_idex_iqex#tool-0-position");
+        optgroup->append_single_option_line("imex_nozzle_clearance_x", "printer_multimaterial_idex_iqex#nozzle-clearance-x");
+        optgroup->append_single_option_line("imex_nozzle_clearance_y", "printer_multimaterial_idex_iqex#nozzle-clearance-y");
+        optgroup->append_single_option_line("imex_carriage_margin", "printer_multimaterial_idex_iqex#safety-margin");
         {
             // Toggle for pre-slice IMEX safety warnings (stored in app_config, not printer profile).
             // We avoid full_width=1 here because that path uses different sizer math from the
@@ -5938,6 +5938,7 @@ if (is_marlin_flavor)
                                         "mismatches, multi-material conflicts). Can be suppressed from the "
                                         "dialog itself. Re-enable here if suppressed accidentally.");
             auto line = Line{ placeholder_def.label, placeholder_def.tooltip };
+            line.label_path = "printer_multimaterial_idex_iqex#pre-slice-warnings";
             line.append_option(Option{ placeholder_def, "imex_pre_slice_warnings" });
             line.widget = [](wxWindow* parent) -> wxSizer* {
                 auto* cb = new ::CheckBox(parent);
@@ -5953,7 +5954,7 @@ if (is_marlin_flavor)
             };
             optgroup->append_line(line);
         }
-        optgroup->append_single_option_line("imex_viz_theme");
+        optgroup->append_single_option_line("imex_viz_theme", "printer_multimaterial_idex_iqex#visualization-theme");
         {
             // In the configuration group rather than a group of its own: a full-width widget line
             // records no mode, so a group holding only this line would show in every mode.
