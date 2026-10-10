@@ -31,6 +31,9 @@
 #include "ProgressDialog.hpp"
 #include "wx/evtloop.h"
 #include "Label.hpp"
+#include <wx/event.h>
+#include <wx/gauge.h>
+#include <wx/sizer.h>
 
 #ifdef __WXGTK__
 #include "slic3r/GUI/Widgets/StateColor.hpp"
@@ -526,7 +529,7 @@ void ProgressDialog::EnsureActiveEventLoopExists()
 wxStaticText *ProgressDialog::CreateLabel(const wxString &text, wxSizer *sizer)
 {
     wxStaticText *label = new wxStaticText(this, wxID_ANY, text);
-    wxStaticText *value = new wxStaticText(this, wxID_ANY, wxGetTranslation("unknown"));
+    wxStaticText *value = new wxStaticText(this, wxID_ANY, _L("unknown"));
 
     // Match the message label's look so the times theme with the rest of the
     // dialog: PROGRESSDIALOG_GREY_700 is a key in the dark-mode colour map, so
