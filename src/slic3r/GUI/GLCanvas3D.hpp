@@ -498,8 +498,9 @@ class GLCanvas3D
         // The plates', each object instance's, its supports' and each body of an assembly's.
         using Markers = std::array<std::vector<Marker>, mkCount>;
 
-        // The marker's two colors of alternating octants.
-        std::array<GLModel, 2> m_octants;
+        // Each kind's icon, from its SVG, and the display scale it was rasterized for.
+        std::array<ImTextureID, mkCount> m_icons{};
+        double                           m_icons_scale{ 0. };
         // Mass properties at unit density of each ModelVolume's mesh, by ModelVolume id, which a new mesh changes.
         std::map<size_t, MassProperties> m_meshes;
         // The connected bodies of each assembly in its own coordinates, by ModelObject id, with the volumes they were sliced from.

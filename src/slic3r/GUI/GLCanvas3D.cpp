@@ -1156,9 +1156,6 @@ void GLCanvas3D::CenterOfMass::render(GLCanvas3D& canvas)
         (gizmo != GLGizmosManager::Undefined && gizmo != GLGizmosManager::Move && gizmo != GLGizmosManager::Rotate &&
          gizmo != GLGizmosManager::Scale && gizmo != GLGizmosManager::Flatten))
         return;
-    GLShaderProgram* shader = wxGetApp().get_shader("gouraud_light");
-    if (shader == nullptr)
-        return;
 
     // Preview adds markers for what is printed up to the top layer shown.
     if (preview) {
@@ -1180,62 +1177,6 @@ void GLCanvas3D::CenterOfMass::render(GLCanvas3D& canvas)
             add(support, mkSupport);
     } else
         m_drawn[0] = model_markers(canvas);
-    if (std::all_of(m_drawn.begin(), m_drawn.end(),
-                    [](const Markers& markers) { return std::all_of(markers.begin(), markers.end(), [](const auto& kind) { return kind.empty(); }); }))
-        return;
-
-    if (!m_octants[0].is_initialized()) {
-        // A resolution divisible by 4 puts every triangle within one octant.
-        const GLModel::Geometry          sphere = smooth_sphere(32, 1.f);
-        std::array<GLModel::Geometry, 2> octants;
-        for (size_t i = 0; i + 2 < sphere.indices_count(); i += 3) {
-            const std::array<unsigned int, 3> ids = { sphere.extract_index(i), sphere.extract_index(i + 1), sphere.extract_index(i + 2) };
-            const Vec3f c = sphere.extract_position_3(ids[0]) + sphere.extract_position_3(ids[1]) + sphere.extract_position_3(ids[2]);
-            GLModel::Geometry& octant = octants[c.x() * c.y() * c.z() > 0.f ? 0 : 1];
-            for (const unsigned int id : ids)
-                octant.add_vertex(sphere.extract_position_3(id), sphere.extract_normal_3(id));
-            const auto n = (unsigned int)octant.vertices_count();
-            octant.add_triangle(n - 3, n - 2, n - 1);
-        }
-        for (size_t i = 0; i < octants.size(); ++i)
-            m_octants[i].init_from(std::move(octants[i]));
-    }
-
-    const Camera&      camera      = wxGetApp().plater()->get_camera();
-    const Transform3d& view_matrix = camera.get_view_matrix();
-    const double       scale       = marker_scale(canvas) * camera.get_inv_zoom();
-
-    // Seen through the object it lies in; culling keeps the sphere's far half behind its near one.
-    glsafe(::glDisable(GL_DEPTH_TEST));
-    glsafe(::glEnable(GL_CULL_FACE));
-    shader->start_using();
-    shader->set_uniform("projection_matrix", camera.get_projection_matrix());
-    shader->set_uniform("view_normal_matrix", (Matrix3d)view_matrix.matrix().block(0, 0, 3, 3));
-    shader->set_uniform("emission_factor", 0.1f);
-    const std::array<std::array<ColorRGBA, 2>, mkCount> colors = { {
-        { ColorRGBA(0.1f, 0.1f, 0.1f, 1.f), ColorRGBA::WHITE() },
-        { ColorRGBA(0x5A / 255.f, 0x9B / 255.f, 0xD4 / 255.f, 1.f), ColorRGBA::WHITE() },
-        { ColorRGBA(0.f, 0.6f, 0.f, 1.f), ColorRGBA(0.1f, 0.1f, 0.1f, 1.f) },
-        { ColorRGBA(0.7f, 0.f, 0.f, 1.f), ColorRGBA::YELLOW() },
-    } };
-    const auto draw = [&](const Markers& markers, float alpha) {
-        for (size_t kind = 0; kind < mkCount; ++kind)
-            for (const Marker& marker : markers[kind]) {
-                shader->set_uniform("view_model_matrix", view_matrix * Geometry::translation_transform(marker.center()) *
-                                                             Geometry::scale_transform(marker_radii[kind] * scale));
-                for (size_t i = 0; i < m_octants.size(); ++i) {
-                    ColorRGBA color = colors[kind][i];
-                    color.a(alpha);
-                    m_octants[i].set_color(color);
-                    m_octants[i].render();
-                }
-            }
-    };
-    // Preview fades the finished parts' markers under those of what is printed so far.
-    draw(m_drawn[0], preview ? 0.4f : 1.f);
-    draw(m_drawn[1], 1.f);
-    shader->stop_using();
-    glsafe(::glEnable(GL_DEPTH_TEST));
 }
 
 bool GLCanvas3D::CenterOfMass::on_left_down(GLCanvas3D& canvas, const Vec2d& mouse)
@@ -1263,6 +1204,40 @@ bool GLCanvas3D::CenterOfMass::on_left_down(GLCanvas3D& canvas, const Vec2d& mou
 
 void GLCanvas3D::CenterOfMass::render_details(GLCanvas3D& canvas)
 {
+    // The markers are drawn here, in the overlay pass, which also runs on the frames that reuse the last scene pass.
+    // Each kind's icon, rasterized at the size it is shown, again when the display's scale changes.
+    const double scale = marker_scale(canvas);
+    if (scale != m_icons_scale && std::any_of(m_drawn.begin(), m_drawn.end(), [](const Markers& markers) { return std::any_of(markers.begin(), markers.end(), [](const auto& kind) { return !kind.empty(); }); })) {
+        static constexpr std::array<const char*, mkCount> names{ "plate", "object", "support", "part" };
+        for (size_t kind = 0; kind < mkCount; ++kind) {
+            if (m_icons[kind] != nullptr) {
+                const GLuint id = GLuint(intptr_t(m_icons[kind]));
+                glsafe(::glDeleteTextures(1, &id));
+            }
+            const auto size = unsigned(std::lround(2. * marker_radii[kind] * scale));
+            if (!IMTexture::load_from_svg_file(resources_dir() + "/images/center_of_mass_" + names[kind] + ".svg", size, size, m_icons[kind]))
+                m_icons[kind] = nullptr;
+        }
+        m_icons_scale = scale;
+    }
+
+    // Flat on the screen at the projected center, under the ImGui windows.
+    const Camera& camera = wxGetApp().plater()->get_camera();
+    const auto draw = [&](const Markers& markers, float alpha) {
+        for (size_t kind = 0; kind < mkCount; ++kind)
+            for (const Marker& marker : markers[kind]) {
+                const Point  center = CameraUtils::project(camera, marker.center());
+                const float  r      = float(marker_radii[kind] * scale);
+                const ImVec2 c(float(center.x()), float(center.y()));
+                if (m_icons[kind] != nullptr)
+                    ImGui::GetBackgroundDrawList()->AddImage(m_icons[kind], ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r), ImVec2(0.f, 0.f),
+                                                             ImVec2(1.f, 1.f), ImGui::GetColorU32(ImVec4(1.f, 1.f, 1.f, alpha)));
+            }
+    };
+    // Preview fades the finished parts' markers under those of what is printed so far.
+    draw(m_drawn[0], canvas.get_canvas_type() == ECanvasType::CanvasPreview ? 0.4f : 1.f);
+    draw(m_drawn[1], 1.f);
+
     if (!m_picked)
         return;
     const Pick&                pick    = *m_picked;
