@@ -6,14 +6,20 @@ add_executable(${_TEST_NAME}_tests
 	test_cooling.cpp
 	test_extrusion_entity.cpp
 	test_extrusion_processor.cpp
+	test_exclusion_volumes.cpp
 	test_fill.cpp
 	test_flow.cpp
+	test_gcode_processor.cpp
+	test_gcode_statistics.cpp
 	test_gcode_timing.cpp
 	test_gcode.cpp
 	test_gcodeprocessor.cpp
 	test_gcodewriter.cpp
+	test_imex_mode_gcode.cpp
+	test_imex_slice_offset.cpp
 	test_model.cpp
 	test_multifilament.cpp
+	test_multimaterial_segmentation.cpp
 	test_perimeters.cpp
 	# Seam geometry and pipeline regressions share the existing Print fixtures.
 	test_precise_seam.cpp
