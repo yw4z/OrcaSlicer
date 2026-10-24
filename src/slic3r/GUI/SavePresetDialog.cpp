@@ -263,12 +263,8 @@ PresetNameStatus check_preset_name(const PresetCollection &presets, const std::s
         }
     }
 
-    // Length limit in UTF-8 bytes. The preset is written as <name>.json through a temporary
-    // <name>.json.<pid>.<n>.tmp, which adds about 18 bytes; Linux allows 255 bytes per file name, and
-    // on Windows the 260 character limit covers the whole path, of which the user preset folder
-    // (C:\Users\<user>\AppData\Roaming\OrcaSlicer\user\default\filament\) already takes about 70.
-    // A failed write is only logged, so the preset would be lost on restart. 150 bytes is 150 ASCII
-    // characters, 50 CJK characters (3 bytes each) or about 37 emoji (4 bytes each).
+    // Max 150 bytes, so the temporary save file name and the full path stay within OS limits.
+    // (C:\Users\<user>\AppData\Roaming\OrcaSlicer\user\default\filament\) already takes about 70
     if (name.size() > 150) {
         info_line = _L("The name is too long.");
         return PresetNameStatus::Invalid;

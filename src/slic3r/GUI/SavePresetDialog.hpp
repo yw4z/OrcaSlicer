@@ -32,9 +32,7 @@ namespace GUI {
 
 enum class PresetNameStatus { Valid, Warning, Invalid };
 
-// Checks a name the user typed for saving a preset of `presets`. Invalid means the name can't be saved,
-// Warning means saving overwrites an existing preset. `info_line` gets the message to show, or is
-// cleared when the name is Valid. Shared by SavePresetDialog and PhysicalPrinterDialog.
+// ORCA Shared profile name validation for SavePresetDialog and PhysicalPrinterDialog.
 PresetNameStatus check_preset_name(const PresetCollection &presets, const std::string &name, wxString &info_line);
 
 class SavePresetDialog : public DPIDialog
