@@ -5074,12 +5074,11 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
 
                         if (already_selected && ctrl_down)
                             m_selection.remove(volume_idx);
-                        // ORCA dont require Volume mode, Selection::update_type() switches to Instance mode once every part of the instance is selected
+                        // ORCA no Volume mode check: selecting every part switches the selection to Instance mode
                         else if (alt_down && m_gizmos.is_allow_multi_select_parts_or_objects() &&
                                  m_selection.get_object_idx() == m_volumes.volumes[volume_idx]->object_idx() &&
                                  m_selection.get_instance_idx() == m_volumes.volumes[volume_idx]->instance_idx()) {
-                            // ORCA Alt+click on another part of the selected instance adds it, and on a selected part removes it.
-                            // So a part can be removed from a fully selected object too. Removing the only selected part clears the selection.
+                            // ORCA Alt+click adds a part of the selected instance, or removes an already selected one
                             if (!already_selected)
                                 m_selection.add_volumes(Selection::Volume, {(unsigned int) volume_idx}, false);
                             else {
@@ -5356,8 +5355,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             post_event(SimpleEvent(EVT_GLCANVAS_MOUSE_DRAGGING_FINISHED));
         }
         else if (evt.LeftUp() && !m_mouse.ignore_left_up && !m_mouse.dragging && m_mouse.drag.alt_remove_volume_idx != -1) {
-            // ORCA Alt+click (press and release without dragging) on a selected part removes it from the selection.
-            // Deferred from left down so that Alt+drag still moves the selected parts instead of deselecting them.
+            // ORCA Alt+click removes the part on release, so that Alt+drag still moves the selection
             const int volume_idx = m_mouse.drag.alt_remove_volume_idx;
             if (volume_idx < (int) m_volumes.volumes.size() && m_selection.contains_volume(volume_idx)) {
                 m_selection.remove_volumes(Selection::Volume, {(unsigned int) volume_idx});
