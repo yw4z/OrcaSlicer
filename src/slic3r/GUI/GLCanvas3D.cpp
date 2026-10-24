@@ -5083,8 +5083,6 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                             if (!already_selected)
                                 m_selection.add_volumes(Selection::Volume, {(unsigned int) volume_idx}, false);
                             else {
-                                // Don't remove the part yet: the user may be starting an Alt+drag to move the selection.
-                                // The removal is applied on left up if the mouse was not dragged (see LeftUp handling below).
                                 m_mouse.drag.alt_remove_volume_idx = volume_idx;
                                 m_mouse.drag.move_requires_threshold = true;
                                 m_mouse.drag.move_start_threshold_position_2D = pos;
@@ -5112,16 +5110,8 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                         }
 
                         // propagate event through callback
-                        if (curr_idxs != m_selection.get_volume_idxs()) {
-                            if (m_selection.is_empty())
-                                m_gizmos.reset_all_states();
-                            else
-                                m_gizmos.refresh_on_off_state();
-
-                            m_gizmos.update_data();
-                            post_event(SimpleEvent(EVT_GLCANVAS_OBJECT_SELECT));
-                            m_dirty = true;
-                        }
+                        if (curr_idxs != m_selection.get_volume_idxs())
+                            _on_selection_changed();
                     }
                 }
 
@@ -5371,15 +5361,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             const int volume_idx = m_mouse.drag.alt_remove_volume_idx;
             if (volume_idx < (int) m_volumes.volumes.size() && m_selection.contains_volume(volume_idx)) {
                 m_selection.remove_volumes(Selection::Volume, {(unsigned int) volume_idx});
-
-                if (m_selection.is_empty())
-                    m_gizmos.reset_all_states();
-                else
-                    m_gizmos.refresh_on_off_state();
-
-                m_gizmos.update_data();
-                post_event(SimpleEvent(EVT_GLCANVAS_OBJECT_SELECT));
-                m_dirty = true;
+                _on_selection_changed();
             }
         }
         else if (evt.LeftUp() && m_picking_enabled && m_rectangle_selection.is_dragging() && m_layers_editing.state != LayersEditing::Editing) {
@@ -12680,6 +12662,18 @@ bool GLCanvas3D::_is_any_volume_outside() const
     }
 
     return false;
+}
+
+void GLCanvas3D::_on_selection_changed()
+{
+    if (m_selection.is_empty())
+        m_gizmos.reset_all_states();
+    else
+        m_gizmos.refresh_on_off_state();
+
+    m_gizmos.update_data();
+    post_event(SimpleEvent(EVT_GLCANVAS_OBJECT_SELECT));
+    m_dirty = true;
 }
 
 void GLCanvas3D::_update_selection_from_hover()
