@@ -19,9 +19,11 @@
 #include <vector>
 #include <string>
 #include <set>
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/format.hpp>
 
 #include <wx/anybutton.h>
 #include <wx/checklst.h>
@@ -197,109 +199,108 @@ SavePresetDialog::Item::Item(Preset::Type type, const std::string &suffix, wxBox
     update();
 }
 
+PresetNameStatus check_preset_name(const PresetCollection &presets, const std::string &name, wxString &info_line)
+{
+    info_line.clear();
+
+    static const char *unusable_symbols = "<>[]:/\\|?*\"";
+    if (name.find_first_of(unusable_symbols) != std::string::npos) {
+        info_line = _L("Name is invalid;") + "\n" + _L("illegal characters:") + " " + unusable_symbols;
+        return PresetNameStatus::Invalid;
+    }
+
+    if (name.find(PresetCollection::get_suffix_modified()) != std::string::npos) {
+        info_line = _L("Name is invalid;") + "\n" + _L("illegal suffix:") + "\n\t" + from_u8(PresetCollection::get_suffix_modified());
+        return PresetNameStatus::Invalid;
+    }
+
+    if (name == "Default Setting" || name == PresetBundle::ORCA_DEFAULT_FILAMENT_PLACEHOLDER || name == "Default Printer") {
+        info_line = _L("Name is unavailable.");
+        return PresetNameStatus::Invalid;
+    }
+
+    const Preset *existing = presets.find_preset(name, false);
+    if (existing && !existing->can_overwrite()) {
+        info_line = _L("Overwriting a system profile is not allowed.");
+        return PresetNameStatus::Invalid;
+    }
+
+    if (existing && name != presets.get_selected_preset_name()) {
+        if (existing->is_compatible)
+            info_line = from_u8((boost::format(_u8L("Preset \"%1%\" already exists.")) % name).str());
+        else
+            info_line = from_u8((boost::format(_u8L("Preset \"%1%\" already exists and is incompatible with the current printer.")) % name).str());
+        info_line += "\n" + _L("Please note that saving will overwrite the current preset.");
+        return PresetNameStatus::Warning;
+    }
+
+    if (name.empty()) {
+        info_line = _L("The name field is not allowed to be empty.");
+        return PresetNameStatus::Invalid;
+    }
+
+    // Control characters (ASCII 0-31 and DEL) can come in through copy and paste, mostly tabs and line feeds.
+    if (std::any_of(name.begin(), name.end(), [](unsigned char c) { return c < 0x20 || c == 0x7F; })) {
+        info_line = _L("Name is invalid;") + "\n" + _L("control characters are not allowed.");
+        return PresetNameStatus::Invalid;
+    }
+
+    // Windows reserved device names, case-insensitive. "CON.foo.json" is reserved too, so only the part
+    // before the first dot counts. Windows 11 relaxed this, but earlier versions still refuse these names.
+    {
+        std::string base = name.substr(0, name.find('.'));
+        while (!base.empty() && base.back() == ' ')
+            base.pop_back();
+        boost::to_upper(base);
+
+        static const std::set<std::string> reserved = {
+            "CON",  "PRN",  "AUX",  "NUL",
+            "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
+        if (reserved.count(base) > 0) {
+            info_line = _L("The name is a reserved system name.");
+            return PresetNameStatus::Invalid;
+        }
+    }
+
+    // Length limit in UTF-8 bytes. The preset is written as <name>.json through a temporary
+    // <name>.json.<pid>.<n>.tmp, which adds about 18 bytes; Linux allows 255 bytes per file name, and
+    // on Windows the 260 character limit covers the whole path, of which the user preset folder
+    // (C:\Users\<user>\AppData\Roaming\OrcaSlicer\user\default\filament\) already takes about 70.
+    // A failed write is only logged, so the preset would be lost on restart. 150 bytes is 150 ASCII
+    // characters, 50 CJK characters (3 bytes each) or about 37 emoji (4 bytes each).
+    if (name.size() > 150) {
+        info_line = _L("The name is too long.");
+        return PresetNameStatus::Invalid;
+    }
+
+    if (name.front() == ' ') {
+        info_line = _L("The name is not allowed to start with a space.");
+        return PresetNameStatus::Invalid;
+    }
+
+    if (name.back() == ' ') {
+        info_line = _L("The name is not allowed to end with a space.");
+        return PresetNameStatus::Invalid;
+    }
+
+    if (presets.get_preset_name_by_alias(name) != name) {
+        info_line = _L("The name cannot be the same as a preset alias name.");
+        return PresetNameStatus::Invalid;
+    }
+
+    return PresetNameStatus::Valid;
+}
+
 void SavePresetDialog::Item::update()
 {
     m_preset_name = into_u8(m_input_ctrl->GetTextCtrl()->GetValue());
 
-    m_valid_type = Valid;
-    wxString info_line;
-
-    const char *unusable_symbols = "<>[]:/\\|?*\"";
-
-    const std::string unusable_suffix = PresetCollection::get_suffix_modified(); //"(modified)";
-    for (size_t i = 0; i < std::strlen(unusable_symbols); i++) {
-        if (m_preset_name.find_first_of(unusable_symbols[i]) != std::string::npos) {
-            info_line    = _L("Name is invalid;") + "\n" + _L("illegal characters:") + " " + unusable_symbols;
-            m_valid_type = NoValid;
-            break;
-        }
-    }
-
-    if (m_valid_type == Valid && m_preset_name.find(unusable_suffix) != std::string::npos) {
-        info_line    = _L("Name is invalid;") + "\n" + _L("illegal suffix:") + "\n\t" + from_u8(PresetCollection::get_suffix_modified());
-        m_valid_type = NoValid;
-    }
-
-    if (m_valid_type == Valid &&
-        (m_preset_name == "Default Setting" || m_preset_name == PresetBundle::ORCA_DEFAULT_FILAMENT_PLACEHOLDER || m_preset_name == "Default Printer")) {
-        info_line    = _L("Name is unavailable.");
-        m_valid_type = NoValid;
-    }
+    wxString                 info_line;
+    const PresetNameStatus   status = check_preset_name(*m_presets, m_preset_name, info_line);
+    m_valid_type = status == PresetNameStatus::Invalid ? NoValid : status == PresetNameStatus::Warning ? Warning : Valid;
 
     const Preset *existing = m_presets->find_preset(m_preset_name, false);
-    if (m_valid_type == Valid && existing && !existing->can_overwrite()) {
-        info_line = _L("Overwriting a system profile is not allowed.");
-        m_valid_type = NoValid;
-    }
-
-    if (m_valid_type == Valid && existing && m_preset_name != m_presets->get_selected_preset_name()) {
-        if (existing->is_compatible)
-            info_line = from_u8((boost::format(_u8L("Preset \"%1%\" already exists.")) % m_preset_name).str());
-        else
-            info_line = from_u8((boost::format(_u8L("Preset \"%1%\" already exists and is incompatible with the current printer.")) % m_preset_name).str());
-        info_line += "\n" + _L("Please note that saving will overwrite the current preset.");
-        m_valid_type = Warning;
-    }
-
-    if (m_valid_type == Valid && m_preset_name.empty()) {
-        info_line    = _L("The name field is not allowed to be empty.");
-        m_valid_type = NoValid;
-    }
-
-    // Control characters (ASCII 0-31 and DEL) that can be included via copy paste. most possible ones; tab, line feed
-    if (m_valid_type == Valid) {
-        for (unsigned char c : m_preset_name) {
-            if (c < 0x20 || c == 0x7F) {
-                info_line    = _L("Name is invalid;") + "\n" + _L("control characters are not allowed.");
-                m_valid_type = NoValid;
-                break;
-            }
-        }
-    }
-
-    // Windows reserved device names (case-insensitive)
-    // windows 11 relaxed this limitation but still not allowed on earlier systems
-    if (m_valid_type == Valid) {
-        // "CON.foo.json" is also reserved, so compare only the part before the first dot
-        std::string base = m_preset_name.substr(0, m_preset_name.find('.'));
-        // trim trailing spaces
-        while (!base.empty() && base.back() == ' ') base.pop_back();
-        boost::to_upper(base);
-
-        static const std::set<std::string> reserved = {
-            "CON", "PRN", "AUX", "NUL",
-            "COM0","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
-            "LPT0","LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
-        };
-        if(reserved.count(base) > 0){
-            info_line    = _L("The name is a reserved system name.");
-            m_valid_type = NoValid;
-        }
-    }
-
-    // Length limit (bytes, leave room for extension ".json")
-    // Any name over 250 bytes	e.g. 251 ASCII characters
-    // 84 or more Chinese, Japanese or Korean characters	3 bytes each in UTF-8, so 84 × 3 = 252 bytes
-    // About 63 or more emoji	4 bytes each, so 63 × 4 = 252 bytes
-    if (m_valid_type == Valid && m_preset_name.size() > 250) {
-        info_line    = _L("The name is too long.");
-        m_valid_type = NoValid;
-    }
-
-    if (m_valid_type == Valid && m_preset_name.find_first_of(' ') == 0) {
-        info_line    = _L("The name is not allowed to start with a space.");
-        m_valid_type = NoValid;
-    }
-
-    if (m_valid_type == Valid && m_preset_name.find_last_of(' ') == m_preset_name.length() - 1) {
-        info_line    = _L("The name is not allowed to end with a space.");
-        m_valid_type = NoValid;
-    }
-
-    if (m_valid_type == Valid && m_presets->get_preset_name_by_alias(m_preset_name) != m_preset_name) {
-        info_line    = _L("The name cannot be the same as a preset alias name.");
-        m_valid_type = NoValid;
-    }
 
     // BBS: add project embedded presets logic
     if (existing) { // ORCA RadioGroup

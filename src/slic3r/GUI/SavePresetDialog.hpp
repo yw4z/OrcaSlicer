@@ -12,6 +12,7 @@
 #include <wx/checklst.h>
 #include <vector>
 #include <wx/event.h>
+#include <wx/string.h>
 
 class RadioGroup;
 class TextInput;
@@ -28,6 +29,13 @@ class wxStaticBitmap;
 
 namespace Slic3r {
 namespace GUI {
+
+enum class PresetNameStatus { Valid, Warning, Invalid };
+
+// Checks a name the user typed for saving a preset of `presets`. Invalid means the name can't be saved,
+// Warning means saving overwrites an existing preset. `info_line` gets the message to show, or is
+// cleared when the name is Valid. Shared by SavePresetDialog and PhysicalPrinterDialog.
+PresetNameStatus check_preset_name(const PresetCollection &presets, const std::string &name, wxString &info_line);
 
 class SavePresetDialog : public DPIDialog
 {
