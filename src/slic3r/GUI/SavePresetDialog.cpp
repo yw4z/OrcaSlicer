@@ -263,9 +263,13 @@ PresetNameStatus check_preset_name(const PresetCollection &presets, const std::s
         }
     }
 
-    // Max 150 bytes, so the temporary save file name and the full path stay within OS limits.
-    // (C:\Users\<user>\AppData\Roaming\OrcaSlicer\user\default\filament\) already takes about 70
-    if (name.size() > 150) {
+    // Keeps "<name>.json.<pid>.<n>.tmp" within the Linux 255-byte file name limit and, with the data
+    // folder path, the Windows 260 UTF-16 unit path limit.
+    size_t utf16_units = 0;
+    for (unsigned char c : name)
+        if ((c & 0xC0) != 0x80)
+            utf16_units += c >= 0xF0 ? 2 : 1; // a 4-byte UTF-8 character is a UTF-16 surrogate pair
+    if (name.size() > 230 || utf16_units > 150) {
         info_line = _L("The name is too long.");
         return PresetNameStatus::Invalid;
     }
