@@ -224,7 +224,7 @@ body {
 }
 
 .bundle-status-icon-update {
-  background: var(--main-color);
+  background: var(--main-color-fixed);
 }
 
 .bundle-update-cell {
