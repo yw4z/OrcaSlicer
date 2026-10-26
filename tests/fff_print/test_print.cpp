@@ -57,6 +57,7 @@
 #include <limits>
 #include <fstream>
 #include <iterator>
+#include <ios>
 #include <memory>
 #include <string_view>
 #include <utility>
