@@ -67,8 +67,9 @@ TabCtrl tabs changes its positions because of font width change
   --bg-color-secondary    : #F4F4F4;
   --bg-color-alt          : #F0F0F0;
   --disabled-bg           : #F0F0F1;   /*Disabled control background (combobox, checkbox, input...)*/
-  --checked-bg            : #00968840; /*main color with 25% opacity. checked menu item bg on combox, active tab control bg...*/
-  --focus-bg              : #00968819; /*main color with 10% opacity. focused control background*/
+                                       /*IMPORTANT - Using RGBA instead RGB causing combo dropdowns using incorrect color*/
+  --checked-bg            : #BFE1DE;   /*main color with 25% opacity. checked menu item bg on combox, active tab control bg...*/
+  --focus-bg              : #E5F0EE;   /*main color with 10% opacity. focused control background*/
   --fg-color-text         : #262E30;   /*More attention-grabbing color that mostly used for values of controls*/
   --fg-color-label        : #575757;   /*Less attention-grabbing color that mostly used for labels of controls*/
   --fg-color-disabled     : #ACACAC;   /*Dimmed text color*/
@@ -130,8 +131,9 @@ TabCtrl tabs changes its positions because of font width change
   --bg-color-secondary    : #36363B;
   --bg-color-alt          : #242428;
   --disabled-bg           : #333337;   /*Disabled control background (combobox, checkbox, input...)*/
-  --checked-bg            : #00675B40; /*main color with 25% opacity. checked menu item bg on combox, active tab control bg...*/
-  --focus-bg              : #00675B19; /*main color with 10% opacity. focused control background*/
+                                       /*IMPORTANT - Using RGBA instead RGB causing combo dropdowns using incorrect color*/
+  --checked-bg            : #223C3C;   /*main color with 25% opacity. checked menu item bg on combox, active tab control bg...*/
+  --focus-bg              : #283232;   /*main color with 10% opacity. focused control background*/
   --fg-color-text         : #EFEFF0;   /*More attention-grabbing color that mostly used for values of controls*/
   --fg-color-label        : #B2B3B5;   /*Less attention-grabbing color that mostly used for labels of controls*/
   --fg-color-disabled     : #65656A;   /*Dimmed text color*/
