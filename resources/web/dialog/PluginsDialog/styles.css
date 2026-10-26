@@ -323,7 +323,7 @@ body {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   max-height: var(--statusbar-height);
   min-height: var(--statusbar-height);
   padding: 6px 14px;
@@ -333,7 +333,11 @@ body {
 }
 
 .status-dot {
-  --icon-url: var(--icon-status-dot);
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--level, var(--dimmed-color));
 }
 
 .status-text {
@@ -350,7 +354,6 @@ body {
 .status-bar.level-warn    { --level: var(--tone-orange)  }
 .status-bar.level-error   { --level: var(--tone-red)     }
 .status-bar.level-info    { --level: var(--tone-inactive)}
-.status-dot  { --icon-fill: var(--level, var(--dimmed-color)); }
 .status-text { color: var(--level, inherit); }
 
 .plugin-expand-icon {
