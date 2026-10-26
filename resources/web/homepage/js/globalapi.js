@@ -311,4 +311,5 @@ function CheckCssLinkExist( LinkPath )
 
 /*------Dark Mode------*/
 
-// Dialog pages are themed by the injected --orca-* contract + theme.css; the legacy dark.css poll is fully retired.
+// SwitchDarkMode() and css/dark.css are gone. The homepage now follows the WebView color scheme
+// through global.css (prefers-color-scheme).
