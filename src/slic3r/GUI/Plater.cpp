@@ -23896,9 +23896,11 @@ void Plater::rename_plate(int plate_index, const std::string& name)
     // The rename invalidated a G-code export that uses {plate_name}: refresh the current plate.
     if (was_valid && !plate->is_slice_result_valid() && plate_index == p->partplate_list.get_curr_plate_index()) {
         p->main_frame->update_slice_print_status(MainFrame::eEventPlateUpdate, true);
+        // Start one re-export: auto-reslice would cancel a background run started here.
         if (p->background_processing_enabled())
             p->restart_background_process(priv::UPDATE_BACKGROUND_PROCESS_FORCE_RESTART);
-        p->schedule_auto_reslice_if_needed();
+        else
+            p->schedule_auto_reslice_if_needed();
     }
 }
 
