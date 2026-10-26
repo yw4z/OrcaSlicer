@@ -78,6 +78,7 @@
 #include "libslic3r_version.h"
 #include "slic3r/Utils/FileTransferUtils.hpp"
 #include <boost/filesystem.hpp>
+#include <nlohmann/json.hpp>
 
 namespace fs = boost::filesystem;
 
@@ -1831,7 +1832,7 @@ what();
                     }
                     BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " : Tutk url error: ress = " << res;
                 }
-            });
+            }, wxGetApp().get_printer_cloud_provider());
         }
     }
 }
