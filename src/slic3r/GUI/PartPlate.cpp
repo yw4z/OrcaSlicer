@@ -4334,6 +4334,29 @@ void PartPlate::invalidate_plate_name_texture()
 	}
 }
 
+// True if a G-code template or filename_format uses {plate_name}.
+static bool uses_plate_name(const DynamicPrintConfig& config)
+{
+    for (const std::string& key : config.keys()) {
+        const ConfigOption* opt = config.option(key);
+        if ((opt->type() == coString || opt->type() == coStrings) && opt->serialize().find("plate_name") != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+void PartPlate::sync_plate_name_to_print()
+{
+    if (m_print == nullptr || m_print->get_plate_name() == m_name)
+        return;
+    // The G-code or its file name may hold the old name. Invalidate first so a running export stops.
+    if (!(m_plater && m_plater->is_loading_project()) && uses_plate_name(m_print->full_print_config())) {
+        m_print->set_gcode_file_invalidated();
+        update_slice_result_valid_state(false);
+    }
+    m_print->set_plate_name(m_name);
+}
+
 void PartPlate::set_plate_name(const std::string& name) 
 { 
 	// compare if name equal to m_name, case sensitive
@@ -4342,8 +4365,7 @@ void PartPlate::set_plate_name(const std::string& name)
 
 	const std::string previous_name = m_name;
 	m_name = name;
-    if (m_print != nullptr)
-        m_print->set_plate_name(name);
+    sync_plate_name_to_print();
 
 	invalidate_plate_name_texture();
 
@@ -4384,6 +4406,8 @@ void PartPlate::set_print(PrintBase* print, GCodeResult* result, int index)
 
 	m_print->set_plate_origin(m_origin);
     invalidate_exclusion_volume_preview();
+    // Undo/redo reattaches Prints that may still carry another name.
+    sync_plate_name_to_print();
 
 	return;
 }
