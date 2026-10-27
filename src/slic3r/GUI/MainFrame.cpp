@@ -1176,7 +1176,11 @@ void MainFrame::update_layout()
 
     wxBusyCursor busy;
 
-    Freeze();
+    // While the main frame is being created nothing is on screen, and a freeze would only walk
+    // every child window to block redraws that cannot happen.
+    const bool freeze = IsShownOnScreen();
+    if (freeze)
+        Freeze();
 
     // Remove old settings
     if (m_layout != ESettingsLayout::Unknown)
@@ -1268,7 +1272,8 @@ void MainFrame::update_layout()
 #endif
 
     Layout();
-    Thaw();
+    if (freeze)
+        Thaw();
 }
 
 #ifdef __WXGTK__

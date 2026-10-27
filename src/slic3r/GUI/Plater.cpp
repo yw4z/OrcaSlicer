@@ -109,6 +109,7 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
+#include <wx/arrstr.h>
 #include <wx/colour.h>
 #include <wx/font.h>
 #include <wx/aui/framemanager.h>
@@ -190,6 +191,7 @@
 
 #include "GUI.hpp"
 #include "GUI_App.hpp"
+#include "I18N.hpp"
 #include "Shortcuts.hpp"
 #include "GUI_ObjectList.hpp"
 #ifdef __WXGTK__
@@ -5750,8 +5752,12 @@ void Sidebar::on_filament_count_change(size_t num_filaments)
         choices.push_back(choice);
 
         // initialize selection
-        choice->update();
-        choice->SetSelection(last_selection);
+        // While the main frame is still being created the list is left empty:
+        // load_current_presets() fills every filament combo once the window is built.
+        if (wxGetApp().mainframe != nullptr) {
+            choice->update();
+            choice->SetSelection(last_selection);
+        }
         ++i;
     }
 
