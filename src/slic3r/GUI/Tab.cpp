@@ -60,6 +60,7 @@
 #include <wx/panel.h>
 #include <wx/colour.h>
 #include <wx/dataview.h>
+#include <wx/display.h>
 #include <wx/dynarray.h>
 #include <wx/scrolwin.h>
 #include <wx/sizer.h>
@@ -883,6 +884,12 @@ void Tab::OnActivate()
     if (wxGetApp().mainframe != nullptr && !wxGetApp().mainframe->is_active_and_shown_tab(m_parent))
         return;
 
+    // Before the main window is shown, build only what fits on the screen so the window shows
+    // sooner. The idle prebuild adds the other groups, see page_build_step().
+    const bool startup = wxGetApp().mainframe != nullptr && !wxGetApp().mainframe->IsShown();
+    if (startup)
+        m_startup_build_height = wxDisplay(m_page_view).GetClientArea().GetHeight();
+
     // BBS: select on first active
     if (!m_active_page)
         restore_last_select_item();
@@ -892,6 +899,9 @@ void Tab::OnActivate()
 
     // create controls on active page
     activate_selected_page([](){});
+    m_startup_build_height = 0;
+    if (startup && m_active_page && m_active_page->build_pending())
+        m_partly_built_page = m_active_page;
     //BBS: GUI refactor
     //m_main_sizer->Layout();
     m_parent->Layout();
@@ -7962,7 +7972,18 @@ bool Tab::page_build_step()
 {
     if (m_active_page == nullptr)
         return false;
-    if (m_active_page->build_pending())
+    if (m_active_page == m_partly_built_page && m_active_page->build_pending()) {
+        // This page is on screen, so lay out each group as it is added.
+        m_page_view->Freeze();
+        m_active_page->build_step(m_mode);
+        m_parent->Layout();
+        m_page_view->Thaw();
+        if (!m_active_page->build_pending()) {
+            // Give the finished page the pass OnActivate() gives a page built at once.
+            m_partly_built_page = nullptr;
+            OnActivate();
+        }
+    } else if (m_active_page->build_pending())
         m_active_page->build_step(m_mode);
     else
         m_active_page->update_visibility(m_mode, true);
@@ -7988,6 +8009,8 @@ void Tab::activate_selected_page(std::function<void()> throw_if_canceled)
         m_page_view->Hide();
     ScopeGuard show_view([this, hide_view] { if (hide_view) m_page_view->Show(); });
 #endif
+    if (m_startup_build_height > 0)
+        m_active_page->set_build_height_limit(m_startup_build_height);
     m_active_page->activate(m_mode, throw_if_canceled);
     update_changed_ui();
     update_description_lines();
@@ -9564,9 +9587,17 @@ void Page::activate(ConfigOptionMode mode, std::function<void()> throw_if_cancel
 #else
     //m_vsizer->AddSpacer(10);
 #endif
+    const int height_limit = std::exchange(m_build_height_limit, 0);
     for (size_t i = 0; i < m_optgroups.size(); ++i) {
+        // Hiding lines for the mode makes the page shorter, so keep the first cut instead of measuring again.
+        if (height_limit > 0 && m_stopped_at_height_limit)
+            break;
         activate_group(i, mode, throw_if_canceled);
         throw_if_canceled();
+        if (height_limit > 0 && m_vsizer->CalcMin().y >= height_limit) {
+            m_stopped_at_height_limit = true;
+            break;
+        }
     }
 
 #ifdef __WXMSW__
@@ -9628,6 +9659,7 @@ void Page::clear()
         group->clear();
     m_page_title = NULL;
     m_visibility_applied = false;
+    m_stopped_at_height_limit = false;
 }
 
 void Page::msw_rescale()

@@ -4333,7 +4333,10 @@ void Sidebar::update_mixed_filament_list()
     auto* plater = dynamic_cast<Plater*>(GetParent());
     if (!plater) return;
 
-    wxWindowUpdateLocker noUpdates(this);
+    // Freezing walks every child of the sidebar, a few ms each time; a hidden sidebar has nothing to repaint.
+    std::optional<wxWindowUpdateLocker> noUpdates;
+    if (IsShownOnScreen())
+        noUpdates.emplace(this);
 
     const wxColour mc_bg     = StateColor::darkModeColorFor(*wxWHITE);
     const wxColour mc_border = StateColor::darkModeColorFor(wxColour("#DBDBDB")); // same color with filament combo box border
@@ -5734,7 +5737,9 @@ void Sidebar::on_filament_count_change(size_t num_filaments)
     if (choices.size() == 1 || num_physical == 1)
         choices[0]->GetDropDown().Invalidate();
 
-    wxWindowUpdateLocker noUpdates_scrolled_panel(this);
+    std::optional<wxWindowUpdateLocker> noUpdates_scrolled_panel;
+    if (IsShownOnScreen())
+        noUpdates_scrolled_panel.emplace(this);
 
     size_t i = choices.size();
     while (i < num_physical)
@@ -7260,6 +7265,8 @@ struct Plater::priv
     // cached so the gizmo can reach it directly.
     UVEditorPanel*  uv_editor_panel { nullptr };
     UVEditorCanvas* uv_editor_canvas { nullptr };
+    // Builds the pane on first use, hidden, so startup does not pay for a canvas most sessions never show.
+    UVEditorCanvas* ensure_uv_editor();
     bool first_enter_assemble{ true };
     std::unique_ptr<NotificationManager> notification_manager;
 
@@ -7957,14 +7964,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     // change to the view3D/preview/assemble_view sizer above. Hidden by default: only relevant
     // while that gizmo is active with a layer using the "Unwrap (LSCM)" projection method (see
     // Plater::show_uv_editor()), so it stays out of the way of everyone else's window layout.
-    uv_editor_panel  = new UVEditorPanel(q);
-    uv_editor_canvas = uv_editor_panel->canvas();
-    m_aui_mgr.AddPane(uv_editor_panel, wxAuiPaneInfo()
-                                            .Name("uv_editor")
-                                            .Caption(_L("UV Editor"))
-                                            .Right()
-                                            .Hide()
-                                            .BestSize(wxSize(40 * wxGetApp().em_unit(), 40 * wxGetApp().em_unit())));
+    // Built by ensure_uv_editor().
     // Closing the pane with its own X has to reach the gizmo, or its next update would simply show the pane again.
     q->Bind(wxEVT_AUI_PANE_CLOSE, [this](wxAuiManagerEvent &evt) {
         evt.Skip();
@@ -13869,6 +13869,35 @@ void Plater::priv::on_action_print_plate_from_sdcard(SimpleEvent&)
 
     //BBS
     open_machine_select_dialog(0, PrintFromType::FROM_SDCARD_VIEW);
+}
+
+UVEditorCanvas* Plater::priv::ensure_uv_editor()
+{
+    if (uv_editor_panel != nullptr)
+        return uv_editor_canvas;
+    uv_editor_panel  = new UVEditorPanel(q);
+    uv_editor_canvas = uv_editor_panel->canvas();
+#ifdef _MSW_DARK_MODE
+    // Built after MainFrame gave the window its dark colours, so it needs its own.
+    wxGetApp().UpdateDarkUIWin(uv_editor_panel);
+#endif
+    wxAuiPaneInfo pane = wxAuiPaneInfo()
+                             .Name("uv_editor")
+                             .Caption(_L("UV Editor"))
+                             .Right()
+                             .BestSize(wxSize(40 * wxGetApp().em_unit(), 40 * wxGetApp().em_unit()));
+    // The window layout was restored before this pane existed, so take its saved place from there.
+    wxString layout = wxString::FromUTF8(wxGetApp().app_config->get("window_layout"));
+#ifdef __WXGTK__
+    layout = sanitize_window_layout_for_wayland(layout);
+#endif
+    for (const wxString& part : wxSplit(layout, '|'))
+        if (part.StartsWith("name=uv_editor;")) {
+            m_aui_mgr.LoadPaneInfo(part, pane);
+            break;
+        }
+    m_aui_mgr.AddPane(uv_editor_panel, pane.Hide());
+    return uv_editor_canvas;
 }
 
 void Plater::priv::on_tab_selection_changing(wxBookCtrlEvent& e)
@@ -21519,6 +21548,8 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
     bool bed_shape_changed = false;
     bool exclusion_preview_changed = false;
     bool imex_changed = false;
+    bool filament_colour_changed = false;
+    bool mixed_filaments_changed = false;
     //bool print_sequence_changed = false;
     t_config_option_keys diff_keys = p->config->diff(config);
 
@@ -21531,20 +21562,14 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
     }
 
     for (auto opt_key : diff_keys) {
+        // The filament lists are refreshed once after the loop, as these keys usually change together.
         if (opt_key == "filament_colour") {
             update_scheduled = true; // update should be scheduled (for update 3DScene) #2738
-
-            if (update_filament_colors_in_full_config()) {
-                p->sidebar->update_mixed_filament_list();
-                p->partplate_list.invalidate_exclusion_volume_previews();
-                p->sidebar->obj_list()->update_filament_colors();
-                p->sidebar->update_dynamic_filament_list();
-                continue;
-            }
+            filament_colour_changed = true;
+            continue;
         }
         if (opt_key == "filament_type") {
-            update_filament_colors_in_full_config();
-            p->sidebar->update_mixed_filament_list();
+            mixed_filaments_changed = true;
             continue;
         }
         // The mixed-filament type check folds filament_is_support into the component type
@@ -21552,7 +21577,7 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
         // refresh the list even though filament_type itself did not change.
         if (opt_key == "filament_is_support") {
             p->config->set_key_value(opt_key, config.option(opt_key)->clone());
-            p->sidebar->update_mixed_filament_list();
+            mixed_filaments_changed = true;
             continue;
         }
         if (opt_key == "material_colour") {
@@ -21642,6 +21667,16 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
         // Orca: the center of mass markers weigh the parts by it.
         else if (opt_key == "filament_density" && wxGetApp().show_center_of_mass())
             p->view3D->get_canvas3d()->set_as_dirty();
+    }
+
+    if (filament_colour_changed || mixed_filaments_changed) {
+        update_filament_colors_in_full_config();
+        p->sidebar->update_mixed_filament_list();
+        if (filament_colour_changed) {
+            p->partplate_list.invalidate_exclusion_volume_previews();
+            p->sidebar->obj_list()->update_filament_colors();
+            p->sidebar->update_dynamic_filament_list();
+        }
     }
 
     if (bed_shape_changed) {
@@ -22111,13 +22146,16 @@ GLCanvas3D* Plater::get_assmeble_canvas3D()
 
 UVEditorCanvas* Plater::get_uv_editor_canvas()
 {
-    return p->uv_editor_canvas;
+    return p->ensure_uv_editor();
 }
 
 void Plater::show_uv_editor(bool show)
 {
-    if (p->uv_editor_panel == nullptr)
-        return;
+    if (p->uv_editor_panel == nullptr) {
+        if (!show)
+            return;
+        p->ensure_uv_editor();
+    }
     const wxAuiPaneInfo &pane = p->m_aui_mgr.GetPane(p->uv_editor_panel);
     if (!pane.IsOk() || pane.IsShown() == show)
         return;
