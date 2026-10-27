@@ -8020,7 +8020,7 @@ void GUI_App::start_sync_user_preset(bool with_progress_dlg)
             // NotificationManager is not thread safe and is destroyed before this thread is joined
             const auto notify = [this, t](const std::string& text) {
                 CallAfter([this, t, text] {
-                    if (t.expired() || is_closing() || plater() == nullptr || plater()->get_notification_manager() == nullptr)
+                    if (t.expired() || is_closing())
                         return;
                     plater()->get_notification_manager()->push_notification(NotificationType::CustomNotification,
                                                                              NotificationManager::NotificationLevel::RegularNotificationLevel, text);
@@ -8195,7 +8195,7 @@ void GUI_App::start_sync_user_preset(bool with_progress_dlg)
                         
                             // Iterate over the bundles, and update/create
                         for (const auto& bundle_entry : bundles_to_sync) {
-                            // Return, not break: a partial bundles_synced would delete the unvisited bundles below
+                            // a partial bundles_synced would delete the unvisited bundles below
                             if (t.expired() || is_closing())
                                 return;
                             bundles_synced.insert(bundle_entry.first);
