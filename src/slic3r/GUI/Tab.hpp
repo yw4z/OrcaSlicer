@@ -118,6 +118,8 @@ public:
     bool        visibility_pending() const { return !m_visibility_applied; }
     // Makes the next activate() stop once the built groups are this tall; build_step() adds the rest.
     void        set_build_height_limit(int height) { m_build_height_limit = height; }
+    // Whether activate() stopped at that height, so the page is on screen with groups still to build.
+    bool        stopped_at_height_limit() const { return m_stopped_at_height_limit; }
     void        clear();
     void        msw_rescale();
     void        sys_color_changed();
@@ -267,8 +269,7 @@ protected:
 	std::map<wxString, std::string>	m_category_icon;	// Map from a category name to an icon file name
 	std::vector<PageShp>			m_pages;
 	Page*				m_active_page {nullptr};
-	// The page OnActivate() built only partly at startup, and the height it stops at.
-	Page*				m_partly_built_page {nullptr};
+	// The height OnActivate() stops building the active page at during startup.
 	int					m_startup_build_height {0};
 	bool				m_disable_tree_sel_changed_event {false};
 	bool				m_show_incompatible_presets;
