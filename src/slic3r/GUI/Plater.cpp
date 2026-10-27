@@ -7263,10 +7263,8 @@ struct Plater::priv
     GLToolbar collapse_toolbar;
     Preview *preview;
     AssembleView* assemble_view { nullptr };
-    // Docked/resizable 2D pane showing GLGizmoTextureDisplacement's LSCM unwrap of a painted
-    // patch; a sibling AUI pane alongside "sidebar"/"main", not part of the view3D/preview/
-    // assemble_view sizer - see its registration below and Plater::get_uv_editor_canvas(). The
-    // pane hosts the panel (toolbar + canvas + status line); uv_editor_canvas is its inner canvas.
+    // AUI pane showing GLGizmoTextureDisplacement's LSCM unwrap; uv_editor_canvas is the canvas
+    // inside the panel. Both stay null until ensure_uv_editor() builds them.
     UVEditorPanel*  uv_editor_panel { nullptr };
     UVEditorCanvas* uv_editor_canvas { nullptr };
     // Builds the pane on first use, hidden, so startup does not pay for a canvas most sessions never show.
@@ -7963,12 +7961,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     // Orca: Make sidebar dockable
     m_aui_mgr.AddPane(sidebar, AuiMgr::sidebar_pane_info());
 
-    // UV editor pane for GLGizmoTextureDisplacement's LSCM unwrap preview - a resizable/dockable
-    // sibling of "sidebar"/"main" like everything else registered on this same AUI manager, not a
-    // change to the view3D/preview/assemble_view sizer above. Hidden by default: only relevant
-    // while that gizmo is active with a layer using the "Unwrap (LSCM)" projection method (see
-    // Plater::show_uv_editor()), so it stays out of the way of everyone else's window layout.
-    // Built by ensure_uv_editor().
+    // The UV editor pane is added by ensure_uv_editor().
     // Closing the pane with its own X has to reach the gizmo, or its next update would simply show the pane again.
     q->Bind(wxEVT_AUI_PANE_CLOSE, [this](wxAuiManagerEvent &evt) {
         evt.Skip();
@@ -8015,13 +8008,6 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
             } else if (removed_floating_state) {
                 BOOST_LOG_TRIVIAL(info) << "Removed floating AUI state from saved window layout for Wayland";
             }
-
-            // The UV editor is a transient, gizmo-driven pane (see show_uv_editor()); a saved layout
-            // from a session that happened to close with it open would otherwise restore it visible on
-            // startup, with nothing painted in it. Force it hidden here so it only ever appears when the
-            // texture-displacement gizmo asks for it.
-            if (wxAuiPaneInfo &uv_pane = m_aui_mgr.GetPane("uv_editor"); uv_pane.IsOk())
-                uv_pane.Hide();
 
             sidebar_layout.is_collapsed = !sidebar.IsShown();
         }
@@ -13905,7 +13891,8 @@ UVEditorCanvas* Plater::priv::ensure_uv_editor()
 #endif
         m_aui_mgr.LoadPaneInfo(entry, pane);
     }
-    // After LoadPaneInfo(), which also restores the caption saved in another UI language.
+    // After LoadPaneInfo(), which also restores the caption saved in another UI language, and
+    // hidden even if the layout was saved with it open: only the gizmo shows it.
     pane.Caption(_L("UV Editor")).Hide();
     m_aui_mgr.AddPane(uv_editor_panel, pane);
     return uv_editor_canvas;
