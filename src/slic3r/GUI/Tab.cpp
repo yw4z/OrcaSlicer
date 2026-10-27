@@ -60,7 +60,6 @@
 #include <wx/panel.h>
 #include <wx/colour.h>
 #include <wx/dataview.h>
-#include <wx/display.h>
 #include <wx/dynarray.h>
 #include <wx/scrolwin.h>
 #include <wx/sizer.h>
@@ -884,17 +883,6 @@ void Tab::OnActivate()
     if (wxGetApp().mainframe != nullptr && !wxGetApp().mainframe->is_active_and_shown_tab(m_parent))
         return;
 
-    // Before the main window is shown, build only what fits on the screen so the window shows
-    // sooner. The idle prebuild adds the other groups, see page_build_step().
-#ifdef __WXGTK__
-    // Not on GTK: page_build_step() would then build on screen, which activate_selected_page() avoids there.
-    constexpr bool startup = false;
-#else
-    const bool startup = wxGetApp().mainframe == nullptr || !wxGetApp().mainframe->IsShown();
-#endif
-    if (startup)
-        m_startup_build_height = wxDisplay(m_page_view).GetClientArea().GetHeight();
-
     // BBS: select on first active
     if (!m_active_page)
         restore_last_select_item();
@@ -904,7 +892,6 @@ void Tab::OnActivate()
 
     // create controls on active page
     activate_selected_page([](){});
-    m_startup_build_height = 0;
     //BBS: GUI refactor
     //m_main_sizer->Layout();
     m_parent->Layout();
@@ -2736,10 +2723,6 @@ void Tab::activate_option(const std::string& opt_key, const wxString& category)
         m_tabctrl->SelectItem(cur_item);
         break;
     }
-
-    // A page built only partly at startup has no fields yet for its lower groups; finish it first.
-    if (m_active_page && m_active_page->build_pending())
-        OnActivate();
 
     // The registry holds what the rules decided when a page was last shown, for the extruder shown
     // then. Rerun the rules of the page now selected, so the check reflects the current configuration.
@@ -7979,24 +7962,9 @@ bool Tab::page_build_step()
 {
     if (m_active_page == nullptr)
         return false;
-    if (m_active_page->build_pending()) {
-        // A page built only partly at startup is on screen, so lay out each group as it is added.
-        const bool on_screen = m_active_page->stopped_at_height_limit();
-        if (on_screen)
-            m_page_view->Freeze();
+    if (m_active_page->build_pending())
         m_active_page->build_step(m_mode);
-        if (on_screen) {
-            // Set the new group's enabled and modified state now rather than when the page is finished.
-            update_changed_ui();
-            if (m_active_page->title() != "Dependencies")
-                toggle_options();
-            m_parent->Layout();
-            m_page_view->Thaw();
-            if (!m_active_page->build_pending())
-                // Give the finished page the pass OnActivate() gives a page built at once.
-                OnActivate();
-        }
-    } else
+    else
         m_active_page->update_visibility(m_mode, true);
     return page_build_pending();
 }
@@ -8020,8 +7988,6 @@ void Tab::activate_selected_page(std::function<void()> throw_if_canceled)
         m_page_view->Hide();
     ScopeGuard show_view([this, hide_view] { if (hide_view) m_page_view->Show(); });
 #endif
-    if (m_startup_build_height > 0)
-        m_active_page->set_build_height_limit(m_startup_build_height);
     m_active_page->activate(m_mode, throw_if_canceled);
     update_changed_ui();
     update_description_lines();
@@ -9598,21 +9564,10 @@ void Page::activate(ConfigOptionMode mode, std::function<void()> throw_if_cancel
 #else
     //m_vsizer->AddSpacer(10);
 #endif
-    const int height_limit = std::exchange(m_build_height_limit, 0);
     for (size_t i = 0; i < m_optgroups.size(); ++i) {
-        // Hiding lines for the mode makes the page shorter, so keep the first cut instead of measuring again.
-        if (height_limit > 0 && m_stopped_at_height_limit)
-            break;
         activate_group(i, mode, throw_if_canceled);
         throw_if_canceled();
-        if (height_limit > 0 && m_vsizer->CalcMin().y >= height_limit) {
-            m_stopped_at_height_limit = true;
-            break;
-        }
     }
-    // Built in full, so no longer partly built.
-    if (height_limit == 0)
-        m_stopped_at_height_limit = false;
 
 #ifdef __WXMSW__
     // BBS: fix field control position
@@ -9673,7 +9628,6 @@ void Page::clear()
         group->clear();
     m_page_title = NULL;
     m_visibility_applied = false;
-    m_stopped_at_height_limit = false;
 }
 
 void Page::msw_rescale()
