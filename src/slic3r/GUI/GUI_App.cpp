@@ -8017,10 +8017,7 @@ void GUI_App::start_sync_user_preset(bool with_progress_dlg)
 
     m_sync_update_thread = Slic3r::create_thread(
         [this, progressFn, cancelFn, finishFn, t = std::weak_ptr<int>(m_user_sync_token)] {
-            // Notifications go to the GUI thread: NotificationManager is not thread safe, and at exit
-            // the Plater is destroyed while this thread may still be inside an iteration, so the
-            // pushed call also checks that the app is still up (the old direct call crashed in
-            // push_notification_data() on a null manager at exit).
+            // NotificationManager is not thread safe and is destroyed before this thread is joined
             const auto notify = [this, t](const std::string& text) {
                 CallAfter([this, t, text] {
                     if (t.expired() || is_closing() || plater() == nullptr || plater()->get_notification_manager() == nullptr)
@@ -8198,10 +8195,9 @@ void GUI_App::start_sync_user_preset(bool with_progress_dlg)
                         
                             // Iterate over the bundles, and update/create
                         for (const auto& bundle_entry : bundles_to_sync) {
-                            // The token is checked per bundle, not only per pass: a pass over many
-                            // bundles with their 100 ms pauses would otherwise outlive the exit.
+                            // Return, not break: a partial bundles_synced would delete the unvisited bundles below
                             if (t.expired() || is_closing())
-                                break;
+                                return;
                             bundles_synced.insert(bundle_entry.first);
                             // Sync each bundle individually
                             // if(!preset_bundle->bundles.pauseReads.load()) // if pause is true we will skip updating this frame altogether
