@@ -7265,11 +7265,14 @@ struct Plater::priv
     GLToolbar collapse_toolbar;
     Preview *preview;
     AssembleView* assemble_view { nullptr };
-    // AUI pane showing GLGizmoTextureDisplacement's LSCM unwrap; uv_editor_canvas is the canvas
-    // inside the panel. Both stay null until ensure_uv_editor() builds them.
+    // Docked/resizable 2D pane showing GLGizmoTextureDisplacement's LSCM unwrap of a painted
+    // patch; a sibling AUI pane alongside "sidebar"/"main", not part of the view3D/preview/
+    // assemble_view sizer - see ensure_uv_editor() and Plater::get_uv_editor_canvas(). The
+    // pane hosts the panel (toolbar + canvas + status line); uv_editor_canvas is its inner canvas,
+    // cached so the gizmo can reach it directly. Both are null until the pane is first shown.
     UVEditorPanel*  uv_editor_panel { nullptr };
     UVEditorCanvas* uv_editor_canvas { nullptr };
-    // Builds the pane on first use, hidden, so startup does not pay for a canvas most sessions never show.
+    // Builds the pane, hidden, if it does not exist yet. Called from show_uv_editor()'s CallAfter only.
     UVEditorCanvas* ensure_uv_editor();
     bool first_enter_assemble{ true };
     std::unique_ptr<NotificationManager> notification_manager;
@@ -22150,26 +22153,29 @@ GLCanvas3D* Plater::get_assmeble_canvas3D()
 
 UVEditorCanvas* Plater::get_uv_editor_canvas()
 {
-    return p->ensure_uv_editor();
+    return p->uv_editor_canvas;
 }
 
 void Plater::show_uv_editor(bool show)
 {
     if (p->uv_editor_panel == nullptr) {
+        // Built below on the first show; nothing to hide before that.
         if (!show)
             return;
-        p->ensure_uv_editor();
+    } else {
+        const wxAuiPaneInfo &pane = p->m_aui_mgr.GetPane(p->uv_editor_panel);
+        if (!pane.IsOk() || pane.IsShown() == show)
+            return;
     }
-    const wxAuiPaneInfo &pane = p->m_aui_mgr.GetPane(p->uv_editor_panel);
-    if (!pane.IsOk() || pane.IsShown() == show)
-        return;
 
     // Deferred, because GLGizmoTextureDisplacement calls this from its ImGui panel - that is, from
     // the middle of the 3D canvas's GL frame. Showing an AUI pane re-lays out the window and
     // delivers the resulting size/paint events synchronously, and the UV canvas painting itself
     // makes its own surface current in the app's *shared* GL context, which mid-frame is the one
     // the 3D canvas is drawing into. Doing the layout once the frame is over avoids that entirely.
+    // Building the pane creates a wxGLCanvas, so it waits here too.
     CallAfter([this, show]() {
+        p->ensure_uv_editor();
         wxAuiPaneInfo &deferred_pane = p->m_aui_mgr.GetPane(p->uv_editor_panel);
         if (!deferred_pane.IsOk() || deferred_pane.IsShown() == show)
             return;
