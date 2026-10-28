@@ -4311,7 +4311,8 @@ void GUI_App::set_live_printer_agent(std::shared_ptr<IPrinterAgent> agent)
     }
 
     m_agent->set_printer_agent(agent);
-    // While presets load at startup no printer is connected yet, so the filament combos would not change.
+    // Before mainframe is shown this runs from load_current_presets(), right after
+    // printer refilled the filament combos; no printer is connected yet, so they would not change
     sidebar().update_all_preset_comboboxes(mainframe == nullptr || mainframe->IsShown());
 }
 

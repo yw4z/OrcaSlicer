@@ -3954,7 +3954,8 @@ void Sidebar::update_presets(Preset::Type preset_type)
 
         }
 
-        // While presets load at startup the printer tab refills every filament combo right after this.
+        // Preset change must still refill the combos. Refill not needed before the mainframe shown.
+        // load_current_presets() loads the printer tab right after this and refills them anyway
         if (wxGetApp().mainframe == nullptr || wxGetApp().mainframe->IsShown())
             for (size_t i = 0; i < filament_cnt; i++)
                 p->combos_filament[i]->update();
