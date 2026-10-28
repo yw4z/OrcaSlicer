@@ -3798,7 +3798,7 @@ void Sidebar::remove_unused_filament_combos(const size_t current_extruder_count)
     }
 }
 
-void Sidebar::update_all_preset_comboboxes()
+void Sidebar::update_all_preset_comboboxes(bool update_filament_combos)
 {
     PresetBundle &preset_bundle = *wxGetApp().preset_bundle;
     const auto print_tech = preset_bundle.printers.get_edited_preset().printer_technology();
@@ -3911,7 +3911,7 @@ void Sidebar::update_all_preset_comboboxes()
     //p->combo_printer->update();
     // Update the filament choosers to only contain the compatible presets, update the color preview,
     // update the dirty flags.
-    if (print_tech == ptFFF) {
+    if (print_tech == ptFFF && update_filament_combos) {
         for (PlaterPresetComboBox* cb : p->combos_filament)
             cb->update();
     }
