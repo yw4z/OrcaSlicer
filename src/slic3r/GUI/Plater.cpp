@@ -3954,8 +3954,10 @@ void Sidebar::update_presets(Preset::Type preset_type)
 
         }
 
-        for (size_t i = 0; i < filament_cnt; i++)
-            p->combos_filament[i]->update();
+        // While presets load at startup the printer tab refills every filament combo right after this.
+        if (wxGetApp().mainframe == nullptr || wxGetApp().mainframe->IsShown())
+            for (size_t i = 0; i < filament_cnt; i++)
+                p->combos_filament[i]->update();
 
         update_dynamic_filament_list();
         break;
