@@ -7868,7 +7868,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     , sidebar(new Sidebar(q))
     , notification_manager(std::make_unique<NotificationManager>(q))
     , m_worker{q, std::make_unique<NotificationProgressIndicator>(notification_manager.get()), "ui_worker"}
-    , m_sla_import_dlg{new SLAImportDialog{q}}
+    , m_sla_import_dlg{nullptr} // built on first use, see import_sl1_archive()
     , m_job_prepare_state(Job::JobPrepareState::PREPARE_STATE_DEFAULT)
     , delayed_scene_refresh(false)
     , collapse_toolbar(GLToolbar::Normal, "Collapse")
@@ -18151,7 +18151,11 @@ void Plater::import_zip_archive()
 void Plater::import_sl1_archive()
 {
     auto &w = get_ui_job_worker();
-    if (w.is_idle() && p->m_sla_import_dlg->ShowModal() == wxID_OK) {
+    if (!w.is_idle())
+        return;
+    if (p->m_sla_import_dlg == nullptr)
+        p->m_sla_import_dlg = new SLAImportDialog{this};
+    if (p->m_sla_import_dlg->ShowModal() == wxID_OK) {
         p->take_snapshot(_u8L("Import SLA archive"));
         replace_job(w, std::make_unique<SLAImportJob>(p->m_sla_import_dlg));
     }
