@@ -191,6 +191,7 @@
 #include "GUI.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
+#include "Lazy.hpp"
 #include "Shortcuts.hpp"
 #include "GUI_ObjectList.hpp"
 #ifdef __WXGTK__
@@ -7268,13 +7269,12 @@ struct Plater::priv
     AssembleView* assemble_view { nullptr };
     // Docked/resizable 2D pane showing GLGizmoTextureDisplacement's LSCM unwrap of a painted
     // patch; a sibling AUI pane alongside "sidebar"/"main", not part of the view3D/preview/
-    // assemble_view sizer - see ensure_uv_editor() and Plater::get_uv_editor_canvas(). The
-    // pane hosts the panel (toolbar + canvas + status line); uv_editor_canvas is its inner canvas,
-    // cached so the gizmo can reach it directly. Both are null until the pane is first shown.
-    UVEditorPanel*  uv_editor_panel { nullptr };
-    UVEditorCanvas* uv_editor_canvas { nullptr };
-    // Builds the pane, hidden, if it does not exist yet. Called from show_uv_editor()'s CallAfter only.
-    UVEditorCanvas* ensure_uv_editor();
+    // assemble_view sizer - see make_uv_editor() and Plater::get_uv_editor_canvas(). The
+    // pane hosts the panel (toolbar + canvas + status line). Built by the first
+    // show_uv_editor(true), never prebuilt.
+    Lazy<UVEditorPanel> uv_editor{ "uv_editor", -1, [this] { return make_uv_editor(); } };
+    // Builds the pane hidden and adds it to m_aui_mgr at its saved place.
+    UVEditorPanel* make_uv_editor();
     bool first_enter_assemble{ true };
     std::unique_ptr<NotificationManager> notification_manager;
 
@@ -7291,7 +7291,8 @@ struct Plater::priv
     // UIThreadWorker can be used as a replacement for BoostThreadWorker if
     // no additional worker threads are desired (useful for debugging or profiling)
     PlaterWorker<BoostThreadWorker> m_worker;
-    SLAImportDialog *               m_sla_import_dlg;
+    // Built on the first import, never prebuilt.
+    Lazy<SLAImportDialog>           m_sla_import_dlg{ "sla_import_dialog", -1, [this] { return new SLAImportDialog{ q }; } };
 
     int                         m_job_prepare_state;
 
@@ -7874,7 +7875,6 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     , sidebar(new Sidebar(q))
     , notification_manager(std::make_unique<NotificationManager>(q))
     , m_worker{q, std::make_unique<NotificationProgressIndicator>(notification_manager.get()), "ui_worker"}
-    , m_sla_import_dlg{nullptr} // built on first use, see import_sl1_archive()
     , m_job_prepare_state(Job::JobPrepareState::PREPARE_STATE_DEFAULT)
     , delayed_scene_refresh(false)
     , collapse_toolbar(GLToolbar::Normal, "Collapse")
@@ -7967,12 +7967,13 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     // Orca: Make sidebar dockable
     m_aui_mgr.AddPane(sidebar, AuiMgr::sidebar_pane_info());
 
-    // The UV editor pane is added by ensure_uv_editor().
+    // The UV editor pane is added by make_uv_editor().
     // Closing the pane with its own X has to reach the gizmo, or its next update would simply show the pane again.
     q->Bind(wxEVT_AUI_PANE_CLOSE, [this](wxAuiManagerEvent &evt) {
         evt.Skip();
-        if (evt.GetPane() != nullptr && evt.GetPane()->window == uv_editor_panel && uv_editor_canvas != nullptr)
-            uv_editor_canvas->run_command(UVEditorCanvas::Command::PaneClosed);
+        UVEditorPanel* panel = uv_editor.get();
+        if (panel != nullptr && evt.GetPane() != nullptr && evt.GetPane()->window == panel)
+            panel->canvas()->run_command(UVEditorCanvas::Command::PaneClosed);
     });
 
     auto* panel_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -8007,8 +8008,8 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
 #ifdef __WXGTK__
             layout = sanitize_window_layout_for_wayland(layout, &removed_floating_state);
 #endif
-            // Panes that dont exist yet (uv_editor, dock panes) are skipped here;
-            // ensure_uv_editor() and add_dock_pane() read their entries from the saved layout when they are built.
+            // Panes that don't exist yet (uv_editor, dock panes) are skipped here;
+            // make_uv_editor() and add_dock_pane() read their entries from the saved layout when they are built.
             if (!m_aui_mgr.LoadPerspective(layout, false)) {
                 BOOST_LOG_TRIVIAL(warning) << "Failed to restore saved window layout";
                 m_aui_mgr.LoadPerspective(m_default_window_layout, false);
@@ -10917,7 +10918,7 @@ void Plater::priv::reset(bool apply_presets_change, bool reload_presets)
         }
         auto layout = m_aui_mgr.SavePerspective();
         // The UV editor pane is only built when first used; keep its saved place from an earlier session.
-        if (uv_editor_panel == nullptr) {
+        if (!uv_editor.built()) {
             const std::string kept = aui_pane_layout_entry(wxGetApp().app_config->get("window_layout"), "uv_editor");
             if (!kept.empty())
                 layout += wxString::FromUTF8(kept) + "|";
@@ -13874,17 +13875,14 @@ void Plater::priv::on_action_print_plate_from_sdcard(SimpleEvent&)
     open_machine_select_dialog(0, PrintFromType::FROM_SDCARD_VIEW);
 }
 
-UVEditorCanvas* Plater::priv::ensure_uv_editor()
+UVEditorPanel* Plater::priv::make_uv_editor()
 {
-    if (uv_editor_panel != nullptr)
-        return uv_editor_canvas;
-    uv_editor_panel  = new UVEditorPanel(q);
+    auto* panel = new UVEditorPanel(q);
     // AddPane() leaves the window's visibility alone; the next m_aui_mgr.Update() shows it with the pane.
-    uv_editor_panel->Hide();
-    uv_editor_canvas = uv_editor_panel->canvas();
+    panel->Hide();
 #ifdef _MSW_DARK_MODE
     // Built after MainFrame gave the window its dark colours, so it needs its own.
-    wxGetApp().UpdateDarkUIWin(uv_editor_panel);
+    wxGetApp().UpdateDarkUIWin(panel);
 #endif
     wxAuiPaneInfo pane = wxAuiPaneInfo()
                              .Name("uv_editor")
@@ -13901,8 +13899,8 @@ UVEditorCanvas* Plater::priv::ensure_uv_editor()
     // After LoadPaneInfo(), which also restores the caption saved in another UI language, and
     // hidden even if the layout was saved with it open: only the gizmo shows it.
     pane.Caption(_L("UV Editor")).Hide();
-    m_aui_mgr.AddPane(uv_editor_panel, pane);
-    return uv_editor_canvas;
+    m_aui_mgr.AddPane(panel, pane);
+    return panel;
 }
 
 void Plater::priv::on_tab_selection_changing(wxBookCtrlEvent& e)
@@ -18160,11 +18158,10 @@ void Plater::import_sl1_archive()
     auto &w = get_ui_job_worker();
     if (!w.is_idle())
         return;
-    if (p->m_sla_import_dlg == nullptr)
-        p->m_sla_import_dlg = new SLAImportDialog{this};
-    if (p->m_sla_import_dlg->ShowModal() == wxID_OK) {
+    SLAImportDialog* dlg = p->m_sla_import_dlg.ensure();
+    if (dlg->ShowModal() == wxID_OK) {
         p->take_snapshot(_u8L("Import SLA archive"));
-        replace_job(w, std::make_unique<SLAImportJob>(p->m_sla_import_dlg));
+        replace_job(w, std::make_unique<SLAImportJob>(dlg));
     }
 }
 
@@ -22155,17 +22152,18 @@ GLCanvas3D* Plater::get_assmeble_canvas3D()
 
 UVEditorCanvas* Plater::get_uv_editor_canvas()
 {
-    return p->uv_editor_canvas;
+    UVEditorPanel* panel = p->uv_editor.get();
+    return panel != nullptr ? panel->canvas() : nullptr;
 }
 
 void Plater::show_uv_editor(bool show)
 {
-    if (p->uv_editor_panel == nullptr) {
+    if (!p->uv_editor.built()) {
         // Built below on the first show; nothing to hide before that.
         if (!show)
             return;
     } else {
-        const wxAuiPaneInfo &pane = p->m_aui_mgr.GetPane(p->uv_editor_panel);
+        const wxAuiPaneInfo &pane = p->m_aui_mgr.GetPane(p->uv_editor.get());
         if (!pane.IsOk() || pane.IsShown() == show)
             return;
     }
@@ -22177,8 +22175,7 @@ void Plater::show_uv_editor(bool show)
     // the 3D canvas is drawing into. Doing the layout once the frame is over avoids that entirely.
     // Building the pane creates a wxGLCanvas, so it waits here too.
     CallAfter([this, show]() {
-        p->ensure_uv_editor();
-        wxAuiPaneInfo &deferred_pane = p->m_aui_mgr.GetPane(p->uv_editor_panel);
+        wxAuiPaneInfo &deferred_pane = p->m_aui_mgr.GetPane(p->uv_editor.ensure());
         if (!deferred_pane.IsOk() || deferred_pane.IsShown() == show)
             return;
         deferred_pane.Show(show);
