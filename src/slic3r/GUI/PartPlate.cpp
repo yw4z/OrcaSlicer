@@ -7066,6 +7066,23 @@ int PartPlateList::move_plate_to_index(int old_index, int new_index)
 		delta = -1;
 	}
 
+	// Orca: custom G-codes (color changes, pauses, custom G-code) are stored per plate index
+	// in the model, so they have to follow the plates to their new positions.
+	if (m_model) {
+		std::map<int, CustomGCode::Info> remapped;
+		for (auto& [idx, info] : m_model->plates_custom_gcodes) {
+			int target = idx;
+			if (idx == old_index)
+				target = new_index;
+			else if (old_index > new_index && idx >= new_index && idx < old_index)
+				target = idx + 1;
+			else if (old_index < new_index && idx > old_index && idx <= new_index)
+				target = idx - 1;
+			remapped[target] = std::move(info);
+		}
+		m_model->plates_custom_gcodes = std::move(remapped);
+	}
+
 	PartPlate* plate = m_plate_list[old_index];
 	//update the plates between old_index and new_index
 	for (unsigned int i = (unsigned int)old_index; i != (unsigned int)new_index; i = i + delta)
