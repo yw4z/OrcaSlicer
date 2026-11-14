@@ -39,13 +39,12 @@ LabeledCheckBox::LabeledCheckBox(wxWindow* parent, const wxString& label, wxWind
 
     m_text_box = new StaticBox(this);
     m_text_box->SetCornerRadius(0);
-    m_text_box->SetCanFocus(false);
-    m_text_box->DisableFocusFromKeyboard();
 
     // Hidden while creation. wxGTK measures label itself and GTK reports size for a new font too late
     m_text_box->Hide();
     m_text = new Label(m_text_box, Label::Body_14, label);
     m_text_box->Show(!label.empty());
+    UpdateFocusTarget();
 
     // Two sizers, as horizontal and vertical padding differ
     wxBoxSizer* text_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -66,9 +65,16 @@ LabeledCheckBox::LabeledCheckBox(wxWindow* parent, const wxString& label, wxWind
     UpdateMetrics();
     Fit();
 
-    m_check->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent&) { OnToggled(); });
+    m_check->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent&) {
+        // Focus to frame once the click is over. Pressed button cancels its click on MSW. A click does not focus it at all on macOS
+        CallAfter([this] { TakeFocus(); });
+        OnToggled();
+    });
     m_check->Bind(wxEVT_SET_FOCUS,    [this](wxFocusEvent& e) { ShowFocus(true);  e.Skip(); });
     m_check->Bind(wxEVT_KILL_FOCUS,   [this](wxFocusEvent& e) { ShowFocus(false); e.Skip(); });
+    m_text_box->Bind(wxEVT_SET_FOCUS,  [this](wxFocusEvent& e) { ShowFocus(true);  e.Skip(); });
+    m_text_box->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { ShowFocus(false); e.Skip(); });
+    m_text_box->Bind(wxEVT_KEY_DOWN,   &LabeledCheckBox::OnKeyDown, this);
     for (wxWindow* win : std::initializer_list<wxWindow*>{m_text_box, m_text}) {
         win->Bind(wxEVT_LEFT_DOWN,    &LabeledCheckBox::OnLabelClick, this);
         win->Bind(wxEVT_LEFT_DCLICK,  &LabeledCheckBox::OnLabelClick, this); // 2nd click of a double click
@@ -165,9 +171,38 @@ void LabeledCheckBox::OnLabelClick(wxMouseEvent& e)
 {
     if (!IsEnabled())
         return e.Skip();
-    m_check->SetFocus();
+    TakeFocus();
     m_check->SetValue(!GetValue());
     OnToggled();
+}
+
+void LabeledCheckBox::OnKeyDown(wxKeyEvent& e)
+{
+    if (e.GetKeyCode() == WXK_SPACE) {
+        if (IsEnabled()) {
+            m_check->SetValue(!GetValue());
+            OnToggled();
+        }
+        return;
+    }
+    if (e.GetKeyCode() != WXK_TAB || !m_text_box->HandleAsNavigationKey(e))
+        e.Skip();
+}
+
+// Frame takes keyboard focus: a native button cant take it while macOS full keyboard access is off ([NSView canBecomeKeyView])
+void LabeledCheckBox::UpdateFocusTarget()
+{
+    if (m_text_box->IsShown())
+        m_check->DisableFocusFromKeyboard(); // one tab stop. SetCanFocus() would work on GTK only
+}
+
+// With no label there is no frame to focus, only the check
+void LabeledCheckBox::TakeFocus()
+{
+    if (m_text_box->IsShown())
+        m_text_box->SetFocus();
+    else
+        m_check->SetFocus();
 }
 
 void LabeledCheckBox::ShowFocus(bool focused)
@@ -217,6 +252,7 @@ void LabeledCheckBox::SetLabel(const wxString& label)
     wxPanel::SetLabel(label);
     m_text->SetLabel(label);
     m_text_box->Show(!label.empty());
+    UpdateFocusTarget();
     Relayout();
 }
 
@@ -249,6 +285,7 @@ bool LabeledCheckBox::Enable(bool enable)
 {
     if (!m_check->Enable(enable))
         return false;
+    m_text_box->Enable(enable); // it holds the focus, so it must not be a tab stop while disabled
     UpdateLabelColor();
     return true;
 }

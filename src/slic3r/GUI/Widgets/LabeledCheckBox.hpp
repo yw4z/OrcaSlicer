@@ -42,7 +42,7 @@ public:
     bool Enable(bool enable = true) override;
     bool IsEnabled() const { return m_check->IsEnabled(); }
 
-    bool HasFocus() const override { return m_check->HasFocus(); }
+    bool HasFocus() const override { return m_text_box->HasFocus() || m_check->HasFocus(); }
 
 protected:
     void DoSetToolTip(wxToolTip* tip) override;
@@ -52,7 +52,10 @@ private:
     void OnToggled();                  // sends the events
     void OnLabelClick(wxMouseEvent& e);
     void OnLabelHover(wxMouseEvent& e);
+    void OnKeyDown(wxKeyEvent& e);     // Space toggles, like a native check box
     void OnSize(wxSizeEvent& e);
+    void UpdateFocusTarget();          // the frame takes the focus when there is a label
+    void TakeFocus();
     void ShowFocus(bool focused);
     void ShowHover();                  // hover icon on the check while the mouse is on the label
     void UpdateLabelColor();
